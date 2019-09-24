@@ -1,0 +1,14 @@
+UKBiobank data that is stored in EGA instead of in UKB's own webservers
+
+How I got this data:
+conda create -n ega
+conda activate ega
+conda config --add channels bioconda
+ega install pyega3
+wget https://ega-archive.org/files/CREDENTIALS_FILE
+#modify the credentials file: remove the password line, change the email line
+pyega3 -cf CREDENTIALS_FILE  datasets 
+pyega3 -cf CREDENTIALS_FILE files EGAD00010001497 > filesList.txt
+#find the file I want
+pyega3 -cf CREDENTIALS_FILE fetch EGAF00001844707
+

@@ -1,0 +1,12 @@
+*chr[123456789]*
+*chr1[0123456789]*
+*chr2[012]*
+*chrX*
+*output/
+*.*out*
+*.gz
+*.zip
+*log
+*swp
+.ipynb_checkpoints/
+*.vcf
