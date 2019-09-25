@@ -5,6 +5,7 @@
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	
 9	45440	rs9407029	C	A	.	.	.	GT	
+9	45440	rs9407029	C	A	.	.	.	GT	
 9	45439	rs9407029	C	A	.	.	.	GT	
 9	45441	rs9407029	C	A	.	.	.	GT	
 9	45440	rs9407029	T	G	.	.	.	GT	

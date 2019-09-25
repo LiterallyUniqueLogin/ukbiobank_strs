@@ -1,0 +1,8 @@
+README on pre_qc imputation steps
+
+Bedtools intersect checks that input vcfs are sorted
+It did reveal that the hap VCF doesn't always share the same ref/alt designation
+as snpstr.
+Could use conform-gt to fix this, but that throws away
+A/T and G/C snps. Any alternative?
+

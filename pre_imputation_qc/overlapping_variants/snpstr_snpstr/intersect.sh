@@ -1,8 +1,8 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N snpstr_snpstr isec
+#PBS -N snpstr_snpstr_intersect
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=00:15:00
+#PBS -l walltime=03:00:00
 #PBS -o /projects/ps-gymreklab/resources/ukbiobank/pre_imputation_qc/overlapping_variants/snpstr_snpstr/output/
 #PBS -e /projects/ps-gymreklab/resources/ukbiobank/pre_imputation_qc/overlapping_variants/snpstr_snpstr/output/
 #PBS -V
@@ -12,13 +12,17 @@
 
 source ~/.bashrc
 conda activate bedtools
-bedtools intersect -wa -wb \
-	-a $UKB/snpstr/1kg.snp.str.chr${INPUT1}.vcf.gz \
-	-b $UKB/snpstr/1kg.snp.str.chr${INPUT1}.vcf.gz \
+echo "Running bedtools"
+time bedtools intersect -wa -wb \
+	-a $UKB/snpstr/vcf_1_sample/chr${INPUT1}.vcf \
+	-b $UKB/snpstr/vcf_1_sample/chr${INPUT1}.vcf \
 	-sorted \
 	> $TMPDIR/all_overlap.txt
-cut -f1,2,4,5 $TMPDIR/all_overlap.txt > $TMPDIR/overlap_1.txt
-cut -f10,11,13,14 $TMPDIR/all_overlap.txt > $TMPDIR/overlap_2.txt
-diff $TMPDIR/overlap_1.txt $TMPDIR/overlap_2.txt \
+echo "Cutting first overlap file"
+time cut -f1,2,4,5 $TMPDIR/all_overlap.txt > $TMPDIR/overlap_1.txt
+echo "Cutting second overlap file"
+time cut -f11,12,14,15 $TMPDIR/all_overlap.txt > $TMPDIR/overlap_2.txt
+echo "Diffing overlap files"
+time diff $TMPDIR/overlap_1.txt $TMPDIR/overlap_2.txt \
 	> $UKB/pre_imputation_qc/overlapping_variants/snpstr_snpstr/chr${INPUT1}.txt
 

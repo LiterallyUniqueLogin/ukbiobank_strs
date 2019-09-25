@@ -1,0 +1,7 @@
+to Download conform-gt.***.jar:
+
+wget https://faculty.washington.edu/browning/conform-gt/conform-gt.24May16.cee.jar
+
+conform-gt successfully switches the reference vs alternate allele of everything in the reference sample
+(despite marking them SAME_STRAND) except for all G/C and A/T alleles, which it FAILS
+and marks as UKNOWN_STRAND. No other REMOVED or FAILED alleles are recorded in the chrs I've looked at.
