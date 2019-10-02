@@ -10,7 +10,10 @@
 #PBS -m a
 #INPUT1 is the number of the chromosome to convert 
 
-plink2 --pfile $UKB/snpstr/chr${INPUT1} \
-	--export vcf \
+plink2 --pfile $UKB/snpstr/pfile/chr${INPUT1} \
+	--export vcf ref-first \
 	--thin-indiv-count 1 \
-	-out $UKB/original/snpstr/vcf_1_sample/chr$INPUT1
+	-out $UKB/snpstr/vcf_1_sample/chr$INPUT1
+	
+
+
