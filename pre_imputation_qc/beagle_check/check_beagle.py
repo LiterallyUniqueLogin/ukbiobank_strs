@@ -1,12 +1,13 @@
 import sys
+import numpy as np
 
-with open(sys.argv[1], 'w') as outfile:
+with open(sys.argv[1], 'wt', buffering=1) as outfile:
 	lineNumber = 0
 	for line in sys.stdin:
 		if line[0] == '#':
 			continue
 		lineNumber += 1
-		print("\rReading varaint {}".format(lineNumber), end ='')
+		print("\rReading variant {}".format(lineNumber), end ='')
 		tokens = line.split()
 		chrom = tokens[0]
 		pos = tokens[1]
@@ -15,12 +16,13 @@ with open(sys.argv[1], 'w') as outfile:
 		if n_alt != len(alt_freqs):
 			outfile.write('Wrong number of alt_freqs {}:{}\n'.format(chrom, pos))
 		n_samples = len(tokens) - 9
+		#alt_counts = np.zeros(n_alt)
 		alt_counts = [0]*n_alt
 		sample_num = 0
 		for sample in tokens[9:]:
 			sample_num += 1
 			splits = sample.split(':')
-			GT = splits[0]
+			called_GT = splits[0]
 			DSs = [float(x) for x in splits[1].split(',')]
 
 			#modified for APs
@@ -42,61 +44,82 @@ with open(sys.argv[1], 'w') as outfile:
 			if abs(sum(GPs) - 1) >= 0.04:
 				outfile.write('GPs sum to {} for sample #{} {}:{}\n'.format(sum(GPs), sample_num, chrom, pos))
 			
-			alleles = [int(x) for x in GT.split('|')]
-			for allele in alleles:
-				if allele > 0:
-					alt_counts[allele - 1] += 1
+			#alleles = [int(x) for x in called_GT.split('|')]
+			#for allele in alleles:
+			#	if allele > 0:
+			#		alt_counts[allele - 1] += 1
+			#alt_counts += AP1s
+			#alt_counts += AP2s
+			for allele in range(n_alt):
+				alt_counts[allele] += AP1s[allele] + AP2s[allele]
+
 			dosage_per_allele = [0]*n_alt
-			highestGP = 0
 			gpCount = -1
-			bestGTs=[]
+			phasedGPs = []
 			for a1 in range(n_alt + 1):
 				for a2 in range(a1 + 1):
 					gpCount += 1
 					#modified for APs
 					if a1 == 0:
-						a1Prob = 1 - sum(AP1s)
+						a1c1Prob = 1 - sum(AP1s) #probability of allele 1 on chromosome 1
+						a1c2Prob = 1 - sum(AP2s)
 					else:
-						a1Prob = AP1s[a1 - 1]
+						a1c1Prob = AP1s[a1 - 1]
+						a1c2Prob = AP2s[a1 - 1]
 					if a2 == 0:
-						a2Prob = 1 - sum(AP2s)
+						a2c2Prob = 1 - sum(AP2s)
+						a2c1Prob = 1 - sum(AP1s)
 					else:
-						a2Prob = AP2s[a2 - 1]
+						a2c2Prob = AP2s[a2 - 1]
+						a2c1Prob = AP1s[a2 - 1]
 
-					maxExpectedProb = (a1Prob+0.01)*(a2Prob+0.01)
-					minExpectedProb = (a1Prob-0.01)*(a2Prob-0.01)
-
+					maxExpectedA1A2Prob = (a1c1Prob+0.01)*(a2c2Prob+0.01)
+					minExpectedA1A2Prob = (a1c1Prob-0.01)*(a2c2Prob-0.01)
+	
+					phasedGPs.append((maxExpectedA1A2Prob, '{}|{}'.format(a1, a2)))
+					
+					maxExpectedA2A1Prob = (a1c2Prob+0.01)*(a2c1Prob+0.01)
+					minExpectedA2A1Prob = (a1c2Prob-0.01)*(a2c1Prob-0.01)
+					
+					
 					if a1 != a2:
-						if a1 == 0:
-							a2Prob = 1 - sum(AP2s)
-						else:
-							a2Prob = AP2s[a1 - 1]
-						if a2 == 0:
-							a1Prob = 1 - sum(AP1s)
-						else:
-							a1Prob = AP1s[a2 - 1]
-						maxExpectedProb += (a1Prob+0.01)*(a2Prob+0.01)
-						minExpectedProb += (a1Prob-0.01)*(a2Prob-0.01)
+						maxExpectedProb = maxExpectedA1A2Prob + maxExpectedA2A1Prob
+						minExpectedProb = minExpectedA1A2Prob + minExpectedA2A1Prob
+						phasedGPs.append((maxExpectedA2A1Prob, '{}|{}'.format(a2, a1)))
+					else:
+						maxExpectedProb = maxExpectedA1A2Prob
+						minExpectedProb = minExpectedA2A1Prob
+						if not abs(maxExpectedA1A2Prob - maxExpectedA2A1Prob) <= 0.001 and \
+							abs(minExpectedA1A2Prob - minExpectedA2A1Prob) <= 0.001:
+							outfile.write("My code doesn't work!, val1 {} val2 {} , sample #{} {}:{}".format(\
+								abs(maxExpectedA1A2Prob - maxExpectedA2A1Prob), \
+								abs(minExpectedA1A2Prob - minExpectedA2A1Prob), \
+								sample_num, \
+								chrom, \
+								pos))
+							exit()
 
 					if not (maxExpectedProb + 0.01 >= GPs[gpCount] and (GPs[gpCount] >= minExpectedProb - 0.01)):
-						outfile.write("GP ({}) doesn't match corresponding APs ({}, {}) \
-								for alleles {}, {} for sample #{} {}:{}\n".format(\
-							GPs[gpCount], a1Prob, a2Prob, a1, a2, sample_num, chrom, pos))
+						outfile.write("GP ({}) doesn't match corresponding APs {} {} \
+for alleles {}, {} for sample #{} {}:{}\n".format(\
+							GPs[gpCount], AP1s, AP2s, a1, a2, sample_num, chrom, pos))
 
-					if GPs[gpCount] - highestGP >= 0.04:
-						highestGP = GPs[gpCount]
-						bestGTs = ['{}|{}'.format(a2, a1), '{}|{}'.format(a1, a2)]
-					elif GPs[gpCount] - highestGP > -0.04:
-						bestGTs.append('{}|{}'.format(a2, a1))
-						bestGTs.append('{}|{}'.format(a1, a2))
 					if a1 > 0:
 						dosage_per_allele[a1 - 1] += GPs[gpCount]
 					if a2 > 0:
 						dosage_per_allele[a2 - 1] += GPs[gpCount]
+
+			phasedGPs.sort(reverse = True)
+			bestGP = phasedGPs[0][0]
+			bestGTs = []
+			for GP, GT in phasedGPs:
+				if GP - bestGP < -0.05:
+					break
+				bestGTs.append(GT)
 			
 			#Check GT matches the highest GP
-			if GT not in bestGTs:
-				outfile.write('Wrong GT (GPs {} , derived from GPs {} , Beagle output {}) for sample #{} {}:{}\n'.format(GPs, bestGTs, GT, sample_num, chrom, pos))
+			if called_GT not in bestGTs:
+				outfile.write('Wrong GT (GPs {} , derived from GPs {} , Beagle output {}) for sample #{} {}:{}\n'.format(phasedGPs, bestGTs, called_GT, sample_num, chrom, pos))
 			#Check dosages are correct
 			for n in range(n_alt):
 				if abs(DSs[n] - dosage_per_allele[n]) >= 0.04:
@@ -104,4 +127,4 @@ with open(sys.argv[1], 'w') as outfile:
 		#Check alt_freqs are correct
 		for n in range(n_alt):
 			if abs(alt_freqs[n] - alt_counts[n]/n_samples/2) >= 0.05:
-					outfile.write('Wrong alternate allele freq (alt allele: {}, Derived from GTs {}, Beagle output {}) for {}:{}\n'.format(n, alt_counts[n]/n_samples/2, alt_freqs[n], chrom, pos))
+				outfile.write('Wrong alternate allele freq (alt allele: {}, Derived from GTs {}, Beagle output {}) for {}:{}\n'.format(n, alt_counts[n]/n_samples/2, alt_freqs[n], chrom, pos))
