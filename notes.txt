@@ -1,0 +1,335 @@
+$UKB = path to this directory
+
+Download UKBiobank genetics data:
+instructions: https://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/ukbgene_instruct.html
+key: $UKB/.ukbkey
+Our 'application' id with UKBiobank: 46122
+script: $UKB/ukbgene
+Two versions of data:
+	v2 (directly measured variants, 6.6e5 variants, phased)
+	v3 (imputed variants, 9.3e7 variants, unphased)
+Two versions have same samples.
+Download a hap file: ./ukbgene hap -cXX
+	will have name ukb_hap_chrXX_v2.bgen
+Corresponding sample file: ./ukbgene hap -cXX -m
+	will have name ukb46122_hap_chrXX_v2_sNNN.sample where NNN is the number of samples remaining when downloaded (e.g. not quit the study yet)
+Corresponding .bgi files (index files used by qctool and bgenix):
+	http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1671
+	Same name as bgen files except with a .bgi after the .bgen
+Download an imp file: ./ukbgene imp -cXX
+	will have name ukb_imp_chrXX_v3.bgen
+Corresponding sample file: ./ukbgene imp -cXX -m
+	will have name ukb46122_imp_chrXX_v3_sNNN.sample where NNN is the number of samples remaining when downloaded (e.g. not quit the study yet)
+Corresponding .bgi files:
+	http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1965
+	Same name as bgen files except with a .bgi after the .bgen
+The hap bgen files have the wrong ref vs alt order for some (but not all) alleles!
+See below (in plink bgen to vcf conversion) for how to fix this
+
+All markers in UKB are biallelic 
+- cite:https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-018-0579-z/MediaObjects/41586_2018_579_MOESM1_ESM.pdf pg. 14
+
+The bgen format is roughly equivalent to the vcf format in content, but is compressed.
+plink2 (https://www.cog-genomics.org/plink/2.0/) supports the bgen format and is what I'm using. Note that it is in alpha
+	and the author regularly responds quickly on biostars 
+Tools qctool and bgenix both support the bgen format and are written by the authors of the bgen format, but are not as 
+	reliably feature rich (and fast?) as plink
+Dockerfile for environment which qctool and bgenix run in (on snorlax): /storage/jmargoliash/ukbiobank/qctool_bgenix_dockerfile
+From that directory, building the Docker container: docker build -f qctool_bgenix_dockerfile -t qctool_test .
+From $UKB, interactively running the Docker container:
+	docker run --mount type=bind,source="$(pwd)",target=/ukbiobank -it  qctool_test:latest
+Decided not to use these tools, plink2 processes bgen files just fine
+
+Some UKB data is stored in EGA's servers instead of UKB's servers. To download it:
+conda create -n ega
+conda activate ega
+conda config --add channels bioconda
+ega install pyega3
+wget https://ega-archive.org/files/CREDENTIALS_FILE
+#modify the credentials file: remove the password line, change the email line
+pyega3 -cf CREDENTIALS_FILE  datasets                                                                                   
+pyega3 -cf CREDENTIALS_FILE files EGAD00010001497 > filesList.txt                                                       
+#find the file I want                                                                                                   
+pyega3 -cf CREDENTIALS_FILE fetch EGAF00001844707
+Getting british white ancestry:
+cut -f24 -d' ' ukb_sqc_v2.txt
+
+To convert a ukbiobank bgen to vcf
+plink2 --bgen file.bgen ref-first --sample file.sample --oxford-single-chr XX --export vcf --out outFile \
+* outfile shouldn't have a .vcf
+To fix the order of of ref vs alt alleles for hap files add the flag
+	--ref-allele force $UKB/non_genetic_data/ukb_snp_bim/ukb_snp_chrI_v2.bim 5 2
+To extract a random subset of e.g. 20000 samples, use the flag --thin-indiv-count 20000
+To extract the same subset of samples as an already present vcf, head -n 6 file.vcf  | tail -n 1 | cut -f10-  > samples.txt
+If the file you're sourcing from is a VCF already, that is enough (the sample ID's will match)
+However, if the file you're sourcing from is bgen format, then you need to use VIM on the samples.txt file to 
+	do the following replacements
+* %s/\t/\r/g
+* %s/_/ /g
+This will generate a file that has two identical columns, one for the individual id and one for the family id,
+	as they are both present but identical in this dataset
+Then add the option --keep samples.txt to the plink2 command
+NOTE plink2 will report only genotypes. Where that is not sufficient for filtering (e.g. imp dataset) 
+	consider using qctool. (I've tried using the --vcf-dosage option, and it didn't change anything 
+    i.e.  plink2 --bgen $UKB/original/imp/ukb_imp_chr17_v3.bgen ref-first --sample $UKB/original/imp/ukb*.sample --oxford-single-chr 17 --export vcf vcf-dosage=GP --out chr17_imp_1samp_GP --thin-indiv-count 1  )
+
+To convert from bgen to vcf using qctool
+cd $UKB
+docker run --mount type=bind,source="$(pwd)",target=/ukbiobank -it  qctool_test:latest
+qctool_v2.0.5 -g ../original/hap/ukb_hap_chr17_v2.bgen -s ../original/hap/ukb*sample 
+	-og chr17_hap_1samp_qctool.vcf -incl-samples 1samp.sample
+qctool outputs GP (genotype probbilities) instead of just GT like plink (raw genotypes)
+Confirmed that running qctool on the haplotype dataset prodcues only GP with 0 or 1 probabilities
+ - i.e. it provides no more information than plink. However, it does provide more information
+ in the case of the imputed dataset.
+
+To use get a list of variants from a bgen file:
+* bgenix -g file.bgen -index
+* bgenix -g file.bgen -list
+
+To use qctool to get SNP summary statistics on hap bgen files:
+* qctool -g file.bgen -threshold 0.9 -snp-stats -osnp output.file.txt
+* (threshold would be problematic on imp files, not sure if not having it would cause error)
+* Works at ~8 snps/sec on one core, no option for multicore, e.g. ~0.8 hr on chr17 in hap dataset. Too slow!
+Better, use plink2 after conversion to vcf:
+* plink2 --vcf file.vcf --freq --out out.file.name
+* Took ~3min for chr9.
+
+Plink timing tests (wall clock time, no replication for each test):
+(Hap dataset chr9, so 29133 variants and 487409 samples)
+* bgen to vcf conversion: 4m
+* bgen to pfile conversion: 2.5m - max of 2 cores, mostly 1. Max of 11.5% of memory (=15G)
+* pfile to vcf conversion: 3m10s - only 1 core, little memory
+* vcf to frequencies calculation: 7.5m
+* pfile to frequencies calculation: 10s
+* cutting a 5k sample batch vcf from a vcf using cut: 4m
+* cutting a 5k sample batch vcf from a pfile using plink: 8s
+Conclusion: Convert to pfile, then convert to vcf files for use as necessary
+
+To compress a vcf file:
+bgzip -c -@ 20 < imp_temp.vcf > imp_temp.vcf.gz
+To decompress, reverse the input/output and add the flag -d
+To compress in place (e.g. delete the uncompressed file and create a compressed one)
+bgzip -@ 20 imp_temp.vcf
+
+To index a vcf file for use with bcftools:
+tabix /storage/resources/datasets/Ukbiobank/hap_temp.vcf.gz
+(must be run on a .gz file)
+Note: the vcf file must have been compressed with bgzip, not gzip.
+If compressed with gzip, uncompress then recompress with bgzip
+
+Note: I have found that bedtools intersect is better than bcftools,
+the below is only historical
+To use bcftools to look at the variants present in one file A but not file B
+bcftools isec -c none -n+2 fileA fileB > out.txt
+	(Collapse: none means that variants must in addition to have the same reference position,
+		also have exactly the same alleles)
+Chr17 Results:
+	711 (3.2%) variants in Hap not in SNPSTR out of 22215 in Hap and 776398 in SNPSTR
+	imp is missing 16435 variants included in SNPSTR (that number includes STRs) according to bcftools isec
+		only 1354 (0.17%) of these are single nucleotide substitutions/indels
+		(cut bcftoolsOutput.txt -f3,4 | grep -ivP '([AGTC]{1,}\s[AGTC]{2,})|([ACTG]{2,}\s[ACTG]{1,})' | wc -l)
+
+How to check for all multibp and multiallelic variants in a VCF: (add -v to grep to search for all singlebp, biallelic variants)
+grep -iP '(\s[-AGTCyrwskmdvhbxn.,]{1,}\s[-AGTCyrwskmdvhbxn.,]{2,})|(\s[-AGTCyrwskmdvhbxn.,]{2,}\s[-AGTCyrwskmdvhbxn.,]{1,})' output2.txt > multibp_overlap.txt
+
+Intersection different VCFs to see which loci they overlap in: bedtools intersect 
+(even if they have different or multibasepair variants at those loci)
+	cut -f1-9 $UKB/converted_vcf/hap/chr9.vcf > chr9_ukb_hap_loci_only.vcf
+	zcat $UKB/SNPSTR/1kg.snp.str.chr9.vcf.gz | cut -f1-9 > chr9_snpstr_loci_only.vcf
+	bedtools intersect -a chr9_snpstr_loci_only.vcf -b chr9_ukb_hap_loci_only.vcf -wa -wb -sorted > chr9_output.txt
+	cut chr9_output.txt -f1-5,10-14 > chr9_overlap.txt
+	cut -f1,2,4,5 chr9_overlap.txt > chr9_overlap_snpstr.txt
+	cut -f6,7,9,10 chr9_overlap.txt > chr9_overlap_ukbhap.txt
+	diff chr9_overlap_snpstr.txt chr9_overlap_ukbhap.txt > chr9_overlap_diffs.txt
+
+Download SNPSTR data:
+http://gymreklab.com/2018/03/05/snpstr_imputation.html#Usage
+Ref paper: https://www.nature.com/articles/s41467-018-06694-0
+Both SNPSTR and Beagle recommend using Beagle's author's tool conform-gt
+for making the sample data file conform to the reference data file. However,
+this throws out all G/C and A/T SNPs. Instead, I've found the plink solution
+with --ref-allele above (conforming the sample data vcf to the sample bims) to not throw anything out. 
+TODO confirm this doesn't miss anything.
+
+Tools for phasing imputed data:
+* SHAPEIT3 - TODO waiting on access
+
+Possible tools for STR imputation from reference panel (good review article: https://www.nature.com/articles/nrg2796 )
+* Beagle is the only known tool to handle multiallelic loci
+* Alternatives include IMPUTEv4 (used by UKBiobank people)
+  Imputev4 doesn't have a useful paper reference, but says it is the same as IMPUTEv2 but faster
+  IMPUTEv2 ref: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2689936/
+* this compares itself against Beagle, fastPHASE and MaCH (which has become minimacv4)
+* fastPHASE ref:http://stephenslab.uchicago.edu/assets/papers/Scheet2006.pdf
+  fastPHASE compares itself against GERBIL (now part of GEVALT) and HaploBlock
+  but both of those seem old
+* minimac ref: https://www.nature.com/articles/ng.3656
+  ref is for v3, can't find a ref for v4
+
+Testing minimac:
+* Download minimac3 to convert reference vcf to m3vcf (minimac3 specific format that minimac4 requires but cannot produce)
+* couldn't compile minimac3 from source (C errors) but downloaded exectuable works 
+	ftp://share.sph.umich.edu/minimac3/Minimac3Executable.tar.gz
+* Convert: /storage/jmargoliash/ukbiobank/Minimac3/bin/Minimac3 --processReference --refHaps SNPSTR/1kg.snp.str.chr9.vcf.gz
+* (see here about a possibly faster but less accurate method: https://groups.google.com/forum/embed/?place=forum/minimac4-help#!topic/minimac4-help/Pv068psVa-4 )
+* Conversion output: 
+ Number of Markers read from VCF File                : 1200509
+ Number of Markers with more than Two Alleles        : 17658
+ Number of Markers failing FILTER = PASS             : 0
+ Number of Markers with inconsistent Ref/Alt Allele  : 0
+ Number of Markers with duplicate ID:POS:REF:ALT     : 0
+ Number of Insertions                                : 18003
+ Number of Deletions                                 : 394
+
+ Number of Markers to be Recorded                    : 1182851
+* Notice that the last line is the difference of the first two lines, e.g. markers with more than two alleles
+  have been omitted. Thus we can't use minimac.
+
+Testing fastPHASE:
+* fastPHASE's documentation ( http://scheet.org/code/fastphase_doc_1.4.pdf )
+	specifies "for each SNP site, any 2 characters may be used for the two SNP alleleles"
+	and "fastPHASE  does  not  explicitly  or  comprehensively  check  the  formatof  the  input  file"
+	so it does not seem reliable enough to warrant usage
+
+Testing IMPUTEv4: documentation (downloaded after being given permission) says "All alleles must be coded as 0 or 1."
+ so this won't work for STRs
+
+Running beagle to impute SNPSTR variants into a UKBiobank file.
+java -Xmx80000m -jar beagle.version.jar ref=snpstrFile.vcf.gz gt=ukbiobankFile.vcf out=outFile
+	map=$UKB/beagle_genetic_maps/plink.chr9.GRCh37.map impute=true gp=true
+Note: Beagle only outputs variants in the reference file in the generated file, 
+    any variants only in the input file are discarded.
+TODO: The output genotype probabilities from Beagle don't seem to match its genotype calls
+	(Shubham says extremly high rate ~30%) GTs are experimentally validated. 
+	But maybe GPs are just garbage? Hopefully not. Look in to this.
+
+Confirmed that beagle imputes per sample instead of sharing info between samples, and that it is deterministic:
+Get two vcf files from the ukbiobank data: one with 100 samples at random and one with just one of those samples
+Get output vcf files from running beagle on both of those files
+zcat beagleOutput100.vcf.gz | cut -f1-10 > | cut -f-7,9- bealgeOutput1of100.vcf
+zcat beagleOutput1.vcf.gz | cut-f-7,9- > beagleOutput1.vcf
+(The last cuts cut out the summary statistics which will necessarily be different for different datasets,
+	we just want to know if the individual samples have been given the same genotypes)
+diff beagleOutput1.vcf beagleOutput1of100.vcf
+
+Imputation time on hap dataset on snorlax:
+2000 Samples on Chr17 took 5min30sec (84 cpu min)
+5000 Samples on Chr17 took 13min20sec (214 cpu min)
+Seems roughly linear, giving a 500k/2k * 5min * 1hr/60min = 20.8hr 
+	time frame for imputing STRs into hap chr17
+	ignoring preprocessing steps (converting to indexed, bgzipped vcf files)
+10k samples memory overloaded, trying to find the max
+
+Beagle phasing is too slow: output sasy ~19 hrs/ window (window size is 40MB) for 20k samples with full access to snorlax.
+This means 9GB/40MB * 19hrs * 500/20 -> 4453 days of compute time on Snorlax for the full genome.
+
+VCF QC
+TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
+handle overlapping sites somehow?
+TODO I'm assuming that beagle isn't smart enough to handle overlapping variants, so we should go through filtered_output
+and remove all the overlapping variants from the input VCF file so we can impute the STRs into them, right?
+
+TODO Sample QC/filtering pre (possible phasing and) imputation
+(QC info about directly genotyped SNPs: http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1955 )
+(QC datasets from the UKBiobank paper can be downloaded at: http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100313)
+
+Sample filtering:
+Make sure UKB already remove high missingness and unusual heterozygosity, inferred sex.
+Make sure the to filter 652 people with non-standard sex chromosome karyotypes
+Don't filter based on white/British yet
+
+TODO: sample qc file is stored on EGA (see http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=664) - ping them later
+	this resource shows that the info we want is in the sample QC file - ping them later
+	(http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=531 , also 
+	http://biobank.ndph.ox.ac.uk/showcase/showcase/docs/ukb_genetic_data_description.txt)
+	This indicates the data used to be on UKB's website (resource 534) (http://biobank.ndph.ox.ac.uk/showcase/showcase/misc/gene_resource.txt)
+	EGA is currently too slow to access the dataset, much less download the file - ping them later
+
+SNP filtering:
+Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)
+ INFO scores for SNPs can be downloaded from here: 
+ http://biobank.ndph.ox.ac.uk/showcase/search.cgi?wot=3&srch=info&sta0=on&sta1=on&sta2=on&sta3=on&str0=on&str3=on&fit0=on&fit10=on&fit20=on&fit30=on&fvt11=on&fvt21=on&fvt22=on&fvt31=on&fvt41=on&fvt51=on&fvt61=on&fvt101=on
+ (here: http://biobank.ndph.ox.ac.uk/showcase/search.cgi , select resource, search 'info')
+ (Or <0.4? This is used by IBD paper https://www.nature.com/articles/nature22969.pdf)
+ (IBD paper requires INFO>0.8 and MAF>0.1 for at least one variant in confidence sets
+ containing only imputed genotypes)
+ (e.g. their imputation calls are not very certain.)
+ TODO: read this paper (https://bmcgenet.biomedcentral.com/articles/10.1186/s12863-015-0248-2) I found
+   on how to appropriately use INFO scores
+ TODO: this paper suggests not filtering by INFO scores but using a regression model that takes them into account
+   https://www.nature.com/articles/nrg2796 (note that these authors on the IMPUTEv2 page seem to indicate that filtering
+   is acceptable, not sure why the contradict themselves)
+ TODO: are info scores just directly computed from the raw genotype probabilities (GP in the VCF?) If so,
+   any reason to filter based on INFO scores instead of using the GP or filtering based on the GP?
+Remove SNPs with major frequency discrepancies between SNP-STR ref panel and UKBiobank cohort. 
+ Also correlation discrepancies. (Shubham thinks correlation discrepencies are overkill)
+ (cite box 2: https://www.nature.com/articles/s41576-018-0016-z#Sec17 )
+ Use KS test to compare allel frequencies distributions?
+
+Ideas for QCing post (possible phasing and ) imputation:
+TODO
+Sample filters that can be applied immediately:
+Filter samples with across the board poor imputation quality
+Filter samples with unusual heterozygosity
+	(fraction of non-missing alleles called heterozygous, after correction for population structure)
+Get ~350K subset of that the UKB paper used in their height analysis
+ (white, British ancestry, unrelated, filtered for unusual heterozygosity patterns after population structure,
+  filtered for highly missing genotype calls, inferred sex matches reported sex)
+Any sample filters after all samples are done?
+
+STR filters:
+Run Hardy-Weinberg Equilibrium test for expected genotype distribution
+Filter STR genotypes with too low a minor allele frequency
+Possibly filter STR genotypes with too low an estimate correlation between their calls and the
+	true calls? (Beagle output INFO field DR2)
+Compare distribution of alleles to the reference data set. Compare correlations between
+	STRs and their local surroundings likewise. These being highly divergeant can send
+	red flags (box 2 https://www.nature.com/articles/s41576-018-0016-z#Sec24 )
+Compare per-locus heterozygosities to other datasets (SSC, 1000G, GTEx)
+	or more specifically: distributions of alleles similar to other datasets?
+Remove STRs with sex specific call rates
+Consider filtering STRs which overlap genotyped values and are different
+
+
+TODO
+Compare beagle output hap vs imp
+Find a blood trait gene to use a model
+Try using a different phasing tool than beagle
+Do my own imputation of SNPs using beagle, followed by imputation of STRs
+Do my own imputation of SNPs using another tool (e.g. ShapeIt), followed by imputation of STRs
+Confirm that other common imputation tools don't handle multiallelic variants
+Find a way to confirm results before parallelizing
+Parallelize
+
+Look into imputation methods that can use the information percent
+of imputed alleles (e.g. most of the variants we're basing the STR imputations off of
+are themselves  imputed, and those will have an imputation information <1,
+where imputation alpha means that this call has the usefulness of alpha true calls)
+
+How does IMPUTE produce information percentages?
+
+Use most likely genotype or estimated allele dosages for linear regression models?
+
+TODO:
+Compare that alt alleles are the same across batches
+Compare that genotypes are the same before and after merging 
+Is BCFTools subsample faster than cut?
+
+TODO:
+Look at fine mapping methods: https://www.nature.com/articles/s41576-018-0016-z/tables/1
+UKB uses UK10K and all of 1000G when doing imputation, compared to just ~2.5K used in SNPSTR.
+
+Follow up after fine mapping methods would be to do trans-ethnic fine mapping to improve
+power for the loci which seem of interest
+(Cite last bullet point box 2: https://www.nature.com/articles/s41576-018-0016-z#Sec17 )
+
+Fine mapping:
+From IBD paper https://www.nature.com/articles/nature22969 (according to their results, which have yet to be mechanistically confirmed)
+ * 72% of loci harbor a single signal
+ * 49% of variants are in a locus with a single signal
+TODO signal == causal variant?
+
+Figure out what percentage of loci target only a specific gene
+ (coding variant >50% prob, or only gene in 50kb)
+Figure out percentage of candidate genes still available

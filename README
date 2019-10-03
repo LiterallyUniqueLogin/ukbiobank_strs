@@ -1,0 +1,10 @@
+List of directories and their contents:
+genetic_maps: genetics maps for hg19 downloaded from Beagle, used during Beagle's phasing routine
+non_genetic_data: contains data that is not direct genotypes, downloaded from a variety of sources
+original: contains ukb's 'original' genotyped data 
+	(either directly genotyped via snp chips, imputed from there, or whole exome sequencing)
+pre_imputation_qc: tests done before imputing STRs into the datasets
+snpstr: Shubham's SNP-STR reference panel
+str-imputed: the UKB genetic data after STR imputation
+
+
