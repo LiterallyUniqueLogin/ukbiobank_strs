@@ -1,5 +1,5 @@
 for i in {1..22} ; do
-	qsub -v "INPUT1=$i" intersect.sh &
+	INPUT1=$i
+	source ./intersect.sh
 done
 
-wait

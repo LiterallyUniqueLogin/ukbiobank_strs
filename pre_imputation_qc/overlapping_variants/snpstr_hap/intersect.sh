@@ -1,11 +1,13 @@
-INPUT1=22
-TMPDIR=.
 source ~/.bashrc
+conda activate bcftools
+bgzip -c $UKB/original/vcf_1_sample/hap/chr${INPUT1}.vcf > \
+	 $UKB/original/vcf_1_sample/hap/chr${INPUT1}.vcf.gz
+conda deactivate
 conda activate bedtools
 echo "Running bedtools"
 time bedtools intersect -wa -wb \
 	-a $UKB/snpstr/vcf_1_sample/chr${INPUT1}.vcf \
-	-b $UKB/original/vcf_1_sample/hap/conformed/chr${INPUT1}.vcf.gz \
+	-b $UKB/original/vcf_1_sample/hap/chr${INPUT1}.vcf.gz \
 	-sorted \
 	> $TMPDIR/all_overlap.txt
 echo "Cutting first overlap file"

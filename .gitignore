@@ -15,3 +15,6 @@
 *temp*
 *.swo
 *.stderr
+*.bim
+*.md5
+*.tar

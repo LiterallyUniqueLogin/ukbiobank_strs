@@ -2,7 +2,6 @@ wget http://biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/ukb_snp_qc.txt
 Described here: http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=1955
 Referenced here: http://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/ukbgene_instruct.html
 
-wget https://sec-assets.thermofisher.com/TFS-Assets/LSG/Support-Files/Axiom_tx_v1.na35.annot.csv.zip
-As linked to from here: https://www.thermofisher.com/order/catalog/product/000854#/1_1
-As linked to from here: https://www.ukbiobank.ac.uk/scientists-3/uk-biobank-axiom-array/
-
+wget -nd  biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/ukb_snp_bim.tar
+This file contains the correct ref and alt alleles for each SNP
+The bgen hap files have permuted alleles which are more difficult to handle
