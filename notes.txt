@@ -112,13 +112,13 @@ To decompress, reverse the input/output and add the flag -d
 To compress in place (e.g. delete the uncompressed file and create a compressed one)
 bgzip -@ 20 imp_temp.vcf
 
-To index a vcf file for use with bcftools:
+To index a vcf file for use with bcftools or beagle:
 tabix /storage/resources/datasets/Ukbiobank/hap_temp.vcf.gz
 (must be run on a .gz file)
 Note: the vcf file must have been compressed with bgzip, not gzip.
 If compressed with gzip, uncompress then recompress with bgzip
 
-Note: I have found that bedtools intersect is better than bcftools,
+Note: I have found that bedtools intersect is better than bcftools isec,
 the below is only historical
 To use bcftools to look at the variants present in one file A but not file B
 bcftools isec -c none -n+2 fileA fileB > out.txt
@@ -220,6 +220,13 @@ Seems roughly linear, giving a 500k/2k * 5min * 1hr/60min = 20.8hr
 	time frame for imputing STRs into hap chr17
 	ignoring preprocessing steps (converting to indexed, bgzipped vcf files)
 10k samples memory overloaded, trying to find the max
+
+Imputation time on hap on tscc hotel 1node 4ppn (no specified memory)
+200 samples is the max (250 fails due to out of memory)
+Give java 10000M Xmx. From top, have 13G virtual mem, but cap out ~6G real mem.
+250 samples takes <1min for cutting a sample and ~1m15sec real time for
+running beagle (~4min across cpus)
+
 
 Beagle phasing is too slow: output sasy ~19 hrs/ window (window size is 40MB) for 20k samples with full access to snorlax.
 This means 9GB/40MB * 19hrs * 500/20 -> 4453 days of compute time on Snorlax for the full genome.

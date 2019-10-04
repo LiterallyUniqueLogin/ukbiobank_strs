@@ -6,5 +6,5 @@ original: contains ukb's 'original' genotyped data
 pre_imputation_qc: tests done before imputing STRs into the datasets
 snpstr: Shubham's SNP-STR reference panel
 str-imputed: the UKB genetic data after STR imputation
-
+ukb_utilities: utilities from ukb (primarily ukbgene) and the .ukbkey file to use them
 

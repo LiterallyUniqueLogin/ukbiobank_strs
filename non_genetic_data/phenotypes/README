@@ -1,3 +1,11 @@
 Not sure how to download the csv file in this directory
 Ask Richard
 I think it comes from the application process to access UKB data
+
+The csv file contains all the data
+
+The fields file just lists the numerical name of all the columns
+in the csv file. Each of these is just the data-field id (or sub-ID)
+of a piece of data that can be looked up in the UKB showcase
+
+I'm not sure what the .enc file is. Maybe it is a compressed form of the csv?
