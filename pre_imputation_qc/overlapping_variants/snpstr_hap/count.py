@@ -1,3 +1,5 @@
+#!/bin/env python3
+
 multiallelic_overlaps = 0
 reversed_overlaps = 0
 different_snp_overlaps = 0
@@ -37,7 +39,8 @@ for file_num in range(1,23):
 				if len(snpstr_alt) == 1 and \
 					snpstr_alt[0] == ref and \
 					snpstr_ref == alt:
-					print("{}:{}".format(line[1], line[2]))
+					
+					print("Reversed overlap (should not occur) found at {}:{}".format(line[1], line[2]))
 					reversed_overlaps += 1
 
 				if len(snpstr_alt) == 1 and \
@@ -46,7 +49,6 @@ for file_num in range(1,23):
 					len(alt) == 1 and \
 					len(ref) == 1:
 					different_snp_overlaps += 1
-					print("{}:{}".format(line[1], line[2]))
 
 
 print("multiallelic_overlaps = {} ".format(multiallelic_overlaps))

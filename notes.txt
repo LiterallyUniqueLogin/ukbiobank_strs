@@ -224,9 +224,10 @@ Seems roughly linear, giving a 500k/2k * 5min * 1hr/60min = 20.8hr
 Imputation time on hap on tscc hotel 1node 4ppn (no specified memory)
 200 samples is the max (250 fails due to out of memory)
 Give java 10000M Xmx. From top, have 13G virtual mem, but cap out ~6G real mem.
-250 samples takes <1min for cutting a sample and ~1m15sec real time for
+200 samples takes <1min for cutting a sample and ~1m15sec real time for
 running beagle (~4min across cpus)
-
+This gives a cost of:
+$0.025/SU * 1SU/1hr * 1hr/60min * 2*(1 + 4)min/200 samples/chrom * 22 chrom * 500,000 samples ~ $229
 
 Beagle phasing is too slow: output sasy ~19 hrs/ window (window size is 40MB) for 20k samples with full access to snorlax.
 This means 9GB/40MB * 19hrs * 500/20 -> 4453 days of compute time on Snorlax for the full genome.
