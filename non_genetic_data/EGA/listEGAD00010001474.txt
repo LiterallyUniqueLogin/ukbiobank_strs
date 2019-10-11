@@ -1,0 +1,81 @@
+pyEGA3 - EGA python client version 3.0.39 (https://github.com/EGA-archive/ega-download-client)
+Parts of this software are derived from pyEGA (https://github.com/blachlylab/pyega) by James Blachly
+
+Server URL: https://ega.ebi.ac.uk:8051/elixir/data
+Session-Id: 3752753085
+
+File ID         Status Bytes        Check sum                            File name
+EGAF00001803481      1 209449442    e98c56e260cd13b08ed3db29c159f2a5     004/ukb_mfi_chr13_v3.txt.cip
+EGAF00001835283      1 143780292502 9e41a46fed190c5a7e5bcb8ff72f4e96     004/ukb_imp_chr7_v3.bgen.cip
+EGAF00001803498      1 284035523    a685fa3a6bd65e52d1cbbf5992eb8b67     004/ukb_mfi_chr12_v3.txt.cip
+EGAF00001803485      1 138156048    a19408f50f85cfbcf146a7769ad32d9a     004/ukb_imp_chr14_v3.bgen.bgi.cip
+EGAF00001803510      1 207095824    1ba931c16efdf8808792374022fcb73b     004/ukb_imp_chr10_v3.bgen.bgi.cip
+EGAF00001803514      1 2709851      e50ab0bbc71e93aacd5de1178e444eca     004/ukb_mfi_chrXY_v3.txt.cip
+EGAF00001835277      1 39168205875  3c400a2929c07ecc611879c76308e92c     004/ukb_imp_chr21_v3.bgen.cip
+EGAF00001803504      1 385416896    39a42e989129147e8488bf152123c953     004/ukb_mfi_chr5_v3.txt.cip
+EGAF00001835272      1 73118660891  43e9bcbc542f1910e293bebf0004bf7d     004/ukb_imp_chr17_v3.bgen.cip
+EGAF00001803503      1 471618319    3eb35f0c1f1367e7dfa0f6ad56ff3d76     004/ukb_mfi_chr1_v3.txt.cip
+EGAF00001803509      1 117799952    4ffb755c556068c24c88337185ca9644     004/ukb_imp_chr18_v3.bgen.bgi.cip
+EGAF00001803468      1 249325781    f93f967bc5c0e5ce56793b3093f6d5a6     004/ukb_mfi_chrX_v3.txt.cip
+EGAF00001803473      1 94243856     4ce37b1fa8c5349c0e5c2192a16c07dd     004/ukb_imp_chr20_v3.bgen.bgi.cip
+EGAF00001835280      1 172111670233 7b0b1c0f86b913371544702d9681e2b0     004/ukb_imp_chr4_v3.bgen.cip
+EGAF00001803497      1 131834877    185db4121d0c5e8b2e33561e28d30e64     004/ukb_mfi_chr20_v3.txt.cip
+EGAF00001803499      1 518600658    b943202ab42e2fd10a53f79ea1b79ba9     004/ukb_mfi_chr2_v3.txt.cip
+EGAF00001803470      1 184480784    a82fab5e91ae4e61e41c83403be306ee     004/ukb_imp_chr9_v3.bgen.bgi.cip
+EGAF00001835279      1 167559020854 066c04656b03a1663c31d93ebbe9af04     004/ukb_imp_chr3_v3.bgen.cip
+EGAF00001835286      1 86740749185  d41237aa7c12a1e80a37182fcea6e553     004/ukb_imp_chrX_v3.bgen.cip
+EGAF00001803482      1 120680464    a662122ea1b03ee5344567d09b668092     004/ukb_imp_chr17_v3.bgen.bgi.cip
+EGAF00001835282      1 154230259456 3d66d63b6b0847356cb3e1542cfd1e87     004/ukb_imp_chr6_v3.bgen.cip
+EGAF00001835264      1 194508985689 a927fc2e77171d1df59480d647721bdb     004/ukb_imp_chr1_v3.bgen.cip
+EGAF00001803474      1 94618640     b3fc402dbf00e5496529e6d46bc5ca8e     004/ukb_imp_chr19_v3.bgen.bgi.cip
+EGAF00001835266      1 116667480898 1b42100fe91759338f6f5cbe42712353     004/ukb_imp_chr11_v3.bgen.cip
+EGAF00001803491      1 260925456    eacdd31c243dde253d054d5f4a1e6237     004/ukb_imp_chr6_v3.bgen.bgi.cip
+EGAF00001803477      1 239215632    ef2c4dbd9c36be9fcc3a252101c09f01     004/ukb_imp_chr8_v3.bgen.bgi.cip
+EGAF00001835271      1 82182821029  ddc3bf432118727864827e1a8237b4f8     004/ukb_imp_chr16_v3.bgen.cip
+EGAF00001803500      1 425480322    f715ca1aae7129c57cb6bb4c4beee3e6     004/ukb_mfi_chr3_v3.txt.cip
+EGAF00001835270      1 76569583088  5e53e1b4351e118c83ad6536ebb63f86     004/ukb_imp_chr15_v3.bgen.cip
+EGAF00001835273      1 69249282958  75ebbd3a22f57826415bf171b979447f     004/ukb_imp_chr18_v3.bgen.cip
+EGAF00001835274      1 63051724683  8499e2c6c0d298984226ae55f4413e0f     004/ukb_imp_chr19_v3.bgen.cip
+EGAF00001803507      1 201282576    915aa8c733ba4ed41997252ed6b4b19f     004/ukb_imp_chr12_v3.bgen.bgi.cip
+EGAF00001803469      1 125895696    6ba610b367740a5603d657e388f23839     004/ukb_imp_chr15_v3.bgen.bgi.cip
+EGAF00001803495      1 79959483     4f6bc00cfeb19c8282a0518d05b65841     004/ukb_mfi_chr22_v3.txt.cip
+EGAF00001835278      1 39309683120  c92bb613db717c176ae6e262bcec0e82     004/ukb_imp_chr22_v3.bgen.cip
+EGAF00001803478      1 132103803    a06e19cd46700acd796bf51249236cb1     004/ukb_mfi_chr19_v3.txt.cip
+EGAF00001803502      1 176615303    a57685a972a143dc141e1f336a69a5f8     004/ukb_mfi_chr15_v3.txt.cip
+EGAF00001835281      1 151585421991 45f95365b17d4530a42faf95a70deddd     004/ukb_imp_chr5_v3.bgen.cip
+EGAF00001803490      1 369071120    867cef5d00ad524e2c3be195de1d994c     004/ukb_imp_chr2_v3.bgen.bgi.cip
+EGAF00001803493      1 2016272      11599d3f4b2baa0de201508da66f604c     004/ukb_imp_chrXY_v3.bgen.bgi.cip
+EGAF00001835287      1 4913118177   873c22e02c11677b1a4c11e4c8b06afe     004/ukb_imp_chrXY_v3.bgen.cip
+EGAF00001803488      1 275421200    69ac5066ead41b1d8c0b597d914511d5     004/ukb_imp_chr5_v3.bgen.bgi.cip
+EGAF00001835285      1 110882612299 2774661c80f31a604a924971fc8996b6     004/ukb_imp_chr9_v3.bgen.cip
+EGAF00001803513      1 80286238     089490ab42e211d72dd4b3ffedd21255     004/ukb_mfi_chr21_v3.txt.cip
+EGAF00001803489      1 336029712    0f91dc5663f74ab7d44c27c1347087a5     004/ukb_imp_chr1_v3.bgen.bgi.cip
+EGAF00001803479      1 194151582    8cf52283d8ec4fd6fa1bacbba12bc004     004/ukb_mfi_chr14_v3.txt.cip
+EGAF00001835268      1 86577194185  08125ddf2119c9c283ca9eea0454752d     004/ukb_imp_chr13_v3.bgen.cip
+EGAF00001803476      1 364282325    30bde17a200ffaeaee9b3b1db2aec514     004/ukb_mfi_chr6_v3.txt.cip
+EGAF00001803494      1 292311597    292f3b739cfab50097877caf983d4778     004/ukb_mfi_chr10_v3.txt.cip
+EGAF00001803472      1 168754815    347c371fb398221ec2bf05ef8665121e     004/ukb_mfi_chr17_v3.txt.cip
+EGAF00001803467      1 175465488    e3d529ab6ce9d24e7f4182cc21540840     004/ukb_imp_chrX_v3.bgen.bgi.cip
+EGAF00001835275      1 201900694671 a48b2312f3b132f9558cfe15cb3a41ec     004/ukb_imp_chr2_v3.bgen.cip
+EGAF00001803512      1 57341968     e180a1985256717a804ed9910f61a10e     004/ukb_imp_chr21_v3.bgen.bgi.cip
+EGAF00001803471      1 341849635    a71a19c4dd417cdbd2a2af0eec9f4bc4     004/ukb_mfi_chr7_v3.txt.cip
+EGAF00001803475      1 164773523    932971ac893a9d1a572d8ee5a286a334     004/ukb_mfi_chr18_v3.txt.cip
+EGAF00001803480      1 303751184    9dd07cc1b4a9369f3d373590f1600dab     004/ukb_imp_chr3_v3.bgen.bgi.cip
+EGAF00001803508      1 297437200    2cd81f2dfda7d371a4ede22563c952ca     004/ukb_imp_chr4_v3.bgen.bgi.cip
+EGAF00001803505      1 245251088    d033c19fdf658d52531e8c8e5f34e83e     004/ukb_imp_chr7_v3.bgen.bgi.cip
+EGAF00001835276      1 55089790331  e794847b9ce01a50b2517f07d540e046     004/ukb_imp_chr20_v3.bgen.cip
+EGAF00001803483      1 148673552    bbb12f69d1fa0876649c73511e5a5306     004/ukb_imp_chr13_v3.bgen.bgi.cip
+EGAF00001803496      1 256899603    2248aeefd39863fc54ade907a7c05098     004/ukb_mfi_chr9_v3.txt.cip
+EGAF00001803484      1 333021833    1728452b144c8f183690d38c28249d35     004/ukb_mfi_chr8_v3.txt.cip
+EGAF00001803511      1 210033680    8374a2f512f7b2f09a87a8780a8ed380     004/ukb_imp_chr11_v3.bgen.bgi.cip
+EGAF00001803501      1 139874320    2424d72de2882a660d7e51e2442b4d79     004/ukb_imp_chr16_v3.bgen.bgi.cip
+EGAF00001803492      1 195686416    4e5438c97a7438438f9c05a3be9ad23e     004/ukb_mfi_chr16_v3.txt.cip
+EGAF00001835284      1 131154457642 2af46f9e90f9acc5036699b9bb31db1d     004/ukb_imp_chr8_v3.bgen.cip
+EGAF00001803487      1 57092112     1a23a1625f6a271ca4d4bdbd3ae59524     004/ukb_imp_chr22_v3.bgen.bgi.cip
+EGAF00001835269      1 82563054731  34db3214f5ff00888d3b0265f30f6482     004/ukb_imp_chr14_v3.bgen.cip
+EGAF00001803506      1 416205993    fef212823b17a56d16ec2934aba3272f     004/ukb_mfi_chr4_v3.txt.cip
+EGAF00001835267      1 116081083345 cdf0d9e94315dc986658bd839c2b1d14     004/ukb_imp_chr12_v3.bgen.cip
+EGAF00001835265      1 121354905076 1da231b050de048b3e8714aae83d7288     004/ukb_imp_chr10_v3.bgen.cip
+EGAF00001803486      1 296517920    174be1dada695d2ddd033e42598274a7     004/ukb_mfi_chr11_v3.txt.cip
+--------------------------------------------------------------------------------
+Total dataset size = 2375.73 GB 

@@ -12,3 +12,5 @@ pyega3 -cf CREDENTIALS_FILE files EGAD00010001497 > filesList.txt
 #find the file I want
 pyega3 -cf CREDENTIALS_FILE fetch EGAF00001844707
 conda deactivate
+
+The columns for ukb_sqc_v2.txt are described here: https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=531

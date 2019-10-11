@@ -19,7 +19,6 @@ sed -n "1p;${startLine},${endLine}p;${exitLine}q" \
 plink2 --pfile $UKB/original/pfile_converted/hap/chr$3 \
 	--export vcf \
 	--out $TMP_INPUT_VCF_NOEXT \
-	--ref-allele force $UKB/non_genetic_data/showcase/ukb_snp_bim/ukb_snp_chr$3_v2.bim 5 2 \
 	--keep $TMP_SAMPLE_FILE
 
 conda activate bcftools

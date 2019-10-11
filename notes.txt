@@ -229,6 +229,33 @@ running beagle (~4min across cpus)
 This gives a cost of:
 $0.025/SU * 1SU/1hr * 1hr/60min * 2*(1 + 4)min/200 samples/chrom * 22 chrom * 500,000 samples ~ $229
 
+^                                                 ^
+|These above estimates seem to be wrong, see below|
+(Maybe those runs were being killed for other reasons?)
+Anyway, email from tscc says hotel nodes are 64GB memory, 16 cores for 4GB mem/core
+At 4 cores we get 16GB mem. Setting java Xmx to 15750m
+This is enough to run 1750 samples at once (Beagle takes too much mem and gets
+Java OOM exceptino at 2000 samples). (Note that my tests were never killed for
+taking too much memory when I set java Xmx to higher than 16000m, don't know
+why, but don't want to have jobs start getting killed randomly later)
+However, testing suggests that 1000 samples leaves the best time/#samples
+ratio. Data points: (Number of samples is the divisor, some data points tested
+twice)
+(2*60+21)/500 = 0.282
+(3*60+2)/750 = 0.243
+((3*60+48)/1000 + (4*60+10)/1000)/2 = 0.239
+(5*60+2)/1250 = 0.242
+(6*60+(42+47)/2)/1500  = 0.270
+(8*60+50)/1750 = 0.303
+
+Estimating total cost: (assuming linearity with #samples and #variants and
+extrapolability across chromosomes)
+All the above tests were for chr22.
+chr22 overlapping variants/total overlapping variants = 10531/641582 
+#hap samples = 487409 
+Cost = 641582 variants * 487409 samples * (0.239 seconds/(sample * 10531 variants)) * 1hr/3600sec * $0.025/hr
+= $49
+
 Beagle phasing is too slow: output sasy ~19 hrs/ window (window size is 40MB) for 20k samples with full access to snorlax.
 This means 9GB/40MB * 19hrs * 500/20 -> 4453 days of compute time on Snorlax for the full genome.
 
@@ -247,12 +274,11 @@ Make sure UKB already remove high missingness and unusual heterozygosity, inferr
 Make sure the to filter 652 people with non-standard sex chromosome karyotypes
 Don't filter based on white/British yet
 
-TODO: sample qc file is stored on EGA (see http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=664) - ping them later
-	this resource shows that the info we want is in the sample QC file - ping them later
+TODO: sample qc file is stored on EGA (see http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=664)
+	this resource shows that the info we want is in the sample QC file
 	(http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=531 , also 
 	http://biobank.ndph.ox.ac.uk/showcase/showcase/docs/ukb_genetic_data_description.txt)
 	This indicates the data used to be on UKB's website (resource 534) (http://biobank.ndph.ox.ac.uk/showcase/showcase/misc/gene_resource.txt)
-	EGA is currently too slow to access the dataset, much less download the file - ping them later
 
 SNP filtering:
 Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)
