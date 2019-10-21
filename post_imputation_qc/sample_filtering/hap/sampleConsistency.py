@@ -1,3 +1,6 @@
+#Confirm the first and second columns of the fam file are always identical
+#Confirm the first and the second columns of the sample file are always identical
+#Confirm that the sample file is a subset of the fam file (the fam file was updated less recently)
 famIDs = set()
 sampleIDs = set()
 with open('/projects/ps-gymreklab/jmargoli/ukbiobank/original/bgen_original/hap/ukb46122_hap_chr1_v2_s487314.sample') as sampleFile, \
