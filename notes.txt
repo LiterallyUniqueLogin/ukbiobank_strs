@@ -367,3 +367,8 @@ TODO signal == causal variant?
 Figure out what percentage of loci target only a specific gene
  (coding variant >50% prob, or only gene in 50kb)
 Figure out percentage of candidate genes still available
+
+To download exome data, see here:
+http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=644
+and here
+http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=170
