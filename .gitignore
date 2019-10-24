@@ -19,3 +19,4 @@
 *.md5
 *.tar
 old*
+__pycache__

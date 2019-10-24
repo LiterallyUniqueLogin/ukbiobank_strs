@@ -200,9 +200,6 @@ java -Xmx80000m -jar beagle.version.jar ref=snpstrFile.vcf.gz gt=ukbiobankFile.v
 	map=$UKB/beagle_genetic_maps/plink.chr9.GRCh37.map impute=true gp=true
 Note: Beagle only outputs variants in the reference file in the generated file, 
     any variants only in the input file are discarded.
-TODO: The output genotype probabilities from Beagle don't seem to match its genotype calls
-	(Shubham says extremly high rate ~30%) GTs are experimentally validated. 
-	But maybe GPs are just garbage? Hopefully not. Look in to this.
 
 Confirmed that beagle imputes per sample instead of sharing info between samples, and that it is deterministic:
 Get two vcf files from the ukbiobank data: one with 100 samples at random and one with just one of those samples
