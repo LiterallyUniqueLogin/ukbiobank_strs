@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N add_ap_header 
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=0:45:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/add_ap_header_output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/add_ap_header_output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+if [ -z "$INPUT1" ] ; then
+        echo "Didn't give INPUT1 argument - should be start sample number "
+        exit -1
+fi
+
+if [ -z "$INPUT2" ] ; then
+        echo "Didn't give INPUT2 argument - should be chrom number"
+        exit -1
+fi
+
+echo INPUT1 $INPUT1 INPUT2 $INPUT2
+2>&1 echo INPUT1 $INPUT1 INPUT2 $INPUT2
+
+source ~/.bashrc
+conda activate bcftools
+
+cd $UKB/str_imputed/hap_no_preqc/vcf_batches
+FILE_NAME=$(basename $(ls chr${INPUT2}_samples_${INPUT1}_*.vcf.gz) .vcf.gz)
+
+bgzip -cd $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.gz \
+	> $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.temp
+mv $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.gz \
+	$UKB/str_imputed/hap_no_preqc/vcf_batches/cache/$FILE_NAME.vcf.gz
+sed 's/##FORMAT=<ID=GP.*/##FORMAT=<ID=AP1,Number=A,Type=Float,Description="Estimated Allele 1 Probability">\n##FORMAT=<ID=AP2,Number=A,Type=Float,Description="Estimated Allele 2 Probability">/' \
+	$UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.temp > \
+	$UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf
+bgzip -c $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf > \
+	$UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.gz 
+tabix $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.gz
+
+rm $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf 
+rm $UKB/str_imputed/hap_no_preqc/vcf_batches/$FILE_NAME.vcf.temp
+

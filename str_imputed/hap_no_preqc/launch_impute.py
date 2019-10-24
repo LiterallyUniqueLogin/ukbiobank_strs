@@ -79,6 +79,6 @@ for file in existingErrorFiles.split():
 
 for job in jobsToRun:
 	print("Launching job", job)
-	sp.run('qsub -v "INPUT1={},INPUT2={},INPUT3={}" batch_script.pbs'.format(job[0], job[1], chr),
+	sp.run('qsub -v "INPUT1={},INPUT2={},INPUT3={}" impute.pbs'.format(job[0], job[1], chr),
 		 shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
 

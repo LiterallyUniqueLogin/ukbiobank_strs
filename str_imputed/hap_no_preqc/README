@@ -1,0 +1,43 @@
+Order to run/understand files in this directory:
+
+Step 1:
+impute.pbs creates vcfs with the imputed STRs.
+It calls cut_input_vcf.sh and run_beagle.sh
+These produce the output 
+* vcf_batches/chrX_samples_YYYY_to_ZZZZ.vcf.gz
+* vcf_batches/chrX_samples_YYYY_to_ZZZZ.vcf.gz.tbi
+* vcf_batches/chrX_samples_YYYY_to_ZZZZ.log 
+launch_impute.py launches many batches of impute.pbs for an entire chromosome
+if this is being run for the second time, it will only run for batches that produced no output
+or had errors in them
+It will move log and job output files for jobs that are being rerun into vcf_batches/old/
+It puts the job output files in vcf_batches/output/
+It moves the log files for all jobs that were previously completed successfully and aren't
+being rerun from vcf_batches/ into vcf_batches/output/
+This makes ~500 VCFs containing the entire chr but a subset of samples
+
+check_for_errors is a utility which can be called after this point which will print out all the 
+errors from all the batch jobs run
+
+Step 2:
+add_ap_header.pbs should be run next and fixes a bug in beagle by replacing the GP header with the AP1 and AP2 headers
+in a VCF file
+It modifies the files already present in vcf_batches/
+It also produces backup copies of the original files in vcf_batches/cache
+lauch_add_ap_header.sh launches a batch of that for each batch produced by lauch_impute.py
+Output goes to add_ap_header_output/
+
+Step 3:
+mergeWithinChrRegions.pbs
+it puts the vcfs into vcf_batches/chrX_pos_YYYY_to_ZZZZZ.vcf.gz
+and vcf_batches/chrX_pos_YYYY_to_ZZZZZ.vcf.gz.tbi
+job output goes into mergeWithinChrRegionsOutput/
+launchMergeWithinChrRegions.py launches this for each region
+It makes ~20 regional VCFs containing all samples
+
+Step 4:
+concatChrRegions.pbs concats all the chromosome regions produced by the merge into one .vcf.gz file
+it produces the final vcf file in vcfs/chrX.vcf and vcfs/chrX.vcf.gz.tbi
+it puts the job output in concatChrRegionsOutput/
+it can be run with qsub -v "INPUT1=X" concatChrRegions.pbs where X is the chromosome number
+

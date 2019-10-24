@@ -1,0 +1,35 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N mergeStages
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=48:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/concatChrRegionsOutput/
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/concatChrRegionsOutput/
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+if [ -z "$INPUT1" ] ; then
+	echo "Didn't give INPUT1 argument - should be chrom number"
+	exit -1
+fi
+
+#get a list of files to concat
+FILES_TO_CONCAT=""
+for begin in $(seq 1 10000000 999999999999) ; do
+	end=$((begin + 10000000))
+	FILE=$UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT1}_pos_${begin}_to_${end}.vcf.gz 
+	if [ -f "$FILE" ] ; then
+		FILES_TO_CONCAT="$FILES_TO_CONCAT $FILE"
+	else 
+		break
+	fi
+done
+
+source ~/.bashrc
+conda activate bcftools
+
+time bcftools concat $FILES_TO_CONCAT \
+		    -o $UKB/str_imputed/hap_no_preqc/vcfs/chr${INPUT1}.vcf.gz --threads 4 -O z 
+tabix $UKB/str_imputed/hap_no_preqc/vcfs/chr${INPUT1}.vcf.gz
+conda deactivate
