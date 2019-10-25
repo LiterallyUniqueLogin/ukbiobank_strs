@@ -1,19 +1,16 @@
 import os, os.path
+import shutil
 import sys
 import subprocess as sp
-import re
-from datetime import datetime
 
 if len(sys.argv) != 2:
 	print("Expecting exactly 1 argument, the chromosome number")
 	exit(-1)
 chr = sys.argv[1]
 
-now = datetime.now().strftime("%y_%m_%d_%H_%M_%S")
 numSamples = 487409
-jobsToRun = [] #list of pairs of (minId, maxId) (inclusive)
-jobIds = set()
-jobsAlreadyRun = []
+jobsToRun = set()
+jobsAlreadyRun = set()
 
 def batchName(minId, maxId):
 	return "chr{}_samples_{}_to_{}".format(chr, minId, maxId)
@@ -24,58 +21,50 @@ def outputDir():
 def outputLocNoExt(minId, maxId):
 	return "{}/{}".format(outputDir(), batchName(minId, maxId))
 
-def outputLoc(minId, maxId):
+def outputVCF(minId, maxId):
+	return outputLocNoExt(minId, maxId) + ".vcf.gz"
+
+def outputTBI(minId, maxId):
 	return outputLocNoExt(minId, maxId) + ".vcf.gz.tbi"
 
+#Figure out which jobs to run
+#Run jobs in one of the following five scenarios:
+#The header hasn't yet been added to the vcf file
+#the tbi file doesn't exist for the new vcf file
+#the tbi file exists, but is older than the new vcf file
+#the tbi file exists but is too small
+#(either of the last two imply the program crashed in the middle of creating the new vcf file 
+# or new tbi file and never)
 for minId in range(1, numSamples, 1000):
 	maxId = min(minId+999, numSamples)
-	
-	if not os.path.exists(outputLoc(minId, maxId)):
-		jobsToRun.append((minId, maxId))
-		jobIds.add(minId)
+
+	if not os.path.exists(outputVCF(minId, maxId)):
+		shutil.copyfile(outputDir() + "/cache/" + batchName(minId, maxId) + ".vcf.gz",
+				outputVCF(minId, maxId))
+
+	output = sp.run("zcat {} | head -n 30 | grep AP1".format(outputVCF(minId, maxId)),
+		 shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
+
+	if not output:
+		jobsToRun.add(minId)
 		continue
 
-	if os.path.getsize(outputLoc(minId, maxId)) < 10000:
-		jobsToRun.append((minId, maxId))
-		jobIds.add(minId)
+	if not os.path.exists(outputTBI(minId, maxId)):
+		jobsToRun.add(minId)
 		continue
 
-	jobsAlreadyRun.append((minId, maxId))
-	if os.path.exists(outputLogLoc(minId, maxId)):
-		os.rename(outputLogLoc(minId, maxId), outputDir() + "/output/" + batchName(minId, maxId) + ".log")
+	if os.path.getmtime(outputTBI(minId, maxId)) < os.path.getmtime(outputVCF(minId, maxId)):
+		jobsToRun.add(minId)
+		continue
 
-for job in jobsToRun:
-	minId = job[0]
-	maxId = job[1]
-	if os.path.exists(outputLogLoc(minId, maxId)):
-		os.rename(outputLogLoc(minId, maxId), outputDir() + "/old/" + now + "_" + batchName(minId, maxId) + ".log")
-	if os.path.exists(outputLocNoExt(minId, maxId) + ".vcf.gz"):
-		os.rename(outputLocNoExt(minId, maxId) + ".vcf.gz", outputDir() + "/old/" + now + "_"  + batchName(minId, maxId) + ".vcf.gz")
-	if os.path.exists(outputLoc(minId, maxId)):
-		os.rename(outputLoc(minId, maxId), outputDir() + "/old/" + now + "_"  + batchName(minId, maxId) + ".vcf.gz.tbi")
+	if os.path.getsize(outputTBI(minId, maxId)) < 10000:
+		jobsToRun.add(minId)
+		continue
 
 print("Jobs to run", jobsToRun)
-#print("Job ids", jobIds)
-
-existingErrors = sp.run("grep -b10 -v INPUT {}/str_imputed/hap_no_preqc/vcf_batches/output/*.e*".format(os.environ['UKB']),
-	shell = True,
-	stdout = sp.PIPE)
-existingErrors = existingErrors.stdout.decode()
-
-for jobId in [int(match.group(1)) for match in re.finditer("INPUT1 ([0-9]+)", existingErrors)]:
-	if jobId not in jobIds:
-		print("There's an existing error with job {} but we're not rerunning it. Please solve this problem".format(jobId))
-		exit(-1)
-
-
-existingErrorFiles = sp.run("grep -l -v INPUT {}/str_imputed/hap_no_preqc/vcf_batches/output/*.e*".format(os.environ['UKB']), shell = True, stdout = sp.PIPE)
-existingErrorFiles = existingErrorFiles.stdout.decode()
-for file in existingErrorFiles.split():
-	os.rename(file.replace(".e", ".o"), outputDir() + "/old/" + file.split("/")[-1].replace(".e", ".o"))
-	os.rename(file, outputDir() + "/old/" + file.split("/")[-1])
 
 for job in jobsToRun:
 	print("Launching job", job)
-	sp.run('qsub -v "INPUT1={},INPUT2={},INPUT3={}" impute.pbs'.format(job[0], job[1], chr),
+	sp.run('qsub -v "INPUT1={},INPUT2={}" add_ap_header.pbs'.format(job, chr),
 		 shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
 

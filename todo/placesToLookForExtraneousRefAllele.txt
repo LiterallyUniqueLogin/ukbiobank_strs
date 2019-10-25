@@ -1,3 +1,0 @@
-/projects/ps-gymreklab/jmargoli/ukbiobank/pre_imputation_qc/allele_freqs/hap/getFreqs.sh:		--ref-allele force $UKB/non_genetic_data/showcase/ukb_snp_bim/ukb_snp_chr${INPUT1}_v2.bim 5 2 \
-/projects/ps-gymreklab/jmargoli/ukbiobank/original/vcf_1_sample/hap/convert.sh:	--ref-allele force $UKB/non_genetic_data/showcase/ukb_snp_bim/ukb_snp_chr${INPUT1}_v2.bim 5 2 \
-/projects/ps-gymreklab/jmargoli/ukbiobank/original/pfile_converted/hap/convert.sh:	--ref-allele force $UKB/non_genetic_data/showcase/ukb_snp_bim/ukb_snp_chr${INPUT1}_v2.bim 5 2 \
