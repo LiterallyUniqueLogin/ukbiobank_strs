@@ -1,4 +1,4 @@
-import subprocess
+import subprocess as sp
 import sys
 
 if len(sys.argv) != 2:
@@ -7,5 +7,6 @@ if len(sys.argv) != 2:
 chr = sys.argv[1]
 
 for i in range(1, 250000000, 10000000):
-	subprocess.run('qsub -v "INPUT1={},INPUT2={}" mergeWithinChrRegion.pbs'.format(i, chr), shell=True)
+	sp.run('qsub -v "INPUT1={},INPUT2={}" mergeWithinChrRegion.pbs'.format(i, chr), 
+		shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
 

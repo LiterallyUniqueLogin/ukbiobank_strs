@@ -271,11 +271,15 @@ Make sure UKB already remove high missingness and unusual heterozygosity, inferr
 Make sure the to filter 652 people with non-standard sex chromosome karyotypes
 Don't filter based on white/British yet
 
-TODO: sample qc file is stored on EGA (see http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=664)
+sample qc file is stored on EGA (see http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=664)
 	this resource shows that the info we want is in the sample QC file
 	(http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=531 , also 
 	http://biobank.ndph.ox.ac.uk/showcase/showcase/docs/ukb_genetic_data_description.txt)
 	This indicates the data used to be on UKB's website (resource 534) (http://biobank.ndph.ox.ac.uk/showcase/showcase/misc/gene_resource.txt)
+
+Unrelated subset 
+- use data field 22011 (in the csv under non_genetic_data/phenotypes) to get relatedness
+- see the supplementary data s 3.7.4 for how to get an unrelated subset from that
 
 SNP filtering:
 Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)
@@ -314,6 +318,10 @@ Run Hardy-Weinberg Equilibrium test for expected genotype distribution
 Filter STR genotypes with too low a minor allele frequency
 Possibly filter STR genotypes with too low an estimate correlation between their calls and the
 	true calls? (Beagle output INFO field DR2)
+	Reference for how DR2 is calculated
+	(see Appendix 1: https://www.cell.com/ajhg/pdf/S0002-9297(09)00012-3.pdf 
+	A Unified Approach to Genotype Imputationand Haplotype-Phase Inference
+	for Large Data Sets of Trios and Unrelated Individuals)
 Compare distribution of alleles to the reference data set. Compare correlations between
 	STRs and their local surroundings likewise. These being highly divergeant can send
 	red flags (box 2 https://www.nature.com/articles/s41576-018-0016-z#Sec24 )

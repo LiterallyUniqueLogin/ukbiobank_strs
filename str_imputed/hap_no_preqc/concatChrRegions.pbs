@@ -1,10 +1,10 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N mergeStages
+#PBS -N concatChrRegions
 #PBS -l nodes=1:ppn=4
 #PBS -l walltime=48:00:00
-#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/concatChrRegionsOutput/
-#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/concatChrRegionsOutput/
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a

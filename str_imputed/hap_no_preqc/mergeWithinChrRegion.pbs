@@ -1,10 +1,10 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N merge2batches
+#PBS -N mergeWithinChrRegion
 #PBS -l nodes=1:ppn=4
 #PBS -l walltime=24:00:00
-#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/mergeWithinChrRegionOutput
-#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/mergeWithinChrRegionOutput/
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output/
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output/
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
@@ -21,14 +21,14 @@ fi
 
 #make the logs identifiable
 echo INPUT1 $INPUT1 INPUT2 $INPUT2
-2>&1 echo INPUT1 $INPUT1 INPUT2 $INPUT2
+>&2 echo INPUT1 $INPUT1 INPUT2 $INPUT2
 
 END=$((INPUT1 + 10000000))
 
 source ~/.bashrc
 conda activate bcftools
-time bcftools merge $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT2}*.vcf.gz \
-		    -o $UKB/str_imputed/hap_no_preqc/temp/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz --threads 4 -O z \
+time bcftools merge $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT2}_sample*.vcf.gz \
+		    -o $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz --threads 4 -O z \
 		    -r $INPUT2:$INPUT1-$END
-tabix $UKB/str_imputed/hap_no_preqc/temp/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz 
+tabix -f $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz 
 conda deactivate

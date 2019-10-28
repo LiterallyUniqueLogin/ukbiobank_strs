@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N decompress_all
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=0:10:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output/
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output/
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+#PBS -t 0-487
+
+if [ -z "$INPUT1" ] ; then
+        echo "didn't give INPUT1 argument - should be chrom number"
+        exit -1
+fi
+
+#make the logs identifiable
+echo INPUT1 $INPUT1 ARRAYID $PBS_ARRAYID
+>&2 echo INPUT1 $INPUT1 ARRAYID $PBS_ARRAYID
+
+START=$((PBS_ARRAYID * 1000 + 1))
+FILE=$(ls $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT1}_samples_${START}_*.vcf.gz)
+DECOMPRESSED_FILE="$(dirname $FILE)/$(basename $FILE .gz)"
+
+source ~/.bashrc
+conda activate bcftools
+time bgzip -cd  $FILE > $DECOMPRESSED_FILE
+conda deactivate
+

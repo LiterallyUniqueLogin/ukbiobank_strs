@@ -42,10 +42,10 @@ for minId in range(1, numSamples, 1000):
 		shutil.copyfile(outputDir() + "/cache/" + batchName(minId, maxId) + ".vcf.gz",
 				outputVCF(minId, maxId))
 
-	output = sp.run("zcat {} | head -n 30 | grep AP1".format(outputVCF(minId, maxId)),
+	output = sp.run("zcat {} | head -n 30 | grep -P '#.*AP1'".format(outputVCF(minId, maxId)),
 		 shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
 
-	if not output:
+	if not output.stdout:
 		jobsToRun.add(minId)
 		continue
 
@@ -64,7 +64,6 @@ for minId in range(1, numSamples, 1000):
 print("Jobs to run", jobsToRun)
 
 for job in jobsToRun:
-	print("Launching job", job)
 	sp.run('qsub -v "INPUT1={},INPUT2={}" add_ap_header.pbs'.format(job, chr),
 		 shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
 
