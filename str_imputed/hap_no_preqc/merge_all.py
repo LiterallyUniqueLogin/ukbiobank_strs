@@ -3,7 +3,6 @@ import os
 import sys
 import datetime
 import time
-#import numpy as np
 
 if len(sys.argv) != 2:
         print("Expecting exactly 1 argument, the chromosome number")
@@ -13,8 +12,9 @@ chr = sys.argv[1]
 #set n_samples for all files and then last file
 samples_per_file = 1000
 samples_last_file = 409
-n_files = 488
-n_files_minus_one = n_files - 1
+n_files = len(glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_*.vcf" .format(\
+	os.environ['UKB'], chr)))
+n_files_minus_one = n_files - 1 #precompute this
 
 try:
 	startup_start = time.time()
@@ -22,7 +22,6 @@ try:
 	vcf_names = []
 	output = None
 	sample_block_len = len('\t0|0:0:0:0')
-	#min_lens = np.full((488), 1) #[1] * 488
 	for i in range(0, n_files):
 		file_name = glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_{}_*.vcf" .format(\
 			os.environ['UKB'], chr, i*samples_per_file + 1))[0]
@@ -69,18 +68,18 @@ try:
 		i += 1
 		metadata = file.read(metadata_len)
 		metadata = metadata.decode('us-ascii').split('\n')
-		#if len(metadata) != len(metadata_lines):
-		#	print('File {} has obviously different metadata than file {}'.format(vcf_names[i], vcf_names[0]))
-		#	exit(-1)
+		if len(metadata) != len(metadata_lines):
+			print('File {} has obviously different metadata than file {}'.format(vcf_names[i], vcf_names[0]))
+			exit(-1)
 
-		#for line1, line2 in zip(metadata_lines, metadata):
-		#	if not ('filedate' in line1 and 'filedate' in line2) and line1 != line2:
-		#		print('Found file {} with different metadata than file {}'.format(vcf_names[i], vcf_names[0]))
-		#		print('line1', line1)
-		#		print()
-		#		print('line2', line2)
-		#		exit(-1)
-	#print('All files have the same metadata')
+		for line1, line2 in zip(metadata_lines, metadata):
+			if not ('filedate' in line1 and 'filedate' in line2) and line1 != line2:
+				print('Found file {} with different metadata than file {}'.format(vcf_names[i], vcf_names[0]))
+				print('line1', line1)
+				print()
+				print('line2', line2)
+				exit(-1)
+	print('All files have the same metadata')
 
 	output = open("{}/str_imputed/hap_no_preqc/vcfs/chr{}.vcf".format(os.environ['UKB'], chr), 'wb')
 
@@ -117,26 +116,18 @@ try:
 		
 		byte = vcf.read(1)
 		while byte != b'\n':
-			#if byte == b'\t':
-			#	min_lens[i] += 1	
 			output.write(byte)
 			byte = vcf.read(1)
 	output.write(b'\n')
-	#min_lens = [x*sample_block_len - 1 for x in min_lens]
 
 	print("startup time: {:.2}s".format(time.time() - startup_start))
 	
 	#Write each variant to the vcf
 	#assume all data lines are properly formatted
-	#assume all input_vcfs have at least 904 samples in them
 	all_variants_start = time.time()
-	n_variants = 0
+	n_variants = 0 #number of variants already emitted
+
 	#minimum length of the data portion of a line
-	'''
-	sample_block_len = len('\t0|0:0:0:0')
-	min_len = 904*sample_block_len - 1
-	min_lens = [min_len] * 488
-	'''
 	min_len = samples_per_file*sample_block_len - 2
 	min_len_last_file = samples_last_file*sample_block_len - 2
 	while True: #iterate over all variants
@@ -178,7 +169,6 @@ try:
 				1/0
 		#emit the sample data from the first file
 		output.write(byte)
-		#output.write(first_vcf.read(min_lens[0]))
 		output.write(first_vcf.read(min_len))
 		byte = first_vcf.read(1)
 		while byte != b'\n':
@@ -197,14 +187,10 @@ try:
 			vcf.seek(fixed_field_bytes, 1)
 
 			#output all sample data
-			#data = vcf.read(min_len)
 			if i != n_files_minus_one:
 				output.write(vcf.read(min_len))
 			else:
 				output.write(vcf.read(min_len_last_file))
-			#print(data.decode('us-ascii'))
-			#output.write(data)
-			#output.write(vcf.read(min_lens[i]))
 			byte = vcf.read(1)
 			while byte != b'\n':
 				if byte == b"":
@@ -220,10 +206,6 @@ try:
 		if n_variants % 10 == 0:
 			print('Variants complete: {}, Total time: {:.2}s, time/variant: {:.2}s, last 10 variants time: {:.2}s                   '.format(
 				n_variants, now - all_variants_start, (now - all_variants_start)/n_variants, now - variant_start), end = '\r')
-		if n_variants > 1000:
-			print('\n')
-			print('Read in 1000 variants\n')
-			exit()
 
 finally:
 	for file in input_vcfs:
