@@ -20,3 +20,4 @@
 *.tar
 old*
 __pycache__
+.nfs*
