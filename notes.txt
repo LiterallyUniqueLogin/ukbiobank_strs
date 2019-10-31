@@ -210,6 +210,22 @@ zcat beagleOutput1.vcf.gz | cut-f-7,9- > beagleOutput1.vcf
 	we just want to know if the individual samples have been given the same genotypes)
 diff beagleOutput1.vcf beagleOutput1of100.vcf
 
+Confirmed that Beagle outputs the same alleles in the same order as the input
+reference panel. (Ran 
+bcftools isec $UKB/snpstr/vcf_1_sample/chr3.vcf.gz \
+                $UKB/str_imputed/hap_no_preqc/vcf_batches/chr3_samples_1_to_1000.vcf.gz \
+                -c none -n=2 | wc -l
+and compared result with $UKB/pre_imputation_qc/common_variants/counts.csv)
+
+    Confirmed that Beagle outputs alternate alleles even if they're frequency is 0
+    (confirmed that this is true even for STRs where Beagle can omit an allele and
+    still have a variant to report: performed the search in vim
+    /:[^,]\+,[^,]\+,[^,]\+,[^,]\+,[^,]\+,\(\(1\)\|\(0\.\)\)
+    at line 1214 in file $UKB/str_imputed/hap_no_preqc/vcf_batches/chr3_samples_1_to_1000.vcf 
+    to confirm that there are no samples in that vcf with the 6th allele of STR_911910)
+
+|The following estimates seem to be wrong, see below |
+v                                                    v
 Imputation time on hap dataset on snorlax:
 2000 Samples on Chr17 took 5min30sec (84 cpu min)
 5000 Samples on Chr17 took 13min20sec (214 cpu min)
@@ -256,6 +272,26 @@ Cost = 641582 variants * 487409 samples * (0.239 seconds/(sample * 10531 variant
 Beagle phasing is too slow: output sasy ~19 hrs/ window (window size is 40MB) for 20k samples with full access to snorlax.
 This means 9GB/40MB * 19hrs * 500/20 -> 4453 days of compute time on Snorlax for the full genome.
 
+Merging runtime tests:
+Running bcftools merge on all the files at once (one process only, no parallelism) seemed to take too long. I remember
+estimating 10days for chr3. Unfortunately, I didn't write down exactly the computation I did 
+to produce that number.
+Running bcftools merge in parallel on different subregions of the same chromosome (so that the results from all
+these files could simply be concatenated) produced the errors:
+    bcftools: thread_pool.c:552: tpool_worker: Assertion `j->p == p' failed.
+    /var/spool/torque/mom_priv/jobs/17163768.tscc-mgr.local.SC: line 32: 10439
+    Aborted                 bcftools merge
+    $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT2}_sample*.vcf.gz -o
+    $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz
+    --threads 4 -O z -r $INPUT2:$INPUT1-$END
+    real    1247m11.353s
+    user    739m5.762s
+    sys     15m40.164s
+Didn't want to diagnose these errors, so I gave up
+
+My script (merge_all.py) on chr 3 (hap_no_preqc) takes 22hr 15min to handle ~267436 variants which leads to 
+0.3s per variant or 6.8 days for chr3
+
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
 handle overlapping sites somehow?
@@ -267,6 +303,9 @@ TODO Sample QC/filtering pre (possible phasing and) imputation
 (QC datasets from the UKBiobank paper can be downloaded at: http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100313)
 
 Sample filtering:
+(Note: plink doesn't support multiple --keep or --remove flags simultaneously,
+so have to merge all the various subsets together myself)
+
 Make sure UKB already remove high missingness and unusual heterozygosity, inferred sex.
 Make sure the to filter 652 people with non-standard sex chromosome karyotypes
 Don't filter based on white/British yet
@@ -277,9 +316,51 @@ sample qc file is stored on EGA (see http://biobank.ctsu.ox.ac.uk/crystal/refer.
 	http://biobank.ndph.ox.ac.uk/showcase/showcase/docs/ukb_genetic_data_description.txt)
 	This indicates the data used to be on UKB's website (resource 534) (http://biobank.ndph.ox.ac.uk/showcase/showcase/misc/gene_resource.txt)
 
-Unrelated subset 
-- use data field 22011 (in the csv under non_genetic_data/phenotypes) to get relatedness
-- see the supplementary data s 3.7.4 for how to get an unrelated subset from that
+Unrelated subset (see supplement s 3.7 for how these were generated)
+There are two different listings of relatedness I found:
+A: The listing I'm going with
+The sample_qc file ($UKB/non_genetic_data/EGA/ukb_sqc_v2.txt) contains fields:
+excluded.from.kinship.inference (was not considered for kinship)
+in.kinship.table (after considering for kinship, was found to have kin)
+Described here https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=531
+
+The list of kinship relations among the people in.kinship.table 
+is $UKB/non_genetic_data/ukbgene/ukb46122_rel_s488282.dat
+(downloaded using ./ukbgene rel  described here: 
+https://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/ukbgene_instruct.html#rel )
+Everyone in this table (aside from the few rows with negative signs) is 3rd
+degree related or more
+
+The numbers in this subset add up to the numbers mentioned in the UKB
+Nature paper supplement
+( https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-018-0579-z/MediaObjects/41586_2018_579_MOESM1_ESM.pdf )
+
+B: Not using this
+Data field 22011 describes whoe is related, 22018 describes exclusions,
+and 22012 and 22013 describe how people are related
+(e.g. https://biobank.ctsu.ox.ac.uk/crystal/field.cgi?id=22011 )
+However, the numbers from these fields don't match the supplementary text
+(e.g. 1,592 people excluded instead of 977)
+Moreover, people are excluded for mixed ancestral background whereas this
+seems to be a problem that the supplement address and controls for.
+These data fields are part of the Interim genotype release, and I'm guessing
+that they've been obsoleted by the (presumptively) newer analyses in the (A)
+listing.
+
+I've confirmed that the pariticipants in the kinship table downloaded with
+ukbgene are in fact a subset of the ppts said to be there in the sample_qc
+file from EGA. (This makes sense, some people have withdrawn since the sample
+qc file was generated)
+Proof:
+    cd $UKB/post_imputation_qc/sample_filtering/hap
+    conda activate ukb_analysis
+    python 
+    >>> import list_from_sample_qc
+    >>> list_from_sample_qc.produceListFromSampleQC('in_kinship_temp', True, 20)
+    tail -n +2 in_kinship_temp.sample | cut -f1 -d' ' | grep -v - | sort > qc_kinship_list.txt
+    cut -f1,2 -d' ' $UKB/non_genetic_data/ukbgene/ukb46122_rel_s488282.dat | tail \
+     -n +2 | grep -v - | sed 's/ /\n/' | sort | uniq > ukb_rel_kinship_list.txt
+    diff qc_kinship_list.txt ukb_rel_kinship_list.txt | vim -
 
 SNP filtering:
 Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)

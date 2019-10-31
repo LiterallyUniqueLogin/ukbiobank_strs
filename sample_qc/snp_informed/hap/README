@@ -1,0 +1,7 @@
+The final set of samples will be:
+
+all_samples
+for sample_list in keep:
+	all_samples = all_samples intersect sample_list
+for sample_list in remove:
+	all_samples = all_samples - sample_list
