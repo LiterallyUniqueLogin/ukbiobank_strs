@@ -9,25 +9,7 @@ if len(sys.argv) != 2:
         exit(-1)
 chr = sys.argv[1]
 
-#set n_samples for all files and then last file
-samples_per_file = 1000
-samples_last_file = 409
-n_files = len(glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_*.vcf" .format(\
-	os.environ['UKB'], chr)))
-n_files_minus_one = n_files - 1 #precompute this
-
-try:
-	startup_start = time.time()
-	input_vcfs = []
-	vcf_names = []
-	output = None
-	sample_block_len = len('\t0|0:0:0:0')
-	for i in range(0, n_files):
-		file_name = glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_{}_*.vcf" .format(\
-			os.environ['UKB'], chr, i*samples_per_file + 1))[0]
-		vcf_names.append(file_name)
-		input_vcfs.append(open(file_name, 'br'))
-
+def validate_and_write_metadata(input_vcfs, output):
 	metadata_lines = bytearray()
 	metadata_to_write = ""
 
@@ -81,11 +63,9 @@ try:
 				exit(-1)
 	print('All files have the same metadata')
 
-	output = open("{}/str_imputed/hap_no_preqc/vcfs/chr{}.vcf".format(os.environ['UKB'], chr), 'wb')
-
 	#Write the correct metadata to the output file
 	for line in metadata_lines:
-		bin_line = (line + "\n").encode('us-ascii')
+		bin_line = (line + "\n").encode('us-ascii') #binary encoding of the line
 		#If modifying these, also modify the fixed fields section below
 		if '##fileformat' in line:
 			output.write(bin_line)
@@ -107,6 +87,7 @@ try:
 		else:
 			print('Unrecognized metadata line')
 			exit(-1)
+
 	#Write all the sample ids to the header line
 	first = True
 	for i, vcf in enumerate(input_vcfs):
@@ -119,6 +100,82 @@ try:
 			output.write(byte)
 			byte = vcf.read(1)
 	output.write(b'\n')
+
+#seeks to the point in the file right after the \n before the last
+#chrNum\tpos\t
+#and trucates the file.
+#Returns pos
+def truncate_last_defined_variant(file):
+        buffer_len = 2**16
+        file.seek(-buffer_len, 2)
+        buffer = file.read(buffer_len)
+        buffer_idx = 0
+	#Find the next newline
+	while True:
+                if buffer_idx == buffer_len:
+                        buffer_idx = 1
+                        file.seek(-2*buffer_len, 1)
+                        buffer = file.read(buffer_len)
+                else:
+                        buffer_idx += 1
+                byte = buffer[(buffer_len-buffer_idx):(buffer_len-buffer_idx + 1)]
+                if byte == b'\n':
+			#Check if this is a completely defined index or not
+                	file.seek(1-buffer_idx, 1) #this puts you right after the newline
+			line_start = file.tell()
+			tab_count = 0
+			contents = bytearray()
+			byte = file.read(1)
+			while byte != b'':
+				contents += byte
+				if byte == b'\t':
+					tab_count += 1
+				if tab_count == 2:
+					#terminating condition
+					return_pos = contents.decode('us-ascii').split()[1]
+					file.seek(line_start)
+					file.truncate()
+					return return_pos
+			#hit end of file before hitting the second tab, need to go to the previous newline
+			file.seek(line_start - 1, 0)
+			#go back to the overall search loop
+
+def seek_to_variant(vcf, variant_pos):
+	
+
+#set n_samples for all files and then last file
+samples_per_file = 1000
+samples_last_file = 409
+n_files = len(glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_*.vcf" .format(\
+	os.environ['UKB'], chr)))
+n_files_minus_one = n_files - 1 #precompute this
+
+try:
+	#set up the overall script and open all the files
+	startup_start = time.time()
+	input_vcfs = []
+	vcf_names = []
+	output = None
+	sample_block_len = len('\t0|0:0:0:0')
+	for i in range(0, n_files):
+		file_name = glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_{}_*.vcf" .format(\
+			os.environ['UKB'], chr, i*samples_per_file + 1))[0]
+		vcf_names.append(file_name)
+		input_vcfs.append(open(file_name, 'br'))
+
+	output_loc = "{}/str_imputed/hap_no_preqc/vcfs/chr{}.vcf".format(os.environ['UKB'], chr)
+	preexisting_output = os.path.exists(output_loc)
+	output = open(output_loc, 'r+b')
+
+	if not preexsiting_output:
+		validate_and_write_metadata(input_vcfs, output)
+	else:
+		variant_pos = truncate_last_defined_variant(output)
+		for vcf in input_vcfs:
+			seek_to_variant(vcf, variant_pos)
+	#either way, all of the input_vcfs will be pointing to the next
+	#character after the newline in front of the next variant to write
+	#out to the output
 
 	print("startup time: {:.2}s".format(time.time() - startup_start))
 	
@@ -165,16 +222,16 @@ try:
 				
 			byte = first_vcf.read(1)
 			if byte == b"":
-				print("Didn't expect to be done! In first vcf")
-				1/0
+				print("Didn't expect to be done! Finished before samples started In vcf {}".format(vcf_names[0]))
+				exit(-1)
 		#emit the sample data from the first file
 		output.write(byte)
 		output.write(first_vcf.read(min_len))
 		byte = first_vcf.read(1)
 		while byte != b'\n':
-			if byte == b"":
-				print("Didn't expect to be done! In first vcf")
-				1/0
+			if byte == b'':
+				print("Didn't expect to be done! Finished after samples started but before newline in vcf {}".format(vcf_names[0]))
+				exit(-1)
 			output.write(byte)
 			byte = first_vcf.read(1)
 		#emit the sample data from all other files (assume the fixed fields are correct)
@@ -194,8 +251,8 @@ try:
 			byte = vcf.read(1)
 			while byte != b'\n':
 				if byte == b"":
-					print("Didn't expect to be done! In vcf {}".format(vcf_names[i]))
-					1/0
+					print("Didn't expect to be done! Ran into EOF before newline in vcf {}".format(vcf_names[i]))
+					exit(-1)
 				output.write(byte)
 				byte = vcf.read(1)
 				
