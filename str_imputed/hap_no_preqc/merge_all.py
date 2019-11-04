@@ -140,7 +140,68 @@ def truncate_last_defined_variant(file):
 			file.seek(line_start - 1, 0)
 			#go back to the overall search loop
 
-def seek_to_variant(vcf, variant_pos):
+#returns the variant position in bytes
+#or None if end of file is reached
+#don't read past bound while doing this
+def read_till_next_variant_pos(vcf, bound):
+	current_idx = vcf.tell()
+	if bound < current_idx:
+		print("bound {} should be greater than current idx {}".format(bound, current_idx))
+		exit(-1)
+	steps_left = bound - current_idx
+	byte = b'a' #dummy value
+	newline_encountered = False
+	tabs_encountered = 0
+	pos = bytearray()
+	while byte != b'' and steps_left >= 0:
+		step_left -= 1
+		byte = vcf.read(1)
+		if not newline_encountered:
+			#keep reading till the beginning of the next line
+			if byte == b'\n':
+				newline_encountered = True
+			continue
+		if byte == b'#':
+			#skip header or metadata lines
+			newline_encountered = False
+			continue
+		if tabs_encountered == 0:
+			#skip the chrom number column
+			if byte == b'\t':
+				tabs_encountered = 1
+			continue
+		if tabs_encountered == 1:
+			#read off the position column
+			if byte == b'\t':
+				return pos
+			else:
+				pos += byte
+	return None #hit the bound (which might be EOF) before finding the variant
+
+def seek_to_variant(vcf, variant_pos, vcf_name):
+	#binary search
+	min = 0
+	max = vcf.seek(0, 2)
+	while True:
+		half = (min + max)//2
+		vcf.seek(half)
+		pos = read_till_next_variant_pos(vcf, max)
+		if pos == None:
+			print("Couldn't find variant with pos {} in file {}".format(pos, vcf_name))
+			exit(-1)
+		if pos == variant_pos:
+			break
+		if pos < variant_pos:
+			min = vcf.tell()
+			continue
+		if pos > variant_pos:
+			max = half
+			continue
+	#seek backwards till we get to just after the newline
+	byte = vcf.read(1)
+	while byte != b'\n':
+		vcf.seek(-2, 1)
+		byte = vcf.read(1)
 	
 
 #set n_samples for all files and then last file
@@ -171,8 +232,8 @@ try:
 		validate_and_write_metadata(input_vcfs, output)
 	else:
 		variant_pos = truncate_last_defined_variant(output)
-		for vcf in input_vcfs:
-			seek_to_variant(vcf, variant_pos)
+		for i, vcf in enumerate(input_vcfs):
+			seek_to_variant(vcf, variant_pos, vcf_names[i])
 	#either way, all of the input_vcfs will be pointing to the next
 	#character after the newline in front of the next variant to write
 	#out to the output
