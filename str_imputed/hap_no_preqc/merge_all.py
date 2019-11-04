@@ -245,9 +245,6 @@ try:
 	all_variants_start = time.time()
 	n_variants = 0 #number of variants already emitted
 
-	#minimum length of the data portion of a line
-	min_len = samples_per_file*sample_block_len - 2
-	min_len_last_file = samples_last_file*sample_block_len - 2
 	while True: #iterate over all variants
 		if n_variants % 10 == 0:
 			variant_start = time.time()
@@ -266,6 +263,7 @@ try:
 		tab_count = 0
 		info = bytearray()
 		#read the fixed fields from the first file
+		alt_alleles = 1
 		while tab_count < 9:
 			fixed_field_bytes += 1
 			if byte == b'\t':
@@ -276,6 +274,8 @@ try:
 					else:
 						output.write(b'.')
 				output.write(byte)
+			elif tab_count == 4 and byte == b',':
+				alt_alleles += 1
 			elif tab_count < 7 or tab_count == 8:
 				output.write(byte)
 			elif tab_count == 7:
@@ -285,6 +285,7 @@ try:
 			if byte == b"":
 				print("Didn't expect to be done! Finished before samples started In vcf {}".format(vcf_names[0]))
 				exit(-1)
+		min_len = (4 + 6 * alt_alleles) * samples_per_file - 2
 		#emit the sample data from the first file
 		output.write(byte)
 		output.write(first_vcf.read(min_len))
@@ -308,7 +309,7 @@ try:
 			if i != n_files_minus_one:
 				output.write(vcf.read(min_len))
 			else:
-				output.write(vcf.read(min_len_last_file))
+				output.write(vcf.read((4 + 6 * alt_alleles) * samples_last_file - 2))
 			byte = vcf.read(1)
 			while byte != b'\n':
 				if byte == b"":
