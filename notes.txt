@@ -292,6 +292,29 @@ Didn't want to diagnose these errors, so I gave up
 My script (merge_all.py) on chr 3 (hap_no_preqc) takes 22hr 15min to handle ~267436 variants which leads to 
 0.3s per variant or 6.8 days for chr3
 
+Comparing my script vs bcftools:
+Merging 4 1000 samples files of chr3 took roughly identical time.
+MyScript:
+real    127m32.459s
+user    123m55.827s
+sys     1m28.156s
+
+BCFTools: (one process)
+real    112m17.094s
+user    131m34.263s
+sys     3m54.177s
+
+Timing for merging all samples (488 files, 488k samples) for only 100k variants:
+MyScript
+real    183m23.035s
+user    154m53.108s
+sys     9m46.169s
+
+BCFTools (one process) (about 4.5x slower)
+real    810m27.210s
+user    884m51.793s
+sys     18m11.236s
+
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
 handle overlapping sites somehow?
@@ -301,6 +324,14 @@ and remove all the overlapping variants from the input VCF file so we can impute
 TODO Sample QC/filtering pre (possible phasing and) imputation
 (QC info about directly genotyped SNPs: http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1955 )
 (QC datasets from the UKBiobank paper can be downloaded at: http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100313)
+The paper ( https://www.nature.com/articles/s41586-018-0579-z#Sec9 ) describes
+SNP QC under the methods section Marker-based quality control (and in the
+supplement), but ALSO under the Haplotype estimation and genotype imputation
+where they say how they filter the SNPs that were phased and thus
+downloadable via ukbgene hap.
+Description of issues with UKB SNP chips:
+https://www.biorxiv.org/content/10.1101/696799v1.full
+https://www.sciencedirect.com/science/article/pii/S0002929718304683
 
 Sample filtering:
 (Note: plink doesn't support multiple --keep or --remove flags simultaneously,
@@ -361,6 +392,9 @@ Proof:
     cut -f1,2 -d' ' $UKB/non_genetic_data/ukbgene/ukb46122_rel_s488282.dat | tail \
      -n +2 | grep -v - | sed 's/ /\n/' | sort | uniq > ukb_rel_kinship_list.txt
     diff qc_kinship_list.txt ukb_rel_kinship_list.txt | vim -
+
+Paper on how to cull samples to a maximally unrelated sample list:
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3770842/
 
 SNP filtering:
 Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)

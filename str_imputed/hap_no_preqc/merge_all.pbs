@@ -14,6 +14,9 @@ if [ -z "$INPUT1" ] ; then
 	exit -1
 fi
 
+>&2 echo INPUT1 $INPUT1
+echo INPUT1 $INPUT1
+
 source ~/.bashrc
 conda activate ukb_analysis
 time python $UKB/str_imputed/hap_no_preqc/merge_all.py $INPUT1

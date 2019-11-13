@@ -1,208 +1,13 @@
 import glob
 import os
 import sys
-import datetime
 import time
+import merge_all_functions as merge
 
 if len(sys.argv) != 2:
         print("Expecting exactly 1 argument, the chromosome number")
         exit(-1)
 chr = sys.argv[1]
-
-def validate_and_write_metadata(input_vcfs, output):
-	metadata_lines = bytearray()
-	metadata_to_write = ""
-
-	first_vcf = input_vcfs[0]
-	byte = first_vcf.read(1)
-	just_saw_newline = True
-	num_hashes_after_newline = 0
-	while True: #read the metadata till the #CHROM line
-		metadata_lines += byte
-		
-		if just_saw_newline:
-			if byte == b'#':
-				num_hashes_after_newline += 1
-			elif num_hashes_after_newline < 2:
-				break
-			else:
-				num_hashes_after_newline = 0
-				just_saw_newline = False
-		else:
-			just_saw_newline = byte == b'\n'
-		byte = first_vcf.read(1)
-
-	byte = first_vcf.read(1)
-	tab_count = 0
-	while True: #Read till the first sample ID
-		metadata_lines += byte
-		if byte == b'\t':
-			tab_count += 1
-			if tab_count == 9:
-				break
-		byte = first_vcf.read(1)
-
-	#Confirm all other headers are the same except for maybe the date line
-	metadata_len = len(metadata_lines)
-	metadata_lines = metadata_lines.decode('us-ascii').split('\n')
-
-	for i, file in enumerate(input_vcfs[1:]):
-		i += 1
-		metadata = file.read(metadata_len)
-		metadata = metadata.decode('us-ascii').split('\n')
-		if len(metadata) != len(metadata_lines):
-			print('File {} has obviously different metadata than file {}'.format(vcf_names[i], vcf_names[0]))
-			exit(-1)
-
-		for line1, line2 in zip(metadata_lines, metadata):
-			if not ('filedate' in line1 and 'filedate' in line2) and line1 != line2:
-				print('Found file {} with different metadata than file {}'.format(vcf_names[i], vcf_names[0]))
-				print('line1', line1)
-				print()
-				print('line2', line2)
-				exit(-1)
-	print('All files have the same metadata')
-
-	#Write the correct metadata to the output file
-	for line in metadata_lines:
-		bin_line = (line + "\n").encode('us-ascii') #binary encoding of the line
-		#If modifying these, also modify the fixed fields section below
-		if '##fileformat' in line:
-			output.write(bin_line)
-		elif '##filedate' in line:
-			output.write('##filedate={}\n'.format(datetime.datetime.now().strftime('%Y%m%d')).encode('us-ascii'))
-		elif '##source' in line:
-			output.write('##source=merge_all.py\n'.encode('us-ascii'))
-			output.write(bin_line)
-		elif '##INFO=<ID=AF' in line:
-			continue
-		elif '##INFO=<ID=DR2' in line:
-			continue
-		elif '##INFO=<ID=IMP' in line:
-			output.write(bin_line)
-		elif '##FORMAT=' in line:
-			output.write(bin_line)
-		elif '#CHROM' in line:
-			output.write(line.encode('us-ascii'))
-		else:
-			print('Unrecognized metadata line')
-			exit(-1)
-
-	#Write all the sample ids to the header line
-	first = True
-	for i, vcf in enumerate(input_vcfs):
-		if not first:
-			output.write(b'\t')
-		first = False
-		
-		byte = vcf.read(1)
-		while byte != b'\n':
-			output.write(byte)
-			byte = vcf.read(1)
-	output.write(b'\n')
-
-#seeks to the point in the file right after the \n before the last
-#chrNum\tpos\t
-#and trucates the file.
-#Returns pos
-def truncate_last_defined_variant(file):
-        buffer_len = 2**16
-        file.seek(-buffer_len, 2)
-        buffer = file.read(buffer_len)
-        buffer_idx = 0
-	#Find the next newline
-	while True:
-                if buffer_idx == buffer_len:
-                        buffer_idx = 1
-                        file.seek(-2*buffer_len, 1)
-                        buffer = file.read(buffer_len)
-                else:
-                        buffer_idx += 1
-                byte = buffer[(buffer_len-buffer_idx):(buffer_len-buffer_idx + 1)]
-                if byte == b'\n':
-			#Check if this is a completely defined index or not
-                	file.seek(1-buffer_idx, 1) #this puts you right after the newline
-			line_start = file.tell()
-			tab_count = 0
-			contents = bytearray()
-			byte = file.read(1)
-			while byte != b'':
-				contents += byte
-				if byte == b'\t':
-					tab_count += 1
-				if tab_count == 2:
-					#terminating condition
-					return_pos = contents.decode('us-ascii').split()[1]
-					file.seek(line_start)
-					file.truncate()
-					return return_pos
-			#hit end of file before hitting the second tab, need to go to the previous newline
-			file.seek(line_start - 1, 0)
-			#go back to the overall search loop
-
-#returns the variant position in bytes
-#or None if end of file is reached
-#don't read past bound while doing this
-def read_till_next_variant_pos(vcf, bound):
-	current_idx = vcf.tell()
-	if bound < current_idx:
-		print("bound {} should be greater than current idx {}".format(bound, current_idx))
-		exit(-1)
-	steps_left = bound - current_idx
-	byte = b'a' #dummy value
-	newline_encountered = False
-	tabs_encountered = 0
-	pos = bytearray()
-	while byte != b'' and steps_left >= 0:
-		step_left -= 1
-		byte = vcf.read(1)
-		if not newline_encountered:
-			#keep reading till the beginning of the next line
-			if byte == b'\n':
-				newline_encountered = True
-			continue
-		if byte == b'#':
-			#skip header or metadata lines
-			newline_encountered = False
-			continue
-		if tabs_encountered == 0:
-			#skip the chrom number column
-			if byte == b'\t':
-				tabs_encountered = 1
-			continue
-		if tabs_encountered == 1:
-			#read off the position column
-			if byte == b'\t':
-				return pos
-			else:
-				pos += byte
-	return None #hit the bound (which might be EOF) before finding the variant
-
-def seek_to_variant(vcf, variant_pos, vcf_name):
-	#binary search
-	min = 0
-	max = vcf.seek(0, 2)
-	while True:
-		half = (min + max)//2
-		vcf.seek(half)
-		pos = read_till_next_variant_pos(vcf, max)
-		if pos == None:
-			print("Couldn't find variant with pos {} in file {}".format(pos, vcf_name))
-			exit(-1)
-		if pos == variant_pos:
-			break
-		if pos < variant_pos:
-			min = vcf.tell()
-			continue
-		if pos > variant_pos:
-			max = half
-			continue
-	#seek backwards till we get to just after the newline
-	byte = vcf.read(1)
-	while byte != b'\n':
-		vcf.seek(-2, 1)
-		byte = vcf.read(1)
-	
 
 #set n_samples for all files and then last file
 samples_per_file = 1000
@@ -223,17 +28,22 @@ try:
 			os.environ['UKB'], chr, i*samples_per_file + 1))[0]
 		vcf_names.append(file_name)
 		input_vcfs.append(open(file_name, 'br'))
+	first_vcf = input_vcfs[0]
 
 	output_loc = "{}/str_imputed/hap_no_preqc/vcfs/chr{}.vcf".format(os.environ['UKB'], chr)
 	preexisting_output = os.path.exists(output_loc)
-	output = open(output_loc, 'r+b')
 
-	if not preexsiting_output:
-		validate_and_write_metadata(input_vcfs, output)
+	if not preexisting_output:
+		print("Starting the new merge")
+		output = open(output_loc, 'wb')
+		merge.validate_and_write_metadata(input_vcfs, output)
 	else:
-		variant_pos = truncate_last_defined_variant(output)
+		print("Found a file already in progress, continuing from there")
+		output = open(output_loc, 'r+b')
+		variant_pos = merge.truncate_last_defined_variant(output)
 		for i, vcf in enumerate(input_vcfs):
-			seek_to_variant(vcf, variant_pos, vcf_names[i])
+			merge.seek_to_variant(vcf, variant_pos, vcf_names[i])
+			print('Done setting up file {}/{}   '.format(i, len(input_vcfs)), end='\r')
 	#either way, all of the input_vcfs will be pointing to the next
 	#character after the newline in front of the next variant to write
 	#out to the output
@@ -270,13 +80,14 @@ try:
 				tab_count += 1
 				if tab_count == 8:
 					if b'IMP' in info:
-						output.write(b'IMP')
+						output.write(b'\tIMP')
 					else:
-						output.write(b'.')
-				output.write(byte)
-			elif tab_count == 4 and byte == b',':
+						output.write(b'\t.')
+
+			if tab_count == 4 and byte == b',':
 				alt_alleles += 1
-			elif tab_count < 7 or tab_count == 8:
+
+			if tab_count != 7:
 				output.write(byte)
 			elif tab_count == 7:
 				info += byte
@@ -285,9 +96,9 @@ try:
 			if byte == b"":
 				print("Didn't expect to be done! Finished before samples started In vcf {}".format(vcf_names[0]))
 				exit(-1)
+		output.write(byte)
 		min_len = (4 + 6 * alt_alleles) * samples_per_file - 2
 		#emit the sample data from the first file
-		output.write(byte)
 		output.write(first_vcf.read(min_len))
 		byte = first_vcf.read(1)
 		while byte != b'\n':
@@ -303,7 +114,8 @@ try:
 			output.write(b'\t')
 			#skip fixed fields. Assume that all fixed fields are exactly the same length
 			#(seems to be true, all info fields are fixed precision)
-			vcf.seek(fixed_field_bytes, 1)
+			for _ in range(fixed_field_bytes):
+				vcf.read(1)
 
 			#output all sample data
 			if i != n_files_minus_one:
@@ -322,10 +134,11 @@ try:
 
 		now = time.time()
 		n_variants += 1
-		if n_variants % 10 == 0:
+		if n_variants % 1000 == 0:
 			print('Variants complete: {}, Total time: {:.2}s, time/variant: {:.2}s, last 10 variants time: {:.2}s                   '.format(
 				n_variants, now - all_variants_start, (now - all_variants_start)/n_variants, now - variant_start), end = '\r')
-
+		if n_variants >= 100000:
+			break
 finally:
 	for file in input_vcfs:
 		if file is not None:
