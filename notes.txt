@@ -315,6 +315,9 @@ real    810m27.210s
 user    884m51.793s
 sys     18m11.236s
 
+I've validated my merge script on chr3, first 2000 variants, all samples:
+the output vcf is valid (took 32hrs)
+
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
 handle overlapping sites somehow?
@@ -393,8 +396,20 @@ Proof:
      -n +2 | grep -v - | sed 's/ /\n/' | sort | uniq > ukb_rel_kinship_list.txt
     diff qc_kinship_list.txt ukb_rel_kinship_list.txt | vim -
 
-Paper on how to cull samples to a maximally unrelated sample list:
+Paper on how to filter samples to a maximally unrelated sample list:
 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3770842/
+I've verified the paper's claim that neither PLINK nor KING expose the
+unrelatedness algorithm in a way that can use someone else's relatedness estimates
+I'm using this paper's algorithm (PRIMUS)
+
+I tried using the nature paper's suggested algorithm instead of PRIMUS
+(igraph maximal_independent_vertex_sets, they suggested
+the igraph R version, I've tried the python version) but it uses more than
+full node's memory on TSCC and crashes. This seems to be because
+it finds all maximal solutions, not just one, and uses an exact algorithm
+for this NP hard problem instead of an approximate one
+See the github history of the unrelated_individuals.py file
+for the code that ran this test.
 
 SNP filtering:
 Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)

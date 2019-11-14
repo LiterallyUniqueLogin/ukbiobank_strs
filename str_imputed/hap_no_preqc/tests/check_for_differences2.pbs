@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N check_for_differences
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=96:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+#confirm that my script and bcftools merge produce the same output
+echo "starting cmp"
+testDir=$UKB/str_imputed/hap_no_preqc/tests
+cmp $testDir/chr3_first_2000_lines_myScript_fixedv2_cleaned.vcf $testDir/chr3_first_2000_variants_bcftools_cleaned.vcf
+echo "cmp done"
+

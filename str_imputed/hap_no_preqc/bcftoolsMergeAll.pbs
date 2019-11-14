@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q hotel
 #PBS -N merge_all_first_2000_bcftools
-#PBS -l nodes=1:ppn=2
+#PBS -l nodes=1:ppn=1
 #PBS -l walltime=48:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
 #PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
@@ -26,6 +26,6 @@ conda activate bcftools
 #Restrict to the first 2000 variants
 time bcftools merge $files \
 		   -r 3:1-144669 \
-                   -o $UKB/str_imputed/hap_no_preqc/tests/chr${INPUT1}_first_2000_variants_bcftools.vcf.gz --threads 2 -O z
+                   -o $UKB/str_imputed/hap_no_preqc/tests/chr${INPUT1}_first_2000_variants_bcftools.vcf.gz -O z
 conda deactivate
 
