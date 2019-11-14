@@ -318,6 +318,9 @@ sys     18m11.236s
 I've validated my merge script on chr3, first 2000 variants, all samples:
 the output vcf is valid (took 32hrs)
 
+Note: bcftools merge will rename variants to shorter names if it thinks that
+is appropriate. Don't know how to turn this feature off
+
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
 handle overlapping sites somehow?

@@ -53,10 +53,12 @@ logging.info("Done creating subset kinship file. Num related samples: {}".format
 
 commandString = \
 os.environ['SOURCE'] + "/PRIMUS_v1.9.0/bin/run_PRIMUS.pl " + \
-"-i FILE=$UKB/non_genetic_data/ukbgene/ukb46122_rel_s488282.dat " + \
+"-i FILE=" + kinship_subset_filename + " " + \
 "FID1=1 IID1=1 FID2=2 IID2=2 PI_HAT=5 " + \
-"--no_PR -t 0.08838835 -o " + output_dir+"_PRIMUS"
-#the -t threshold as described in the UKB nature paper
+"--no_PR -t 0.04419417382 -o " + output_dir+"_PRIMUS"
+#the -t threshold equal to 1/2^(9/2) as described in the UKB nature paper
+
+logging.info("PRIMUS command: " + commandString)
 
 output = sp.run(commandString, shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
 logging.info("Done running PRIMUS")
@@ -71,7 +73,7 @@ with open(os.environ['UKB'] + '/sample_qc/snp_informed/hap/combined/' + args.sam
 			output.write(all_samples[sample])
 
 	#write out all the samples that were selected among the related ones	
-	with open(output_dir + "_PRIMUS/ukb46122_rel_s488282.dat_maximum_independent_set") as unrelated_file:
+	with open(output_dir + "_PRIMUS/kinship_subset.dat_maximum_independent_set") as unrelated_file:
 		first = True
 		for line in unrelated_file:
 			if first:
