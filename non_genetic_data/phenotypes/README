@@ -9,3 +9,8 @@ in the csv file. Each of these is just the data-field id (or sub-ID)
 of a piece of data that can be looked up in the UKB showcase
 
 I'm not sure what the .enc file is. Maybe it is a compressed form of the csv?
+
+The field.text file provides descriptions of the meanings of all the field-ids
+To download:
+wget -nd -O field.txt "biobank.ndph.ox.ac.uk/showcase/scdown.cgi?fmt=txt&id=1"
+
