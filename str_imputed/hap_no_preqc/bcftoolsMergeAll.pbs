@@ -15,17 +15,18 @@ if [ -z "$INPUT1" ] ; then
 fi
 
 files=""
-for begin in $(seq 1 1000 486001) ; do
+#for begin in $(seq 1 1000 486001) ; do
+for begin in $(seq 1 1000 3001) ; do
 	end=$((begin+999))
 	files="$files $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT1}_samples_${begin}_to_${end}.vcf.gz"
 done 
-files="$files $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT1}_samples_487001_to_487409.vcf.gz"
+#files="$files $UKB/str_imputed/hap_no_preqc/vcf_batches/chr${INPUT1}_samples_487001_to_487409.vcf.gz"
 
 source ~/.bashrc
-conda activate bcftools
+conda activate bcftools_custom
 #Restrict to the first 2000 variants
 time bcftools merge $files \
 		   -r 3:1-144669 \
-                   -o $UKB/str_imputed/hap_no_preqc/tests/chr${INPUT1}_first_2000_variants_bcftools.vcf.gz -O z
+                   -o $UKB/str_imputed/hap_no_preqc/tests/chr${INPUT1}_samples_1_to_4000_first_2000_variants_bcftools.vcf.gz -O z
 conda deactivate
 

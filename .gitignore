@@ -24,3 +24,4 @@ old*
 __pycache__
 .nfs*
 *.dat
+*.id

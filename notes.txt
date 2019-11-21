@@ -315,11 +315,29 @@ real    810m27.210s
 user    884m51.793s
 sys     18m11.236s
 
+(TODO Current run started at 3 TB)
+
 I've validated my merge script on chr3, first 2000 variants, all samples:
-the output vcf is valid (took 32hrs)
+the output vcf is valid (took 32hrs). I've also validated merging 4 files
+(first 4000 samples), all variants (took 55 hours). (Verified using the
+validate.pbs script)
 
 Note: bcftools merge will rename variants to shorter names if it thinks that
 is appropriate. Don't know how to turn this feature off
+
+Confirmed that (after merging the first 4 files/4000 samples)
+the first non-str variants (1163 variants) and the header line (aside from the info
+fields) are identical between my script and bcftools merge. Also confirmed
+that except for bcftools renaming our str alleles, the first str allele line
+is the same between my script and bcftools merge. Also verified that 
+after merging all the files, the first 1163 and the header line are the 
+same between the two. (Verified using the tests/check_for_differences scripts)
+
+After merging: compressing and indexing:
+Compressing chr3 took 15.25 hours
+Indexing chr3 took 8.45 hours
+Compressed chr3 was 20% smaller than the sum of the sizes of 
+all the individually compressed batches of chr3
 
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
@@ -414,6 +432,11 @@ for this NP hard problem instead of an approximate one
 See the github history of the unrelated_individuals.py file
 for the code that ran this test.
 
+All UKB samples: 487409 
+White brits:     408972 (16% loss)
+High quality:    408894 (0.02% loss)
+Unrelated:       344295 (16% loss)
+
 SNP filtering:
 Filter SNPs with <0.3 informativeness. (Same as UKB paper, see methods)
  INFO scores for SNPs can be downloaded from here: 
@@ -462,6 +485,12 @@ Compare per-locus heterozygosities to other datasets (SSC, 1000G, GTEx)
 	or more specifically: distributions of alleles similar to other datasets?
 Remove STRs with sex specific call rates
 Consider filtering STRs which overlap genotyped values and are different
+
+
+Using 1000Genomes for testing filtering thresholds:
+Location of precomputed hipstr calls on snorlax:
+/storage/s1saini/manuscript_strsnp/fig3/hipstr.1kg
+Location of raw data: /storage/resources/datasets/1000Genomes/
 
 
 TODO

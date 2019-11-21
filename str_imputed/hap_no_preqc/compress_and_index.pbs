@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N compress_and_index
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=96:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/hap_no_preqc/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+if [ -z "$INPUT1" ] ; then
+	echo "Didn't give INPUT1 argument - should be chrom number"
+	exit -1
+fi
+
+>&2 echo INPUT1 $INPUT1
+echo INPUT1 $INPUT1
+
+source ~/.bashrc
+conda activate bcftools
+echo "Starting to compress"
+time bgzip -c -@ 4 $UKB/str_imputed/hap_no_preqc/vcfs/chr$INPUT1.vcf > $UKB/str_imputed/hap_no_preqc/vcfs/chr$INPUT1.vcf.gz 
+echo "Done compressing, starting to index"
+time tabix $UKB/str_imputed/hap_no_preqc/vcfs/chr$INPUT1.vcf.gz 
+echo "Done indexing"
+conda deactivate
+

@@ -135,10 +135,8 @@ try:
 		now = time.time()
 		n_variants += 1
 		if n_variants % 1000 == 0:
-			print('Variants complete: {}, Total time: {:.2}s, time/variant: {:.2}s, last 10 variants time: {:.2}s                   '.format(
+			print('Variants complete(d this run): {}, Total time: {:.2}s, time/variant: {:.2}s, last 10 variants time: {:.2}s                   '.format(
 				n_variants, now - all_variants_start, (now - all_variants_start)/n_variants, now - variant_start), end = '\r')
-		if n_variants >= 100000:
-			break
 finally:
 	for file in input_vcfs:
 		if file is not None:

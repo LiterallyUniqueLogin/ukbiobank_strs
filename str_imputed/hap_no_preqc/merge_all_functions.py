@@ -193,8 +193,12 @@ def seek_to_variant(vcf, variant_pos, vcf_name):
 		vcf.seek(half)
 		pos, steps_taken = read_till_next_variant_pos(vcf, half, max)
 		if pos == None:
-			print("Couldn't find variant with pos {} in file {}".format(variant_pos.decode('us-ascii'), vcf_name))
-			raise MergeException()
+			max = half
+			if max <= min:
+				print("Couldn't find variant with pos {} in file {}".format(variant_pos.decode('us-ascii'), vcf_name))
+				raise MergeException()
+			else:
+				continue
 		elif pos == variant_pos:
 			current_idx = half + steps_taken
 			break
