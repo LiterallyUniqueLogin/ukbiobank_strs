@@ -1,0 +1,85 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N compare_imputations
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=15:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/pre_imputation_qc/ref_panel_size/output/logs
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/pre_imputation_qc/ref_panel_size/output/logs
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+source ~/.bashrc
+
+if [ -z "$INPUT1" ] ; then
+	echo "Didn't give INPUT1 argument - should be sample id"
+	exit -1
+fi
+
+>&2 echo INPUT1 $INPUT1
+echo INPUT1 $INPUT1
+
+DIR=/projects/ps-gymreklab/jmargoli/ukbiobank/pre_imputation_qc/ref_panel_size
+
+#create remove ID file for the full reference panel
+echo "ID
+$INPUT1" > $DIR/output/sample_lists/$INPUT1.sample
+
+#create keep ID file for the eur reference panel
+grep -v $INPUT1 $UKB/snpstr/eur.sample > $DIR/output/sample_lists/eur_not_$INPUT1.sample
+
+for chr in $(seq 1 22) ; do 
+	
+	echo "Working on chr $chr"
+
+	conda activate bcftools
+
+	#create full reference panel VCF
+	plink2 --pfile $UKB/snpstr/pfile/chr$chr \
+	       --remove $DIR/output/sample_lists/$INPUT1.sample \
+	       --export vcf bgz \
+	       --out $DIR/output/full_panel/chr$chr/$INPUT1
+	tabix $DIR/output/full_panel/chr$chr/$INPUT1.vcf.gz
+
+	#create eur reference panel VCF
+	plink2 --pfile $UKB/snpstr/pfile/chr$chr \
+	       --keep $DIR/output/sample_lists/eur_not_$INPUT1.sample \
+	       --export vcf bgz \
+	       --out $DIR/output/eur_panel/chr$chr/$INPUT1
+	tabix $DIR/output/eur_panel/chr$chr/$INPUT1.vcf.gz
+
+	#create sample VCF
+	plink2 --pfile $UKB/snpstr/pfile/chr$chr \
+		--keep $DIR/output/sample_lists/$INPUT1.sample \
+		--require-no-info IMP \
+		--export vcf bgz \
+		--out $DIR/output/sample_vcfs/chr$chr/$INPUT1
+	tabix $DIR/output/sample_vcfs/chr$chr/$INPUT1.vcf.gz
+
+	conda deactivate
+
+	conda activate java8
+	#impute with full panel
+	java -Xmx12500m -jar $SOURCE/beagle.21Sep19.ec3.jar \
+		ref=$DIR/output/full_panel/chr$chr/$INPUT1.vcf.gz \
+		gt=$DIR/output/sample_vcfs/chr$chr/$INPUT1.vcf.gz \
+		out=$DIR/full_panel_imputed/chr$chr/$INPUT1 \
+		map=$SOURCE/beagle_genetic_maps/plink.chr$chr.GRCh37.map \
+		impute=true gp=false ap=true
+
+	#impute with eur panel
+	java -Xmx12500m -jar $SOURCE/beagle.21Sep19.ec3.jar \
+		ref=$DIR/output/eur_panel/chr$chr/$INPUT1.vcf.gz \
+		gt=$DIR/output/sample_vcfs/chr$chr/$INPUT1.vcf.gz \
+		out=$DIR/eur_panel_imputed/chr$chr/$INPUT1 \
+		map=$SOURCE/beagle_genetic_maps/plink.chr$chr.GRCh37.map \
+		impute=true gp=false ap=true
+
+	conda deactivate
+
+	conda activate bcftools
+	tabix $DIR/eur_panel_imputed/chr$chr/$INPUT1.vcf.gz
+	tabix $DIR/full_panel_imputed/chr$chr/$INPUT1.vcf.gz
+	conda deactivate
+
+done

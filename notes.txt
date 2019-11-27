@@ -333,11 +333,20 @@ is the same between my script and bcftools merge. Also verified that
 after merging all the files, the first 1163 and the header line are the 
 same between the two. (Verified using the tests/check_for_differences scripts)
 
+confirming that merging resumption works:
+bcftools view -H -O v -r 3:43543023-43548317 -o $UKB/str_imputed/hap_no_preqc/tests/chr3_resumption_region_1.vcf $UKB/str_imputed/hap_no_preqc/vcfs/chr3.vcf.gz
+bcftools merge -O v -r 3:43543023-43548317 -o $UKB/str_imputed/hap_no_preqc/tests/chr3_resumption_region_1_comparison.vcf $UKB/str_imputed/hap_no_preqc/vcf_batches/*sample*.vcf.gz
+#The above merge command doesn't work because the samples are not in order, need to fix
+#by manually adding the batch files to the command in a loop
+#The other resumption region is contained in 3:56065375-56089822 
+Confirmed!
+
 After merging: compressing and indexing:
 Compressing chr3 took 15.25 hours
 Indexing chr3 took 8.45 hours
 Compressed chr3 was 20% smaller than the sum of the sizes of 
 all the individually compressed batches of chr3
+
 
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
@@ -492,6 +501,24 @@ Location of precomputed hipstr calls on snorlax:
 /storage/s1saini/manuscript_strsnp/fig3/hipstr.1kg
 Location of raw data: /storage/resources/datasets/1000Genomes/
 
+Notes from call with Shubham: 2019/11/22
+Doesn't know the files in /storage/resources/datasets/1000Genomes
+He used the files in /storage/resources/datasets/1000Genomes/phase3
+He believes (confirm) those variant calls are generated from low coverage wgs
+sequencing (see the wgs in the filenames in
+ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/ )
+The generated hipstr calls are at
+/storage/s1saini/manuscript_strsnp/fig3/hipstr.1kg
+This is generated from high coverage WGS sequencing done by Illumina (not the
+main 1000G project), and only for 50 EU samples.
+Shubham hasn't seen the high coverage WGS sequencing for all the 1000G
+samples that 1000G has released since then.
+The hipstr calls are pre-filtering (~1.6m STRs)
+The hipstr calls that have been integrated into the imputation panel
+are post-filtering and good quality (~300k STRs)
+Shubham recommends rerunning quality filters on STRs that are produced post
+imputation. (e.g. allele frequency, (sample-wise?) heterozygosity, 
+hardy weinberg, etc. (sex bias?))
 
 TODO
 Compare beagle output hap vs imp

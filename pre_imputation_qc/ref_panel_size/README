@@ -1,0 +1,14 @@
+Tests to determine whether 
+people of ancestries different from the people we're imputing
+genotypes into should be included in the reference panel or
+not.
+
+Timing of imputing one chromsome (chr3) for one ppt for
+both eur and full reference panels
+real    5m49.919s
+user    14m22.966s
+sys     0m16.045s
+
+Total cost:
+15/60 * 22 * 49 * $0.025 ~=~ $7
+
