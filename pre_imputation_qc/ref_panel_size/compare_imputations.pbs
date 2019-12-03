@@ -77,9 +77,14 @@ for chr in $(seq 1 22) ; do
 
 	conda deactivate
 
-	conda activate bcftools
-	tabix $DIR/eur_panel_imputed/chr$chr/$INPUT1.vcf.gz
-	tabix $DIR/full_panel_imputed/chr$chr/$INPUT1.vcf.gz
-	conda deactivate
+	$UKB/utilities/add_ap_metadata $DIR/eur_panel_imputed/chr$chr/$INPUT1
+	$UKB/utilities/add_ap_metadata $DIR/full_panel_imputed/chr$chr/$INPUT1
+
+	#Replace the above two lines with these two lines
+	#when Beagle ap metadata bug is fixed
+	#conda activate bcftools
+	#tabix $DIR/eur_panel_imputed/chr$chr/$INPUT1.vcf.gz
+	#tabix $DIR/full_panel_imputed/chr$chr/$INPUT1.vcf.gz
+	#conda deactivate
 
 done

@@ -47,13 +47,13 @@ for sample in hipstr_samples:
 	elif hipstr_samples_to_ancestry[sample] == 'eur':
 		extant_eur_samples.add(sample)
 
-with open(samples_loc + "hipstr_not_ref.samples", 'w') as missing_samples_file:
+with open(samples_loc + "hipstr_not_ref.sample", 'w') as missing_samples_file:
 	missing_samples_file.write("ID\n")
 	for sample in missing_samples:
 		missing_samples_file.write(sample)
 		missing_samples_file.write("\n")
 
-with open(samples_loc + "eur_hipstr_and_ref.samples", 'w') as extant_samples_file:
+with open(samples_loc + "eur_hipstr_and_ref.sample", 'w') as extant_samples_file:
 	extant_samples_file.write("ID\n")
 	for sample in extant_eur_samples:
 		extant_samples_file.write(sample)
