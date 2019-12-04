@@ -85,7 +85,10 @@ def find_overlapping_STRs(chrom):
 
 		return positions
 
-cached_hipstr_lines = None
+#globals for the function below
+#indexed by chromosome
+cached_hipstr_lines = {}
+nloci = {}
 
 #Returns a list of calls
 #Each call is a pair (dist, idx)
@@ -110,18 +113,30 @@ def gather_data(chrom, positions, sample):
 		bcftools_command = "source ~/.bashrc && conda activate bcftools && "
 
 		imputed_file_loc = ukb + '/pre_imputation_qc/ref_panel_size/{}_imputed/chr{}/{}.vcf.gz'.format(panel_name, chrom, sample)
-		imputed_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%GT %AP1 %AP2]\n" ' + imputed_file_loc
+		imputed_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%GT %AP1 %AP2 ]\n" ' + imputed_file_loc
 		imputed_lines = iter(sp.run(bcftools_command + imputed_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout.split('\n'))
 
-		hipstr_file_loc = os.environ['DATASETS'] + '/1000Genomes/hipstr_calls_sample_subset/eur/chr{}/hipstr.chr{}.eur.vcf.gz'.format(chrom, chrom)
-		hipstr_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%GT]\n" -s ' + sample + ' ' + hipstr_file_loc
-		hipstr_lines = sp.run(bcftools_command + hipstr_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout.split('\n')
-		ncalls = len(hipstr_lines)
-		hipstr_lines = iter(hipstr_lines)
+		#only one call to bcftools query is need for the entire chromosome,
+		#so cached the results
+		global cached_hipstr_lines, nloci
+		if chrom not in cached_hipstr_lines:
+			hipstr_file_loc = os.environ['DATASETS'] + '/1000Genomes/hipstr_calls_sample_subset/eur/chr{}/hipstr.chr{}.eur.vcf.gz'.format(chrom, chrom)
+			hipstr_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%SAMPLE %GT ]\n" ' + hipstr_file_loc
+			cached_hipstr_lines[chrom] = sp.run(bcftools_command + hipstr_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout.split('\n')
+			nloci[chrom] = len(cached_hipstr_lines[chrom])
 
-		#if len(hipstr_lines) != len(imputed_lines):
-		#	print("queries don't have same lengths! {} {}", len(imputed_lines), len(hipstr_lines))
-		#	exit(-1)
+		#print(cached_hipstr_lines[chrom][:10])
+		#exit()
+		my_sample_idx = cached_hipstr_lines[chrom][0].split().index(sample)
+		def hipstr_lines_iter():
+			for line in cached_hipstr_lines[chrom]:
+				line = line.split()
+				if len(line) < 1:
+					return None
+				#filter to only our sample
+				yield [line[idx] for idx in [0,1,2,3,my_sample_idx+1]]
+		
+		hipstr_lines = hipstr_lines_iter()
 
 		last_pos = None
 		call_idx = 0
@@ -130,11 +145,11 @@ def gather_data(chrom, positions, sample):
 			hipstr_line = next(hipstr_lines, None)
 			call_idx += 1
 
-			if call_idx == ncalls and next(imputed_lines, None) is None:
+			if call_idx == nloci[chrom] and next(imputed_lines, None) is None:
 				#the last line of bcftools query will be a blank one
 				break
 
-			print("Processing call {}/{}".format(call_idx, ncalls), end='\r')
+			print("Processing call {}/{}".format(call_idx, nloci[chrom]), end='\r')
 
 			if imputed_line is None:
 				if hipstr_line is None:
@@ -164,7 +179,6 @@ def gather_data(chrom, positions, sample):
 				print("more imputed lines than expected!")
 				exit(-1)
 
-			hipstr_line = hipstr_line.split()
 			last_pos = hipstr_line[0]
 
 			#more handling the multiple variants same locus issue
@@ -202,15 +216,15 @@ def gather_data(chrom, positions, sample):
 			yield imputed_line[0], list(map(int, imputed_line[4].split('|'))), imputedAP1, imputedAP2, correct_alleles
 
 
+#main method
 sample_list = get_sample_list()
 
-npositions = 0
+#these are totaled across all samples and chromosomes
 ncalls = 0
 ncorrect = 0
 for chrom in range(1,23):
 	chrom = str(chrom)
 	positions = find_overlapping_STRs(chrom)
-	npositions += len(positions)
 
 	loci_acc = {}
 	for position in positions:
@@ -218,22 +232,21 @@ for chrom in range(1,23):
 
 	for sample_num, sample in enumerate(sample_list):
 		print("Processing chrom {} sample {} ({})".format(chrom, sample_num + 1, sample))
-		start_time = time.time()
 		for pos, imp_phased_gt, imp_ap1, imp_ap2, correct_unphased_gt in gather_data(chrom, positions, sample):
 			ncalls += 1
 
 			unphased_imp_call = {np.argmax(imp_ap1), np.argmax(imp_ap2)}
 			if unphased_imp_call == correct_unphased_gt:
 				ncorrect += 1
-		print("Time for this ppt: ", time.time() - start_time)
+		break
 
 	#for each ppt, gather those loci
 	#analyze the results
 	break
 
-print("Number of overlapping loci", npositions)
+print("Number of overlapping loci", np.sum(list(nloci.values())))
 print("Number of total calls (all samples, all loci)", ncalls)
-print("Fraction of no calls in hipstr {:.2%}".format(1 - ncalls/(49*npositions)))
+print("Fraction of all (loci, sample) pairs hipstr declined to call {:.2%}".format(1 - ncalls/(49*np.sum(list(nloci.values())))))
 print("Fraction of hipstr calls that were correctly imputed {:.2%}".format(ncorrect/ncalls))
 
 #make the plots
