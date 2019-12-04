@@ -39,14 +39,14 @@ for chr in $(seq 1 22) ; do
 	       --remove $DIR/output/sample_lists/$INPUT1.sample \
 	       --export vcf bgz \
 	       --out $DIR/output/full_panel/chr$chr/$INPUT1
-	tabix $DIR/output/full_panel/chr$chr/$INPUT1.vcf.gz
+	tabix -f $DIR/output/full_panel/chr$chr/$INPUT1.vcf.gz
 
 	#create eur reference panel VCF
 	plink2 --pfile $UKB/snpstr/pfile/chr$chr \
 	       --keep $DIR/output/sample_lists/eur_not_$INPUT1.sample \
 	       --export vcf bgz \
 	       --out $DIR/output/eur_panel/chr$chr/$INPUT1
-	tabix $DIR/output/eur_panel/chr$chr/$INPUT1.vcf.gz
+	tabix -f $DIR/output/eur_panel/chr$chr/$INPUT1.vcf.gz
 
 	#create sample VCF
 	plink2 --pfile $UKB/snpstr/pfile/chr$chr \
@@ -54,7 +54,7 @@ for chr in $(seq 1 22) ; do
 		--require-no-info IMP \
 		--export vcf bgz \
 		--out $DIR/output/sample_vcfs/chr$chr/$INPUT1
-	tabix $DIR/output/sample_vcfs/chr$chr/$INPUT1.vcf.gz
+	tabix -f $DIR/output/sample_vcfs/chr$chr/$INPUT1.vcf.gz
 
 	conda deactivate
 
@@ -77,14 +77,14 @@ for chr in $(seq 1 22) ; do
 
 	conda deactivate
 
-	$UKB/utilities/add_ap_metadata $DIR/eur_panel_imputed/chr$chr/$INPUT1
-	$UKB/utilities/add_ap_metadata $DIR/full_panel_imputed/chr$chr/$INPUT1
+	$UKB/utilities/add_ap_metadata.sh $DIR/eur_panel_imputed/chr$chr/$INPUT1
+	$UKB/utilities/add_ap_metadata.sh $DIR/full_panel_imputed/chr$chr/$INPUT1
 
 	#Replace the above two lines with these two lines
 	#when Beagle ap metadata bug is fixed
 	#conda activate bcftools
-	#tabix $DIR/eur_panel_imputed/chr$chr/$INPUT1.vcf.gz
-	#tabix $DIR/full_panel_imputed/chr$chr/$INPUT1.vcf.gz
+	#tabix -f $DIR/eur_panel_imputed/chr$chr/$INPUT1.vcf.gz
+	#tabix -f $DIR/full_panel_imputed/chr$chr/$INPUT1.vcf.gz
 	#conda deactivate
 
 done

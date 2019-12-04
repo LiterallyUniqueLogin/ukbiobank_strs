@@ -25,10 +25,10 @@ conda activate bcftools
 
 FILE_NAME=$1
 
-bgzip -d $FILE_NAME.vcf.gz
+bgzip -df $FILE_NAME.vcf.gz
 sed 's/##FORMAT=<ID=GP.*/##FORMAT=<ID=AP1,Number=A,Type=Float,Description="Estimated Allele 1 Probability">\n##FORMAT=<ID=AP2,Number=A,Type=Float,Description="Estimated Allele 2 Probability">/' \
 	-i \
 	$FILE_NAME.vcf
-bgzip $FILE_NAME.vcf
-tabix $FILE_NAME.vcf.gz
-
+bgzip -f $FILE_NAME.vcf
+tabix -f $FILE_NAME.vcf.gz
+conda deactivate
