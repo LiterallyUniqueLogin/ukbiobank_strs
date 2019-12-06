@@ -1,6 +1,27 @@
-Not sure how to download the csv file in this directory
-Ask Richard
-I think it comes from the application process to access UKB data
+These phenotypes are called the "main dataset" by the UKB documentation
+The instructions for downloading these are described here:
+https://biobank.ctsu.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.0.pdf
+in section 2
+Only someone with the email from the original application
+(i.e. Richard) can download this data
+The dataset is the .enc file
+The ukbunpack and ukbconv utilities can be used to generate the .csv (or other)
+datafiles from this file
+
+To do this:
+put the .ukbkey, the ukbunpack, ukbconv and the .enc files in the same directory
+./ukbunpack ukb29170.enc .ukbkey
+This will generate a ukb29170.enc_ukb file
+./ukbconv ukb29170.enc_ukb docs
+generates the documentation for the dataset (ukb29170.html)
+./ukbconv ukb29170.enc_ukb csv
+generates the csv
+./ukbconv ukb29170.enc_ukb bulk
+creates the bulk data file that's used to download
+bulk data sets (such as the exome data BAM files)
+
+The ukb29170.log and fields.ukb are generated as side effects of the above
+commands
 
 The csv file contains all the data
 
@@ -8,9 +29,9 @@ The fields file just lists the numerical name of all the columns
 in the csv file. Each of these is just the data-field id (or sub-ID)
 of a piece of data that can be looked up in the UKB showcase
 
-I'm not sure what the .enc file is. Maybe it is a compressed form of the csv?
-
+(
+-- The following is valid but no longer useful, use the docs file generated above --
 The field.text file provides descriptions of the meanings of all the field-ids
 To download:
 wget -nd -O field.txt "biobank.ndph.ox.ac.uk/showcase/scdown.cgi?fmt=txt&id=1"
-
+)

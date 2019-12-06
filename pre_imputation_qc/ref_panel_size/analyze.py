@@ -2,14 +2,16 @@ import os
 import argparse
 import subprocess as sp
 import tempfile
-import matplotlib.pyplot as plot;
+import matplotlib.pyplot as plot
 import numpy as np
 import time
+import argparse
+import pickle
 
-#TODO
-#use arg parse to figure out if we're testing imputation with full ref panel
-#or with just eur samples
-eur_only = True
+parser = argparse.ArgumentParser()
+parser.add_argument('--eur_only', action="store_true")
+args = parser.parse_args()
+eur_only = bool(args.eur_only)
 
 ukb = os.environ['UKB']
 
@@ -99,10 +101,10 @@ nloci = {}
 #or -1 if the index is none of those
 def gather_data(chrom, positions, sample):
 	with tempfile.NamedTemporaryFile(mode = 'w+') as pos_file:
-		positions_file_contents = chrom + "\t" + "\n1\t".join(positions) + "\n"
+		positions_file_contents = chrom + "\t" + ("\n" + chrom + "\t").join(positions) + "\n"
 		pos_file.write(positions_file_contents)
-		#with open("/home/jmargoli/temp.positions", 'w') as temp_pos:
-		#	temp_pos.write(positions)
+		#with open("/home/jmargoli/temp{}.positions".format(chrom), 'w') as temp_pos:
+		#	temp_pos.write(positions_file_contents)
 		positions = set(positions)
 
 		if eur_only:
@@ -125,8 +127,6 @@ def gather_data(chrom, positions, sample):
 			cached_hipstr_lines[chrom] = sp.run(bcftools_command + hipstr_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout.split('\n')
 			nloci[chrom] = len(cached_hipstr_lines[chrom])
 
-		#print(cached_hipstr_lines[chrom][:10])
-		#exit()
 		my_sample_idx = cached_hipstr_lines[chrom][0].split().index(sample)
 		def hipstr_lines_iter():
 			for line in cached_hipstr_lines[chrom]:
@@ -182,6 +182,7 @@ def gather_data(chrom, positions, sample):
 			last_pos = hipstr_line[0]
 
 			#more handling the multiple variants same locus issue
+			#Ignore variants that line up but have different IDs
 			while hipstr_line[1] != imputed_line[1]:
 				imputed_line = next(imputed_lines)
 				imputed_line = imputed_line.split()
@@ -216,46 +217,141 @@ def gather_data(chrom, positions, sample):
 			yield imputed_line[0], list(map(int, imputed_line[4].split('|'))), imputedAP1, imputedAP2, correct_alleles
 
 
+class CallAggregator:
+
+	def __init__(self, total_calls, bin_size = 0.01): #default bin size of 1%
+		self.calls = np.full(total_calls, np.nan)
+		self.call_successes = np.zeros(total_calls, dtype=np.bool) #this is all falses
+		self.ncalls = 0
+		self.call_limit = total_calls
+
+		#bins are [bin_size*n, bin_size*(n+1)) except for the first bin which is (0, bin_size) and the last bin which is [bin_size*n, 100)
+		self.call_bins = {} #total number of calls which claimed this accuracy
+		self.success_bins = {} #total number of calls which claimed this accuracy and were correct
+		bins = list(np.arange(0, 1, bin_size))
+		bins.insert(0, 'No') #imputed probability is 0
+		bins.append('Yes') #imputed probability is 1
+		for bin in bins:
+			self.call_bins[bin] = 0
+			self.success_bins[bin] = 0
+
+	#predicted fraction of being correct, and whether it was correct or not	
+	def add(self, fraction, correct):
+		if self.ncalls >= self.call_limit:
+			print("More calls than capacity for")
+			exit(-1)
+		#handle recording
+		self.calls[self.ncalls] = fraction
+		self.call_successes[self.ncalls] = correct
+
+		#handle bins	
+		if perc == 0:
+			idx = 0
+		elif perc == 1:
+			idx = -1
+		else:	
+			idx = int(perc // self.bin_size) + 1
+			
+		self.call_bins[idx] += 1
+		if correct:
+			self.success_bins[idx] += 1
+		
+		self.ncalls += 1
+
+pickle_file_loc = 'analyze_data.pickle'
+def load_pickle(loc = pickle_file_loc):
+	with open(pickle_file_loc, 'rb') as f:
+		return pickle.load(f)
+
 #main method
-sample_list = get_sample_list()
+if __name__ == '__main__':
+	sample_list = get_sample_list()
 
-#these are totaled across all samples and chromosomes
-ncalls = 0
-ncorrect = 0
-for chrom in range(1,23):
-	chrom = str(chrom)
-	positions = find_overlapping_STRs(chrom)
+	#accrue information per sample
+	sample_acc = {}
+	for sample in sample_list:
+		sample_acc[sample] = [0,0] #[number calls, number successes]
 
+	#accrue info per locus
 	loci_acc = {}
-	for position in positions:
-		loci_acc[position] = (0,0)
 
-	for sample_num, sample in enumerate(sample_list):
-		print("Processing chrom {} sample {} ({})".format(chrom, sample_num + 1, sample))
-		for pos, imp_phased_gt, imp_ap1, imp_ap2, correct_unphased_gt in gather_data(chrom, positions, sample):
-			ncalls += 1
+	#these are totaled across all samples and chromosomes
+	ncalls = 0
+	ncorrect_unphased = 0
+	ncorrect_phased = 0
+	ncalls_not_in_ref = 0
+	ncalls_predicted = 9716850 #from previous runs
 
-			unphased_imp_call = {np.argmax(imp_ap1), np.argmax(imp_ap2)}
-			if unphased_imp_call == correct_unphased_gt:
-				ncorrect += 1
+	#record calibration stats about calls beagle makes
+	unphased_call_calibration = CallAggregator(ncalls_predicted) #the most likely unphased genotype
+
+	  #the most likely phased genotype
+	  #note that because Hipstr doesn't output phased genotypes,
+	  #we call the phased genotype call a|b correct if hipstr outputs either a/b or b/a
+	phased_call_calibration = CallAggregator(ncalls_predicted) 
+
+	for chrom in range(1,23):
 		break
+		chrom = str(chrom)
+		positions = find_overlapping_STRs(chrom)
 
-	#for each ppt, gather those loci
-	#analyze the results
-	break
+		loci_acc[chrom] = {}
+		for position in positions:
+			loci_acc[chrom][position] = [0,0] #[number calls, number successes]
 
-print("Number of overlapping loci", np.sum(list(nloci.values())))
-print("Number of total calls (all samples, all loci)", ncalls)
-print("Fraction of all (loci, sample) pairs hipstr declined to call {:.2%}".format(1 - ncalls/(49*np.sum(list(nloci.values())))))
-print("Fraction of hipstr calls that were correctly imputed {:.2%}".format(ncorrect/ncalls))
+		for sample_num, sample in enumerate(sample_list):
+			print("Processing chrom {} sample {} ({})".format(chrom, sample_num + 1, sample))
+			for pos, imp_phased_gt, imp_ap1, imp_ap2, correct_unphased_gt in gather_data(chrom, positions, sample):
+				loci_acc[chrom][pos][0] += 1
+				sample_acc[sample][0] += 1
+				ncalls += 1
+
+				unphased_imp_call = {np.argmax(imp_ap1), np.argmax(imp_ap2)}
+				unphased_imp_perc = np.max(imp_ap1)*np.max(imp_ap2)
+				correct = unphased_imp_call == correct_unphased_gt
+				if correct:
+					ncorrect_unphased += 1
+					loci_acc[chrom][pos][1] += 1
+					sample_acc[sample][1] += 1
+				elif -1 in correct_unphased_gt:
+					ncalls_not_in_ref += 1
+
+				unphased_call_calibration.add(unphased_imp_prec, unphased_correct)
+
+	#save the data we've collected
+	with open(pickle_file_loc, 'wb') as pickle_file:
+		data = {"nloci" : nloci,
+			"ncalls" : ncalls,
+			"ncorrect_unphased" : ncorrect_unphased, 
+			"ncorrect_phased" : ncorrect_phased, 
+			"ncalls_not_in_ref" : ncalls_not_in_ref,
+			"sample_acc" : sample_acc,
+			"loci_acc" : loci_acc,
+			"unphased_call_calibration" : unphased_call_calibration,
+			"phased_call_calibration" : phased_call_calibration}
+		pickle.dump(data, pickle_file, pickle.HIGHEST_PROTOCOL)
+
+	print("Number of overlapping loci", np.sum(list(nloci.values())))
+	print("Number of total calls (all samples, all loci)", ncalls)
+	print("Fraction of all (loci, sample) pairs hipstr declined to call {:.2%}".format(1 - ncalls/(49*np.sum(list(nloci.values())))))
+	print("Fraction of imputed unphased calls that are correct according to hipstr (ignoring pairs hiptsr declined to call) {:.2%}".format(ncorrect_unphased/ncalls))
+	print("""Fraction of imputed phased calls that are correct according to hipstr (ignoring pairs hiptsr declined to call)
+		 (Note that because hipstr returns unphased calls, we consider a call a|b accurate if 
+		  hipstr returns either a|b or b|a. So this overestimates the phased correctness {:.2%}""".format(ncorrect_phased/ncalls))
+	print("Fraction of hipstr calls with at least one allele with a genotype not in the reference panel {:.2%}".format(ncalls_not_in_ref/ncalls))
 
 #make the plots
 #plots are histograms of predicted accuracy vs actual accuracy
 #with error bars denoting what the expected value is
 #one plot with just the mostly likely predicted values (which are not phased)
 #one plot comparing calls (which are phased)
-#one plot with all predicted value
+#one plot with all predicted values
 #the above plots including and excluding calls that are not in the reference
 #one plot with a distribution of the accuracy of different loci
+#and the number of hipstr no-calls at different loci
+#also visualize this is in IGV
+#and one with a distribution of accuracy across samples
 
 #also need to do some comparison of how many STRs we're leaving out
+#what are the backgrounds of these samples?
+

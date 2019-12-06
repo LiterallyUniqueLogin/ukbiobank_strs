@@ -1,3 +1,3 @@
 Before running any ukb tool on tscc, must put the updated version of glibc on the path:
 LD_LIBRARY_PATH=$SOURCE/glibc/:$LD_LIBRARY_PATH
-
+(SOURCE=/projects/ps-gymreklab/resources/source)

@@ -1,3 +1,10 @@
+I've confirmed the Hipstr  calls don't have any variants with duplicate IDs in them
+The following command shows this by not printing anything
+for chr in $(seq 1 22); do 
+	zcat $DATASETS/1000Genomes/hipstr_calls_sample_subset/eur/chr${chr}/hipstr.*gz \
+		| cut -f3 | sort | uniq -c | sort | awk '{ if ($1 != 1) print }'
+done
+
 Tests to determine whether 
 people of ancestries different from the people we're imputing
 genotypes into should be included in the reference panel or
@@ -11,4 +18,16 @@ sys     0m16.045s
 
 Total cost:
 15/60 * 22 * 49 * $0.025 ~=~ $7
+
+Running compare_variants.py gives
+The hipstr calls overlap the reference panel at 445617 loci,
+as determined solely by locus id (not pos).
+This is mostly similar to the number 453,671 quoted by
+Shubham here (https://www.nature.com/articles/s41467-018-06694-0)
+as the number of STRs in the analysis
+
+My analysis only captures 200190 overlapping loci (45%)
+This means that 55% of loci with the same ID are at different
+positions between the two datasets. Why? They're on the
+same reference genome (b37)
 

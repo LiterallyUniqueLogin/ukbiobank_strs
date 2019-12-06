@@ -25,3 +25,6 @@ __pycache__
 .nfs*
 *.dat
 *.id
+*.pickle
+*.enc
+*.enc_ukb
