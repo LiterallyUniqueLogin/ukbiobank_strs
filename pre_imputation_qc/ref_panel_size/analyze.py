@@ -7,11 +7,7 @@ import numpy as np
 import time
 import argparse
 import pickle
-
-parser = argparse.ArgumentParser()
-parser.add_argument('--eur_only', action="store_true")
-args = parser.parse_args()
-eur_only = bool(args.eur_only)
+from collections import OrderedDict
 
 ukb = os.environ['UKB']
 
@@ -30,7 +26,7 @@ def get_sample_list():
 #Also will not consider varaints with different ids between
 #the two vcfs, or different ref alleles
 def find_overlapping_STRs(chrom):
-	file_dir = ukb + '/pre_imputation_qc/ref_panel_size/output/variant_overlaps/chr' + chrom
+	file_dir = ukb + '/pre_imputation_qc/ref_panel_size/output/variant_pos_overlaps/chr' + chrom
 	with open(file_dir + '/0000.vcf') as ref_panel_file, \
 		open(file_dir + '/0001.vcf') as hipstr_file:
 
@@ -91,6 +87,8 @@ def find_overlapping_STRs(chrom):
 #indexed by chromosome
 cached_hipstr_lines = {}
 nloci = {}
+#indexed by chrom and sample
+cached_imputed_lines = {}
 
 #Returns a list of calls
 #Each call is a pair (dist, idx)
@@ -209,7 +207,7 @@ def gather_data(chrom, positions, sample):
 			imputedAP1 = list(map(float, imputed_line[5].split(',')))
 			imputedAP1.insert(0, 1-np.sum(imputedAP1))
 			imputedAP2 = list(map(float, imputed_line[6].split(',')))
-			imputedAP2.insert(0, 1-np.sum(imputedAP1))
+			imputedAP2.insert(0, 1-np.sum(imputedAP2))
 
 			#POS, imputed phased GT, imputed AP1, imputed AP2, correct unphased GT
 			#Correct unphased GT is a set which contains two elements if the sample is heterozygous
@@ -224,11 +222,12 @@ class CallAggregator:
 		self.call_successes = np.zeros(total_calls, dtype=np.bool) #this is all falses
 		self.ncalls = 0
 		self.call_limit = total_calls
+		self.bin_size = bin_size
 
 		#bins are [bin_size*n, bin_size*(n+1)) except for the first bin which is (0, bin_size) and the last bin which is [bin_size*n, 100)
-		self.call_bins = {} #total number of calls which claimed this accuracy
-		self.success_bins = {} #total number of calls which claimed this accuracy and were correct
-		bins = list(np.arange(0, 1, bin_size))
+		self.call_bins = OrderedDict()    #total number of calls which claimed this accuracy
+		self.success_bins = OrderedDict() #total number of calls which claimed this accuracy and were correct
+		bins = list(np.arange(0, 1, self.bin_size))
 		bins.insert(0, 'No') #imputed probability is 0
 		bins.append('Yes') #imputed probability is 1
 		for bin in bins:
@@ -245,12 +244,12 @@ class CallAggregator:
 		self.call_successes[self.ncalls] = correct
 
 		#handle bins	
-		if perc == 0:
-			idx = 0
-		elif perc == 1:
-			idx = -1
+		if fraction == 0:
+			idx = 'No'
+		elif fraction == 1:
+			idx = 'Yes'
 		else:	
-			idx = int(perc // self.bin_size) + 1
+			idx = (fraction // self.bin_size)*self.bin_size
 			
 		self.call_bins[idx] += 1
 		if correct:
@@ -265,15 +264,20 @@ def load_pickle(loc = pickle_file_loc):
 
 #main method
 if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--eur_only', action="store_true")
+	args = parser.parse_args()
+	eur_only = bool(args.eur_only)
+
 	sample_list = get_sample_list()
 
 	#accrue information per sample
-	sample_acc = {}
+	sample_acc = {} #unphased
 	for sample in sample_list:
 		sample_acc[sample] = [0,0] #[number calls, number successes]
 
 	#accrue info per locus
-	loci_acc = {}
+	loci_acc = {} #unphased
 
 	#these are totaled across all samples and chromosomes
 	ncalls = 0
@@ -291,7 +295,6 @@ if __name__ == '__main__':
 	phased_call_calibration = CallAggregator(ncalls_predicted) 
 
 	for chrom in range(1,23):
-		break
 		chrom = str(chrom)
 		positions = find_overlapping_STRs(chrom)
 
@@ -302,42 +305,64 @@ if __name__ == '__main__':
 		for sample_num, sample in enumerate(sample_list):
 			print("Processing chrom {} sample {} ({})".format(chrom, sample_num + 1, sample))
 			for pos, imp_phased_gt, imp_ap1, imp_ap2, correct_unphased_gt in gather_data(chrom, positions, sample):
+				#record the call location	
 				loci_acc[chrom][pos][0] += 1
 				sample_acc[sample][0] += 1
 				ncalls += 1
 
+				#is the unphased call correct?	
 				unphased_imp_call = {np.argmax(imp_ap1), np.argmax(imp_ap2)}
 				unphased_imp_perc = np.max(imp_ap1)*np.max(imp_ap2)
-				correct = unphased_imp_call == correct_unphased_gt
-				if correct:
+
+				if unphased_imp_perc == 0:
+					print(sample, chrom, pos, imp_phased_gt, imp_ap1, imp_ap2, correct_unphased_gt)
+					exit()
+
+				unphased_correct = unphased_imp_call == correct_unphased_gt
+				if unphased_correct:
 					ncorrect_unphased += 1
 					loci_acc[chrom][pos][1] += 1
 					sample_acc[sample][1] += 1
 				elif -1 in correct_unphased_gt:
 					ncalls_not_in_ref += 1
 
-				unphased_call_calibration.add(unphased_imp_prec, unphased_correct)
+				unphased_call_calibration.add(unphased_imp_perc, unphased_correct)
+	
+				#is the phased call correct?
+				phased_imp_call = set(imp_phased_gt)
+				phased_correct = phased_imp_call == correct_unphased_gt
+				if phased_correct:
+					ncorrect_phased += 1
+				phased_imp_perc = imp_ap1[imp_phased_gt[0]]*imp_ap2[imp_phased_gt[1]]
+				phased_call_calibration.add(phased_imp_perc, phased_correct)
 
-	#save the data we've collected
-	with open(pickle_file_loc, 'wb') as pickle_file:
-		data = {"nloci" : nloci,
-			"ncalls" : ncalls,
-			"ncorrect_unphased" : ncorrect_unphased, 
-			"ncorrect_phased" : ncorrect_phased, 
-			"ncalls_not_in_ref" : ncalls_not_in_ref,
-			"sample_acc" : sample_acc,
-			"loci_acc" : loci_acc,
-			"unphased_call_calibration" : unphased_call_calibration,
-			"phased_call_calibration" : phased_call_calibration}
-		pickle.dump(data, pickle_file, pickle.HIGHEST_PROTOCOL)
+		#save the data we've collected so far
+		'''
+		with open(pickle_file_loc, 'wb') as pickle_file:
+			data = {"nloci" : nloci,
+				"ncalls" : ncalls,
+				"ncorrect_unphased" : ncorrect_unphased, 
+				"ncorrect_phased" : ncorrect_phased, 
+				"ncalls_not_in_ref" : ncalls_not_in_ref,
+				"sample_acc" : sample_acc,
+				"loci_acc" : loci_acc,
+				"unphased_call_calibration" : unphased_call_calibration,
+				"phased_call_calibration" : phased_call_calibration,
+				"max_chrom": chrom,
+				"done": chrom == '22'}
+			pickle.dump(data, pickle_file, pickle.HIGHEST_PROTOCOL)
+		'''
 
 	print("Number of overlapping loci", np.sum(list(nloci.values())))
 	print("Number of total calls (all samples, all loci)", ncalls)
 	print("Fraction of all (loci, sample) pairs hipstr declined to call {:.2%}".format(1 - ncalls/(49*np.sum(list(nloci.values())))))
-	print("Fraction of imputed unphased calls that are correct according to hipstr (ignoring pairs hiptsr declined to call) {:.2%}".format(ncorrect_unphased/ncalls))
-	print("""Fraction of imputed phased calls that are correct according to hipstr (ignoring pairs hiptsr declined to call)
-		 (Note that because hipstr returns unphased calls, we consider a call a|b accurate if 
-		  hipstr returns either a|b or b|a. So this overestimates the phased correctness {:.2%}""".format(ncorrect_phased/ncalls))
+	print("""Fraction of imputed unphased calls that are correct according to hipstr \
+		(ignoring pairs hiptsr declined to call) {:.2%}""".format(ncorrect_unphased/ncalls))
+	print("""Fraction of imputed phased calls that are correct according to hipstr {:.2%} \
+		 (ignoring pairs hiptsr declined to call) \
+		 (Note that because hipstr returns unphased calls, \
+		  we consider a call a|b accurate if hipstr returns either a|b or b|a. \
+		  So this overestimates the phased correctness) """.format(ncorrect_phased/ncalls))
 	print("Fraction of hipstr calls with at least one allele with a genotype not in the reference panel {:.2%}".format(ncalls_not_in_ref/ncalls))
 
 #make the plots

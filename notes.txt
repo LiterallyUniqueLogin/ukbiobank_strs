@@ -520,6 +520,38 @@ Shubham recommends rerunning quality filters on STRs that are produced post
 imputation. (e.g. allele frequency, (sample-wise?) heterozygosity, 
 hardy weinberg, etc. (sex bias?))
 
+On measuring STR length and dealing with nearby variants/internal impurities:
+When HipSTR calls an STR, if it finds nearby variantes (e.g. 3 bp before the
+start of the STR), it includes those in the definition of the variant.
+Example:
+Ref CATAAAAGGT Alt CATAAAAAGGT,CATAAAAAGAT,CATAATAAGGT - the first two alt alleles
+have the same number of copies of the STR motif but a difference in a nearby SNP,
+the third alt allele has an impurity in the middle of the STR. But if those
+variants aren't present in the reads HipSTR is calling the STR from, then it
+might report the variant as Ref AAAA Alt AAAAA, AATAA . 
+Note that GangSTR only calls repeat length - it does not call impurities or
+nearby variants. 
+For my analyses, I'm going to only focus on STR length, not on the nearby
+variants. So a call of Startpos=7 CATAAAAGGT in one dataset is equivalent to
+the call of Startpos=10 AAAA in another dataset, and both would contribute to
+the bucket len=4 when doing anlaysis of the length versus a phenotype of
+interest. However, we would remove any call AATAA from the dataset due to its
+impurity. (I can compare calls for equivalence between datasets by finding the
+recorded start position of that STR in the reference genome used by both
+analyses, and then only looking at that point forward for different reads.
+E.g. if the recorded start position is 10, then I would split 7 CATAAAAGGT
+as CAT|AAAAGGT and counting four A's to the right of the split).
+I should note in the paper that 
+* we're only considering STR length
+* we're ignoring any nearby SNPs
+* we're filtering alleles called with internal impurities
+This also impacts assocation testing:
+if length is monotonically associated with phenotype of a number of different
+genotypes, then there is some indication that the length is actually causal.
+If length seems to not effect the phenotype except at a specific genotype,
+then it is possible that that genotype just tags a nearby variant and the
+length itself isn't actually causal
+
 TODO
 Compare beagle output hap vs imp
 Find a blood trait gene to use a model
