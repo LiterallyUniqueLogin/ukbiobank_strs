@@ -384,7 +384,7 @@ if __name__ == '__main__':
 	
 				#is the phased call correct?
 				phased_imp_call = set(imp_phased_gt)
-				phased_correct = phased_imp_call == correct_phased_gt
+				phased_correct = phased_imp_call == correct_unphased_gt
 				if phased_correct:
 					ncorrect_phased += 1
 				phased_imp_perc = imp_ap1[imp_phased_gt[0]]*imp_ap2[imp_phased_gt[1]]
@@ -434,3 +434,4 @@ if __name__ == '__main__':
 #also need to do some comparison of how many STRs we're leaving out
 #what are the backgrounds of these samples?
 
+#Look for patterns in missingness of loci per sample?

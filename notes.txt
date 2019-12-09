@@ -553,6 +553,9 @@ then it is possible that that genotype just tags a nearby variant and the
 length itself isn't actually causal
 
 TODO
+Check if I'm correctly distinguishing between phased and unphased calls in
+1000G analysis
+
 Compare beagle output hap vs imp
 Find a blood trait gene to use a model
 Try using a different phasing tool than beagle
