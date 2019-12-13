@@ -19,70 +19,6 @@ def get_sample_list():
 			samples.append(line.strip())
 		return samples
 
-#returns a list of positions to look at
-#will not consider varaints which are located at different
-#positions but are alternate spellings of one another
-#e.g. 10 AAA AAAA vs 12 A AA
-#Also will not consider varaints with different ids between
-#the two vcfs, or different ref alleles
-def find_overlapping_STRs(chrom):
-	file_dir = ukb + '/pre_imputation_qc/ref_panel_size/output/variant_pos_overlaps/chr' + chrom
-	with open(file_dir + '/0000.vcf') as ref_panel_file, \
-		open(file_dir + '/0001.vcf') as hipstr_file:
-
-		#skip metadata lines
-		line = next(ref_panel_file)
-		while line[0:2] == '##':
-			line = next(ref_panel_file)
-
-		line = next(hipstr_file)
-		while line[0:2] == '##':
-			line = next(hipstr_file)
-
-		#figure out the columns we're interested in
-		header = line.split()
-		pos_idx = header.index('POS')
-		ref_idx = header.index('REF')
-		alt_idx = header.index('ALT')
-		id_idx = header.index('ID')
-	
-		next(ref_panel_file)	
-		next(hipstr_file)
-
-		positions = []
-
-		#loop over all overlapping positions
-		while True:
-			ref_panel_line = next(ref_panel_file, None)
-			hipstr_line = next(hipstr_file, None)
-
-			if hipstr_line is None and ref_panel_line is not None:
-				print("more lines in ref_panel file than hipstr file!")
-				exit(-1)
-			if hipstr_line is not None and ref_panel_line is None:
-				print("More lines in hipstr file than ref_panel file!")
-				exit(-1)
-			if hipstr_line is None and ref_panel_line is None:
-				break
-
-			hipstr_line = hipstr_line.split()
-			ref_panel_line = ref_panel_line.split()
-
-			if hipstr_line[pos_idx] != ref_panel_line[pos_idx]:
-				print("Non-matching positions in ref_panel and hipstr files!")
-				exit(-1)
-			pos = hipstr_line[pos_idx]
-
-			if hipstr_line[id_idx] != ref_panel_line[id_idx]:
-				continue
-
-			if hipstr_line[ref_idx] != ref_panel_line[ref_idx]:
-				continue
-
-			positions.append(pos)
-
-		return positions
-
 #globals for the two functions below
 #indexed by chromosome
 nloci = {}
@@ -102,23 +38,25 @@ def load_data(chrom, positions, samples):
 	else:
 		panel_name = 'full_panel'
 
-	with tempfile.NamedTemporaryFile(mode = 'w+', delete = False) as pos_file:
-		positions_file_contents = chrom + "\t" + ("\n" + chrom + "\t").join(positions) + "\n"
-		pos_file.write(positions_file_contents)
-		
-		hipstr_file_loc = os.environ['DATASETS'] + '/1000Genomes/hipstr_calls_sample_subset/eur/chr{}/hipstr.chr{}.eur.vcf.gz'.format(chrom, chrom)
-		hipstr_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%SAMPLE %GT ]\n" ' + hipstr_file_loc
-		cached_hipstr_iters[chrom] = sp.Popen(bcftools_command + hipstr_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout
+	with open(ukb + "/snpstr/duplicate_ids/chr" + chrom + " .txt") as duplicates_file:
+		duplicate_positions = duplicates_file.read().split()
 
-		cached_imputed_iters[chrom] = {}
-		for sample in samples:
-			imputed_file_loc = ukb + '/pre_imputation_qc/ref_panel_size/{}_imputed/chr{}/{}.vcf.gz'.format(panel_name, chrom, sample)
-			imputed_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%GT %AP1 %AP2 ]\n" ' + imputed_file_loc
-			cached_imputed_iters[chrom][sample] = sp.Popen(bcftools_command + imputed_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout
-		
-		#turn hipstr iter into strings 
-		cached_hipstr_lines[chrom] = cached_hipstr_iters[chrom].readlines()
-		nloci[chrom] = len(cached_hipstr_lines[chrom])
+	positions_file_contents = chrom + "\t" + ("\n" + chrom + "\t").join(positions) + "\n"
+	pos_file.write(positions_file_contents)
+	
+	hipstr_file_loc = os.environ['DATASETS'] + '/1000Genomes/hipstr_calls_sample_subset/eur/chr{}/hipstr.chr{}.eur.vcf.gz'.format(chrom, chrom)
+	hipstr_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%SAMPLE %GT ]\n" ' + hipstr_file_loc
+	cached_hipstr_iters[chrom] = sp.Popen(bcftools_command + hipstr_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout
+
+	cached_imputed_iters[chrom] = {}
+	for sample in samples:
+		imputed_file_loc = ukb + '/pre_imputation_qc/ref_panel_size/{}_imputed/chr{}/{}.vcf.gz'.format(panel_name, chrom, sample)
+		imputed_command = 'bcftools query -R ' + pos_file.name + ' -f "%POS %ID %REF %ALT [%GT %AP1 %AP2 ]\n" ' + imputed_file_loc
+		cached_imputed_iters[chrom][sample] = sp.Popen(bcftools_command + imputed_command, shell = True, stdout = sp.PIPE, stderr = sp.PIPE, universal_newlines = True).stdout
+	
+	#turn hipstr iter into strings 
+	cached_hipstr_lines[chrom] = cached_hipstr_iters[chrom].readlines()
+	nloci[chrom] = len(cached_hipstr_lines[chrom])
 
 #Returns a list of calls
 #Each call is a pair (dist, idx)

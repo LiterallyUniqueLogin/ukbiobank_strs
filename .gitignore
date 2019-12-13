@@ -28,3 +28,6 @@ __pycache__
 *.pickle
 *.enc
 *.enc_ukb
+*.key
+*.bulk
+fields.ukb
