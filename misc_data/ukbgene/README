@@ -1,0 +1,6 @@
+Data downloaded with the ukbgene utility that's not raw genetic data
+e.g. 
+./ukbgene rel 
+This is the relatedness coefficient calculated by the UKB nature paper
+between each of the ppts using King
+

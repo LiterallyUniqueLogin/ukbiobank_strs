@@ -1,0 +1,7 @@
+The 90m unphased genotypes imputed from the microarray chips
+See this paper for a description of the imputation procedure:
+www.nature.com/articles/s41586-018-0579-z
+Bycroft, C., Freeman, C., Petkova, D. et al. The UK Biobank resource with deep phenotyping and genomic data. Nature 562, 203~@~S209 (2018) doi:10.1038/s41586-018-0579-zB
+
+Currently nothing downloaded here. Use the same downloadAll.sh script
+as in microarray/ except replace hap with imp

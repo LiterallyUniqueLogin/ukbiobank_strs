@@ -1,7 +1,0 @@
-This website contains the checksums of the files
-https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=997
-
-I've copied the relevant portion into checksums.txt
-
-The utility ukbmd5 can be used to confirm that the checksums
-match (and so that the files have not been corrupted)

@@ -1,4 +1,6 @@
 UKBiobank data that is stored in EGA instead of in UKB's own webservers
+In particular, I needed the sample qc (sqc) file to figure out which samples
+were in the white british ancestry subset as defined by the UKB paper
 
 How I got this data:
 conda create -n ega
@@ -14,3 +16,4 @@ pyega3 -cf CREDENTIALS_FILE fetch EGAF00001844707
 conda deactivate
 
 The columns for ukb_sqc_v2.txt are described here: https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=531
+

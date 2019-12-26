@@ -1,7 +1,12 @@
+Data downloaded from the UKB data showcase that wasn't in
+our main dataset
+
+Individual SNP genotype QC information
 wget http://biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/ukb_snp_qc.txt
 Described here: http://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=1955
 Referenced here: http://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/ukbgene_instruct.html
 
+Correct ref/alt assignments per SNP:
 wget -nd  biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/ukb_snp_bim.tar
 This file contains the correct ref and alt alleles for each SNP
 The bgen hap files have permuted alleles which are more difficult to handle

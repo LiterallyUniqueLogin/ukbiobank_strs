@@ -467,6 +467,15 @@ Remove SNPs with major frequency discrepancies between SNP-STR ref panel and UKB
  (cite box 2: https://www.nature.com/articles/s41576-018-0016-z#Sec17 )
  Use KS test to compare allel frequencies distributions?
 
+Want to see if filtering SNPs inside/near STRs improves imputation accuracy
+(on the theory that those SNPs are not called well by arrays because the
+probes only bind to certain STR alleles)
+ - can test this in UKB exome
+ - cannot test this in 1000G because 1000G calls rely in part on WGS data
+ and so wouldn't have this bias. (See 1000G 2015 paper
+(https://www.nature.com/articles/nature15393) extended data figure 1 
+primary data box for confirmation of this)
+
 Ideas for QCing post (possible phasing and ) imputation:
 TODO
 Sample filters that can be applied immediately:

@@ -51,6 +51,8 @@ with open(os.environ['UKB'] + '/non_genetic_data/ukbgene/ukb46122_rel_s488282.da
 
 logging.info("Done creating subset kinship file. Num related samples: {}".format(len(related_samples)))
 
+#FYI, The PRIMUS command produces an ungodly amount of auxiliary files when
+#running - enough so that rm'ing them all takes a while
 commandString = \
 os.environ['SOURCE'] + "/PRIMUS_v1.9.0/bin/run_PRIMUS.pl " + \
 "-i FILE=" + kinship_subset_filename + " " + \

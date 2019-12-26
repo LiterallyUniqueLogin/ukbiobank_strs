@@ -1,0 +1,67 @@
+NVM, can probably get rtg vcfeval to work if we properly filter the allele
+loci beforehand. But won't allow us to understand allele prob comparisons ...
+
+NVM, the below approach won't work for handling cases like Beagle's allele
+probability (hard to combine variants when we're interested in probabilites,
+not hard calls).
+Sol'n - just resolve this problem when we need to.
+
+Reasons I don't like existing comparators:
+Illumina's xcmp (inside hap.py https://github.com/Illumina/hap.py#motivation )
+ - not well documented how this works
+RTG's vcfeval - doesn't handle allele probs (AP or GP)
+ - ignores variants in the truth set that are reference homozygous and not
+   called in the compared set instead of rewarding the compared set for them,
+   but on the flip side will penalized the compared set for missing them
+ - cannot produce an output set of the new caller's variants mapped onto the
+   Truth variants (or the old caller's variants)
+
+Proposal for a TR caller comparison script
+
+Description:
+In this description, US=ground truth, YOU=caller being evaluated
+1) You give us a BED of the positions in the reference genome you are calling as TRs
+2) We will intersect that with the BED of the TRs we are calling
+  and extract all those variants from our VCF
+3) For each of our variants, we will consider your variants that overlap it.
+   If our set of variants covers more bp of the reference than yours,
+   all of your alleles will be extended to include the bases from the reference genome
+   to match ours in length. If your caller has multiple variants overlapping our STR,
+   there are two possibilites:
+   (a) your variants are phased, so you are only presenting us with two
+   haplotypes. In this case, we match your full hapltoype of the TR against
+   our TR variant. We say our haplotype a|b matches your genotype c|d
+   iff a|b == c|d or a|b == d|c
+   (b) your variants are not phased (or you ask for unphased analysis),
+   so we will combine them in all possible
+   phasing combinations and say that your call matches our call if any of
+   those phasing combinations matches our call.
+   We compare matches in one of two manners:
+   (i) by length - all alleles with the same length count as matches
+   (ii) by sequence composition - alleles must have the exact
+     same sequence to match
+
+We then report the percentage of our TR loci where your calls do/do not match
+This describes how much of the information our caller produced that your
+caller captured.
+
+Note: this means if our caller's variants contain nearby SNPs or indels, then
+callers which don't report that information and compare by sequence
+composition will be penalized.
+
+Technical consideration: this requires our variants to be cover the maximal span of the STR in the
+reference genome, otherwise they may not overlap with the other caller's variants
+
+
+Attempt 2:
+Input: 2 VCFs, a 'reference VCF' and an 'alternate VCF'
+Goal: produce an output VCF with the same samples as the alternate VCF,
+but called for all the variants (or a subset of the variants) in the reference VCF.
+This allows the calls in the alternate VCF to be directly compared to other
+VCFs that are already formatted to the standard varaints in the reference VCF.
+Note that this is a lossy process - the alternate VCF input will likely have
+more information in it than the output VCF.
+
+More details:
+Choice of variants:  
+

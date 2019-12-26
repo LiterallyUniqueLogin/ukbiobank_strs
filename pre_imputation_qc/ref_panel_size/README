@@ -31,3 +31,14 @@ This means that 55% of loci with the same ID are at different
 positions between the two datasets. Why? They're on the
 same reference genome (b37)
 
+
+Side note:
+To run a comparison with rtg vcfeval
+First reformat hg19 into the rtg proprietary SDF format
+rtg format -o rtg_tests/hg19 /projects/ps-gymreklab/resources/dbase/human/hg19/hg19.fa
+Then rename the chromosomes of the existing baseline/call VCFs using the command
+bcftools annotate --rename-chrs rename_chrs.txt -o output.vcf.gz -O z original.vcf.gz
+Then run the comparison 
+rtg vcfeval --sample HG00351 -b hipstr_renamed_chr/chr22.vcf.gz -c full_panel_imputed/chr22/HG00351_chr_renamed.vcf.gz -t rtg_tests/hg19/ -o rtg_tests/default
+
+

@@ -1,3 +1,11 @@
+All the tools used to download UKB data.
+Their use is described here: http://biobank.ndph.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.0.pdf
+
 Before running any ukb tool on tscc, must put the updated version of glibc on the path:
 LD_LIBRARY_PATH=$SOURCE/glibc/:$LD_LIBRARY_PATH
 (SOURCE=/projects/ps-gymreklab/resources/source)
+
+For whatever reason, trying to run ukbgene of tscc is giving me segfaults
+Running it on snorlax works however
+The other utilities seem to work on tscc
+

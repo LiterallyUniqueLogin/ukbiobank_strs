@@ -1,1 +1,0 @@
-/projects/ps-gymreklab/resources/datasets/ukbiobank/non_genetic_data/affymetrix/AFFX_README-NetAffx-CSV-Files_Axiom.txt

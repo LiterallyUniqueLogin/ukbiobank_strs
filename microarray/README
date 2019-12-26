@@ -1,0 +1,25 @@
+This directory contains the 650k phased snp genotypes gathered by
+microarray chips, in bgen format.
+Note that this phased dataset doesn't contain all the 900k microarray genotypes 
+that passed the general QC.
+Rather, it was selected to meet the following higher QC standard:
+"For the pre-phasing step, we only used markers present on both the UK BiLEVE 
+and UK Biobank Axiom arrays. We removed markers that failed quality control in 
+more than one batch, had a greater than 5% overall missing rate, and had a MAF 
+of less than 0.0001. We removed samples that were identified as outliers for 
+heterozygosity and missing rate."
+See here for more details: https://www.nature.com/articles/s41586-018-0579-z
+Bycroft, C., Freeman, C., Petkova, D. et al. The UK Biobank resource with deep phenotyping and genomic data. Nature 562, 203~@~S209 (2018) doi:10.1038/s41586-018-0579-zB
+
+These files were downloaded using downloadAll.sh
+The sample file contains a list of all the sample names in a standard format.
+Though the sample and fam files say chr1, they are applicable for all chromosomes
+
+This website contains the checksums of the files
+https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=997
+
+I've copied the relevant portion into checksums.txt
+
+The utility ukbmd5 can be used to confirm that the checksums
+match (and so that the files have not been corrupted)
+
