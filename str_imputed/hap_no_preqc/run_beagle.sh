@@ -17,9 +17,13 @@ java -Xmx12500m -jar $SOURCE/beagle.21Sep19.ec3.jar \
 	out=$OUTFILE_NOEXT \
 	map=$SOURCE/beagle_genetic_maps/plink.chr$3.GRCh37.map \
 	impute=true gp=false ap=true
-#for testing out=$UKB/str_imputed/hap_no_preqc/vcf_batches/chr$3_samples_$1_to_$2_$(date +%m_%d_%H_%M_%S) \
 conda deactivate
 
+#create both the .vcf file and .vcf.gz file because
+#I haven't finalized how I want to do merging
 conda activate bcftools
+bgzip -d $OUTFILE_NOEXT.vcf.gz
+$UKB/utilities/add_ap_metadata.sh $OUTFILE_NOEXT.vcf no-gz
+bgzip -c $OUTFILE_NOEXT.vcf > $OUTFILE_NOEXT.vcf.gz
 tabix $OUTFILE_NOEXT.vcf.gz
 conda deactivate
