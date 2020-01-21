@@ -19,14 +19,6 @@ This makes ~500 VCFs containing the entire chr but a subset of samples
 check_for_errors is a utility which can be called after this point which will print out all the 
 errors from all the batch jobs run
 
-Step 2:
-add_ap_header.pbs should be run next and fixes a bug in beagle by replacing the GP header with the AP1 and AP2 headers
-in a VCF file
-It modifies the files already present in vcf_batches/
-It also produces backup copies of the original files in vcf_batches/cache
-lauch_add_ap_header.sh launches a batch of that for each batch produced by lauch_impute.py
-Output goes to add_ap_header_output/
-
 Step 3:
 mergeWithinChrRegions.pbs
 it puts the vcfs into vcf_batches/chrX_pos_YYYY_to_ZZZZZ.vcf.gz
