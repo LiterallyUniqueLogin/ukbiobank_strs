@@ -1,0 +1,1 @@
+First pass at imputation. All samples (not filtered). Only filtered SNPs that were too discrepant in MAF between the UKB and SNPSTR. Naive cutoff of abs(MAF difference) < 0.12

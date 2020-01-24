@@ -2,7 +2,7 @@
 #PBS -q hotel
 #PBS -N filter_dataset
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=04:00:00
+#PBS -l walltime=00:30:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/pre_imputation_qc/allele_freqs/filtered_abs_gt_0.12/output
 #PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/pre_imputation_qc/allele_freqs/filtered_abs_gt_0.12/output
 #PBS -V
@@ -15,6 +15,7 @@ echo INPUT1 $INPUT1
 >&2 echo INPUT1 $INPUT1 
 
 plink2 --pfile $UKB/microarray/pfile_converted/chr$INPUT1 \
-	--exclude bed0 $UKB/pre_imputation_qc/allele_freqs/filtered_snps.bed \
-	--make-pgen $UKB/pre_imputation_qc/allele_freqs/filtered_abs_gt_0.12/chr$INPUT1
+	--exclude bed0 $UKB/pre_imputation_qc/allele_freqs/filtered_abs_gt_0.12/filtered_snps.bed \
+	--make-pgen \
+	--out $UKB/pre_imputation_qc/allele_freqs/filtered_abs_gt_0.12/chr$INPUT1
 

@@ -1,12 +1,14 @@
 #!/bin/bash
-#usage:
-#add_ap_metadata.sh file.vcf.gz gz
-#or
-#add_ap_metadata.sh file.vcf no-gz
-#Beagle currently has a bug where if you ask it for the AP
+##Beagle currently has a bug where if you ask it for the AP
 #Format field but not the GP format field, it will output the correct fields,
 #but write out the metadata line for the GP field and not the AP field.
 #This utility fixes that problem.
+#usage:
+#add_ap_metadata.sh file gz
+#or
+#add_ap_metadata.sh file no-gz
+#where file has no file extension, but in the first case
+#file.vcf.gz exists, and in the second file.vcf exists
 #More specifically:
 #In the gz mode
 #it unzips a vcf.gz file,
@@ -36,14 +38,13 @@ if [ ! -z "$3" ] ; then
         exit -1
 fi
 
+FILE_NAME=$1
+
 source ~/.bashrc
 conda activate bcftools
 
-FILE_NAME=$1
-
-
 if [[ "$2" == "gz" ]] ; then
-	bgzip -df $file_name.vcf.gz
+	bgzip -df $FILE_NAME.vcf.gz
 fi 
 
 sed 's/##FORMAT=<ID=GP.*/##FORMAT=<ID=AP1,Number=A,Type=Float,Description="Estimated Allele 1 Probability">\n##FORMAT=<ID=AP2,Number=A,Type=Float,Description="Estimated Allele 2 Probability">/' \
