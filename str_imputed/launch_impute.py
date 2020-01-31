@@ -108,13 +108,12 @@ for minId in range(1, numSamples, 1000):
 for job in jobsToRun:
 	minId = job[0]
 	maxId = job[1]
-	if os.path.exists(outputLogLoc(minId, maxId)):
-		os.rename(outputLogLoc(minId, maxId), outputDir() + "/old/" + now + "_" + batchName(minId, maxId) + ".log")
 	if os.path.exists(outputLocNoExt(minId, maxId) + ".vcf.gz"):
 		os.rename(outputLocNoExt(minId, maxId) + ".vcf.gz", outputDir() + "/old/" + now + "_"  + batchName(minId, maxId) + ".vcf.gz")
 	if os.path.exists(outputLoc(minId, maxId)):
 		os.rename(outputLoc(minId, maxId), outputDir() + "/old/" + now + "_"  + batchName(minId, maxId) + ".vcf.gz.tbi")
-
+	if os.path.exists(outputLogLoc(minId, maxId)):
+		os.rename(outputLogLoc(minId, maxId), outputDir() + "/old/" + now + "_" + batchName(minId, maxId) + ".log")
 print(f"chr{chr}: Jobs to run", jobsToRun)
 
 if len(jobsToRun) == 0:
