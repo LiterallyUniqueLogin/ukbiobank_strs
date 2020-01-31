@@ -115,16 +115,33 @@ for job in jobsToRun:
 	if os.path.exists(outputLoc(minId, maxId)):
 		os.rename(outputLoc(minId, maxId), outputDir() + "/old/" + now + "_"  + batchName(minId, maxId) + ".vcf.gz.tbi")
 
-print("Jobs to run", jobsToRun)
+print(f"chr{chr}: Jobs to run", jobsToRun)
 
-existingErrors = sp.run(f"grep -b10 -v INPUT {ukb}/str_imputed/{run_name}/batches/output/*.e*",
-	shell = True,
-	stdout = sp.PIPE,
-	stderr = sp.PIPE)
-existingErrors = existingErrors.stdout.decode()
+if len(jobsToRun) == 0:
+	exit()
+
+existingErrorIds = set()
+existingErrorFiles = set()
+for file_name in glob.glob(f"{ukb}/str_imputed/{run_name}/batches/output/*.e*"):
+	with open(file_name) as file:
+		contents = file.readlines()
+		error = False
+		current_chrom = False
+		for line in contents:
+			if f"INPUT3 {chr}" in line:
+				current_chrom = True
+			if not "INPUT1" in line:
+				error = True
+		if error and current_chrom:
+			existingErrorFiles.add(file_name)
+			matches = re.findall("INPUT1 ([0-9]+)", " ".join(contents))
+			if len(matches) != 1:
+				print("Found more than 1 INPUT1 in an error file, confused", file = sys.stderr)
+				exit(-1)
+			existingErrorIds.add(int(matches[0]))
 
 fix_jobs = set()
-for jobId in [int(match.group(1)) for match in re.finditer("INPUT1 ([0-9]+)", existingErrors)]:
+for jobId in existingErrorIds:
 	if jobId not in jobIds:
 		fix_jobs.add(jobId)
 
@@ -132,18 +149,18 @@ if len(fix_jobs) > 0:
 	print(f"There are existing errors with jobs {fix_jobs} but we're not rerunning them. Please solve this problem by either removing the associated .vcf.gz.tbi files from {ukb}/str_imputed/{run_name}/batches, which will cause the jobs to be rerun, or remove the associated .e error files from {ukb}/str_imputed/{run_name}/batches/output, which will cause the job not to be rerun (the error file can be found by grepping the *.e* files in that directory for 'INPUT1 <job_id> '", file = sys.stderr)
 	exit(-1)
 
-existingErrorFiles = sp.run(f"grep -l -v INPUT {ukb}/str_imputed/{run_name}/batches/output/*.e*", shell = True, stdout = sp.PIPE, stderr=sp.PIPE)
-existingErrorFiles = existingErrorFiles.stdout.decode()
-for file in existingErrorFiles.split():
+#create munged impute.pbs file
+sp.run(f"sed -e 's/%RUN_NAME%/{run_name}/g' {ukb}/str_imputed/impute.pbs > {tmpdir}/impute_{run_name}.pbs",
+	shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
+
+#We're going to rerun the files which have existing errors,
+#so move all the errors to the old directory
+for file in existingErrorFiles:
 	os.rename(file.replace(".e", ".o"), outputDir() + "/old/" + file.split("/")[-1].replace(".e", ".o"))
 	os.rename(file, outputDir() + "/old/" + file.split("/")[-1])
 
-#create munged impute.pbs file
-sp.run(f"sed -e 's/%RUN_DIR%/{run_name}/g' {ukb}/str_imputed/impute.pbs > {tmpdir}/impute_{run_name}.pbs",
-	shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-
 for job in jobsToRun:
-	print("Launching job", job)
+	print(f"chr{chr}: Launching job {job}")
 	sp.run(f'qsub -v "INPUT1={job[0]},INPUT2={job[1]},INPUT3={chr},INPUT4={pfile_dir},INPUT5={sample_dir}" {tmpdir}/impute_{run_name}.pbs',
 		 shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
 

@@ -3,52 +3,84 @@ import os
 import sys
 import time
 import merge_all_functions as merge
+import argparse
+import functools
+import Bio.bgzf as bgzf
 
-if len(sys.argv) != 2:
-        print("Expecting exactly 1 argument, the chromosome number")
-        exit(-1)
-chr = sys.argv[1]
+parser = argparse.ArgumentParser()
+parser.add_argument("run_name", help="will look for the vcfs to merge in {ukb}/str_imputed/{run_name}/vcf_batches/chr{chr}_samples_*.vcf.gz")
+parser.add_argument("chr", help="the chromosome number")
+parser.add_argument("--num_files", help="Only merge the first n files. Used for testing only", default="")
 
-#set n_samples for all files and then last file
-samples_per_file = 1000
-samples_last_file = 409
-n_files = len(glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_*.vcf" .format(\
-	os.environ['UKB'], chr)))
-n_files_minus_one = n_files - 1 #precompute this
+args=parser.parse_args()
+chr = args.chr
+run_name = args.run_name
+num_files = args.num_files
+
+ukb = os.environ['UKB']
+
+files = glob.glob(f"{ukb}/str_imputed/{run_name}/batches/chr{chr}_samples_*.vcf.gz")
+def num_string_comparator(a, b):
+	if len(a) != len(b):
+		return len(a) - len(b)
+	elif a<b:
+		return -1
+	elif a == b:
+		return 0
+	else:
+		return 1
+files = sorted(files, key=functools.cmp_to_key(num_string_comparator))
+
+def num_samples_in_file(file_name):
+	parts = file_name.split('/')[-1].split('.')[0].split('_')
+	return int(parts[4]) - int(parts[2])
+samples_per_file = num_samples_in_file(files[0])
+samples_last_file = num_samples_in_file(files[-1])
+
+if num_files == "":
+	num_files = len(files)
+else:
+	num_files = int(num_files)
+files = files[:num_files]
+n_files_minus_one = num_files - 1 #precompute this
 
 try:
 	#set up the overall script and open all the files
 	startup_start = time.time()
 	input_vcfs = []
-	vcf_names = []
 	output = None
 	sample_block_len = len('\t0|0:0:0:0')
-	for i in range(0, n_files):
-		file_name = glob.glob("{}/str_imputed/hap_no_preqc/vcf_batches/chr{}_samples_{}_*.vcf" .format(\
-			os.environ['UKB'], chr, i*samples_per_file + 1))[0]
-		vcf_names.append(file_name)
-		input_vcfs.append(open(file_name, 'br'))
+	for count, file_name in enumerate(files):
+		input_vcfs.append(bgzf.open(file_name, 'br'))
+
 	first_vcf = input_vcfs[0]
 
-	output_loc = "{}/str_imputed/hap_no_preqc/vcfs/chr{}.vcf".format(os.environ['UKB'], chr)
+	if num_files != "":
+		output_loc = f"{ukb}/str_imputed/{run_name}/vcfs/chr{chr}_num_files_{num_files}.vcf.gz"
+	else:
+		output_loc = f"{ukb}/str_imputed/{run_name}/vcfs/chr{chr}.vcf.gz"
 	preexisting_output = os.path.exists(output_loc)
 
 	if not preexisting_output:
-		print("Starting the new merge")
-		output = open(output_loc, 'wb')
+		print("Starting a new merge")
+		sys.stdout.flush()
+		output = bgzf.open(output_loc, 'wb')
 		merge.validate_and_write_metadata(input_vcfs, output)
 	else:
 		print("Found a file already in progress, continuing from there")
-		output = open(output_loc, 'r+b')
+		sys.stdout.flush()
+		output = bgzf.open(output_loc, 'r+b')
 		variant_pos = merge.truncate_last_defined_variant(output)
 		for i, vcf in enumerate(input_vcfs):
 			merge.seek_to_variant(vcf, variant_pos, vcf_names[i])
 			print('Done setting up file {}/{}   '.format(i, len(input_vcfs)), end='\r')
+			sys.stdout.flush()
 	#either way, all of the input_vcfs will be pointing to the next
 	#character after the newline in front of the next variant to write
 	#out to the output
 
 	print("startup time: {:.2}s".format(time.time() - startup_start))
+	sys.stdout.flush()
 	
 	#Write each variant to the vcf
 	#assume all data lines are properly formatted
@@ -137,6 +169,7 @@ try:
 		if n_variants % 1000 == 0:
 			print('Variants complete(d this run): {}, Total time: {:.2}s, time/variant: {:.2}s, last 10 variants time: {:.2}s                   '.format(
 				n_variants, now - all_variants_start, (now - all_variants_start)/n_variants, now - variant_start), end = '\r')
+			sys.stdout.flush()
 finally:
 	for file in input_vcfs:
 		if file is not None:

@@ -2,9 +2,9 @@
 #PBS -q hotel
 #PBS -N impute_STRs
 #PBS -l nodes=1:ppn=4
-#PBS -l walltime=00:30:00
-#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_DIR%/output
-#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_DIR%/output
+#PBS -l walltime=00:45:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
@@ -14,13 +14,13 @@
 #INPUT4 the location of the input pfile
 #INPUT5 the location of the .sample file
 #(see cut_input_vcf for description)
-#%RUN_DIR% above must be munged before launching jobs with this script
+#%RUN_NAME% above must be munged before launching jobs with this script
 #For this script to work, the standard environment variable TMPDIR must be set
 
 #Make the inputs identifiable in the logs
-echo INPUT1 $INPUT1 INPUT2 $INPUT2 INPUT3 $INPUT3 INPUT4 $INPUT4 INPUT5 $INPUT5 RUN_DIR %RUN_DIR%
->&2 echo INPUT1 $INPUT1 INPUT2 $INPUT2 INPUT3 $INPUT3 INPUT4 $INPUT4 INPUT5 $INPUT5 RUN_DIR %RUN_DIR%
+echo INPUT1 $INPUT1 INPUT2 $INPUT2 INPUT3 $INPUT3 INPUT4 $INPUT4 INPUT5 $INPUT5 RUN_NAME %RUN_NAME%
+>&2 echo INPUT1 $INPUT1 INPUT2 $INPUT2 INPUT3 $INPUT3 INPUT4 $INPUT4 INPUT5 $INPUT5 RUN_NAME %RUN_NAME%
 
-$UKB/str_imputed/cut_input_vcf.sh $INPUT1 $INPUT2 $INPUT3 $INPUT4 $INPUT5 %RUN_DIR%
-$UKB/str_imputed/run_beagle.sh $INPUT1 $INPUT2 $INPUT3 %RUN_DIR%
+$UKB/str_imputed/cut_input_vcf.sh $INPUT1 $INPUT2 $INPUT3 $INPUT4 $INPUT5 %RUN_NAME%
+$UKB/str_imputed/run_beagle.sh $INPUT1 $INPUT2 $INPUT3 %RUN_NAME%
 

@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N merge_within_region 
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=24:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output/
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output/
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+#Note that this merge will spit out INFO fields from the first file in line.
+#In particular, the AF and DR2 will be inaccurate.
+
+if [ -z "$INPUT1" ] ; then
+        echo "didn't give INPUT1 argument - should be start position of chrom region"
+        exit -1
+fi
+
+if [ -z "$INPUT2" ] ; then
+        echo "didn't give INPUT2 argument - should be chrom number"
+        exit -1
+fi
+
+run_name=%RUN_NAME%
+
+#make the logs identifiable
+echo INPUT1 $INPUT1 INPUT2 $INPUT2 RUN_NAME $run_name
+>&2 echo INPUT1 $INPUT1 INPUT2 $INPUT2 RUN_NAME $run_name
+
+END=$((INPUT1 + 4999999))
+
+source ~/.bashrc
+
+conda activate ukb_analysis
+files=$(python $UKB/str_imputed/list_batches_in_order.py $run_name $INPUT2)
+conda deactivate
+
+conda activate bcftools_custom
+echo "Starting merge"
+time bcftools merge $files \
+		    -o $UKB/str_imputed/$run_name/batches/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz -O z \
+		    -r $INPUT2:$INPUT1-$END
+conda deactivate
+

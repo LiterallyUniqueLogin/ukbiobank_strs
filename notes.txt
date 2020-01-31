@@ -272,6 +272,11 @@ Cost = 641582 variants * 487409 samples * (0.239 seconds/(sample * 10531 variant
 Beagle phasing is too slow: output sasy ~19 hrs/ window (window size is 40MB) for 20k samples with full access to snorlax.
 This means 9GB/40MB * 19hrs * 500/20 -> 4453 days of compute time on Snorlax for the full genome.
 
+2020/01/24
+- confirmed that my changes to the imputation suite are backwards compatible
+- confirmed that Beagle 25 Nov 2019 is exactly reproducible (no randomness)
+- TODO confirm that this version is still sample independent (samples can be batched or run one at a time with no difference)
+
 Merging runtime tests:
 Running bcftools merge on all the files at once (one process only, no parallelism) seemed to take too long. I remember
 estimating 10days for chr3. Unfortunately, I didn't write down exactly the computation I did 
@@ -288,6 +293,8 @@ these files could simply be concatenated) produced the errors:
     user    739m5.762s
     sys     15m40.164s
 Didn't want to diagnose these errors, so I gave up
+(2020/01/27 - I reproduced the threading error in an interactive environment:
+I know that there's no issue with the code I ran and that the error is real)
 
 My script (merge_all.py) on chr 3 (hap_no_preqc) takes 22hr 15min to handle ~267436 variants which leads to 
 0.3s per variant or 6.8 days for chr3
@@ -346,6 +353,9 @@ Compressing chr3 took 15.25 hours
 Indexing chr3 took 8.45 hours
 Compressed chr3 was 20% smaller than the sum of the sizes of 
 all the individually compressed batches of chr3
+
+Now using bcftools merge in parallel and then bcftools concat for merging.
+Confirmed that the first 389k lines don't differ between that and my script for all of chr3 
 
 
 VCF QC
