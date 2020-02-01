@@ -1,0 +1,47 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N check_beagle_output
+#PBS -l nodes=1:ppn=2
+#PBS -l walltime=48:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+#This should take a bit over half a day
+#For comparing a UKB callset with all individuals
+#against the reference panel
+
+if [ -z "$INPUT1" ] ; then
+	echo "Didn't give INPUT1 argument - should be chrom number"
+	exit -1
+fi
+
+if [ -z "$INPUT2" ] ; then
+	echo "Didn't give INPUT2 argument - should be number of lines to skip from the top of \
+the callset vcf till you get to the first variant line"
+	exit -1
+fi
+
+run_name=%RUN_NAME%
+
+files=$(ls $UKB/str_imputed/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz )
+
+if [ -z "$files" ] ; then
+	echo "Error: Found no files matching $UKB/str_imputed/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz"
+	exit -1
+fi
+
+for file in $files ; do
+	echo "Checking file $file"
+	time cmp <( cut -f1-5 $UKB/snpstr/vcf_1_sample/chr$INPUT1.vcf | tail -n +12 ) \
+	    <( zcat $file | cut -f1-5 | tail -n +$(($INPUT2 + 1)) ) || \
+	{
+		echo "The variants in file $file do not match the reference panel"
+		exit -1
+	}
+done
+
+echo "Success. All variants for chromosome $INPUT1 match those in the reference panel."
+
