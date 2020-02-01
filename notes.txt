@@ -620,3 +620,7 @@ To download exome data, see here:
 http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=644
 and here
 http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=170
+
+first_pass:
+Chromosomes 1-10 are done with beagle and checked for samples (variants check ongoing)
+Checkup on variants check and regional merge
