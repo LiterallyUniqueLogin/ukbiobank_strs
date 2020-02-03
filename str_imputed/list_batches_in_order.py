@@ -8,7 +8,7 @@ import functools
 ukb = os.environ['UKB']
 
 def list_of_files(run_name, chr):
-	files = glob.glob(f"{ukb}/str_imputed/{run_name}/batches/chr{chr}_samples_*.vcf.gz")
+	files = glob.glob(f"{ukb}/str_imputed/runs/{run_name}/batches/chr{chr}_samples_*.vcf.gz")
 	def num_string_comparator(a, b):
 		if len(a) != len(b):
 			return len(a) - len(b)
@@ -22,7 +22,7 @@ def list_of_files(run_name, chr):
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
-	parser.add_argument("run_name", help="will look for the vcfs to merge in {ukb}/str_imputed/{run_name}/vcf_batches/chr{chr}_samples_*.vcf.gz")
+	parser.add_argument("run_name", help="will look for the vcfs to merge in {ukb}/str_imputed/runs/{run_name}/vcf_batches/chr{chr}_samples_*.vcf.gz")
 	parser.add_argument("chr", help="the chromosome number")
 
 	args=parser.parse_args()

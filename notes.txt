@@ -624,3 +624,5 @@ http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=170
 first_pass:
 Chromosomes 1-10 are done with beagle and checked for samples (variants check ongoing)
 Checkup on variants check and regional merge
+variants check - check_beagle_output.e20296626 failed
+The variants in file /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/first_pass/batches/chr7_samples_290001_to_291000.vcf.gz do not match the reference panel

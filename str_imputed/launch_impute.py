@@ -7,7 +7,7 @@ import argparse
 import glob
 
 parser = argparse.ArgumentParser()
-parser.add_argument("run_name", help="Output files will be put in $UKB/str_imputed/run_name")
+parser.add_argument("run_name", help="Output files will be put in $UKB/str_imputed/runs/run_name")
 parser.add_argument("pfile_directory", help="the directory containing the pfiles of the dataset to be imputed (the pfiles must be named chr1 ... chr22)")
 parser.add_argument("sample_directory", help="the directory containing the .sample file with the list of samples, see $UKB/microarray/*.sample for an example")
 parser.add_argument("chromosome_number", help="the number of the chromosome to impute")
@@ -35,22 +35,24 @@ if not "TMPDIR" in os.environ:
 	exit(-1)
 tmpdir = os.environ['TMPDIR']
 
-os.makedirs(f"{ukb}/str_imputed/{run_name}/", exist_ok = True)
-os.makedirs(f"{ukb}/str_imputed/{run_name}/batches", exist_ok = True)
-os.makedirs(f"{ukb}/str_imputed/{run_name}/batches/output", exist_ok = True)
-os.makedirs(f"{ukb}/str_imputed/{run_name}/batches/old", exist_ok = True)
+os.makedirs(f"{ukb}/str_imputed/runs/{run_name}/", exist_ok = True)
+os.makedirs(f"{ukb}/str_imputed/runs/{run_name}/batches", exist_ok = True)
+os.makedirs(f"{ukb}/str_imputed/runs/{run_name}/batches/output", exist_ok = True)
+os.makedirs(f"{ukb}/str_imputed/runs/{run_name}/batches/old", exist_ok = True)
 
 #Write the README for this run, or check that it exists as specified
-if not os.path.exists(f"{ukb}/str_imputed/{run_name}/README"):
+if not os.path.exists(f"{ukb}/str_imputed/runs/{run_name}/README"):
 	if readme == "":
 		print("Error: No README for this run already exists, but didn't specify one with the --readme argument.", file = sys.stderr)
 		exit(-1)
 	else:
-		with open(f"{ukb}/str_imputed/{run_name}/README", 'w') as README_file:
+		with open(f"{ukb}/str_imputed/runs/{run_name}/README", 'w') as README_file:
+			README_file.write(readme + "\n")
+		with open(f"{ukb}/str_imputed/run_readmes/{run_name}_README", 'w') as README_file:
 			README_file.write(readme + "\n")
 else:
 	if readme != "":
-		with open(f"{ukb}/str_imputed/{run_name}/README") as README_file:
+		with open(f"{ukb}/str_imputed/runs/{run_name}/README") as README_file:
 			if (readme + "\n") != README_file.read():
 				print("Error: Found a different description in the README file than the currently intended one. Either delete the README file so a new one can be written, or remove the --readme flag", file = sys.stderr)
 				exit(-1)
@@ -77,7 +79,7 @@ def batchName(minId, maxId):
 	return "chr{}_samples_{}_to_{}".format(chr, minId, maxId)
 
 def outputDir():
-	return f"{ukb}/str_imputed/{run_name}/batches"
+	return f"{ukb}/str_imputed/runs/{run_name}/batches"
 
 def outputLocNoExt(minId, maxId):
 	return "{}/{}".format(outputDir(), batchName(minId, maxId))
@@ -121,7 +123,7 @@ if len(jobsToRun) == 0:
 
 existingErrorIds = set()
 existingErrorFiles = set()
-for file_name in glob.glob(f"{ukb}/str_imputed/{run_name}/batches/output/*.e*"):
+for file_name in glob.glob(f"{ukb}/str_imputed/runs/{run_name}/batches/output/*.e*"):
 	with open(file_name) as file:
 		contents = file.readlines()
 		error = False
@@ -145,7 +147,7 @@ for jobId in existingErrorIds:
 		fix_jobs.add(jobId)
 
 if len(fix_jobs) > 0:
-	print(f"There are existing errors with jobs {fix_jobs} but we're not rerunning them. Please solve this problem by either removing the associated .vcf.gz.tbi files from {ukb}/str_imputed/{run_name}/batches, which will cause the jobs to be rerun, or remove the associated .e error files from {ukb}/str_imputed/{run_name}/batches/output, which will cause the job not to be rerun (the error file can be found by grepping the *.e* files in that directory for 'INPUT1 <job_id> '", file = sys.stderr)
+	print(f"There are existing errors with jobs {fix_jobs} but we're not rerunning them. Please solve this problem by either removing the associated .vcf.gz.tbi files from {ukb}/str_imputed/runs/{run_name}/batches, which will cause the jobs to be rerun, or remove the associated .e error files from {ukb}/str_imputed/runs/{run_name}/batches/output, which will cause the job not to be rerun (the error file can be found by grepping the *.e* files in that directory for 'INPUT1 <job_id> '", file = sys.stderr)
 	exit(-1)
 
 #create munged impute.pbs file

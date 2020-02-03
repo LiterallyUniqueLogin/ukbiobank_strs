@@ -9,17 +9,18 @@ python launch_impute.py <run_name> \
 	<directory containing callset chrN.vcf.gz files> \
 	<directory containing the .sample file for the callset> \
 	<chr number to impute>
-        --readme <Description of the run (if this is the first call with this run name)>
+        --readme <Description of the run (only supply this if this is the first call to impute with this run name)>
 
 This runs the imputation.
 It first creates the directory structure
-$UKB/str_imputed/<run_name>
+$UKB/str_imputed/runs/<run_name>
                      /batches
                      /README
                      /vcfs
                      /batches/output (a log directory)
                      /batches/old (a log directory)
 README contains the description you wrote in the launch_impute.py invocation
+README is also copied to $UKB/str_imputed/run_readmes/<run_name>_README
 /batches contains intermediate results and run logs
 /vcfs will contain the final output vcfs
 

@@ -3,8 +3,8 @@
 #PBS -N concat_chr_regions
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=48:00:00
-#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output
-#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/%RUN_NAME%/batches/output
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
@@ -16,11 +16,14 @@ fi
 
 run_name=%RUN_NAME%
 
+echo INPUT1 $INPUT1 RUN_NAME $run_name
+>&2 echo INPUT1 $INPUT1 RUN_NAME $run_name
+
 #get a list of files to concat
 FILES_TO_CONCAT=""
 for begin in $(seq 1 5000000 250000001) ; do
 	end=$((begin + 4999999))
-	FILE=$UKB/str_imputed/$run_name/batches/chr${INPUT1}_pos_${begin}_to_${end}.vcf.gz 
+	FILE=$UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_pos_${begin}_to_${end}.vcf.gz 
 	if [ -f "$FILE" ] ; then
 		FILES_TO_CONCAT="$FILES_TO_CONCAT $FILE"
 	else 
@@ -33,8 +36,8 @@ conda activate bcftools
 
 echo "Beginning concatenation"
 time bcftools concat $FILES_TO_CONCAT \
-		    -o $UKB/str_imputed/$run_name/vcfs/chr${INPUT1}.vcf.gz -O z --naive
+		    -o $UKB/str_imputed/runs/$run_name/vcfs/chr${INPUT1}.vcf.gz -O z --naive
 echo "Done with concatenation. Beginning indexing"
-time tabix $UKB/str_imputed/hap_no_preqc/vcfs/chr${INPUT1}.vcf.gz
+time tabix $UKB/str_imputed/runs/$run_name/vcfs/chr${INPUT1}.vcf.gz
 echo "Done with indexing. Done"
 conda deactivate
