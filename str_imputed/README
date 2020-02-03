@@ -69,8 +69,11 @@ launch_impute.py calls impute.pbs which calls cut_input_vcf.sh and run_beagle.sh
 launch_merge_within_region.sh calls merge_within_region.pbs which calls list_batches_in_order.py
 launch_concat_chr_regions.sh calls concat_chr_regions.pbs
 
-You can run check_for_errors.sh <run_name> which will open up a vim file
-with all the errors from any of the pbs log files for jobs launched by any of the steps
+You can run check_for_pbs_script_errors.sh <run_name> which will print out all the 
+errors from any of the pbs log files for jobs launched by any of the steps
+Each file's errors is preceded by the file name, and each line of error in the file
+is preceeded by the line number
+If it produces no output, that should mean that there are no errors in the logs
 
 All the steps will put pbs log files <script_name>.o<run_number> and .e files in batches/output
 Step 1 will put beagle <file_name>.log files in batches/
