@@ -69,7 +69,7 @@ launch_impute.py calls impute.pbs which calls cut_input_vcf.sh and run_beagle.sh
 launch_merge_within_region.sh calls merge_within_region.pbs which calls list_batches_in_order.py
 launch_concat_chr_regions.sh calls concat_chr_regions.pbs
 
-You can run check_for_pbs_script_errors.sh <run_name> which will print out all the 
+You can run check_for_pbs_errors.sh <run_name> which will print out all the 
 errors from any of the pbs log files for jobs launched by any of the steps
 Each file's errors is preceded by the file name, and each line of error in the file
 is preceeded by the line number

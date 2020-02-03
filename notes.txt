@@ -623,6 +623,9 @@ http://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=170
 
 first_pass:
 Chromosomes 1-6,8-10 are done with beagle and have the correct samples and variants
-Checkup on regional merge for those chromosomes
-Chromosome 7 is rerunning an imputation, after which we need to recheck it for variants and samples
+Running regional merge for these chromosomes
+Chromosomes 11, 14 are done with beagle. Needs to be checked for vairants and samples, then merged.
+Chromosomes 7, 12, 13 are rerunning imputations, after which we need to check them for variants and samples, then merged.
+First pass on chromosomes 15, 16
+Need to create a script to check the output of the regional merge commands
 

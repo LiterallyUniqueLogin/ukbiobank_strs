@@ -22,8 +22,8 @@ if [ -z "$TMPDIR" ] ; then
 fi
 
 sed -e "s/%RUN_NAME%/$1/g" \
-	$UKB/str_imputed/check_beagle_output.pbs \
-	> $TMPDIR/check_beagle_output_$1.pbs
+	$UKB/str_imputed/check_beagle_output_variants.pbs \
+	> $TMPDIR/check_beagle_output_variants_$1.pbs
 
-qsub -v "INPUT1=$2,INPUT2=$3" $TMPDIR/check_beagle_output_$1.pbs
+qsub -v "INPUT1=$2,INPUT2=$3" $TMPDIR/check_beagle_output_variants_$1.pbs
 
