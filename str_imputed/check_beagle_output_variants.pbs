@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N check_beagle_output
+#PBS -N check_beagle_output_variants
 #PBS -l nodes=1:ppn=2
 #PBS -l walltime=48:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
