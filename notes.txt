@@ -625,7 +625,11 @@ first_pass:
 Chromosomes 1-6,8-10 are done with beagle and have the correct samples and variants
 Running regional merge for these chromosomes
 Chromosomes 11, 14 are done with beagle. Needs to be checked for vairants and samples, then merged.
-Chromosomes 7, 12, 13 are rerunning imputations, after which we need to check them for variants and samples, then merged.
-First pass on chromosomes 15, 16
+Chromosomes 7, 12, 13, 22 are rerunning imputations, after which we need to check them for variants and samples, then merged.
+First pass on chromosomes 15, 16, 17, 21
+Need to start on chromosomes 18-20
 Need to create a script to check the output of the regional merge commands
+
+pos files are 12x larger than samples files, and so should take over 6 days to check all variants
+I think
 

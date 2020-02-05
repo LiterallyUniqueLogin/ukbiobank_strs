@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 source ~/.bashrc
 
@@ -17,7 +17,7 @@ fi
 if [ -z "$3" ] ; then
         echo "didn't give third argument - should be the chromosome number"
         exit -1
-if
+fi
 
 if [ -z "$4" ] ; then
         echo "didn't give fourth argument - should be the run name"
