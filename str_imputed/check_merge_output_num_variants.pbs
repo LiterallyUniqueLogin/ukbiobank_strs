@@ -1,0 +1,41 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N check_merge_output_num_variants
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=48:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+#Not sure how long this will take
+#confirms that the number of variants in the regional merge file
+#is the same as the number of variants in the reference panel
+#(e.g. that the regional merge wasn't truncated)
+
+if [ -z "$INPUT1" ] ; then
+	echo "Didn't give INPUT1 argument - should be the regional merge .vcf.gz file to check" 1>&2
+	exit -1
+fi
+
+if [ -z "$INPUT2" ] ; then
+	echo "Didn't give INPUT2 argument - should be the number of variants expected" 1>&2
+	exit -1
+fi
+
+run_name=%RUN_NAME%
+
+echo INPUT1 $INPUT1 INPUT2 $INPUT2 RUN_NAME $run_name
+>&2 echo INPUT1 $INPUT1 INPUT2 $INPUT2 RUN_NAME $run_name
+
+echo "Counting lines in regional merge file and timing"
+n_merge_lines=$(time { zcat $INPUT1 | grep -v "^#" | wc -l ; } )
+
+if (( $INPUT2 != $n_merge_lines )) ; then
+	echo "Failed. Found $n_merge_lines variants in the regional merge file but expected $INPUT2 variants" 1>&2
+	exit -1
+fi
+
+echo "Success. Correct number of variants found in file $INPUT1"
+

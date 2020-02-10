@@ -18,30 +18,24 @@ if [ -z "$INPUT1" ] ; then
 	exit -1
 fi
 
-if [ -z "$INPUT2" ] ; then
-	echo "Didn't give INPUT2 argument - should be number of lines to skip from the top of \
-the callset vcf till you get to the first variant line"
-	exit -1
-fi
-
 run_name=%RUN_NAME%
 
-echo INPUT1 $INPUT1 INPUT2 $INPUT2 RUN_NAME $run_name
->&2 echo INPUT1 $INPUT1 INPUT2 $INPUT2 RUN_NAME $run_name
+echo INPUT1 $INPUT1 RUN_NAME $run_name
+>&2 echo INPUT1 $INPUT1 RUN_NAME $run_name
 
 files=$(ls $UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz )
 
 if [ -z "$files" ] ; then
-	echo "Error: Found no files matching $UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz"
+	echo "Error: Found no files matching $UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz" 1>&2
 	exit -1
 fi
 
 for file in $files ; do
 	echo "Checking file $file"
-	time cmp <( cut -f1-5 $UKB/snpstr/vcf_1_sample/chr$INPUT1.vcf | tail -n +12 ) \
-	    <( zcat $file | cut -f1-5 | tail -n +$(($INPUT2 + 1)) ) || \
+	time cmp <( cut -f1-5 $UKB/snpstr/vcf_1_sample/chr$INPUT1.vcf | grep -v '^#' ) \
+	    <( zcat $file | cut -f1-5 | grep -v '^#' ) || \
 	{
-		echo "The variants in file $file do not match the reference panel"
+		echo "The variants in file $file do not match the reference panel" 1>&1
 		exit -1
 	}
 done

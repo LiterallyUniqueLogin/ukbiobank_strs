@@ -3,6 +3,16 @@ How to run an imputation
 Before running any step, you must set the TMPDIR environment variable
 This should point to a directory where scratch files can be written
 
+Generic:
+For any step that runs jobs on pbs, you can run
+./check_for_pbs_errors.sh
+which will print out all the errors from all the pbs jobs.
+Each file's errors are preceded by the file's name, and each line of error in the file
+is preceeded by the line number
+If it produces no output, that should mean that there are no errors in the logs
+To have this stop showing an error from a file (because you've fixed the error),
+just delete the log file containing the error.
+
 Step 1:
 For each chromosome
 python launch_impute.py <run_name> \
@@ -36,7 +46,17 @@ until no jobs are rerun.
 
 The output files will look like batches/chrN_samples_X_to_Y.vcf.gz
 
-For each chromosome, once this is done, you can proceed to step 2
+For each chromosome, once this is done, you can run
+python check_beagle_output_samples.py run_name chrom
+which will confirm that all the files exist and have the correct samples in them.
+You can also launch pbs jobs that confirm that each file has the correct
+varaints in it. You can do this by running
+./launch_check_beagle_output_variants.sh run_name chrom
+If there are any errors, they should show up when running ./check_for_pbs_errors
+grep Success runs/first_pass/batches/output/check_beagle_output_variants.o* | cut -f3 -d. | sort
+should show you which of the chromosomes passed this check
+
+Once these checks have been passed (or are running) proceed to step 2
 
 --Steps two and three merge the output files into the final vcfs--
 
@@ -48,12 +68,21 @@ This launches ~50 1 processor jobs for the chromosome, each merging all samples
 for ~ a 50th of the chromosome into one VCF. Each job will take less than a day.
 This will create the files batches/chrN_pos_A_to_B.vcf.gz
 
-This script doesn't do anything to mitigate failed jobs - 
-check if any of the jobs fail, and if so, relaunch them all.
+This script doesn't do anything to mitigate failed jobs.
+You can look for errors, as always, by running ./check_for_pbs_errors.sh
+You can run python check_merge_output_samples.py run_name chrom
+to check that all the output files exist and have the correct number of samples.
+To check that none of the output files were truncated, run
+./launch_check_merge_output_num_variants.sh run_name chrom
+Errors in that will show up in ./check_for_pbs_errors.sh
+To confirm that it passed, run (substituting for {chrom} and run_name as appropriate)
+grep Success $(grep -l 'INPUT1 [^ ]+chr{chrom}_' runs/run_name/batches/output/check_merge_output_num_variants.o*) | uniq | sort | wc -l
+That should return 50, if not, some of those batches failed.
 
-For each chromosome, once this is done, you can proceed to step 3
+For each chromosome, once this is done (or all the checks are running), you can proceed to step 3
 
 Step 3:
+
 For each chromosome,
 launch_concat_chr_regions.sh <run_name> <chromosome number>
 
@@ -68,12 +97,6 @@ Extra details (only necessary for debugging):
 launch_impute.py calls impute.pbs which calls cut_input_vcf.sh and run_beagle.sh
 launch_merge_within_region.sh calls merge_within_region.pbs which calls list_batches_in_order.py
 launch_concat_chr_regions.sh calls concat_chr_regions.pbs
-
-You can run check_for_pbs_errors.sh <run_name> which will print out all the 
-errors from any of the pbs log files for jobs launched by any of the steps
-Each file's errors is preceded by the file name, and each line of error in the file
-is preceeded by the line number
-If it produces no output, that should mean that there are no errors in the logs
 
 All the steps will put pbs log files <script_name>.o<run_number> and .e files in batches/output
 Step 1 will put beagle <file_name>.log files in batches/

@@ -1,31 +1,31 @@
-#!/bin/bash -x
+#!/bin/bash
 
 source ~/.bashrc
 
 if [ -z "$1" ] ; then
         echo "didn't give first argument - should be the first sample number to process \
-(1 indexed, inclusive)"
+(1 indexed, inclusive)" 1>&2
         exit -1
 fi
 
 if [ -z "$2" ] ; then
         echo "didn't give second argument - should be the last sample number to process \
-(1 indexed, inclusive)"
+(1 indexed, inclusive)" 1>&2
         exit -1
 fi
 
 if [ -z "$3" ] ; then
-        echo "didn't give third argument - should be the chromosome number"
+        echo "didn't give third argument - should be the chromosome number" 1>&2
         exit -1
 fi
 
 if [ -z "$4" ] ; then
-        echo "didn't give fourth argument - should be the run name"
+        echo "didn't give fourth argument - should be the run name" 1>&2
         exit -1
 fi
 
 if [ -z "$TMPDIR" ] ; then
-        echo "Didn't set TMPDIR"
+        echo "Didn't set TMPDIR" 1>&2
         exit -1
 fi
 

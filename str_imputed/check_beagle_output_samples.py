@@ -17,6 +17,10 @@ args = parser.parse_args()
 
 vcf_files = list_batches_in_order.list_of_files(args.run_name, args.chromosome_number)
 
+def error(msg):
+	print(msg, file=sys.stderr)
+	exit(-1)
+
 def except_bad_values_iter(sample_file):
 	my_iter = iter(sample_file)
 	while True:
@@ -38,7 +42,7 @@ with open(args.sample_file) as samples_file:
 	samples_file = except_bad_values_iter(samples_file)
 	for file_num, vcf_file in enumerate(vcf_files):
 		file_num += 1
-		print(f"Working with file {vcf_file}                 ", end="\r")
+		print(f"Working with file {vcf_file}", end="\r")
 		with gzip.open(vcf_file, 'rt') as vcf:
 			for _ in range(10):
 				next(vcf)
@@ -52,24 +56,25 @@ with open(args.sample_file) as samples_file:
 
 				true_sample = next(samples_file, None)
 				if true_sample is None:
-					print(f"Found more samples in the vcfs than in the samples file.\
- Extra sample {vcf_sample} in file {vcf_file} (file num {file_num})                                        ", file = sys.stderr)
-					exit(-1)
+					sys.stdout.write("\033[K")
+					error(f"Found more samples in the vcfs than in the samples file.\
+ Extra sample {vcf_sample} in file {vcf_file} (file num {file_num})")
 					
 				
 				if vcf_sample == true_sample:
 					continue
 				else:
-					print(f"Found differing samples in a beagle output vcf\
+					sys.stdout.write("\033[K")
+					error(f"Found differing samples in a beagle output vcf\
  than in the samples file. Sample file sample {true_sample}, vcf sample {vcf_sample} in file\
- {vcf_file} (file num {file_num})                                            ", file = sys.stderr)
-					exit(-1)
+ {vcf_file} (file num {file_num})")
 
 	samples_line = next(samples_file, None)
 	if samples_line is not None and samples_line.strip() != "":
-		print(f"Found more samples in samples file than in all the vcfs. \
-Extra sample {samples_line.split()[0]} in samples file                                                   ", file = sys.stderr)
-		exit(-1)
+		sys.stdout.write("\033[K")
+		error(f"Found more samples in samples file than in all the vcfs. \
+Extra sample {samples_line.split()[0]} in samples file")
 		
+	sys.stdout.write("\033[K")
 	print("Success! All samples are represented in the same order in the beagle\
- output files as in the original sample file.                                                        ")
+ output files as in the original sample file.")

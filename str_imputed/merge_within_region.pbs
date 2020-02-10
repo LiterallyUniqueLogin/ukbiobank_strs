@@ -13,12 +13,12 @@
 #In particular, the AF and DR2 will be inaccurate.
 
 if [ -z "$INPUT1" ] ; then
-        echo "didn't give INPUT1 argument - should be start position of chrom region"
+        echo "didn't give INPUT1 argument - should be start position of chrom region" 1>&2
         exit -1
 fi
 
 if [ -z "$INPUT2" ] ; then
-        echo "didn't give INPUT2 argument - should be chrom number"
+        echo "didn't give INPUT2 argument - should be chrom number" 1>&2
         exit -1
 fi
 
@@ -41,5 +41,6 @@ echo "Starting merge"
 time bcftools merge $files \
 		    -o $UKB/str_imputed/runs/$run_name/batches/chr${INPUT2}_pos_${INPUT1}_to_$END.vcf.gz -O z \
 		    -r $INPUT2:$INPUT1-$END
+echo "Merge succeded"
 conda deactivate
 
