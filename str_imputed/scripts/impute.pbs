@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N impute_STRs
+#PBS -N impute_STRs_%CHROM%_%SAMPLE%
 #PBS -l nodes=1:ppn=4
 #PBS -l walltime=00:45:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
@@ -11,7 +11,7 @@
 #INPUT1 beginning sample number (inclusive)
 #INPUT2 end sample number (inclusive)
 #INPUT3 chromosome number
-#INPUT4 the location of the input pfile
+#INPUT4 the directory of the input pfiles
 #INPUT5 the location of the .sample file
 #(see cut_input_vcf for description)
 #%RUN_NAME% above must be munged before launching jobs with this script

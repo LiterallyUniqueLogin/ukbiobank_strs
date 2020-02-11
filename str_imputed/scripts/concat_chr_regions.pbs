@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N concat_chr_regions
+#PBS -N concat_chr_regions_%CHROM%
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=48:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
@@ -9,21 +9,18 @@
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
 
-if [ -z "$INPUT1" ] ; then
-	echo "Didn't give INPUT1 argument - should be chrom number" 1>&2
-	exit -1
-fi
 
 run_name=%RUN_NAME%
+chrom=%CHROM%
 
-echo INPUT1 $INPUT1 RUN_NAME $run_name
->&2 echo INPUT1 $INPUT1 RUN_NAME $run_name
+echo CHROM $chrom RUN_NAME $run_name
+>&2 echo CHROM $chrom RUN_NAME $run_name
 
 #get a list of files to concat
 FILES_TO_CONCAT=""
 for begin in $(seq 1 5000000 250000000) ; do
 	end=$((begin + 4999999))
-	FILE=$UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_pos_${begin}_to_${end}.vcf.gz 
+	FILE=$UKB/str_imputed/runs/$run_name/batches/chr${chrom}_pos_${begin}_to_${end}.vcf.gz 
 	FILES_TO_CONCAT="$FILES_TO_CONCAT $FILE"
 done
 
@@ -32,9 +29,9 @@ conda activate bcftools
 
 echo "Beginning concatenation"
 time bcftools concat $FILES_TO_CONCAT \
-		    -o $UKB/str_imputed/runs/$run_name/vcfs/chr${INPUT1}.vcf.gz -O z --naive
+		    -o $UKB/str_imputed/runs/$run_name/vcfs/chr${chrom}.vcf.gz -O z --naive
 echo "Done with concatenation. Beginning indexing"
-time tabix $UKB/str_imputed/runs/$run_name/vcfs/chr${INPUT1}.vcf.gz
+time tabix $UKB/str_imputed/runs/$run_name/vcfs/chr${chrom}.vcf.gz
 echo "Done with indexing. Done"
 conda deactivate
 

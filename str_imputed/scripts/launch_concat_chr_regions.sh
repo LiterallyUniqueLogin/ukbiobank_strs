@@ -15,9 +15,9 @@ if [ -z "$TMPDIR" ] ; then
         exit -1
 fi
 
-sed -e "s/%RUN_NAME%/$1/g" \
-	$UKB/str_imputed/concat_chr_regions.pbs \
-	> $TMPDIR/concat_chr_regions_$1.pbs
+sed -e "s/%RUN_NAME%/$1/g" -e "s/%CHROM%/$2/g" \
+	$UKB/str_imputed/scripts/concat_chr_regions.pbs \
+	> $TMPDIR/concat_chr_regions_$1_$2.pbs
 
-qsub -v "INPUT1=$2" $TMPDIR/concat_chr_regions_$1.pbs
+qsub $TMPDIR/concat_chr_regions_${1}_${2}.pbs
 

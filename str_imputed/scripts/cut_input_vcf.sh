@@ -7,7 +7,7 @@ source ~/.bashrc
 #E.g. 2001-4000 being the second group of 2000 samples
 #Input 3 is the chrom number
 #Input 4 is the directory containing the pfiles
-#Input 5 is the directory containing a single file ending in .sample
+#Input 5 is the .sample file
 #This file must have the format 
 #(or any other format that plink --keep will recognize)
 #ID_1 ID_2 missing sex

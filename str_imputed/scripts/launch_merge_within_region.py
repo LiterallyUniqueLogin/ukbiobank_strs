@@ -27,15 +27,14 @@ if args.regions:
 		if (int(region) - 1) % 5000000 != 0:
 			error("Each region should be an index that is some multiple of 5 million plus 1")
 
-sp.run(f'sed -e "s/%RUN_NAME%/{run_name}/g" \
-	{ukb}/str_imputed/merge_within_region.pbs \
-	> {tmpdir}/merge_within_region_{run_name}.pbs', shell=True)
-
 if args.regions:
 	regions = args.regions
 else:
-	regions = range(1,250000001,5000000)
+	regions = range(1,250000000,5000000)
 
 for start_pos in regions:
-	sp.run(f'qsub -v "INPUT1={start_pos},INPUT2={chrom}" {tmpdir}/merge_within_region_{run_name}.pbs', shell=True)
+	sp.run(f'sed -e "s/%RUN_NAME%/{run_name}/g" -e "s/%CHROM%/{chrom}/g" -e "s/%POS%/{start_pos}" \
+		{ukb}/str_imputed/scripts/merge_within_region.pbs \
+		> {tmpdir}/merge_within_region_{run_name}_{chrom}_{pos}.pbs', shell=True)
+	sp.run(f'qsub {tmpdir}/merge_within_region_{run_name}_{chrom}_{pos}.pbs', shell=True)
 

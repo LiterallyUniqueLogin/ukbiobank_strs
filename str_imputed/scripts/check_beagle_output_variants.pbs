@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N check_beagle_output_variants
+#PBS -N check_beagle_output_variants_%CHROM%
 #PBS -l nodes=1:ppn=2
 #PBS -l walltime=48:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
@@ -13,26 +13,22 @@
 #For comparing a UKB callset with all individuals
 #against the reference panel
 
-if [ -z "$INPUT1" ] ; then
-	echo "Didn't give INPUT1 argument - should be chrom number"
-	exit -1
-fi
-
 run_name=%RUN_NAME%
+chrom=%CHROM%
 
-echo INPUT1 $INPUT1 RUN_NAME $run_name
->&2 echo INPUT1 $INPUT1 RUN_NAME $run_name
+echo CHROM $chrom RUN_NAME $run_name
+>&2 echo CHROM $chrom RUN_NAME $run_name
 
-files=$(ls $UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz )
+files=$(ls $UKB/str_imputed/runs/$run_name/batches/chr${chrom}_samples_*.vcf.gz )
 
 if [ -z "$files" ] ; then
-	echo "Error: Found no files matching $UKB/str_imputed/runs/$run_name/batches/chr${INPUT1}_samples_*.vcf.gz" 1>&2
+	echo "Error: Found no files matching $UKB/str_imputed/runs/$run_name/batches/chr${chrom}_samples_*.vcf.gz" 1>&2
 	exit -1
 fi
 
 for file in $files ; do
 	echo "Checking file $file"
-	time cmp <( cut -f1-5 $UKB/snpstr/vcf_1_sample/chr$INPUT1.vcf | grep -v '^#' ) \
+	time cmp <( cut -f1-5 $UKB/snpstr/vcf_1_sample/chr$chrom.vcf | grep -v '^#' ) \
 	    <( zcat $file | cut -f1-5 | grep -v '^#' ) || \
 	{
 		echo "The variants in file $file do not match the reference panel" 1>&1
@@ -40,5 +36,5 @@ for file in $files ; do
 	}
 done
 
-echo "Success. All variants for chromosome $INPUT1 match those in the reference panel."
+echo "Success. All variants for chromosome $chrom match those in the reference panel."
 
