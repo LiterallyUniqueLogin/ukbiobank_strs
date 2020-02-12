@@ -50,15 +50,16 @@ def do_check(run_name, chrom, command_line = True):
 				print(f"Imputed file {f} threw error")
 				print(e)
 
-	if len(failed_positions) > 0:
-		sys.stdout.write("\033[K")
-		print(f"\nChromosome {chrom} failed sample check.", file=sys.stderr)
-		exit(-1)
-	else:
-		sys.stdout.write("\033[K")
-		print(f"Samples are correct for all regional merge files for chromosome {chrom}")
+	if command_line:
+		if len(failed_positions) > 0:
+			sys.stdout.write("\033[K")
+			print(f"\nChromosome {chrom} failed sample check.", file=sys.stderr)
+			exit(-1)
+		else:
+			sys.stdout.write("\033[K")
+			print(f"Samples are correct for all regional merge files for chromosome {chrom}")
 
-	return sample_failures
+	return failed_positions 
 
 
 if __name__ == "__main__":	
