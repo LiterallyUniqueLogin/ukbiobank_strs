@@ -16,7 +16,7 @@ if [ -z "$TMPDIR" ] ; then
 fi
 
 sed -e "s/%RUN_NAME%/$1/g" -e "s/%CHROM%/$2/g" \
-	$UKB/str_imputed/check_beagle_output_variants.pbs \
+	$UKB/str_imputed/scripts/check_beagle_output_variants.pbs \
 	> $TMPDIR/check_beagle_output_variants_${1}_${2}.pbs
 
 qsub $TMPDIR/check_beagle_output_variants_${1}_${2}.pbs

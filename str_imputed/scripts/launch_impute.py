@@ -35,7 +35,7 @@ def do_impute(run_name, pfile_dir, sample_file, chr, readme, command_line=True, 
 
 	#Write the README for this run, or check that it exists as specified
 	if not os.path.exists(f"{ukb}/str_imputed/runs/{run_name}/README"):
-		if readme == "":
+		if readme is None or readme == "":
 			error("Error: No README for this run already exists, but didn't specify one with the --readme argument.")
 		else:
 			with open(f"{ukb}/str_imputed/runs/{run_name}/README", 'w') as README_file:
@@ -43,7 +43,7 @@ def do_impute(run_name, pfile_dir, sample_file, chr, readme, command_line=True, 
 			with open(f"{ukb}/str_imputed/run_readmes/{run_name}_README", 'w') as README_file:
 				README_file.write(readme + "\n")
 	else:
-		if readme != "":
+		if readme is not None and readme != "":
 			with open(f"{ukb}/str_imputed/runs/{run_name}/README") as README_file:
 				if (readme + "\n") != README_file.read():
 					error("Error: Found a different description in the README file than the currently intended one. Either delete the README file so a new one can be written, or remove the --readme flag")
@@ -51,7 +51,7 @@ def do_impute(run_name, pfile_dir, sample_file, chr, readme, command_line=True, 
 	now = datetime.now().strftime("%y_%m_%d_%H_%M_%S")
 
 	#get the total number of samples
-	sp.run(f"plink2 --pfile {pfile_no_ext} --keep {sample_file}--write-samples --out {tmpdir}/{run_name}",
+	sp.run(f"plink2 --pfile {pfile_no_ext} --keep {sample_file} --write-samples --out {tmpdir}/{run_name}",
 		stdout = sp.PIPE,
 		shell = True)
 	stdout = sp.run(f"wc -l {tmpdir}/{run_name}.id", 
@@ -113,7 +113,7 @@ def do_impute(run_name, pfile_dir, sample_file, chr, readme, command_line=True, 
 		if command_line:
 			exit()
 		else:
-			return True
+			return len(ignore_jobs) == 0
 
 	existingErrorIds = set()
 	existingErrorFiles = set()

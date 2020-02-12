@@ -9,7 +9,7 @@ def do_check(run_name, sample_file, chromosome_number, command_line = True):
 	#doesn't allow IDs that look like "0"
 	#doesn't allow underscores in sample names
 
-	vcf_files = list_batches_in_order.list_of_files(args.run_name, args.chromosome_number)
+	vcf_files = list_batches_in_order.list_of_files(run_name, chromosome_number)
 
 	def error(msg):
 		if command_line:
@@ -34,12 +34,13 @@ def do_check(run_name, sample_file, chromosome_number, command_line = True):
 
 			yield val
 
-	with open(args.sample_file) as samples_file:
+	with open(sample_file) as samples_file:
 		next(samples_file) #skip the header line
 		samples_file = except_bad_values_iter(samples_file)
 		for file_num, vcf_file in enumerate(vcf_files):
 			file_num += 1
-			print(f"Working with file {vcf_file}", end="\r")
+			if command_line:
+				print(f"Working with file {vcf_file}", end="\r")
 			with gzip.open(vcf_file, 'rt') as vcf:
 				for _ in range(10):
 					next(vcf)
@@ -79,9 +80,12 @@ def do_check(run_name, sample_file, chromosome_number, command_line = True):
 		else:
 			return True
 
-parser = argparse.ArgumentParser()
-parser.add_argument("run_name", help="The name of this run of imputation")
-parser.add_argument("sample_file", help="the .sample file with \
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser()
+	parser.add_argument("run_name", help="The name of this run of imputation")
+	parser.add_argument("sample_file", help="the .sample file with \
 the list of samples in this imputation run, see $UKB/microarray/*.sample for an example")
-parser.add_argument("chromosome_number", help="The number of the chromosome you wish to check")
-args = parser.parse_args()
+	parser.add_argument("chromosome_number", help="The number of the chromosome you wish to check")
+	args = parser.parse_args()
+
+	do_check(args.run_name, args.sample_file, args.chromosome_number, command_line = True)

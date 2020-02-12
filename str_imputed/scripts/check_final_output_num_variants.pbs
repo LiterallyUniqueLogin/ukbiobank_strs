@@ -1,0 +1,38 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N check_final_output_num_variants_%CHROM%
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=150:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/batches/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+#Estimating this will take a bit over 2 days
+#confirms that the number of variants in this file
+#is the same as the number of variants in the reference panel
+#(e.g. that the output wasn't truncated)
+
+chrom=%CHROM%
+run_name=%RUN_NAME%
+
+if [ -z "$INPUT1" ] ; then
+	echo "Didn't give INPUT1 argument - should be the number of variants expected" 1>&2
+	exit -1
+fi
+
+
+echo CHROM $chrom INPUT1 $INPUT1 RUN_NAME $run_name
+>&2 echo CHROM $chrom INPUT1 $INPUT1 RUN_NAME $run_name
+
+echo "Counting lines in regional merge file and timing"
+n_final_lines=$(time { zcat $UKB/str_imputed/$run_name/vcfs/$chrom.vcf.gz | grep -v "^#" | wc -l ; } )
+
+if (( $INPUT1 != $n_final_lines )) ; then
+	echo "Failed. Found $n_final_lines variants in the regional merge file but expected $INPUT1 variants" 1>&2
+	exit -1
+fi
+
+echo "Success. Correct number of variants found in file $chrom"
+
