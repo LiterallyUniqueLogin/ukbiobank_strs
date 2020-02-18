@@ -31,3 +31,4 @@ __pycache__
 *.key
 *.bulk
 fields.ukb
+.mypy_cache/

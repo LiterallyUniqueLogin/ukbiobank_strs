@@ -17,7 +17,7 @@ fi
 
 
 sed -e "s/%RUN_NAME%/$1/g" -e "s/%CHROM%/$2/g" \
-	$UKB/str_imputed/check_final_output_num_variants.pbs \
+	$UKB/str_imputed/scripts/check_final_output_num_variants.pbs \
 	> $TMPDIR/check_final_output_num_variants_${1}_${2}.pbs
 
 source ~/.bashrc

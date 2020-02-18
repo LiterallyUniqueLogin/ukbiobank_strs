@@ -27,12 +27,12 @@ echo CHROM $chrom INPUT1 $INPUT1 RUN_NAME $run_name
 >&2 echo CHROM $chrom INPUT1 $INPUT1 RUN_NAME $run_name
 
 echo "Counting lines in regional merge file and timing"
-n_final_lines=$(time { zcat $UKB/str_imputed/$run_name/vcfs/$chrom.vcf.gz | grep -v "^#" | wc -l ; } )
+n_final_lines=$(time { zcat $UKB/str_imputed/runs/$run_name/vcfs/chr${chrom}.vcf.gz | grep -v "^#" | wc -l ; } )
 
 if (( $INPUT1 != $n_final_lines )) ; then
 	echo "Failed. Found $n_final_lines variants in the regional merge file but expected $INPUT1 variants" 1>&2
 	exit -1
 fi
 
-echo "Success. Correct number of variants found in file $chrom"
+echo "Success. Correct number of variants ($n_final_lines) found in file $chrom"
 

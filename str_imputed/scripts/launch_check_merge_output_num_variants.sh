@@ -36,7 +36,7 @@ for start_pos in $(seq 1 5000000 250000000) ; do
 	fi
 
 	sed -e "s/%RUN_NAME%/$1/g" -e "s/%CHROM%/$2/g" -e "s/%POS%/$start_pos/g"\
-		$UKB/str_imputed/check_merge_output_num_variants.pbs \
+		$UKB/str_imputed/scripts/check_merge_output_num_variants.pbs \
 		> $TMPDIR/check_merge_output_num_variants_${1}_${2}_${start_pos}.pbs
 
 	end_pos=$((start_pos + 4999999))
