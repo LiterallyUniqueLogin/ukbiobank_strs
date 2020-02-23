@@ -1,0 +1,5 @@
+[bandit]
+# is this the correct syntax?
+skips: B101,
+	B404
+

@@ -13,6 +13,9 @@ import check_merge_output_samples
 import launch_impute
 import launch_merge_within_region
 
+# This is a main file, global params aren't constants
+# pylint: disable=C0103
+
 parser = argparse.ArgumentParser(
     description=("Continues the imputation process by assessing which jobs "
                  "need to be run and launching them. Information about the "
@@ -52,7 +55,8 @@ readme = args.readme
 
 def error(msg):
     print(msg, file=sys.stderr)
-    exit(-1)
+    sys.exit(-1)
+
 
 if 'TMPDIR' not in os.environ:
     error("Must set the TMPDIR environment variable")
@@ -118,14 +122,18 @@ if not args.debug:
 else:
     error_files = set()
 
+# pylint: I don't need check here, I'm doing it myself
+completed_qstat = sp.run(  # pylint: disable=W1510
+    'qstat -f -u $(whoami) | grep -B10 "job_state = [^C]" | grep Job_Name',
+    shell=True,
+    universal_newlines=True,
+    stdout=sp.PIPE)
+if completed_qstat.returncode not in {0, 1}:
+    # allow error code 1 - grep returns no output is okay
+    error("Getting jobs command failed")
+
+qstat_output = completed_qstat.stdout
 job_names = set()
-job_ids_output = sp.run('qselect -u $(whoami)',
-                        shell=True, universal_newlines=True,
-                        stdout=sp.PIPE, check=True).stdout.split('\n')
-job_ids = " ".join(job_id.split('.')[0] for job_id in job_ids_output)
-qstat_output = sp.run(f'qstat -f {job_ids} | grep Job_Name ',
-                      shell=True, universal_newlines=True,
-                      stdout=sp.PIPE, check=True).stdout
 for line in qstat_output.split("\n"):
     if line.strip() == "":
         continue
@@ -163,7 +171,7 @@ def check_impute(status,
         ret_code = launch_impute.do_impute(
             run_name, pfile_directory, sample_file,
             chrom, readme, ignore_jobs=currently_running_jobs)
-        if type(ret_code) == str:
+        if isinstance(ret_code, str):
             status.write(f"Launching imputation jobs for chromosome {chrom} "
                          f"resulted in the error {ret_code}\n")
             continue
@@ -175,7 +183,7 @@ def check_impute(status,
 
         ret_code = check_beagle_output_samples.do_check(
             run_name, sample_file, chrom, command_line=False)
-        if type(ret_code) == str:
+        if isinstance(ret_code, str):
             status.write(f"Chromosome {chrom} was imputed with the wrong "
                          f"samples! Please fix this manually. Specific error: "
                          f"{ret_code}\n")
@@ -403,7 +411,7 @@ def check_concat(status,
         if os.stat(run_dir + "/vcfs/" + tbi_file).st_size < 2e4:
             status.write(f"Relaunching the concat job for chrom {chrom} - "
                          f"the tabix index file produced is smaller than "
-                         f"anticipated, inticating that the previous "
+                         f"anticipated, indicating that the previous "
                          f"run crashed\n")
             sp.run(f"{scripts_dir}/launch_concat_chr_regions.sh "
                    f"{run_name} {chrom}",

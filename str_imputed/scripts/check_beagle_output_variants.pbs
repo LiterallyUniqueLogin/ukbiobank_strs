@@ -16,10 +16,23 @@
 run_name=%RUN_NAME%
 chrom=%CHROM%
 
+#enable running via command line
+if [ ! -z "$1" ] ; then
+	if [ -z "$2" ] ; then
+		echo "Error: expected two arguments - chrom and run_name" 1>&2
+		exit -1
+	fi
+	run_name=$1
+	chrom=$2
+fi
+
 echo CHROM $chrom RUN_NAME $run_name
 >&2 echo CHROM $chrom RUN_NAME $run_name
 
-files=$(ls $UKB/str_imputed/runs/$run_name/batches/chr${chrom}_samples_*.vcf.gz )
+source ~/.bashrc
+conda activate ukb_analysis
+files=$(python $UKB/str_imputed/scripts/list_batches_in_order.py $run_name $chrom)
+conda deactivate
 
 if [ -z "$files" ] ; then
 	echo "Error: Found no files matching $UKB/str_imputed/runs/$run_name/batches/chr${chrom}_samples_*.vcf.gz" 1>&2

@@ -7,12 +7,13 @@ import os
 
 UKB = os.environ['UKB']
 
-def list_of_files(run_name, chr, pos=False):
+
+def list_of_files(run_name, chrom, pos=False):
     file_type = 'samples'
     if pos:
         file_type = 'pos'
     files = glob.glob(f"{UKB}/str_imputed/runs/{run_name}/"
-                      f"batches/chr{chr}_{file_type}_*.vcf.gz")
+                      f"batches/chr{chrom}_{file_type}_*.vcf.gz")
 
     def num_string_comparator(a, b):
         if len(a) != len(b):
@@ -24,6 +25,7 @@ def list_of_files(run_name, chr, pos=False):
         else:
             return 1
     return sorted(files, key=functools.cmp_to_key(num_string_comparator))
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -40,6 +42,7 @@ def main():
 
     for file in files:
         print(file)
+
 
 if __name__ == "__main__":
     main()
