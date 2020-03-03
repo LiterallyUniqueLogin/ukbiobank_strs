@@ -1,0 +1,12 @@
+20005 Ongoing Email Access
+189 Townsend deprivation index at recruitment
+
+# New Exome SBP
+2317	Exome SPB variant call files (VCFs)	
+23177	Exome SPB variant calls indices	
+23178	Exome SPB CRAM files	
+23179	Exome SPB CRAM indices
+# Hospital inpatient data
+# TODO related fields!
+41201 
+42170 

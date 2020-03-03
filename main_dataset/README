@@ -6,7 +6,8 @@ documenting what's there.
 Read below for an explanation of how these files were downloaded/produced
 
 The instructions for downloading these are described here:
-https://biobank.ctsu.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.0.pdf
+https://biobank.ctsu.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.1.pdf
+(The accessing data guide here: https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=AccessingData)
 in section 2
 Only someone with the email from the original application
 (i.e. Richard Yannicky in the Gymrek lab) can download the .enc file that is the
@@ -36,4 +37,12 @@ commands
 
 You can retrieve subsets of the data or output the data in different
 formats using different options with ukbconv, see the linked PDF above
+
+all_fields.csv was downloaded from some part of the showcase website
+that I didn't document
+
+request_2020_march contains the temporary files I generated while creating
+a list of data fields to request from the UKB administration at that date
+
+scripts contains random helper scripts I've written
 

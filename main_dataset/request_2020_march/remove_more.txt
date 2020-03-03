@@ -1,0 +1,29 @@
+#Don't want direct access to hospital records, just want summaries
+42040
+42039
+42038
+41259
+41234
+41149
+41261
+41264
+41289
+#Don't need raw accelerometer data
+90002	Data problem indicator	
+90182	Data recording errors	
+90179	Device ID	
+90187	Total data readings	
+90188	Sample rate average	
+90189	Sample rate standard deviation	
+90190	Sample rate minimum	
+90191	Sample rate maximum	
+90180	Interrupted recording periods	
+90181	Duration of interrupted recording periods	
+90183	Readings exceeding +/-8 gravities before calibration	
+90185	Readings exceeding +/-8 gravities after calibration	
+90184	Maximum readings exceeding +/-8 gravities before calibration in a 5 second epoch	
+90186	Maximum readings exceeding +/-8 gravities after calibration in a 5 second epoch	
+90192	Temperature average	
+90193	Temperature standard deviation	
+90194	Temperature minimum	
+90195	Temperature maximum
