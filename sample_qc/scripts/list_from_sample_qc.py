@@ -1,14 +1,12 @@
-import os  
+import os
 
 
-def produce_list_from_sample_qc(run_name, list_name, keep, column):
+def produce_list_from_sample_qc(list_name, keep, column):
     """
     In/exclude participants marked by col <column> in the sample qc file.
 
     Parameters
     ----------
-    run_name
-        the name of the run to output the file to
     list_name
         the name of the output file (w/o extension)
     keep
@@ -37,7 +35,7 @@ def produce_list_from_sample_qc(run_name, list_name, keep, column):
 
     sqc_floc = f"{ukb}/misc_data/EGA/ukb_sqc_v2.txt"
     fam_floc = f"{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam"
-    out_floc = (f"{ukb}/sample_qc/runs/{run_name}/"
+    out_floc = (f"{ukb}/sample_qc/common_filters/"
                 f"{keep_or_remove}/{list_name}.sample")
     with open(sqc_floc) as sqc_file, \
             open(fam_floc) as fam_file, \
