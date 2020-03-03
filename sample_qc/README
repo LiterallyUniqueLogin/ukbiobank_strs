@@ -1,0 +1,5 @@
+primus_test - some tests I wrote to verify primus ran correctly
+runs - output of different batches of sample qc (with different criteria,
+	and so different end sample lists)
+scripts - all the code to generate the files in runs
+common_filters - lists of participants commonly not including
