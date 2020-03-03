@@ -14,4 +14,4 @@ This includes (supplementary section number)
 import list_from_sample_qc as sqc
 
 
-sqc.produce_list_from_sample_qc('low_quality', False, 21)
+sqc.produce_list_from_sample_qc('low_quality', False, column=21)

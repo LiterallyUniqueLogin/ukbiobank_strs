@@ -1,7 +1,8 @@
 import os
+import sys
 
 
-def produce_list_from_sample_qc(list_name, keep, column):
+def produce_list_from_sample_qc(list_name, keep, *, column=None, func=None):
     """
     In/exclude participants marked by col <column> in the sample qc file.
 
@@ -14,7 +15,12 @@ def produce_list_from_sample_qc(list_name, keep, column):
         or excluded
     column
         the column of the sample qc file in the misc/EGA directory to look at
-
+        samples are written out if this column evaluates to true
+        Exactly one of column and func must be specified
+    func
+        the function applied to the entire row for each sample
+        samples are written out if this function evaluates to true
+        Exactly one of column and func must be specified
     Returns
     -------
     None
@@ -23,6 +29,11 @@ def produce_list_from_sample_qc(list_name, keep, column):
         (or with remove instead of keep depending)
 
     """
+    if (func is None) == (column is None):
+        print("Error, must only specify one of func or column",
+              file=sys.stderr)
+        sys.exit(-1)
+
     if keep:
         keep_or_remove = "keep"
     else:
@@ -45,10 +56,13 @@ def produce_list_from_sample_qc(list_name, keep, column):
         # Assumes already validated that csv and fam are the same length
         for line in sqc_file:
             fam_tokens = fam_file.readline().split()
-            if bool(int(line.split()[column])):
+            if column is not None:
+                include = bool(int(line.split()[column]))
+            else:
+                include = func(line.split())
+            if include:
                 out_file.write("{} {} {} {}\n".format(
                     fam_tokens[0],
                     fam_tokens[1],
                     fam_tokens[2],
                     fam_tokens[4]))
-
