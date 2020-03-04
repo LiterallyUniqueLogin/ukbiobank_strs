@@ -109,7 +109,7 @@ for floc in remove_flocs:
                 del sample_dict[sample_id]
 
 
-run_floc = f"{ukb}/sample_qc/runs/{args.run_name}/collected.samples"
+run_floc = f"{ukb}/sample_qc/runs/{args.run_name}/combined.samples"
 with open(run_floc, 'w') as out_file:
     out_file.write('ID_1 ID_2 missing sex\n')
     for sample_id in sample_dict:
