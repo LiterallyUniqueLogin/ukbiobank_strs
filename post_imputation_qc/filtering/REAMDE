@@ -1,0 +1,5 @@
+Using vcf with cparse is 1.5 - 2x slower than without,
+probably because all the python unicode strings need to be convered to binary strings
+Lazy parsing of samples improves speed by about 2x. Still way to slow
+On top of lazy parsing, not pre-splitting all the samples saves 0-.5 seconds per line.
+Still nowhere close enough

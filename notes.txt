@@ -357,6 +357,17 @@ all the individually compressed batches of chr3
 Now using bcftools merge in parallel and then bcftools concat for merging.
 Confirmed that the first 389k lines don't differ between that and my script for all of chr3 
 
+After having the final VCF, it'd also be nice to have a VCF that only includes the STR calls
+and not the imputed sites.
+I compared four methodologies with plink for efficiency:
+Using plink -R (lookup with tabix file) or plink -T (read through)
+Include ID filtering (-i) in the original plink command, or make it a separate second plink command.
+Times for Chr21 were:
+378m for lookup one command
+622m for lookup two commands
+917m for read through one command
+1085m for read through two commands
+Going with lookup, one command
 
 VCF QC
 TODO comparing VCFs (overlapping Sites, what they call STRs, multiallelic sites)
@@ -372,6 +383,10 @@ SNP QC under the methods section Marker-based quality control (and in the
 supplement), but ALSO under the Haplotype estimation and genotype imputation
 where they say how they filter the SNPs that were phased and thus
 downloadable via ukbgene hap.
+Particularly, the microarray dataset only includes markers that:
+* Were on both arrays
+* had less than a 5% missing rate
+* MAF > 0.0001
 Description of issues with UKB SNP chips:
 https://www.biorxiv.org/content/10.1101/696799v1.full
 https://www.sciencedirect.com/science/article/pii/S0002929718304683
@@ -499,9 +514,12 @@ Any sample filters after all samples are done?
 
 STR filters:
 Run Hardy-Weinberg Equilibrium test for expected genotype distribution
+(Ileena used —min-locus-hwep 1e-5. See here:
+https://docs.google.com/document/d/1q1EgnJnOcqLyiOoMzDrUdDCIqzDMleAZRCedT54abYo/edit )
 Filter STR genotypes with too low a minor allele frequency
-Possibly filter STR genotypes with too low an estimate correlation between their calls and the
-	true calls? (Beagle output INFO field DR2)
+No need to filter STR genotypes on Beagle INFO field DR2
+	(estimate of correlation between their calls and the true calls)
+	as this is derived directly from the genotype probabilites
 	Reference for how DR2 is calculated
 	(see Appendix 1: https://www.cell.com/ajhg/pdf/S0002-9297(09)00012-3.pdf 
 	A Unified Approach to Genotype Imputationand Haplotype-Phase Inference
@@ -513,6 +531,7 @@ Compare per-locus heterozygosities to other datasets (SSC, 1000G, GTEx)
 	or more specifically: distributions of alleles similar to other datasets?
 Remove STRs with sex specific call rates
 Consider filtering STRs which overlap genotyped values and are different
+Make sure we don't include STRs in segdup regions
 
 
 Using 1000Genomes for testing filtering thresholds:

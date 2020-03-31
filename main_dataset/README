@@ -18,9 +18,6 @@ datafiles from the .enc file
 To do this:
 cd to the directory with the .enc file, and set $UKB_UTILITIES to the 
 appropriate directory.
-Also, set the following so that the utilities will work on tscc:
-LD_LIBRARY_PATH=$SOURCE/glibc/:$LD_LIBRARY_PATH
-(SOURCE=/projects/ps-gymreklab/resources/source)
 Unpack the enc into a enc_ukb file by running:
 $UKB_UTILITIES/ukbunpack ukb29170.enc $UKB_UTILITIES/k29170.key
 This will generate a ukb29170.enc_ukb file
