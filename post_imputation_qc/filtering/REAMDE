@@ -1,5 +1,15 @@
-Using vcf with cparse is 1.5 - 2x slower than without,
+Times (seconds/SNP variant line, reading from start of Chr21) (seconds/variants line, 21:15449726-15454050, contains a 3-variant STR, a 34 variant STR and a bunch of SNPs)
+cyvcf2 0.13 0.24
+bgzf reader, 1 byte at a time ~3.5
+bgzf reader, 1 line at a time, not looking at it 0.011
+bgzf reader, 1 line a a time looking at each byte 0.21
+gzip reader, 1 line a a time looking at each byte 0.23 (same as above, makes sense, these should be the same)
+pyvcf with my lazy evaluation speed up ~2.2
+pyvcf with cparse and my lazy evaluation speed up ~2.15
+
+
+
+Aside:
+Using vcf with cparse is not faster 
 probably because all the python unicode strings need to be convered to binary strings
-Lazy parsing of samples improves speed by about 2x. Still way to slow
-On top of lazy parsing, not pre-splitting all the samples saves 0-.5 seconds per line.
-Still nowhere close enough
+

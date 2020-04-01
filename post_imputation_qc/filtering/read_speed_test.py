@@ -12,6 +12,7 @@ with Bio.bgzf.BgzfReader(f"{ukb}/str_imputed/runs/first_pass/vcfs/chr21.vcf.gz",
     for line in chr21:
         if line[0] != int.from_bytes(b'#', "little"):
             break
+    print("Done with header. Starting body")
     start = time.time()
     while True:
         byte = chr21.read(1)

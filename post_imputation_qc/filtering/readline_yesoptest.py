@@ -18,6 +18,7 @@ with Bio.bgzf.BgzfReader(f"{ukb}/str_imputed/runs/first_pass/vcfs/chr21.vcf.gz")
             if char == '\n':
                 print("Hello!")
         nlines += 1
-        time_per_line = (time.time() - start)/nlines
-        print("End of line {}. Time per line {:0.2f}".format(nlines,
-                                                            time_per_line))
+        if nlines % 10 == 0:
+            time_per_line = (time.time() - start)/nlines
+            print("End of line {}. Time per line {:0.4f}".format(nlines,
+                                                                time_per_line))
