@@ -1,0 +1,14 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N convert_to_docs
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=48:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/main_dataset/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/main_dataset/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+cd "$UKB" || { echo "Directory $UKB doesn't exist" ; exit 1 ; }
+ukb_utilities/ukbconv main_dataset/ukb41414.enc_ukb docs -eukb_utilities/encoding.ukb
+

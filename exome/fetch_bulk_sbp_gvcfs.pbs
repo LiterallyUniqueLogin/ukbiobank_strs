@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N download_spb_gvcfs
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=48:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/exome/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/exome/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+cd "$UKB/exome" || { echo "Directory $UKB/exome doesn't exist" ; exit 1 ; }
+current=1
+end=$(wc -l spb_gvcfs.bulk | cut -d' ' -f 1)
+step_size=1000
+while  ((current <= end)) ; do
+	../ukb_utilities/ukbfetch \
+		-bspb_gvcfs.bulk \
+		-a../main_dataset/k41414.key \
+		-v \
+		-of$current \
+		-s$current \
+		-m$step_size
+	current=$((current+step_size))
+done
+

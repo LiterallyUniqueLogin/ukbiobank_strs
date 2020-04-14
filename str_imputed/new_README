@@ -1,0 +1,5 @@
+Just call run.py over and over again until the run is done.
+
+TODO: after all that is done, run the subset_STRs script
+TODO: need to incorporate that into run.py and need to
+document its output files
