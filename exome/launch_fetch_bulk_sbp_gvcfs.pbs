@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N launch_fetch_bulk_spb_gvcfs
+#PBS -l nodes=1:ppn=2
+#PBS -l walltime=72:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/exome/vcfs/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/exome/vcfs/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+source "$HOME"/.bashrc
+cd "$UKB/exome" || { echo "Directory $UKB/exome doesn't exist" ; exit 1 ; }
+conda activate ukb_analysis
+python fetch_bulk_spb_gvcfs.py
+conda deactivate
+

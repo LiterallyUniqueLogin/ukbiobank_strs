@@ -1,5 +1,4 @@
 # pylint: disable=C0103,C0114,C0116
-import math
 import os
 import subprocess as sp
 
@@ -8,20 +7,17 @@ import dask
 import dask.distributed
 import dask_jobqueue
 
-BATCH_SIZE = 1000
-
 
 @dask.delayed
-def download_items(batch):  # noqa: D103
+def download_item(sample_ID, field_ID):  # noqa: D103
     command = f"""
     cd {vcf_dir}
     ../../ukb_utilities/ukbfetch \
-            -b../spb_gvcfs.bulk \
             -a../../main_dataset/k41414.key \
             -v \
-            -of{batch} \
-            -s{batch * BATCH_SIZE} \
-            -m{BATCH_SIZE}
+            -of{sample_ID}_{field_ID} \
+            -e{sample_ID} \
+            -d{field_ID}
     """
 
     try:
@@ -37,22 +33,32 @@ def download_items(batch):  # noqa: D103
 
 
 def main():  # noqa: D103
-    output_dir = f'{vcf_dir}/output'
+    current_files = set(os.listdir(vcf_dir))
     cluster = dask_jobqueue.PBSCluster(
-        name="STR_subset",
-        walltime="24:00:00",
+        name="UKB_gVCF_download",
+        walltime="4:00:00",
         log_directory=output_dir
     )
-    cluster.scale(20)
+    # Maximum of 10 concurrent downloads per application
+    # See here: https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=644
+    cluster.adapt(minimum_jobs=10, maximum_jobs=10)
     client = dask.distributed.Client(cluster)
 
+    jobs = set()
     # calculate number of download batches
     with open(f'{vcf_dir}/../spb_gvcfs.bulk') as bulk_file:
-        nitems = len(bulk_file.readlines())
+        for line in bulk_file:
+            sample_ID, field_ID = line.split()
+            if field_ID == '23176_0_0':
+                suffix = 'gz'
+            elif field_ID == '23177_0_0':
+                suffix = 'tbi'
+            file_name = f"{sample_ID}_{field_ID}.{suffix}"
+            if file_name in current_files:
+                continue
+            jobs.add(download_item(sample_ID, field_ID))
 
-    jobs = []
-    for batch in range(0, math.ceil(nitems / BATCH_SIZE)):
-        jobs.append(download_items(batch))
+    print(f"Number of jobs queued: {len(jobs)}")
 
     futures = client.compute(jobs)
 
@@ -70,4 +76,5 @@ def main():  # noqa: D103
 if __name__ == "__main__":
     ukb = os.environ['UKB']
     vcf_dir = f'{ukb}/exome/vcfs'
+    output_dir = f'{vcf_dir}/output'
     main()
