@@ -1,5 +1,4 @@
-The exome data has been recalled and is only expected to be rereleased
-Spring 2020
+The files in vcfs are the spb files (data fields 23176 and 23177) for ~50k participants.
 
 The .enc file will be necessary for downloading the exome data, see
 https://biobank.ndph.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.1.pdf

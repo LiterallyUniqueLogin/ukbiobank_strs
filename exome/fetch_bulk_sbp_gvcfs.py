@@ -1,6 +1,8 @@
 # pylint: disable=C0103,C0114,C0116
+import datetime
 import os
 import subprocess as sp
+import sys
 
 # Use Dask to smooth the PBS submission process
 import dask
@@ -8,7 +10,6 @@ import dask.distributed
 import dask_jobqueue
 
 
-@dask.delayed
 def download_item(sample_ID, field_ID):  # noqa: D103
     command = f"""
     cd {vcf_dir}
@@ -37,7 +38,8 @@ def main():  # noqa: D103
     cluster = dask_jobqueue.PBSCluster(
         name="UKB_gVCF_download",
         walltime="4:00:00",
-        log_directory=output_dir
+        log_directory=output_dir,
+        dashboard_address=':8713'
     )
     # Maximum of 10 concurrent downloads per application
     # See here: https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=644
@@ -56,21 +58,47 @@ def main():  # noqa: D103
             file_name = f"{sample_ID}_{field_ID}.{suffix}"
             if file_name in current_files:
                 continue
-            jobs.add(download_item(sample_ID, field_ID))
+            jobs.add(client.submit(
+                download_item, sample_ID, field_ID,
+                key=f'download_item-{sample_ID}-{field_ID}'
+            ))
 
     print(f"Number of jobs queued: {len(jobs)}")
+    retried_keys = set()
 
-    futures = client.compute(jobs)
+    now = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    with open(f"{output_dir}/results_{now}.txt", 'w') as results_file:
+        for future in dask.distributed.as_completed(jobs):
+            key = future.key
 
-    with open(f"{output_dir}/results.txt", 'w') as results_file:
-        for batch, future in enumerate(futures):
+            err = future.exception()
+            if err:
+                print(f"{key} failed with raised error. Error: {err}",
+                      file=sys.stderr)
+                if key in retried_keys:
+                    print(f"{key} was already retried.", file=sys.stderr)
+                    sys.exit(1)
+                else:
+                    retried_keys.add(key)
+                    future.retry()
+                    continue
+
             result = future.result()
             if result is None:
-                results_file.write(f"batch {batch} succeeded\n")
+                results_file.write(f"{key} succeeded\n")
             else:
-                results_file.write(
-                    f"batch {batch} failed. Error: {result}\n\n"
-                )
+                results_file.write(f"{key} failed. Error: {result}\n\n")
+                if key in retried_keys:
+                    print(f"{key} was already retried.", file=sys.stderr)
+                    sys.exit(1)
+                else:
+                    retried_keys.add(key)
+                    future.retry()
+                    continue
+
+            # make sure to mark the future as cancelled so it is not rerun
+            # even if the job it was on dies unexpectedly and is restarted
+            future.cancel()
 
 
 if __name__ == "__main__":

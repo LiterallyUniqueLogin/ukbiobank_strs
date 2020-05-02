@@ -12,6 +12,6 @@
 source "$HOME"/.bashrc
 cd "$UKB/exome" || { echo "Directory $UKB/exome doesn't exist" ; exit 1 ; }
 conda activate ukb_analysis
-python fetch_bulk_spb_gvcfs.py
+python fetch_bulk_sbp_gvcfs.py
 conda deactivate
 

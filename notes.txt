@@ -650,3 +650,21 @@ Chromosome 21 is done with beagle and checked for samples and variants.
 Rerunning merge batches.
 Need to create a script to check the output of concat files
 
+
+INFO:
+Beagle's info metric is the correlation between beagle's dosage hardcalls (i.e 0, 1 or 2) and 
+Beagle's percentage hardcalls (i.e. if a_1 and a_2 are the most probable alleles for the two
+homologues respectively, and p_i is the probability of the allele a_i, then the percentage 
+
+INFO:
+Beagle's info metric is the correlation between beagle's dosage hardcalls (i.e 0, 1 or 2) and 
+Beagle's probabilitic calls (i.e. if a_1 and a_2 are the most probable alleles for the two
+homologues respectively, and p_i is the probability of the allele a_i, then p_1 + p_2p_1 + p_2)
+Note that this information score is only as accurate as the imputation: if the Beagle's imputation
+is either confounded, or even just miscalibrated, the info score will be muddled
+
+IMPUTE's info score is defined in section 2.1 of this pdf: https://mathgen.stats.ox.ac.uk/genetics_software/snptest/snptest.v2.pdf
+as stated by this correspondance: https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=ind1204&L=OXSTATGEN&D=0&P=58749
+From Ganesh Chauhan with subject "The different INFO scores"
+The definition in this paper seems to be the Fisher information of the likelihood of the data
+TODO: understand this
