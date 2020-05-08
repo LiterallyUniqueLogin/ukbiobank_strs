@@ -1,0 +1,16 @@
+Chr1:
+1 sec/variant => 10.34 hours for STRs
+20 sec/variant => 8.6 days
+
+Zarr:
+Chunk Size = 1000,1000, store = DirectoryStore, speed = 20sec/variant
+Chunk Size = 1000,1000, store = DirectoryStore, speed = 21sec/variant
+Chunk Size = 1000,1000, store = NestedDirectoryStore, speed = 21sec/variant
+Chunk Size = 5000,5000, store = NestedDirectoryStore, speed = 21sec/variant
+Chunk Size = 1000,1000, store = LMDBStore, speed = 2sec/variant
+Chunk Size = 5000,5000, store = LMDBStore, speed = 15sec/variant
+
+
+Sizing:
+Total array entries = ~450000 variants * 490000 samples = ~220G cells
+Biggest per chrom: ~37000 variants * 490000 samples = 18G cells
