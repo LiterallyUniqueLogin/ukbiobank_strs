@@ -1,5 +1,20 @@
-The files in vcfs are the spb files (data fields 23176 and 23177) for ~50k participants.
+ukb...enc - the enc file from the UKB application which contains the permissions
+   to download the exome data.
+   See https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=AccessingData for details.
+k...key - the key used to authenticate the enc file
+fetch_bulk_sbp_gvcfs.py - python script using dask to invoke the ukb downloader one 
+   file at a time
+launch_fetch_bulk_sbp_gvcfs.pbs - batch script to launch a job for the python dask scriptA
+confirm_exome_download.pbs - make sure none of the downloads are truncated
 
-The .enc file will be necessary for downloading the exome data, see
-https://biobank.ndph.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.1.pdf
-for details
+spb_gvcfs.bulk - one line for each file to download
+
+vcfs/ contains:
+* the sbp exome files (data fields 23176 and 23177) for 
+  the first ~50k participants.
+  These are named $ID.tbi and $ID.vcf.gz for each numeric ID
+  Each VCF includes all chromosomes
+* Byproducts f${ID}_23176_0_0.lis and f${ID}_23177_0_0.lis
+  for each of those downloads
+* output/ - output files for pbs and dask jobs
+
