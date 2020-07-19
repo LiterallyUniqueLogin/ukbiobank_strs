@@ -8,6 +8,7 @@ Bycroft, C., Freeman, C., Petkova, D. et al. The UK Biobank resource with deep p
 The contents of this directory (each directory has its own README):
 array_imputed - the 90m genotypes imputed from the microarray chips
 association - contains any code and results from association testing
+genetic_maps - beagle genetic maps
 ukb_utilities - the utilities used to download all the data from the data showcase
 main_dataset - contains the phenotypes we have access to through UKB
 	Doesn't consist of bulk data (microarray data, exomes, imaging, etc.)
