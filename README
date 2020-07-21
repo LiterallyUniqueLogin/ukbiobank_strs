@@ -1,10 +1,22 @@
-List of directories and their contents:
-genetic_maps: genetics maps for hg19 downloaded from Beagle, used during Beagle's phasing routine
-non_genetic_data: contains data that is not direct genotypes, downloaded from a variety of sources
-original: contains ukb's 'original' genotyped data 
-	(either directly genotyped via snp chips, imputed from there, or whole exome sequencing)
+Important links:
+UKBiobank data showcase website: https://biobank.ndph.ox.ac.uk/showcase/
+Document describing how to download data is the accessing data guide on the page:
+	https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=AccessingData 
+Paper describing the UK biobank microarray and imputed data: www.nature.com/articles/s41586-018-0579-z
+Bycroft, C., Freeman, C., Petkova, D. et al. The UK Biobank resource with deep phenotyping and genomic data. Nature 562, 203â209 (2018) doi:10.1038/s41586-018-0579-z
+
+The contents of this directory (each directory has its own README):
+array_imputed - the 90m genotypes imputed from the microarray chips
+association - contains any code and results from association testing
+exome - the UKB whole exome sequencing data. NOTE: this has been recalled
+   and is only expected to be rereleased Spring 2020
+genetic_maps - genetics maps for hg19 downloaded from Beagle, used during Beagle's phasing routine
+main_dataset - contains the phenotypes we have access to through UKB
+	Doesn't consist of bulk data (microarray data, exomes, imaging, etc.)
+microarray - the 650k snp genotypes gathered by microarray chips
+misc_data - miscellaneous small pieces of data associated with the larger datasets
+	in the above folders, but located and downloaded separately
 pre_imputation_qc: tests done before imputing STRs into the datasets
 snpstr: Shubham's SNP-STR reference panel
 str-imputed: the UKB genetic data after STR imputation
-ukb_utilities: utilities from ukb (primarily ukbgene) and the .ukbkey file to use them
-
+ukb_utilities - the utilities used to download all the data from the data showcase
