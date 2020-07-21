@@ -9,11 +9,30 @@ conda config --add channels bioconda
 ega install pyega3
 wget https://ega-archive.org/files/CREDENTIALS_FILE
 #modify the credentials file: remove the password line, change the email line
-pyega3 -cf CREDENTIALS_FILE  datasets 
+pyega3 -cf CREDENTIALS_FILE  datasets
 pyega3 -cf CREDENTIALS_FILE files EGAD00010001497 > filesList.txt
 #find the file I want
 pyega3 -cf CREDENTIALS_FILE fetch EGAF00001844707
 conda deactivate
 
 The columns for ukb_sqc_v2.txt are described here: https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=531
+The rows unfortunately don't have IDs in them
+However, the link indicates they equate to the equivalent row in the fam file
+($UKB/microarray/ukb46122_cal_chr1_v2_s488282.fam)
+I've confirmed that is the case by checking that
+(a) the two files have the same number of rows and
+(b) thye sexes match in every (non-redacted) column (confirmed via this script:)
 
+sqc_floc = f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt'
+fam_file = np.loadtxt(
+        f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam',
+        usecols=(0, 4)
+)
+not_redacted = np.greater_equal(fam_file[:, 0], 0)
+fam_file = fam_file[not_redacted, 1]
+sqc_sex = np.loadtxt(sqc_floc, usecols=10, dtype=np.bytes_)
+sqc_sex[sqc_sex == b'M'] = 1
+sqc_sex[sqc_sex == b'F'] = 3
+sqc_sex = sqc_sex.astype(int)
+sqc_sex = sqc_sex[not_redacted]
+print(np.all(np.equal(sqc_sex, fam_file))) # should be true

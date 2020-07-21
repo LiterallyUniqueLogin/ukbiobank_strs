@@ -15,7 +15,7 @@ main_dataset - contains the phenotypes we have access to through UKB
 	Doesn't consist of bulk data (microarray data, exomes, imaging, etc.)
 microarray - the 650k snp genotypes gathered by microarray chips
 misc_data - miscellaneous small pieces of data associated with the larger datasets
-	in the above folders, but located and downloaded separately
+	in the above folders, but downloaded from separate sources
 pre_imputation_qc: tests done before imputing STRs into the datasets
 snpstr: Shubham's SNP-STR reference panel
 str-imputed: the UKB genetic data after STR imputation
