@@ -30,6 +30,14 @@ max_n_alleles, n_allele_dtype = 2**8 - 1, 'uint8'
 
 
 def get_sample_bitmap(vcf_floc, sample_floc):
+    """
+    Return
+    ------
+    A 1-D array bit-array, one entry per sample in the input vcf
+    (same ordering)
+    with each bit indicating the presence or absence of that sample
+    in the samples file (1 indicates present)
+    """
     with open(sample_floc) as sample_file:
         samples_iter = iter(sample_file)
         first_line = next(samples_iter)
@@ -59,6 +67,35 @@ conda deactivate
                     stdout=sp.PIPE,
                     stderr=sp.PIPE)
     return int(output.stdout.decode())
+
+
+class mem_buf_writing_zarr_array:
+    def __init__(self, zarr_array, nrows_per_chunk, ncols, dtype):
+        self.zarr_array = zarr_array
+        self.nrows_per_chunk = nrows_per_chunk
+        self.ncols = ncols
+        self.dtype = dtype
+        self.row_chunk_idx = 0
+        self.row_idx = 0
+        self._reset_mem_buf()
+        
+    def _reset_mem_buf(self):
+        self.mem_buf = np.full(
+            (self.nerows_per_chunk, self.ncols),
+            np.nan,
+            dtype=self.dtype
+        )
+
+    def fill_row(self, row):
+        self.mem_buf[self.row_idx, :] = row
+        self.row_idx += 1
+        if self.row_idx == self.nrow_per_chunk:
+            self.row_idx = 0
+            self.zarr_array[(self.row_chunk_idx * self.nrows_per_chunk): \
+                            ((self.row_chunk_idx + 1) * self.nrows_per_chunk),
+                            :] = self.mem_buf
+            self.row_chunk_idx += 1
+            self._reset_mem_buf()
 
 
 def create_phased_hardcall_store(filtering_run_dir,
@@ -110,14 +147,17 @@ def read_phased_hardcalls_from_vcf(filtering_run_dir,
                                    chrom,
                                    sample_bitmap):
     with _zarr_store(filtering_run_dir, chrom) as store:
-        gts = zarr.open_array(
+        gts_array = zarr.open_array(
             store=store,
             path=_phased_hardcalls_zpath(chrom)
         )
-        probs = zarr.open_array(
+        gts = mem_buf_writing_zarr_array(gts_array)
+        probs_array = zarr.open_array(
             store=store,
             path=_phased_hardcall_probs_zpath(chrom)
         )
+        probs = mem_buf_writing_zarr_array(probs_array)
+
         vcf = cyvcf2.VCF(vcf_floc)
 
         start = time.time()
@@ -135,8 +175,7 @@ def read_phased_hardcalls_from_vcf(filtering_run_dir,
                 ))
 
             # set the genotypes
-            gts[variant_count, :, :] = \
-                variant.genotype.array()[sample_bitmap, :2]
+            gts.fill_row(variant.genotype.array()[sample_bitmap, :2])
 
             # set the probabilities
             best_copy_prob = {}
@@ -148,8 +187,8 @@ def read_phased_hardcalls_from_vcf(filtering_run_dir,
                     (best_alt_prob, ref_prob),
                     axis=0
                 )
-            probs[variant_count, :] = 10000 * \
-                np.multiply(best_copy_prob[1], best_copy_prob[2])
+            probs.fill_row(10000 * np.multiply(best_copy_prob[1],
+                                               best_copy_prob[2]))
 
             variant_count += 1
             prev_allele_count += len(variant.ALT) + 1
