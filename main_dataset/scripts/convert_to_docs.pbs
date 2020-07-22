@@ -3,8 +3,8 @@
 #PBS -N convert_to_docs
 #PBS -l nodes=1:ppn=4
 #PBS -l walltime=48:00:00
-#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/main_dataset/output
-#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/main_dataset/output
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/main_dataset/scripts/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/main_dataset/scripts/output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
