@@ -15,7 +15,6 @@ import sys
 import cyvcf2
 import pandas as pd
 import numpy as np
-import scipy
 
 ukb = os.environ['UKB']
 
@@ -267,14 +266,16 @@ def main():  # noqa: D103
             "Convert and collapse sequence alleles to length alleles. "
             "Removing length alleles with 4 or fewer occurrences. "
             "For a single association, removing samples with any removed "
-            "alleles. The converting sample genotypes to their average "
-            "allele length.\n"
+            "alleles. Then convert sample genotypes to their average "
+            "allele length. #filtered_rare_alleles in results.txt is the "
+            "number of length alleles with between 1 and 4 copies in all "
+            "samples which were filtered due to rarity.\n"
         )
         readme.write("Performing linear association against listed covariates"
                      " and average allele length\n")
 
         #Write results header
-        results.write("chrom pos #samples_GP_filtered #samples_rare_allele_filtered"
+        results.write("chrom pos #samples_GP_filtered #filtered_rare_alleles")
         # 2 for bilirubin, 3 for height
         #TODO for sex chroms take into account ploidy
         for chrom in 2, 3:
@@ -283,7 +284,8 @@ def main():  # noqa: D103
             for locus in cyvcf2.VCF(vcf_floc):
                 results.write(f"{locus.CHROM} {locus.POS}")
                 # gt entries are sequence allele indexes
-                gt = locus.genotype.array()[:2]
+                # convert to float so we can use np.nan
+                gt = locus.genotype.array()[:2].astype(float)
                 seq_allele_lens = [len(allele) for allele in locus.ALT]
                 seq_allele_lens.insert(0, len(locus.REF))
 
@@ -298,28 +300,28 @@ def main():  # noqa: D103
                     aps.append(ap)
                 gp = np.mult(aps[0], aps[1])
 
-                gt[gp < .9, :] = np.nan
+                filtered_samples = gp < .9
+                gt[filtered_samples, :] = np.nan
+                n_filtered_samples = np.sum(filtered_samples)
+                results.write(f" {n_filtered_samples}")
 
                 # modify gt entries to be length alleles
-                if max_val < max_len:
-                    print(f"Found an allele of length {max_len} "
-                          f"but cannot store values greater than "
-                          f"{max_val} at chr {chrom} pos {locus.POS}",
-                          file=sys.stderr)
-                    sys.exit(1)
                 for seq_allele_idx, seq_allele_len in enumerate(seq_allele_lens):
                     gt[gt == seq_allele_idx] = seq_allele_len
 
                 # filter length alleles with too few occurrences
                 len_alleles, counts = np.unique(gt, return_counts=True)[1]
+                filtered_rare_alleles = 0
                 for len_allele_idx, len_allele in enumerate(len_alleles):
-                    if counts[len_allele_idx] < 5:
+                    if (counts[len_allele_idx] > 0 and
+                            counts[len_allele_idx] < 5):
                         gt[gt == len_allele] = np.nan
+                        filtered_rare_alleles += 1
+                results.write(f" {filtered_rare_alleles}")
 
                 avg_len = np.sum(gt, axis=1)/2
                 results.write("\n")
 
- 
 
 if __name__ == "__main__":
     main()
