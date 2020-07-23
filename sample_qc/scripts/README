@@ -1,0 +1,15 @@
+Common filters were created with:
+low_quality_list
+sex_aneuploidy_list
+sex_mismatch_list
+white_brits_list
+withdrawn_already
+These use list_from_sample_qc
+
+Run combine.py to combine already created filters
+Run unrelated_individuals to subset a sample list to its maximally unrelated subset
+
+Test files:
+sampleConsistency
+test_combine
+verify_unrelatedness

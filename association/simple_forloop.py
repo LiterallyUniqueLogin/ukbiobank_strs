@@ -132,12 +132,15 @@ def load_bilirubin(df):
     )
     direct_nan = np.isnan(bilirubin_df['direct bilirubin'])
     total_nan = np.isnan(bilirubin_df['total bilirubin'])
-    # both_nan = np.logical_and(direct_nan, total_nan)
-    # print("Direct nan count", np.sum(direct_nan))  # 103892
-    # print("total nan count", np.sum(total_nan))  # 34945
-    # print("both nan count", np.sum(both_nan))  # 34601
     bilirubin_df.loc[direct_nan, 'total bilirubin'] = np.nan
     bilirubin_df.loc[total_nan, 'direct bilirubin'] = np.nan
+
+    """
+    both_nan = np.logical_and(direct_nan, total_nan)
+    print("Direct nan count", np.sum(direct_nan))  # 103892
+    print("total nan count", np.sum(total_nan))  # 34945
+    print("both nan count", np.sum(both_nan))  # 34601
+    """
 
     try:
         return pd.merge(
@@ -151,17 +154,15 @@ def load_bilirubin(df):
 
 
 def main():  # noqa: D103
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument('filtering_run_name')
     parser.add_argument('imputation_run_name')
-    parser.add_argument('samples_file')
     args = parser.parse_args()
 
     filtering_run_name = args.filtering_run_name
     imputation_run_name = args.imputation_run_name
-    samples_file = args.samples_file
 
+    """
 	vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
 				f'vcfs/strs_only/chr{chrom}.vcf.gz')
     """
@@ -169,9 +170,37 @@ def main():  # noqa: D103
     df = load_covars()
     df = load_height(df)
     df = load_bilirubin(df)
-    print(df.head())
 
+    """
+    height_nan = np.isnan(df['height'])
+    bilirubin_nan = np.isnan(df['direct bilirubin'])
+    both_nan = np.logical_and(height_nan, bilirubin_nan)
+    print("height nan count", np.sum(height_nan))  # 1487
+    print("bilirubin nan count", np.sum(bilirubin_nan))  # 93578
+    print("both nan count", np.sum(both_nan))  # 437
+    """
+
+    # For ease of use, only work with samples which are
+    # present for both
+    # Fix later
+    df = df[~np.isnan(df['height'])]
+    df = df[~np.isnan(df['total bilirubin'])]
+    # Already calculated the largest unrelated subset of a filtering list
+    # based on height. Will need to do this more intelligently when we
+    # don't use the same samples for bilirubin and height
+    sample_subset = pd.read_csv(
+        f'{ukb}/sample_qc/runs/{filtering_run_name}/combined_unrelated.sample',
+        usecols=[0],
+        names=['id'],
+        dtype=int,
+        skiprows=1,
+        sep=" "
+    )
+    df = pd.merge(df, sample_subset, how='inner', on='id')
+ 
     df = df.astype({"id": "category"})
+
+    # Run the association assuming all phenotypes are present simultaneously
 
 if __name__ == "__main__":
     main()
