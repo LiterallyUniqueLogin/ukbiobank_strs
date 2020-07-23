@@ -34,35 +34,40 @@ def load_covars():
     If interested in the source of this data, read the READMEs in the
     directories of the loaded files.
     """
-    pcs = np.loadtxt(
+    print("Loading covariates ... ", end="", flush=True)
+    pcs = pd.read_csv(
         f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt',
-        usecols=range(-43, -3)
+        sep=" ",
+        header=None,
+        names=list(f"pc{col}" for col in range(1, 41)),
+        usecols=range(25, 65),
+        dtype=float
     ) #156MB
 
-    ids_and_sex = np.loadtxt(
+    ids_and_sex = pd.read_csv(
         f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam',
         usecols=(0, 4),
+        header=None,
+        names=['id', 'sex'],
         dtype=int,
+        sep=" "
     )
-    np_df = np.concatenate((ids_and_sex, pcs), axis=1)
-    return pd.DataFrame(
-        np_df,
-        columns=("id", "sex", *(f"pc{col}" for col in range(1, 41)))
-    ).astype({"id" : "int", "sex" : "int"}).astype({"id": "category"})
-
-    # for sex 1 = M, 2 = F
+    try:
+        return pd.concat((ids_and_sex, pcs), axis=1)
+    finally:
+        print("done")
 
 
-def load_height(covar_df):
+def load_height(df):
     """
-    Append a height column to the covariate df.
+    Append height columns to the df.
 
     Height is measured in cm.
 
     Returns
     -------
     pd.DataFrame :
-       Same as covar_df, but with two rows appended.
+       Same as the input, but with two rows appended.
        The first is 'height' as a float
        (heights are measured in half cms)
        The second is 'height_sampling'
@@ -71,74 +76,78 @@ def load_height(covar_df):
        Only first visit where height was retrieved is
        recorded.
     """
-    height = np.loadtxt(
+    print("Loading height ... ", end="", flush=True)
+    height_df = pd.read_csv(
         f'{ukb}/main_dataset/extracted_data/height.txt',
-        delimiter=" ",
-        skiprows=4
-    )
-    height_df = pd.DataFrame(
-        height,
-        columns = ["id", "height", "height_sampling"]
-    ).astype({"id" : "int", "height_sampling" : "category"}).astype({"id": "category"})
-    return pd.merge(
-        covar_df,
-        height_df,
-        how="left",
-        on="id"
+        names=["id", "height", "height_sampling"],
+        dtype={"id": "int",
+               "height": float,
+               "height_sampling": "category"},
+        skiprows=4,
+        sep=" "
     )
 
+    try:
+        return pd.merge(
+            df,
+            height_df,
+            how="left",
+            on="id"
+        )
+    finally:
+        print("done")
 
-def match_ids(pheno_ids, pheno, covar_ids, covars):
+
+def load_bilirubin(df):
     """
-    Return a subset of the datasets with the shared IDs.
+    Append bilirubin columns to the df.
 
-    The dataset will be in the covar_ids order.
-
-    Parameters
-    ----------
-    pheno_ids :
-        A list of ids
-    pheno :
-        An array where each id corresponds to a row
-    covar_ids :
-        A list of ids
-    covars :
-        A list of arrays where, for each array, each id
-        corresponds to a row
+    Measured in umol/L
 
     Returns
     -------
-    Tuple[ArrayLike[int], ArrayLike, ArrayLike :
-        The three arrays the shared ids, the phenotypes for those ids and the
-        covars for those ids
+    pd.DataFrame :
+       Same as input df, but with two float rows appended.
+       They are 'direct bilirubin' and
+       'total bilirubin'. 'indirect bilirubin'
+       can be calculated as total - direct.
+       These only reflect measurements made at the first
+       visit, follow up measurements are ignored
+       as I do not know if bilirubin values change as people
+       age or if I should be adjusting for that.
+       Unsure why someone would get a value for
+       total or direct bilirubin but not the other,
+       so for now make sure both exist or NaN them both
     """
+    print("Loading bilirubin ... ", end="", flush=True)
+    bilirubin_df = pd.read_csv(
+        f'{ukb}/main_dataset/extracted_data/bilirubin.csv',
+        names=["id", "direct bilirubin", "total bilirubin"],
+        header=0,
+        usecols=[0, 1, 3],
+        dtype={"id": "int",
+               "direct bilirubin" : float,
+               "total bilirubin" : float},
+        quotechar='"'
+    )
+    direct_nan = np.isnan(bilirubin_df['direct bilirubin'])
+    total_nan = np.isnan(bilirubin_df['total bilirubin'])
+    # both_nan = np.logical_and(direct_nan, total_nan)
+    # print("Direct nan count", np.sum(direct_nan))  # 103892
+    # print("total nan count", np.sum(total_nan))  # 34945
+    # print("both nan count", np.sum(both_nan))  # 34601
+    bilirubin_df.loc[direct_nan, 'total bilirubin'] = np.nan
+    bilirubin_df.loc[total_nan, 'direct bilirubin'] = np.nan
 
-    # reduce covar to shared ids
-    covar_id_comp = np.equal(
-        pheno_ids.reshape(1, -1),
-        covar_ids.reshape(-1, 1)
-    )
-    covar_subset = np.any(covar_id_comp, axis=1)
-    covar_ids_shared = covar_ids[covar_subset]
-    covars_shared = [covar[covar_subset, :] for covar in covars]
-
-    # reduce pheno to shared ids and sort
-    # to covars id order
-    pheno_ids_comp = np.equal(
-        pheno_ids.reshape(1, -1),
-        covar_ids_shared.reshape(-1, 1)
-    )
-    pheno_subset = np.any(pheno_ids_comp, axis=0)
-    pheno_sort = np.argmax(pheno_ids_comp, axis=0)
-    # SnO standards for shared and ordered
-    pheno_ids_SnO = pheno_ids[pheno_subset][pheno_sort[pheno_subset]]
-    pheno_SnO = pheno[pheno_subset, :][pheno_sort[pheno_subset], :]
-    assert np.all(np.equals(pheno_ids_SnO, covar_ids_shared))
-    return (
-        covar_ids_shared,
-        pheno_SnO,
-        covars_shared
-    )
+    try:
+        return pd.merge(
+            df,
+            bilirubin_df,
+            how="left",
+            on="id"
+        )
+    finally:
+        print("done")
 
 
 def main():  # noqa: D103
@@ -158,19 +167,11 @@ def main():  # noqa: D103
     """
 
     df = load_covars()
+    df = load_height(df)
+    df = load_bilirubin(df)
     print(df.head())
-    return
-    unmatched_height = load_height()
-    print(unmatched_height[:5, :3])
 
-    ids, height, covars = match_ids(
-        unmatched_height[:, 0],
-        unmatched_height[:, 1],
-        unmatched_covar_ids,
-        [unmatched_sex.reshape(-1, 1), unmatched_pcs]
-    )
-    print(ids[:5], height[:5, :3], [covar[:5, :3] for covar in covars])
-
+    df = df.astype({"id": "category"})
 
 if __name__ == "__main__":
     main()
