@@ -9,6 +9,8 @@ and pumps them in to scipy
 
 import argparse
 import os
+import os.path
+import sys
 
 import cyvcf2
 import pandas as pd
@@ -18,9 +20,10 @@ import scipy
 ukb = os.environ['UKB']
 
 
-def load_covars():
+def load_covars(readme):
     """
     Load the sex and population PC covariates.
+    TODO include age
 
     Returns
     -------
@@ -35,30 +38,42 @@ def load_covars():
     directories of the loaded files.
     """
     print("Loading covariates ... ", end="", flush=True)
-    pcs = pd.read_csv(
-        f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt',
-        sep=" ",
-        header=None,
-        names=list(f"pc{col}" for col in range(1, 41)),
-        usecols=range(25, 65),
-        dtype=float
-    ) #156MB
-
+    floc = f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam'
+    cols = (0, 4)
+    readme.write(
+        f"Adding participant ID index and sex covariate to df. File: {floc}, cols: {cols}\n"
+    )
     ids_and_sex = pd.read_csv(
-        f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam',
-        usecols=(0, 4),
+        floc,
+        usecols=cols,
         header=None,
         names=['id', 'sex'],
         dtype=int,
         sep=" "
     )
+
+    floc = f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt'
+    cols = list(range(25, 65))
+    readme.write(
+        f"Adding PC covariates 1-40. File: {floc}, cols: {cols}. Participants in same "
+        f"order as previous file.\n"
+    )
+    pcs = pd.read_csv(
+        floc,
+        sep=" ",
+        header=None,
+        names=list(f"pc{col}" for col in range(1, 41)),
+        usecols=cols,
+        dtype=float
+    ) #156MB
+
     try:
         return pd.concat((ids_and_sex, pcs), axis=1)
     finally:
         print("done")
 
 
-def load_height(df):
+def load_height(df, readme):
     """
     Append height columns to the df.
 
@@ -77,8 +92,14 @@ def load_height(df):
        recorded.
     """
     print("Loading height ... ", end="", flush=True)
+    floc = f'{ukb}/main_dataset/extracted_data/height.txt'
+    readme.write(
+        f"Adding height phenotype and sampling visit. File: {floc}. "
+        f"Only reporting first height measurement taken even if there "
+        f"were multiple at different vists\n"
+    )
     height_df = pd.read_csv(
-        f'{ukb}/main_dataset/extracted_data/height.txt',
+        floc,
         names=["id", "height", "height_sampling"],
         dtype={"id": "int",
                "height": float,
@@ -98,7 +119,7 @@ def load_height(df):
         print("done")
 
 
-def load_bilirubin(df):
+def load_bilirubin(df, readme):
     """
     Append bilirubin columns to the df.
 
@@ -120,8 +141,19 @@ def load_bilirubin(df):
        so for now make sure both exist or NaN them both
     """
     print("Loading bilirubin ... ", end="", flush=True)
+    floc = f'{ukb}/main_dataset/extracted_data/bilirubin.csv'
+    readme.write(
+        f"Adding direct and total bilirubin phenotypes. File: {floc}. "
+        f"Only recording first visit's value, regardless of whether "
+        f"it is not present and/or there is a follow up visit value. "
+        f"NaNing total values where direct is missing (or visa versa) "
+        f"as an overly conservative approach to making sure we have clean "
+        f"data as a I don't know why we'd be missing one but not both. "
+        f"This effectively cuts down 70k total bilirubin measurements "
+        f"which don't have direct counterparts\n"
+    )
     bilirubin_df = pd.read_csv(
-        f'{ukb}/main_dataset/extracted_data/bilirubin.csv',
+        floc,
         names=["id", "direct bilirubin", "total bilirubin"],
         header=0,
         usecols=[0, 1, 3],
@@ -155,52 +187,139 @@ def load_bilirubin(df):
 
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
-    parser.add_argument('filtering_run_name')
+    parser.add_argument('sample_filtering_run_name')
     parser.add_argument('imputation_run_name')
+    parser.add_argument(
+        'association_run_name',
+        help="The name to give this association run"
+    )
     args = parser.parse_args()
 
-    filtering_run_name = args.filtering_run_name
+    sample_filtering_run_name = args.sample_filtering_run_name
     imputation_run_name = args.imputation_run_name
+    association_run_name = args.association_run_name
 
-    """
-	vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
-				f'vcfs/strs_only/chr{chrom}.vcf.gz')
-    """
+    assoc_dir = f'{ukb}/association/runs/{association_run_name}'
+    if os.path.exists(assoc_dir):
+        print(f"Association with run name {association_run_name} already "
+               "exists!", file=sys.stderr)
+        sys.exit(1)
 
-    df = load_covars()
-    df = load_height(df)
-    df = load_bilirubin(df)
+    os.mkdir(assoc_dir)
 
-    """
-    height_nan = np.isnan(df['height'])
-    bilirubin_nan = np.isnan(df['direct bilirubin'])
-    both_nan = np.logical_and(height_nan, bilirubin_nan)
-    print("height nan count", np.sum(height_nan))  # 1487
-    print("bilirubin nan count", np.sum(bilirubin_nan))  # 93578
-    print("both nan count", np.sum(both_nan))  # 437
-    """
+    with open(f"{assoc_dir}/REAMDE", 'w') as readme, \
+            open(f"{assoc_dir}/run.log", 'w') as log, \
+            open(f"{assoc_dir}/results.txt", 'w') as results:
+        df = load_covars(readme)
+        df = load_height(df, readme)
+        df = load_bilirubin(df, readme)
 
-    # For ease of use, only work with samples which are
-    # present for both
-    # Fix later
-    df = df[~np.isnan(df['height'])]
-    df = df[~np.isnan(df['total bilirubin'])]
-    # Already calculated the largest unrelated subset of a filtering list
-    # based on height. Will need to do this more intelligently when we
-    # don't use the same samples for bilirubin and height
-    sample_subset = pd.read_csv(
-        f'{ukb}/sample_qc/runs/{filtering_run_name}/combined_unrelated.sample',
-        usecols=[0],
-        names=['id'],
-        dtype=int,
-        skiprows=1,
-        sep=" "
-    )
-    df = pd.merge(df, sample_subset, how='inner', on='id')
+        """
+        height_nan = np.isnan(df['height'])
+        bilirubin_nan = np.isnan(df['direct bilirubin'])
+        both_nan = np.logical_and(height_nan, bilirubin_nan)
+        print("height nan count", np.sum(height_nan))  # 1487
+        print("bilirubin nan count", np.sum(bilirubin_nan))  # 93578
+        print("both nan count", np.sum(both_nan))  # 437
+        """
+
+        # For ease of use, only work with samples which are
+        # present for both
+        # Fix later
+        readme.write(
+            "Removing samples which are missing height or bilirubin values "
+            "so we can run both together. "
+            "This cuts down on ~100k ppts who have height but not bilirubin. "
+            "Will do this more intelligently later.\n"
+        )
+        df = df[~np.isnan(df['height'])]
+        df = df[~np.isnan(df['total bilirubin'])]
+
+        # Already calculated the largest unrelated subset of a filtering list
+        # based on height. Will need to do this more intelligently when we
+        # don't use the same samples for bilirubin and height
+        floc = f'{ukb}/sample_qc/runs/{sample_filtering_run_name}/combined_unrelated.sample'
+        readme.write(f"Subsetting to samples from file {floc}. Left with "
+                     "~275k samples\n")
+        sample_subset = pd.read_csv(
+            floc,
+            usecols=[0],
+            names=['id'],
+            dtype=int,
+            skiprows=1,
+            sep=" "
+        )
+        df = pd.merge(df, sample_subset, how='inner', on='id')
+
+        df = df.astype({"id": "category"})
+
+        # Run the association assuming all phenotypes are present simultaneously
+        # QQ plot and Manhattan plot
+        # How can a permutation test (for a QQ plot) still be above the line?
+
+        readme.write(f"Using str calls from imputed run {imputation_run_name}\n")
+        readme.wrtie(
+            "Filtering calls whose phased genotype probability as estimated "
+            "by Beagle is less than 0.9. Number filtered this way is the "
+            "#samples_GP_filtered column in results.txt"
+        )
+        readme.write(
+            "Convert and collapse sequence alleles to length alleles. "
+            "Removing length alleles with 4 or fewer occurrences. "
+            "For a single association, removing samples with any removed "
+            "alleles. The converting sample genotypes to their average "
+            "allele length.\n"
+        )
+        readme.write("Performing linear association against listed covariates"
+                     " and average allele length\n")
+
+        #Write results header
+        results.write("chrom pos #samples_GP_filtered #samples_rare_allele_filtered"
+        # 2 for bilirubin, 3 for height
+        #TODO for sex chroms take into account ploidy
+        for chrom in 2, 3:
+            vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
+                        f'vcfs/strs_only/chr{chrom}.vcf.gz')
+            for locus in cyvcf2.VCF(vcf_floc):
+                results.write(f"{locus.CHROM} {locus.POS}")
+                # gt entries are sequence allele indexes
+                gt = locus.genotype.array()[:2]
+                seq_allele_lens = [len(allele) for allele in locus.ALT]
+                seq_allele_lens.insert(0, len(locus.REF))
+
+                # filter calls whose phased genotype probability
+                # as estimated by Beagle is below .9
+                aps = []
+                for copy in 1, 2:
+                    ap = locus.format(f'AP{copy}')
+                    ref_prob = np.maximum(0, 1 - np.sum(ap, axis=1))
+                    ap = np.concatenate((ref_prob, ap), axis=1)
+                    ap = ap[:, gt[:, (copy - 1)]]
+                    aps.append(ap)
+                gp = np.mult(aps[0], aps[1])
+
+                gt[gp < .9, :] = np.nan
+
+                # modify gt entries to be length alleles
+                if max_val < max_len:
+                    print(f"Found an allele of length {max_len} "
+                          f"but cannot store values greater than "
+                          f"{max_val} at chr {chrom} pos {locus.POS}",
+                          file=sys.stderr)
+                    sys.exit(1)
+                for seq_allele_idx, seq_allele_len in enumerate(seq_allele_lens):
+                    gt[gt == seq_allele_idx] = seq_allele_len
+
+                # filter length alleles with too few occurrences
+                len_alleles, counts = np.unique(gt, return_counts=True)[1]
+                for len_allele_idx, len_allele in enumerate(len_alleles):
+                    if counts[len_allele_idx] < 5:
+                        gt[gt == len_allele] = np.nan
+
+                avg_len = np.sum(gt, axis=1)/2
+                results.write("\n")
+
  
-    df = df.astype({"id": "category"})
-
-    # Run the association assuming all phenotypes are present simultaneously
 
 if __name__ == "__main__":
     main()
