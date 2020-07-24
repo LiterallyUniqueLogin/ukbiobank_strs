@@ -19,4 +19,7 @@ misc_data - miscellaneous small pieces of data associated with the larger datase
 pre_imputation_qc: tests done before imputing STRs into the datasets
 snpstr: Shubham's SNP-STR reference panel
 str-imputed: the UKB genetic data after STR imputation
+ukb.env: the command used to generate the default environment with the software 
+    tools used in this project
 ukb_utilities - the utilities used to download all the data from the data showcase
+
