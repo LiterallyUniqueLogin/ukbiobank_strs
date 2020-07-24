@@ -418,12 +418,6 @@ def main():  # noqa: D103
                 results.write(f" {filtered_rare_alleles}")
 
                 # set gts for regression
-                """
-                avg_len = np.sum(gt, axis=1)/2
-                print(avg_len.shape, avg_len)
-                print(df['gt'].shape, df['gt'])
-                df['gt'] = avg_len
-                """
                 df['gt'] = np.sum(gt, axis=1)/2
 
                 #do da regression
@@ -434,10 +428,6 @@ def main():  # noqa: D103
                         missing='drop'
                     )
                     reg_result = model.fit()
-                    """
-                    print(reg_result.summary())
-                    exit()
-                    """
                     pval = reg_result.pvalues['gt']
                     coef = reg_result.params['gt']
                     results.write(f" {pval} {coef}")
