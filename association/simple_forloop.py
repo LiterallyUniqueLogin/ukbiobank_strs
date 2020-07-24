@@ -139,49 +139,49 @@ def load_bilirubin(df, readme):
     -------
     pd.DataFrame :
        Same as input df, but with two float rows appended.
-       They are 'direct bilirubin' and
-       'total bilirubin'. 'indirect bilirubin'
+       They are 'direct_bilirubin' and
+       'total_bilirubin'. 'indirect_bilirubin'
        can be calculated as total - direct.
        These only reflect measurements made at the first
        visit, follow up measurements are ignored
        as I do not know if bilirubin values change as people
        age or if I should be adjusting for that.
        Unsure why someone would get a value for
-       total or direct bilirubin but not the other,
+       total or direct_bilirubin but not the other,
        so for now make sure both exist or NaN them both
     """
     print("Loading bilirubin ... ", end="", flush=True)
     floc = f'{ukb}/main_dataset/extracted_data/bilirubin.csv'
     readme.write(
-        f"Adding direct, total and indirect bilirubin phenotypes. File: {floc}. "
+        f"Adding direct, total and indirect_bilirubin phenotypes. File: {floc}. "
         f"Only recording first visit's value, regardless of whether "
         f"it is not present and/or there is a follow up visit value. "
         f"NaNing total values where direct is missing (or visa versa) "
         f"as an overly conservative approach to making sure we have clean "
         f"data as a I don't know why we'd be missing one but not both. "
-        f"This effectively cuts down 70k total bilirubin measurements "
+        f"This effectively cuts down 70k total_bilirubin measurements "
         f"which don't have direct counterparts. The indirect phenotype"
         f" is simply calculated as total - direct.\n"
     )
     bilirubin_df = pd.read_csv(
         floc,
-        names=["id", "direct bilirubin", "total bilirubin"],
+        names=["id", "direct_bilirubin", "total_bilirubin"],
         header=0,
         usecols=[0, 1, 3],
         dtype={"id": "int",
-               "direct bilirubin" : float,
-               "total bilirubin" : float},
+               "direct_bilirubin" : float,
+               "total_bilirubin" : float},
         quotechar='"'
     )
-    direct_nan = np.isnan(bilirubin_df['direct bilirubin'])
-    total_nan = np.isnan(bilirubin_df['total bilirubin'])
-    bilirubin_df.loc[direct_nan, 'total bilirubin'] = np.nan
-    bilirubin_df.loc[total_nan, 'direct bilirubin'] = np.nan
+    direct_nan = np.isnan(bilirubin_df['direct_bilirubin'])
+    total_nan = np.isnan(bilirubin_df['total_bilirubin'])
+    bilirubin_df.loc[direct_nan, 'total_bilirubin'] = np.nan
+    bilirubin_df.loc[total_nan, 'direct_bilirubin'] = np.nan
 
     # Add indirect:
-    bilirubin_df['indirect bilirubin'] = (
-        bilirubin_df['total bilirubin'] -
-        bilirubin_df['direct bilirubin']
+    bilirubin_df['indirect_bilirubin'] = (
+        bilirubin_df['total_bilirubin'] -
+        bilirubin_df['direct_bilirubin']
     )
 
     """
@@ -242,7 +242,7 @@ def main():  # noqa: D103
 
         """
         height_nan = np.isnan(df['height'])
-        bilirubin_nan = np.isnan(df['direct bilirubin'])
+        bilirubin_nan = np.isnan(df['direct_bilirubin'])
         both_nan = np.logical_and(height_nan, bilirubin_nan)
         print("height nan count", np.sum(height_nan))  # 1487
         print("bilirubin nan count", np.sum(bilirubin_nan))  # 93578
@@ -259,7 +259,7 @@ def main():  # noqa: D103
             "Will do this more intelligently later.\n"
         )
         df = df[~np.isnan(df['height'])]
-        df = df[~np.isnan(df['total bilirubin'])]
+        df = df[~np.isnan(df['total_bilirubin'])]
 
         # Already calculated the largest unrelated subset of a filtering list
         # based on height. Will need to do this more intelligently when we
@@ -307,13 +307,14 @@ def main():  # noqa: D103
         nans[:] = np.nan
         nans_df = pd.DataFrame(nans, columns=['gt'])
         df = pd.concat((df, nans_df), axis=1)
+        indep_vars.insert(1, 'gt')
 
         # covariate columns:
         dep_vars = [
             'height',
-            'total bilirubin',
-            'direct bilirubin',
-            'indirect bilirubin'
+            'total_bilirubin',
+            'direct_bilirubin',
+            'indirect_bilirubin'
         ]
 
         #Write results header
@@ -333,7 +334,17 @@ def main():  # noqa: D103
         for region in regions:
             print(f"Writing out results for region {region}. See the log for "
                   f"updates.")
-            chrom = region.split(':')[0]
+
+            chrom, in_chrom_region = region.split(':')
+            if '-' not in in_chrom_region:
+                # cyvcf2 interprets 2:500
+                # as chromosome 2, bp 500 and on
+                # even though the way bcftools inteprets that is as
+                # chrom 2, bp 500 exactly
+                # so change the syntax we pass to cyvcf2 to get
+                # it onboard
+                region = f"{chrom}:{in_chrom_region}-{in_chrom_region}"
+
             vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                         f'vcfs/strs_only/chr{chrom}.vcf.gz')
             vcf = cyvcf2.VCF(vcf_floc)
@@ -349,6 +360,12 @@ def main():  # noqa: D103
                     dtype='int'
                 )
                 df = pd.merge(samples_df, df, how='left', on='id')
+
+                n_samples = np.sum(df['intercept'] == 1)
+                readme.write(f"Running associations with {n_samples} "
+                             f"samples\n")
+                readme.flush()
+                samples_set_up = True
 
             vcf_region = vcf(region)
             for locus in vcf_region:
@@ -388,7 +405,10 @@ def main():  # noqa: D103
                     gt[gt == seq_allele_idx] = seq_allele_len
 
                 # filter length alleles with too few occurrences
-                len_alleles, counts = np.unique(gt, return_counts=True)
+                len_alleles, counts = np.unique(
+                    gt[~np.isnan(gt)],
+                    return_counts=True
+                )
                 filtered_rare_alleles = 0
                 for len_allele_idx, len_allele in enumerate(len_alleles):
                     if (counts[len_allele_idx] > 0 and
@@ -414,12 +434,17 @@ def main():  # noqa: D103
                         missing='drop'
                     )
                     reg_result = model.fit()
+                    """
+                    print(reg_result.summary())
+                    exit()
+                    """
                     pval = reg_result.pvalues['gt']
                     coef = reg_result.params['gt']
                     results.write(f" {pval} {coef}")
 
                 # output results
                 results.write("\n")
+                results.flush()
                 duration = time.time() - start_time
                 total_time += duration
                 batch_time += duration
