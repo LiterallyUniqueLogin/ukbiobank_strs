@@ -225,12 +225,12 @@ def main():  # noqa: D103
     assoc_dir = f'{ukb}/association/runs/{association_run_name}'
     if os.path.exists(assoc_dir):
         print(f"Association with run name {association_run_name} already "
-               "exists!", file=sys.stderr)
+              f"exists!", file=sys.stderr)
         sys.exit(1)
 
     os.mkdir(assoc_dir)
 
-    with open(f"{assoc_dir}/REAMDE", 'w') as readme, \
+    with open(f"{assoc_dir}/README", 'w') as readme, \
             open(f"{assoc_dir}/run.log", 'w') as log, \
             open(f"{assoc_dir}/results.txt", 'w') as results:
 
@@ -302,13 +302,6 @@ def main():  # noqa: D103
                      " and average allele length\n")
 
 
-        # Add a column that can be overwritten each step for the genotypes
-        nans = np.empty((len(df.index), 1))
-        nans[:] = np.nan
-        nans_df = pd.DataFrame(nans, columns=['gt'])
-        df = pd.concat((df, nans_df), axis=1)
-        indep_vars.insert(1, 'gt')
-
         # covariate columns:
         dep_vars = [
             'height',
@@ -370,7 +363,6 @@ def main():  # noqa: D103
             vcf_region = vcf(region)
             for locus in vcf_region:
                 # setup for this locus
-                df['gt'] = np.nan
                 n_loci += 1
                 start_time = time.time()
                 results.write(f"{locus.CHROM} {locus.POS}")
@@ -418,13 +410,17 @@ def main():  # noqa: D103
                 results.write(f" {filtered_rare_alleles}")
 
                 # set gts for regression
-                df['gt'] = np.sum(gt, axis=1)/2
+                avg_len_gt = np.sum(gt, axis=1)/2
+                gt_df = pd.DataFrame(
+                    avg_len_gt.reshape(-1, 1),
+                    columns=['gt']
+                )
 
                 #do da regression
                 for dep_var in dep_vars:
                     model = OLS(
                         df[dep_var],
-                        df[indep_vars],
+                        pd.concat((gt_df, df[indep_vars]), axis=1),
                         missing='drop'
                     )
                     reg_result = model.fit()
@@ -444,6 +440,7 @@ def main():  # noqa: D103
                         f"{batch_time/batch_size}s\n"
                         f"time/locus ({n_loci} total loci): {total_time/n_loci}s\n"
                     )
+                    log.flush()
                     batch_time = 0
 
 
