@@ -12,6 +12,7 @@
 *.swm
 .ipynb_checkpoints/
 *.vcf
+*.dat
 *.sample
 *tmp*
 *temp*
