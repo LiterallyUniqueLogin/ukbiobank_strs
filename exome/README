@@ -2,15 +2,19 @@ ukb...enc - the enc file from the UKB application which contains the permissions
    to download the exome data.
    See https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=AccessingData for details.
 k...key - the key used to authenticate the enc file
-fetch_bulk_sbp_gvcfs.py - python script using dask to invoke the ukb downloader one 
+fetch_bulk_gvcfs.py - python script using dask to invoke the ukb downloader one 
    file at a time
-launch_fetch_bulk_sbp_gvcfs.pbs - batch script to launch a job for the python dask scriptA
-confirm_exome_download.pbs - make sure none of the downloads are truncated
+launch_fetch_bulk_spb_gvcfs.pbs - batch script to launch a job for the python dask script
+   for downloading all the spb vcf files
+launch_fetch_10_bulk_fe_gvcfs.pbs - batch script to launch a job for the python dask script
+   for downloading 10 fe vcf files
+confirm_spb_exome_download.pbs - make sure none of the downloads are truncated
 
 spb_gvcfs.bulk - one line for each file to download
+fe_gcvfs.10.bulk - same as spb_gvcfs.bulk, but for the fe pipeline and only 10 ppts
 
-vcfs/ contains:
-* the sbp exome files (data fields 23176 and 23177) for 
+spb_vcfs/ contains:
+* the spb exome files (data fields 23176 and 23177) for 
   the first ~50k participants.
   These are named $ID.tbi and $ID.vcf.gz for each numeric ID
   Each VCF includes all chromosomes
@@ -18,3 +22,9 @@ vcfs/ contains:
   for each of those downloads
 * output/ - output files for pbs and dask jobs
 
+fe_vcfs contains the same as spb_vcfs except:
+* the fields are 23161 and 23162 respectively
+* only 10ppts of data
+
+fe_plink contains the plink representation of the calls in the fe pipelines in the usual
+.bed, .bim and .fam file. The .bed file contains all the calls for all the samples across all chromosomes..

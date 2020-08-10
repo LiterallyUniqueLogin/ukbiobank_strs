@@ -1,6 +1,8 @@
 # pylint: disable=C0103,C0114,C0116
+import argparse
 import datetime
 import os
+import os.path
 import subprocess as sp
 import sys
 
@@ -10,11 +12,14 @@ import dask.distributed
 import dask_jobqueue
 
 
-def download_item(sample_ID, field_ID):  # noqa: D103
+ukb = os.environ['UKB']
+
+
+def download_item(sample_ID, field_ID, vcf_dir):  # noqa: D103
     command = f"""
     cd {vcf_dir}
     ../../ukb_utilities/ukbfetch \
-            -a../../main_dataset/k41414.key \
+            -a../../main_dataset/raw_data/k41414.key \
             -v \
             -of{sample_ID}_{field_ID} \
             -e{sample_ID} \
@@ -34,12 +39,24 @@ def download_item(sample_ID, field_ID):  # noqa: D103
 
 
 def main():  # noqa: D103
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pipeline_name", choices={'fe', 'spb'})
+    parser.add_argument("bulk_file",
+                        help="name of a file in the exome directory")
+    args = parser.parse_args()
+    vcf_dir = f'{ukb}/exome/{args.pipeline_name}_vcfs'
+    output_dir = f'{vcf_dir}/output'
+    bulk_floc = f'{ukb}/exome/{args.bulk_file}'
+
+    assert os.path.exists(vcf_dir)
+    assert os.path.exists(bulk_floc)
+
     current_files = set(os.listdir(vcf_dir))
     cluster = dask_jobqueue.PBSCluster(
         name="UKB_gVCF_download",
         walltime="4:00:00",
         log_directory=output_dir,
-        dashboard_address=':8713'
+        queue="condo"
     )
     # Maximum of 10 concurrent downloads per application
     # See here: https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=644
@@ -48,18 +65,18 @@ def main():  # noqa: D103
 
     jobs = set()
     # calculate number of download batches
-    with open(f'{vcf_dir}/../spb_gvcfs.bulk') as bulk_file:
+    with open(bulk_floc) as bulk_file:
         for line in bulk_file:
             sample_ID, field_ID = line.split()
-            if field_ID == '23176_0_0':
+            if field_ID in {'23176_0_0', '23161_0_0'}:
                 suffix = 'gz'
-            elif field_ID == '23177_0_0':
+            elif field_ID == {'23177_0_0', '23162_0_0'}:
                 suffix = 'tbi'
             file_name = f"{sample_ID}_{field_ID}.{suffix}"
             if file_name in current_files:
                 continue
             jobs.add(client.submit(
-                download_item, sample_ID, field_ID,
+                download_item, sample_ID, field_ID, vcf_dir,
                 key=f'download_item-{sample_ID}-{field_ID}'
             ))
 
@@ -102,7 +119,4 @@ def main():  # noqa: D103
 
 
 if __name__ == "__main__":
-    ukb = os.environ['UKB']
-    vcf_dir = f'{ukb}/exome/vcfs'
-    output_dir = f'{vcf_dir}/output'
     main()
