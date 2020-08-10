@@ -20,7 +20,6 @@ from statsmodels.regression.linear_model import OLS
 
 ukb = os.environ['UKB']
 
-
 def load_covars(readme):
     """
     Load the sex and population PC covariates.
@@ -315,6 +314,7 @@ def main():  # noqa: D103
         for dep_var in dep_vars:
             results.write(f" p_{dep_var} coeff_{dep_var}")
         results.write("\n")
+        results.flush()
 
         n_loci = 0
         batch_time = 0
@@ -325,8 +325,6 @@ def main():  # noqa: D103
         samples_set_up = False
 
         for region in regions:
-            print(f"Writing out results for region {region}. See the log for "
-                  f"updates.")
 
             chrom, in_chrom_region = region.split(':')
             if '-' not in in_chrom_region:
@@ -345,6 +343,7 @@ def main():  # noqa: D103
             # order the observations in df
             # based on the order of samples in the first vcf
             if not samples_set_up:
+                print("Setting up samples ...", end="", flush=True)
                 vcf_samples = list(sample.split("_")[0] for sample in
                                    vcf.samples)
                 samples_df = pd.DataFrame(
@@ -354,11 +353,18 @@ def main():  # noqa: D103
                 )
                 df = pd.merge(samples_df, df, how='left', on='id')
 
+                indep_var_array = df[indep_vars].to_numpy()
+                indep_vars.insert(0, 'gt')
+
                 n_samples = np.sum(df['intercept'] == 1)
                 readme.write(f"Running associations with {n_samples} "
                              f"samples\n")
                 readme.flush()
                 samples_set_up = True
+                print("done")
+
+            print(f"Writing out results for region {region}. See the log for "
+                  f"updates.")
 
             vcf_region = vcf(region)
             for locus in vcf_region:
@@ -411,18 +417,17 @@ def main():  # noqa: D103
 
                 # set gts for regression
                 avg_len_gt = np.sum(gt, axis=1)/2
-                gt_df = pd.DataFrame(
-                    avg_len_gt.reshape(-1, 1),
-                    columns=['gt']
-                )
 
                 #do da regression
                 for dep_var in dep_vars:
                     model = OLS(
                         df[dep_var],
-                        pd.concat((gt_df, df[indep_vars]), axis=1),
+                        np.concatenate((avg_len_gt.reshape(-1, 1),
+                                        indep_var_array),
+                                       axis=1),
                         missing='drop'
                     )
+                    model.exog_names[:] = indep_vars
                     reg_result = model.fit()
                     pval = reg_result.pvalues['gt']
                     coef = reg_result.params['gt']
