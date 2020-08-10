@@ -53,7 +53,7 @@ def main():
             trans_uniform,
             trans_uniform,
             color=colors['gray'],
-            label='y=x, null p-valus'
+            label='y=x, null p-values'
         )
         """
         ax.plot(
