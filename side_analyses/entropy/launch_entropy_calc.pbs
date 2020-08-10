@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N launch_
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=24:00:00
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/entropy/output
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/entropy/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+source "$HOME"/.bashrc
+cd "$UKB/../trtools/repo_beagle_hack" || { echo "Directory $UKB/../trtools/repo_beagle_hack doesn't exist" ; exit 1 ; }
+conda activate ukb
+python -m trtools.statSTR.statSTR \
+	--vcf ../../ukbiobank/str_imputed/runs/first_pass/vcfs/strs_only/chr"$CHR".vcf.gz \
+	--entropy \
+	--out ../../ukbiobank/side_analyses/entropy/chr"$CHR" \
+	--vcftype hipstr
+conda deactivate
+
