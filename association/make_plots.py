@@ -8,7 +8,29 @@ import numpy as np
 
 ukb = os.environ['UKB']
 GENOME_WIDE_SIG = 5e-8
+HEIGHT_CUTOFF = 20
 
+def plot_height_snp_qq(ax):
+    snp_summary_stats = np.loadtxt(
+        (f"{ukb}/misc_data/snp_summary_stats/height/"
+         "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
+        skiprows=1,
+        usecols=(8)
+    ).reshape(-1)
+    snp_summary_stats[snp_summary_stats == 0] = \
+            min(snp_summary_stats[snp_summary_stats != 0])
+    snp_summary_stats.sort()
+    trans_data = -np.log10(snp_summary_stats)
+    trans_data[trans_data > HEIGHT_CUTOFF] = HEIGHT_CUTOFF
+    uniform = (np.arange(len(trans_data)) + 0.5)/len(trans_data)
+    trans_uniform = -np.log10(uniform)
+    ax.scatter(
+        trans_uniform,
+        trans_data,
+        color=colors['royalblue'],
+        marker='.',
+        label="SNPs genome wide"
+    )
 
 def main():
     parser = argparse.ArgumentParser()
@@ -20,8 +42,6 @@ def main():
         skiprows=1,
         usecols=(0, 1, 4, 6, 8, 10)
     )
-    chroms = results[:, 0]
-    pos = results[:, 1]
     pvals = {}
     pvals['height'] = results[:, 2]
     pvals['total_bilirubin'] = results[:, 3]
@@ -45,10 +65,12 @@ def main():
         data[data == 0] = min(data[data != 0])
         data.sort()
         trans_data = -np.log10(data)
-        trans_data[trans_data > 20] = 20
+        trans_data[trans_data > HEIGHT_CUTOFF] = HEIGHT_CUTOFF
         ax.set_title(f'{phenotype}')
         ax.set_ylabel('-log_10(pval)')
-        ax.set_xlabel(f'-log_10(Uniform dist) (total loci = {nresults})')
+        ax.set_xlabel(f'-log_10(Uniform dist) (total STR loci = {nresults})')
+        if phenotype == 'height':
+            plot_height_snp_qq(ax)
         ax.plot(
             trans_uniform,
             trans_uniform,
@@ -68,7 +90,7 @@ def main():
             trans_data,
             color=colors['mediumvioletred'],
             marker='.',
-            label="qq plot"
+            label="STRs on chr2,3"
         )
 
         crosses_gws = np.argmin(data < GENOME_WIDE_SIG)
@@ -81,7 +103,7 @@ def main():
             xytext=(xy[0]-1.5, xy[1]+5),
             arrowprops=dict(facecolor='black', shrink=0.05),
         )
-                    
+
         ax.legend()
 
         plt_count += 1
@@ -91,3 +113,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
