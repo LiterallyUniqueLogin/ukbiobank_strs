@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N launch_calc_exome_entropy
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=24:00:00
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/entropy/output
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/entropy/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+cd "$UKB"/../trtools/repo_beagle_hack
+for chr in $(seq 1 22) ; do 
+    echo "Working on chr $chr"
+    python -m trtools.statSTR.statSTR \
+	--vcf <( bcftools view -R "$UKB"/side_analyses/exome_strs/hg19_final.bed \
+           "$UKB"/str_imputed/runs/first_pass/vcfs/strs_only/chr"${chr}".vcf.gz \
+	) \
+	--entropy \
+	--out "$UKB"/side_analyses/entropy/exome/chr"$chr" \
+        --vcftype hipstr
+done
+
+wait
