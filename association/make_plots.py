@@ -20,6 +20,7 @@ def prep_data(data):
     pvals[pvals == 0] = min(pvals[pvals != 0])
     pvals[:] = -np.log10(pvals)
     pvals[pvals > HEIGHT_CUTOFF] = HEIGHT_CUTOFF
+    print(data[pvals == HEIGHT_CUTOFF, 0:2])
     return data[np.argsort(data[:, 2])]
 
 # gets an array of x-axis vals of the corresponding length
@@ -38,42 +39,23 @@ def plot_qq(ax, prepped_pvals, label, color):
         label=label
     )
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("run_name")
-    args = parser.parse_args()
-
-    phenotypes = ['height', 'total_bilirubin']
-    #phenotypes = ['height']
-
-    results = {}
-    results['height'] = np.loadtxt(
-        f'{ukb}/association/runs/{args.run_name}/results.txt',
-        usecols=[0, 1, 4],
-        skiprows=1
+def plot_manhattan(ax, data, label, color):
+    # Trim to chroms 2, 3
+    data = data[np.logical_or(data[:, 0] == 2, data[:, 0] == 3), :]
+    xs = data[:, 1]
+    xs[data[:, 0] == 3] += 243199373 #offset by len of chr 2
+    ax.scatter(
+        xs,
+        data[:, 2],
+        color=colors[color],
+        label=label,
+        marker='.'
     )
-    results['total_bilirubin'] = np.loadtxt(
-        f'{ukb}/association/runs/{args.run_name}/results.txt',
-        usecols=[0, 1, 6],
-        skiprows=1
-    )
-    #TODO fix nan alleles!
-    for phenotype in phenotypes:
-        results[phenotype] = prep_data(results[phenotype])
 
-    snp_summary_stats = {}
-    snp_summary_stats['height'] = np.loadtxt(
-        (f"{ukb}/misc_data/snp_summary_stats/height/"
-         "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
-        usecols=(0, 1, 8),
-        skiprows=1
-    )
-    for phenotype in snp_summary_stats:
-        snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])
-
+def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
     # plot QQ plots
-    n_phenotypes = len(phenotypes)
-    fig, axs = plt.subplots(n_phenotypes, figsize=(10, 5*n_phenotypes))
+    nphenotypes = len(phenotypes)
+    fig, axs = plt.subplots(nphenotypes, figsize=(10, 5*nphenotypes))
     fig.suptitle('QQ plots')
     fig.tight_layout(pad=5.0)
     plt_count = 0
@@ -116,8 +98,77 @@ def main():
 
         plt_count += 1
 
-    plt.savefig(f'{ukb}/association/runs/{args.run_name}/qq_plot.png')
+    plt.savefig(f'{ukb}/association/runs/{run_name}/qq_plot.png')
 
+
+def make_manhattan_plots(phenotypes, results, snp_summary_stats, run_name):
+    # plot Manhattan plots
+    nphenotypes = len(phenotypes)
+    fig, axs = plt.subplots(nphenotypes, figsize=(30, 5*nphenotypes))
+    fig.suptitle('Manhattan plots (chr2,3)')
+    fig.tight_layout(pad=5.0)
+    plt_count = 0
+    for phenotype in phenotypes:
+        if len(phenotypes) > 1:
+            ax = axs[plt_count]
+        else:
+            ax = axs
+        ax.set_title(f'{phenotype}')
+        ax.set_ylabel('-log_10(pval)')
+        ax.set_xlabel(f'Position (bp count starts on chr2, continues into chr3)')
+
+        max_len = 243199373 + 198022430 # len chr2 + chr3
+        ax.plot([0, max_len], [GENOME_WIDE_TRANS_SIG] * 2, label='p >= 5e-8',
+                 color=colors['red'])
+
+        if phenotype in snp_summary_stats:
+            plot_manhattan(ax, snp_summary_stats[phenotype], 'SNPs', 'royalblue')
+
+        plot_manhattan(ax, results[phenotype], 'STRs', 'mediumvioletred')
+
+        ax.legend()
+
+        plt_count += 1
+
+    plt.savefig(f'{ukb}/association/runs/{run_name}/manhattan_plot.png')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("run_name")
+    args = parser.parse_args()
+
+    phenotypes = ['height', 'total_bilirubin']
+    # phenotypes = ['height']
+
+    results = {}
+    results['height'] = np.loadtxt(
+        f'{ukb}/association/runs/{args.run_name}/results.txt',
+        usecols=[0, 1, 4],
+        skiprows=1
+    )
+    results['total_bilirubin'] = np.loadtxt(
+        f'{ukb}/association/runs/{args.run_name}/results.txt',
+        usecols=[0, 1, 6],
+        skiprows=1
+    )
+    #TODO fix nan alleles!
+    for phenotype in phenotypes:
+        results[phenotype] = prep_data(results[phenotype])
+
+    snp_summary_stats = {}
+    snp_summary_stats['height'] = np.loadtxt(
+        (f"{ukb}/misc_data/snp_summary_stats/height/"
+         "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
+        usecols=(0, 1, 8),
+        skiprows=1
+    )
+    for phenotype in snp_summary_stats:
+        snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])
+
+    make_qq_plots(phenotypes, results, snp_summary_stats, args.run_name)
+    make_manhattan_plots(phenotypes, results, snp_summary_stats,
+                         args.run_name)
 
 if __name__ == "__main__":
     main()
