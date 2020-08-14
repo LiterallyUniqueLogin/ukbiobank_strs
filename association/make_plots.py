@@ -20,7 +20,6 @@ def prep_data(data):
     pvals[pvals == 0] = min(pvals[pvals != 0])
     pvals[:] = -np.log10(pvals)
     pvals[pvals > HEIGHT_CUTOFF] = HEIGHT_CUTOFF
-    print(data[pvals == HEIGHT_CUTOFF, 0:2])
     return data[np.argsort(data[:, 2])]
 
 # gets an array of x-axis vals of the corresponding length
@@ -139,29 +138,37 @@ def main():
     args = parser.parse_args()
 
     phenotypes = ['height', 'total_bilirubin']
-    # phenotypes = ['height']
 
     results = {}
+    """
     results['height'] = np.loadtxt(
         f'{ukb}/association/runs/{args.run_name}/results.txt',
         usecols=[0, 1, 4],
         skiprows=1
-    )
+    )"""
     results['total_bilirubin'] = np.loadtxt(
         f'{ukb}/association/runs/{args.run_name}/results.txt',
         usecols=[0, 1, 6],
         skiprows=1
     )
+    print(results['total_bilirubin'][results['total_bilirubin'][:, 2] == 0, 0:2])
+    exit()
     #TODO fix nan alleles!
     for phenotype in phenotypes:
         results[phenotype] = prep_data(results[phenotype])
-
     snp_summary_stats = {}
     snp_summary_stats['height'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/height/"
          "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
         usecols=(0, 1, 8),
         skiprows=1
+    )
+    snp_summary_stats['total_bilirubin'] = np.loadtxt(
+        (f"{ukb}/misc_data/snp_summary_stats/bilirubin/"
+         "phenocode-TBil_GWAS_in_BBJ_autosome.tsv"),
+        usecols=(0, 1, 6),
+        skiprows=1,
+        delimiter='\t'
     )
     for phenotype in snp_summary_stats:
         snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])

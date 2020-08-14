@@ -8,3 +8,6 @@ Using str calls from imputed run first_pass
 Filtering calls whose phased genotype probability as estimated by Beagle is less than 0.9. Number filtered this way is the #samples_GP_filtered column in results.txtConvert and collapse sequence alleles to length alleles. Removing length alleles with 4 or fewer occurrences. For a single association, removing samples with any removed alleles. Then convert sample genotypes to their average allele length. #filtered_rare_alleles in results.txt is the number of length alleles with between 1 and 4 copies in all samples which were filtered due to rarity.
 Performing linear association against listed covariates and average allele length
 Running associations with 278224 samples
+
+Original results had a bunch of loci with no variation (after filtering) which were marked as infinitely significant.
+New set of results has them marked as of no significance.

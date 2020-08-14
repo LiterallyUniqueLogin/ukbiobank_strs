@@ -417,9 +417,18 @@ def main():  # noqa: D103
 
                 # set gts for regression
                 avg_len_gt = np.sum(gt, axis=1)/2
+                not_nans = avg_len_gt[~np.isnan(avg_len_gt)]
+                trivial_data = np.all(not_nans == not_nans[0])
 
                 #do da regression
                 for dep_var in dep_vars:
+                    if trivial_data:
+                        # OLS thinks models with trivial data are infinitely
+                        # significant. For our purposes, they are not
+                        # significant at all.
+                        results.write(f" 1 nan")
+                        continue
+
                     model = OLS(
                         df[dep_var],
                         np.concatenate((avg_len_gt.reshape(-1, 1),
