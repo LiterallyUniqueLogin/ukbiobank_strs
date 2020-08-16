@@ -11,6 +11,12 @@ for chrom in range(1, 23):
         exome_iter = iter(exome)
         genome_line = next(genome_iter)
         exome_line = next(exome_iter)
+        #header
+        combined.write(genome_line[:-1])
+        combined.write("-whole-genome\tentropy-exome\n")
+        genome_line = next(genome_iter)
+        exome_line = next(exome_iter)
+
         _, genome_start, genome_end, _ = genome_line.split()
         _, exome_start, exome_end, exome_entropy = exome_line.split()
         while True:
