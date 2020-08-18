@@ -1,5 +1,11 @@
 import os
 
+"""
+combines the files in full_genome/ and exome/ into combined/
+with two cols entropy-whole-genome and entropy-exome
+most of the entries in the later are nan (for loci not in the exome)
+"""
+
 ukb = os.environ['UKB']
 basedir = f"{ukb}/side_analyses/entropy"
 

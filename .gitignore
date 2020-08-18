@@ -36,3 +36,4 @@ fields.ukb
 .mypy_cache/
 *lmdb*
 dask-worker-space/
+twistd.pid

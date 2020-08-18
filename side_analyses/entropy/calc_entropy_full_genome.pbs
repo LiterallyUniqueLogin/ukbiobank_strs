@@ -9,13 +9,17 @@
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
 
+# Input environment variable: CHR
+# Input environment variable: HET. Should be exactly "_het" or "" (unset)
+
 source "$HOME"/.bashrc
 cd "$UKB/../trtools/repo_beagle_hack" || { echo "Directory $UKB/../trtools/repo_beagle_hack doesn't exist" ; exit 1 ; }
 conda activate ukb
+echo "Generated with imputation run first_pass" > ../../ukbiobank/side_analyses/entropy/full_genome"$HET"/README.txt
 python -m trtools.statSTR.statSTR \
 	--vcf ../../ukbiobank/str_imputed/runs/first_pass/vcfs/strs_only/chr"$CHR".vcf.gz \
-	--entropy \
-	--out ../../ukbiobank/side_analyses/entropy/full_genome/chr"$CHR" \
+	$(if [ -n "$HET" ] ; then echo --het ; else echo --entropy ; fi) \
+	--out ../../ukbiobank/side_analyses/entropy/full_genome"$HET"/chr"$CHR" \
 	--vcftype hipstr
 conda deactivate
 

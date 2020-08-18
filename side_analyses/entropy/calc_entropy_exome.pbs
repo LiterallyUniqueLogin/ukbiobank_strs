@@ -1,23 +1,26 @@
 #!/bin/bash
-#PBS -q hotel
-#PBS -N launch_calc_exome_entropy
+#PBS -q condo
+#PBS -N calc_exome_entropy
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=24:00:00
+#PBS -l walltime=8:00:00
 #PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/entropy/output
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/entropy/output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
 
-cd "$UKB"/../trtools/repo_beagle_hack
+# Input environment variable: HET. Should be exactly "_het" or "" (unset)
+
+cd "$UKB"/../trtools/repo_beagle_hack || { echo "Directory "$UKB"/../trtools/repo_beagle_hack does not exit" ; exit 1 ; }
+echo "Generated with imputation run first_pass" > "$UKB"/side_analyses/entropy/exome"$HET"/README.txt
 for chr in $(seq 1 22) ; do 
     echo "Working on chr $chr"
     python -m trtools.statSTR.statSTR \
 	--vcf <( bcftools view -R "$UKB"/side_analyses/exome_strs/hg19_final.bed \
            "$UKB"/str_imputed/runs/first_pass/vcfs/strs_only/chr"${chr}".vcf.gz \
 	) \
-	--entropy \
-	--out "$UKB"/side_analyses/entropy/exome/chr"$chr" \
+	$(if [ -n "$HET" ] ; then echo --het ; else echo --entropy ; fi) \
+	--out "$UKB"/side_analyses/entropy/exome"$HET"/chr"$chr" \
         --vcftype hipstr
 done
 
