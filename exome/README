@@ -9,6 +9,7 @@ launch_fetch_bulk_spb_gvcfs.pbs - batch script to launch a job for the python da
 launch_fetch_10_bulk_fe_gvcfs.pbs - batch script to launch a job for the python dask script
    for downloading 10 fe vcf files
 confirm_spb_exome_download.pbs - make sure none of the downloads are truncated
+bed_files/ - descriptions of the regions of the genome that were used in the WES and/or had alt-contigs
 
 spb_gvcfs.bulk - one line for each file to download
 fe_gcvfs.10.bulk - same as spb_gvcfs.bulk, but for the fe pipeline and only 10 ppts
