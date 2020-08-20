@@ -1,0 +1,25 @@
+bed/hg19.hipstr_reference.bed.gz
+Retrieved from page: https://github.com/HipSTR-Tool/HipSTR-references/
+link: https://github.com/HipSTR-Tool/HipSTR-references/raw/master/human/hg19.hipstr_reference.bed.gz
+
+bed/hg19.hipstr_reference.exome.bed
+bedtools intersect -a hg19.hipstr_reference.bed.gz -b /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/exome_strs/hg19_final.chr.bed -wa > hg19.hipstr_reference.exome.bed
+
+bed/hg19.hipstr_referenxe.exome.no_chr.bed
+sed -e 's/^chr//' hg19.hipstr_reference.exome.bed > hg19.hipstr_reference.exome.no_chr.bed
+
+bed/hipstr_snpstr_exome_chr*.bed
+for chr in $(seq 1 22) ; do echo "working on chr$chr" ; bedtools intersect -a bed/hg19.hipstr_reference.exome.no_chr.bed -b <(bcftools view -i ID=@/projects/ps-gymreklab/jmargoli/ukbiobank/snpstr/str_ids.txt /projects/ps-gymreklab/jmargoli/ukbiobank/snpstr/vcf_1_sample/chr$chr.vcf) -wa > bed/hipstr_snpstr_exome_chr$chr.bed ; done
+
+hipstr/
+github repo of hipstr tool
+Installed package following instructions here: https://github.com/tfwillems/HipSTR
+There is also this copy of the repo: https://github.com/HipSTR-Tool/HipSTR but it seems to be less actively worked on
+In hipstr/Makefile added -I${CONDA_PREFIX}/include to the line INCLUDE = ...
+In hipstr/Makefile added -L${CONDA_PREFIX}/lib to the line LIBS = ...
+In hipstr/lib/htslib/Makefile added -I${CONDA_PREFIX}/include to the line CFLAGS = ...
+In hipstr/lib/htslib/Makefile added -L${CONDA_PREFIX}/lib to the line htslib_default_libs = ...
+conda activate hipstr && make clean && make cxx=x86_64-conda-linux-gnu-g++
+# designed hipstr env to have all dependencies but not htslib installed through conda
+# since hipstr has a copy of htslib in its own distribution
+

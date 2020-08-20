@@ -9,5 +9,6 @@ hg19_sorted.bed: bedtools sort -g names.txt -i hg19.bed > hg19_sorted.bed
 hg19_cleaned.bed: bedtools merge -i hg19_sorted.bed > hg19_cleaned.bed
 str_ids.txt: sort /gymreklab-tscc/jmargoli/ukbiobank/snpstr/str_ids.txt | uniq -u > str_ids.txt
 hg19_final.bed: sed -e 's/chr//' hg19_cleaned.bed > hg19_final.bed
+hg19_final.chr.bed: sed -e 's/^/chr/' hg19_final.bed > hg19_final.chr.bed
 exome_vcfs: for chr in $(seq 1 22) ; do bcftools view -i ID=@str_ids.txt -R hg19_final.bed -O z /gymreklab-tscc/jmargoli/ukbiobank/snpstr/1kg.snp.str.chr${chr}.vcf.gz  -o exome_vcfs/chr${chr}.vcf.gz & done
 exome vcf count: 783: for chr in $(seq 1 22) ; do zcat exome_vcfs/chr${chr}.vcf.gz | grep -v '^#' | wc -l ; done | datamash sum 1
