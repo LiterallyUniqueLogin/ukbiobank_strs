@@ -10,6 +10,10 @@ sed -e 's/^chr//' hg19.hipstr_reference.exome.bed > hg19.hipstr_reference.exome.
 
 bed/hipstr_snpstr_exome_chr*.bed
 for chr in $(seq 1 22) ; do echo "working on chr$chr" ; bedtools intersect -a bed/hg19.hipstr_reference.exome.no_chr.bed -b <(bcftools view -i ID=@/projects/ps-gymreklab/jmargoli/ukbiobank/snpstr/str_ids.txt /projects/ps-gymreklab/jmargoli/ukbiobank/snpstr/vcf_1_sample/chr$chr.vcf) -wa > bed/hipstr_snpstr_exome_chr$chr.bed ; done
+# Perform the one manual step in filter_exome.py
+
+bed/filtered_hipstr_snpstr_exome_chr*.bed
+python bed/filter_exome.py
 
 hipstr/
 github repo of hipstr tool

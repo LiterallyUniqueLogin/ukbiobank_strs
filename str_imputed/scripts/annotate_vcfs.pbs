@@ -1,0 +1,35 @@
+#!/bin/bash
+
+#PBS -q hotel
+#PBS -N annotate_strs
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=168:00:00
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/vcfs/annotated_strs/output/
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/str_imputed/runs/%RUN_NAME%/vcfs/annotated_strs/output/
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+if [ -z "$CHR" ] ; then
+        echo "didn't give CHR argument - should be the chromosome number" 1>&2
+        exit 1
+fi
+
+if [ -z "$RUN_NAME" ] ; then
+        echo "didn't give RUN_NAME argument - should be the run name" 1>&2
+        exit 1
+fi
+
+echo "Working on chr $CHR run $RUN_NAME"
+
+source ~/.bashrc
+conda activate ukb
+bcftools annotate -a "$UKB"/snpstr/info_field/chr"$CHR".vcf.gz \
+	"$UKB"/str_imputed/runs/"$RUN_NAME"/vcfs/strs_only/chr"$CHR".vcf.gz \
+	-O z \
+	-o "$UKB"/str_imputed/runs/"$RUN_NAME"/vcfs/annotated_strs/chr"$CHR".vcf.gz \
+	--collapse none \
+	-c "^INFO/ALL" \
+	--single-overlaps
+tabix "$UKB"/str_imputed/runs/"$RUN_NAME"/vcfs/annotated_strs/chr"$CHR".vcf.gz 
+

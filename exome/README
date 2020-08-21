@@ -28,4 +28,9 @@ fe_vcfs contains the same as spb_vcfs except:
 * only 10ppts of data
 
 fe_plink contains the plink representation of the calls in the fe pipelines in the usual
-.bed, .bim and .fam file. The .bed file contains all the calls for all the samples across all chromosomes..
+.bed, .bim and .fam file. The .bed file contains all the calls for all the samples across all chromosomes.
+
+Notes:
+From the supplemental methods listed here: https://www.biorxiv.org/content/10.1101/572347v1.supplementary-material
+it seems that coverage was required to be at least 20x for 85% of target bp, which means
+that the minimum average total coverage would be 17x
