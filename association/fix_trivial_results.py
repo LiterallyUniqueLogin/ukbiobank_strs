@@ -28,13 +28,14 @@ def main():
             chrom = int(chrom)
             pos = int(pos)
             if height_p != 0 or bilirubin_p != 0:
+                continue
                 new.write(result_line)
                 continue
             print(f"Fixing locus {chrom}:{pos}")
             cmd = (f'source ~/.bashrc ; '
                    f'conda activate ukb ; '
                    f'python {ukb}/association/simple_forloop.py height first_pass '
-                   f'{chrom}_{pos}_rerun {chrom}:{pos}')
+                   f'{chrom}_{pos}_rerun2 {chrom}:{pos}')
             out = sp.run(cmd, shell=True, capture_output=True, text=True)
             if out.returncode != 0:
                 print(out.stdout)
@@ -42,6 +43,8 @@ def main():
                 print("Call to simple_forloop.py failed with retcode "
                       f"{out.returncode}")
                 exit(1)
+            print(out.stdout)
+            continue
             with open(f'{ukb}/association/runs/{chrom}_{pos}_rerun/'
                       'results.txt') as new_result:
                 inew_result = iter(new_result)
