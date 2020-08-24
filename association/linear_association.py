@@ -220,7 +220,7 @@ def perform_association_subset(assoc_dir,
     with open(f'{assoc_dir}/run_logs/{dep_var}_{region_string}.log', 'w') as log, \
             open(f'{assoc_dir}/results/batches/{dep_var}_{region_string}.txt', 'w') as results:
         results.write("chrom pos #samples_GP_filtered #filtered_rare_alleles"
-                      f" p_{dep_var} coeff_{dep_var}\n")
+                      f" p_{dep_var} coeff_{dep_var} coeff_intercept\n")
         results.flush()
         vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                     f'vcfs/strs_only/chr{chrom}.vcf.gz')
@@ -238,7 +238,7 @@ def perform_association_subset(assoc_dir,
             results.write(f"{locus.CHROM} {locus.POS}")
 
             # gt entries are sequence allele indexes
-            gt = locus.genotype.array()[:, :2]
+            idx_gts = locus.genotype.array()[:, :2]
             seq_allele_lens = [len(allele) for allele in locus.ALT]
             seq_allele_lens.insert(0, len(locus.REF))
 
@@ -249,38 +249,38 @@ def perform_association_subset(assoc_dir,
                 ref_prob = np.maximum(0, 1 - np.sum(ap, axis=1))
                 ref_prob = ref_prob.reshape(-1, 1)
                 ap = np.concatenate((ref_prob, ap), axis=1)
-                ap = ap[np.arange(ap.shape[0]), gt[:, (copy - 1)]]
+                ap = ap[np.arange(ap.shape[0]), idx_gts[:, (copy - 1)]]
                 aps.append(ap)
             gp = np.multiply(aps[0], aps[1])
 
             # filter calls whose phased genotype probability
             # as estimated by Beagle is below .9
             # convert to float so we can use np.nan
-            gt = gt.astype(float)
+            len_gts = np.zeros(idx_gts.shape, dtype=float)
             filtered_samples = gp < .9
-            gt[filtered_samples, :] = np.nan
+            len_gts[filtered_samples, :] = np.nan
             n_filtered_samples = np.sum(filtered_samples)
             results.write(f" {n_filtered_samples}")
 
             # modify gt entries to be length alleles
             for seq_allele_idx, seq_allele_len in enumerate(seq_allele_lens):
-                gt[gt == seq_allele_idx] = seq_allele_len
+                len_gts[idx_gts == seq_allele_idx] = seq_allele_len
 
             # filter length alleles with too few occurrences
             len_alleles, counts = np.unique(
-                gt[~np.isnan(gt)],
+                len_gts[~np.isnan(len_gts)],
                 return_counts=True
             )
             filtered_rare_alleles = 0
             for len_allele_idx, len_allele in enumerate(len_alleles):
                 if (counts[len_allele_idx] > 0 and
                         counts[len_allele_idx] < 5):
-                    gt[gt == len_allele] = np.nan
+                    len_gts[len_gts == len_allele] = np.nan
                     filtered_rare_alleles += 1
             results.write(f" {filtered_rare_alleles}")
 
             # finalzie gts for regression
-            avg_len_gt = np.sum(gt, axis=1)/2
+            avg_len_gt = np.sum(len_gts, axis=1)/2
             df['gt'] = avg_len_gt
 
             # make sure this locus doesn't have only one nonfiltered genotype
@@ -296,13 +296,14 @@ def perform_association_subset(assoc_dir,
             #do da regression
             model = OLS(
                 df[f'{dep_var}_residual'],
-                df['gt'],
+                df[['gt', 'intercept']],
                 missing='drop'
             )
             reg_result = model.fit()
             pval = reg_result.pvalues['gt']
             coef = reg_result.params['gt']
-            results.write(f" {pval} {coef}")
+            intercept_coef = reg_result.params['intercept']
+            results.write(f" {pval:.2e} {coef} {intercept_coef}")
 
             # output results
             results.write("\n")
@@ -323,7 +324,7 @@ def perform_association_subset(assoc_dir,
 
 @dask.delayed
 def concat_batches(results_dir, dep_var, region_strings):
-    with open(f'{results_dir}/{dep_var}.txt') as outfile:
+    with open(f'{results_dir}/{dep_var}.txt', 'w') as outfile:
         first = True
         for string in region_strings:
             with open(f'{results_dir}/batches/{dep_var}_{string}.txt') as infile:
@@ -349,11 +350,13 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
         walltime="4:00:00",
         log_directory=dask_output_dir
     )
+    cluster.adapt(maximum_jobs=300)
     client = dask.distributed.Client(cluster)
 
     print("Writing out results for each phenotype, region pair. "
           "See run_logs/<phenotype>_<region>.log for logs and "
-          "See results/batches/<phenotype>_<region>.txt for results.")
+          "See results/batches/<phenotype>_<region>.txt for results.",
+         flush=True)
 
     # prep the data frame for being distributed across the cluster
     # see
@@ -382,10 +385,11 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
         overall_dep_tasks.append(concat_batches(
             f'{assoc_dir}/results', dep_var, tasks
         ))
-    future = client.compute(overall_dep_tasks)
-    future.result() #block till all code is done executing
-    # see here
-    # https://distributed.dask.org/en/latest/manage-computation.html
+    futures = client.compute(overall_dep_tasks)
+    for future in futures:
+        future.result() #block till all code is done executing
+        # see here
+        # https://distributed.dask.org/en/latest/manage-computation.html
 
 
 def main():  # noqa: D103

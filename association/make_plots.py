@@ -140,19 +140,12 @@ def main():
     phenotypes = ['height', 'total_bilirubin']
 
     results = {}
-    """
-    results['height'] = np.loadtxt(
-        f'{ukb}/association/runs/{args.run_name}/results.txt',
-        usecols=[0, 1, 4],
-        skiprows=1
-    )"""
-    results['total_bilirubin'] = np.loadtxt(
-        f'{ukb}/association/runs/{args.run_name}/results.txt',
-        usecols=[0, 1, 6],
-        skiprows=1
-    )
-    print(results['total_bilirubin'][results['total_bilirubin'][:, 2] == 0, 0:2])
-    exit()
+    for phenotype in phenotypes:
+        results[phenotype] = np.loadtxt(
+            f'{ukb}/association/runs/{args.run_name}/results/{phenotype}.txt',
+            usecols=[0, 1, 4],
+            skiprows=1
+        )
     #TODO fix nan alleles!
     for phenotype in phenotypes:
         results[phenotype] = prep_data(results[phenotype])
