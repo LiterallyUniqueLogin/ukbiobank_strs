@@ -9,6 +9,7 @@ and pumps them in to scipy
 """
 
 import argparse
+import datetime
 import os
 import os.path
 import sys
@@ -117,6 +118,13 @@ def load_height(df, readme, phenotypes):
         skiprows=4,
         sep=" "
     )
+    # taller than tallest person or shorter than shortest adult
+    filter_extremes = np.logical_or(height_df['height'] > 274,
+                                    height_df['height'] < 54)
+    n_filtered = np.sum(filter_extremes)
+    readme.write(f"Filtering {n_filtered} height values that are taller than "
+                 "the world's tallest person or shorter than the shortest.\n")
+    height_df.loc[filter_extremes, 'height'] = np.nan
 
     try:
         return pd.merge(
@@ -180,12 +188,24 @@ def load_bilirubin(df, readme, phenotypes):
     total_nan = np.isnan(bilirubin_df['total_bilirubin'])
     bilirubin_df.loc[direct_nan, 'total_bilirubin'] = np.nan
     bilirubin_df.loc[total_nan, 'direct_bilirubin'] = np.nan
-
+   
     # Add indirect:
     bilirubin_df['indirect_bilirubin'] = (
         bilirubin_df['total_bilirubin'] -
         bilirubin_df['direct_bilirubin']
     )
+
+    filter_neg = np.sum(
+        bilirubin_df.loc[:, ['total_bilirubin', 'direct_bilirubin', 'indirect_bilirubin']] < 0,
+        axis=1
+    )
+    readme.write(f'Filtering {np.sum(filter_neg)} bilirubin values where '
+                 'total or direct bilirubin was negative, or direct bilirubin '
+                 'was greater than total bilirubin.')
+    bilirubin_df.loc[filter_neg,
+           ['total_bilirubin', 'direct_bilirubin', 'indirect_bilirubin']] = np.nan
+    # max bilirubin value right now is 144. I don't know enough to say that
+    # this is too high, so no max filter
 
     """
     both_nan = np.logical_and(direct_nan, total_nan)
@@ -333,6 +353,7 @@ def concat_batches(results_dir, dep_var, region_strings):
                     if first_line:
                         first_line = False
                         if first:
+                            first = False
                             outfile.write(line)
                         continue
                     outfile.write(line)
@@ -425,8 +446,10 @@ def main():  # noqa: D103
     with open(f"{assoc_dir}/README", 'w') as readme, \
             open(f"{assoc_dir}/phenotypes.txt", 'w') as phenotypes:
 
-        readme.write(f"Run args: {args}")
-        phenotypes.write("phenotype_name:unit")
+        readme.write(f"Run args: {args}\n")
+        today = datetime.datetime.now().strftime("%Y_%m_%d")
+        readme.write(f"Run date: {today}\n")
+        phenotypes.write("phenotype_name:unit\n")
 
         df, indep_vars = load_covars(readme)
         df = load_height(df, readme, phenotypes)

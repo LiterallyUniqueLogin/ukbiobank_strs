@@ -1,1 +1,7 @@
-Where code and results from association testing will go
+To confirm the residuals from a run sum to zero
+(which should be the case for a linear association):
+tail -n +2 runs/<run_name>/covars_and_phenotypes.txt | \
+  sed 's/ /,/g' | \
+  awk 'BEGIN { FS = "," } ; {print $49}' | \
+  sed -e '/^$/d' | \
+  datamash sum 1

@@ -38,18 +38,25 @@ def plot_qq(ax, prepped_pvals, label, color):
         label=label
     )
 
-def plot_manhattan(ax, data, label, color):
+def plot_manhattan(ax, data, label, color_pair):
     # Trim to chroms 2, 3
-    data = data[np.logical_or(data[:, 0] == 2, data[:, 0] == 3), :]
-    xs = data[:, 1]
-    xs[data[:, 0] == 3] += 243199373 #offset by len of chr 2
-    ax.scatter(
-        xs,
-        data[:, 2],
-        color=colors[color],
-        label=label,
-        marker='.'
-    )
+    first = True
+    for chrom in 2, 3:
+        if not first:
+            label = None
+        chrom_data = data[data[:, 0] == chrom, :]
+        xs = chrom_data[:, 1]
+        if chrom == 3:
+            xs += 243199373 #offset by len of chr 2
+        ax.scatter(
+            xs,
+            chrom_data[:, 2],
+            color=colors[color_pair[chrom % 2]],
+            label=label,
+            marker='.'#,
+            #alpha=0.5
+        )
+        first = False
 
 def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
     # plot QQ plots
@@ -100,7 +107,7 @@ def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
     plt.savefig(f'{ukb}/association/runs/{run_name}/qq_plot.png')
 
 
-def make_manhattan_plots(phenotypes, results, snp_summary_stats, run_name):
+def make_manhattan_plots(phenotypes, results, snp_summary_stats, known_assocs, run_name):
     # plot Manhattan plots
     nphenotypes = len(phenotypes)
     fig, axs = plt.subplots(nphenotypes, figsize=(30, 5*nphenotypes))
@@ -114,18 +121,37 @@ def make_manhattan_plots(phenotypes, results, snp_summary_stats, run_name):
             ax = axs
         ax.set_title(f'{phenotype}')
         ax.set_ylabel('-log_10(pval)')
-        ax.set_xlabel(f'Position (bp count starts on chr2, continues into chr3)')
+        ax.set_xlabel(f'Position (1e7 bp)')
 
         max_len = 243199373 + 198022430 # len chr2 + chr3
-        ax.plot([0, max_len], [GENOME_WIDE_TRANS_SIG] * 2, label='p >= 5e-8',
+        ax.plot([0, max_len], [GENOME_WIDE_TRANS_SIG] * 2, label='p = 5e-8',
                  color=colors['red'])
 
         if phenotype in snp_summary_stats:
-            plot_manhattan(ax, snp_summary_stats[phenotype], 'SNPs', 'royalblue')
+            plot_manhattan(ax, snp_summary_stats[phenotype], 'SNPs',
+                           ('royalblue', 'cornflowerblue'))
 
-        plot_manhattan(ax, results[phenotype], 'STRs', 'mediumvioletred')
+        plot_manhattan(ax, results[phenotype], 'STRs',
+                       ('mediumvioletred', 'deeppink'))
+
+        if phenotype in known_assocs:
+            plot_manhattan(ax, known_assocs[phenotype], 'GWAS Catalog Hits',
+                           ('goldenrod', 'gold'))
+
 
         ax.legend()
+
+        ticks = []
+        tick_labels = []
+        for chrom, length in (2, 243199373), (3, 198022430):
+            new_ticks = np.arange(0, length, int(5e7))
+            if chrom == 3:
+                new_ticks += 243199373
+            ticks.extend(new_ticks)
+            tick_labels.append(f'chr{chrom}:0')
+            tick_labels.extend(str(int(tick)) for tick in np.arange(5, length/1e7, 5))
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(tick_labels)
 
         plt_count += 1
 
@@ -149,6 +175,7 @@ def main():
     #TODO fix nan alleles!
     for phenotype in phenotypes:
         results[phenotype] = prep_data(results[phenotype])
+
     snp_summary_stats = {}
     snp_summary_stats['height'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/height/"
@@ -166,9 +193,43 @@ def main():
     for phenotype in snp_summary_stats:
         snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])
 
-    make_qq_plots(phenotypes, results, snp_summary_stats, args.run_name)
-    make_manhattan_plots(phenotypes, results, snp_summary_stats,
-                         args.run_name)
+    # Load the NHGRI-EBI GWAS catalog
+    catalog = np.loadtxt(
+        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog.tsv',
+        usecols=[11, 12, 27],
+        delimiter='\t',
+        skiprows=1,
+        dtype=object
+    )
+    # omit results that are not mapped to a recognizable chromosome
+    catalog_names = np.loadtxt(
+        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog.tsv',
+        usecols=[7],
+        delimiter='\t',
+        skiprows=1,
+        dtype=object
+    )
+    filter_weird_chroms = np.isin(catalog[:, 0],
+                                  list(str(chrom) for chrom in range(1, 23)))
+    catalog_names = catalog_names[filter_weird_chroms]
+    catalog = catalog[filter_weird_chroms, :]
+    catalog = catalog.astype(float)
+
+    known_assocs = {}
+    known_assocs['height'] = catalog[np.equal(catalog_names, 'Height'), :]
+    bil_catalog_trait_names = [
+        'Total bilirubin levels',
+        'Bilirubin levels'
+    ]
+    known_assocs['total_bilirubin'] = \
+            catalog[np.isin(catalog_names, bil_catalog_trait_names), :]
+    for phenotype in known_assocs:
+        known_assocs[phenotype] = prep_data(known_assocs[phenotype])
+
+
+    # make_qq_plots(phenotypes, results, snp_summary_stats, args.run_name)
+    make_manhattan_plots(phenotypes, results, snp_summary_stats, known_assocs,
+                        args.run_name)
 
 if __name__ == "__main__":
     main()
