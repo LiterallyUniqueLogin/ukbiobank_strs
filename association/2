@@ -42,18 +42,15 @@ data = data %>%
 
 png(sprintf("%s/%s_%s.png", plot_dir, chrom, pos))
 
-ggplot() + geom_dotplot(
-    data=data %>% filter(extreme == TRUE),
-    mapping=aes_string(x='factor_gt', y=res_col),
-    binaxis="y",
-    stackdir="center",
-    dotsize=0.2,
-    binwidth=(max(data[[res_col]]) - min(data[[res_col]]))/100
-) + geom_violin(
+plot = ggplot()
+plot + geom_violin(
     data=data %>% filter(extreme == FALSE),
     mapping=aes_string('factor_gt', res_col),
     scale="count",
     na.rm=TRUE
+) + beeswarm(
+    data=data %>% filter(extreme == TRUE),
+    mapping=aes_string('factor_gt', res_col)
 )
 
 ignore = dev.off()
