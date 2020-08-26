@@ -53,8 +53,10 @@ def main():
             for line in results:
                 line_chrom, line_pos = line.split()[:2]
                 if chrom == line_chrom and pos == line_pos:
-                    coeff = line.split()[5]
+                    p, coeff, intercept = line.split()[4:7]
                     coeff = float(coeff)
+                    intercept = float(intercept)
+                    p = float(p)
                     break
             if coeff is None:
                 raise ValueError(f"Couldn't find {locus} in results file"
@@ -69,6 +71,8 @@ def main():
             period = record.INFO["PERIOD"]
             plot_info.write(f'{period}\n')
             plot_info.write(f'{coeff}\n')
+            plot_info.write(f'{intercept}\n')
+            plot_info.write(f'{p}\n')
 
         bpdiffs = record.INFO['BPDIFFS']
         bpdiffs = np.array(bpdiffs)

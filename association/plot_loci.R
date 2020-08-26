@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 library(tidyverse)
-library(beeswarm)
+library(gridExtra)
 
 args = commandArgs(trailingOnly=TRUE)
 plot_dir = args[1]
@@ -13,7 +13,9 @@ unit = readLines(sprintf("%s/info.txt", plot_dir))[1]
 assoc_info = readLines(sprintf("%s/%s_%s.info", plot_dir, chrom, pos))
 ref = assoc_info[1]
 period = assoc_info[2]
-coeff = assoc_info[3]
+coeff = as.numeric(assoc_info[3])
+intercept = as.numeric(assoc_info[4])
+pval = as.numeric(assoc_info[5])
 
 data = read_csv(sprintf("%s/%s_%s.csv", plot_dir, chrom, pos))
 data = data %>% drop_na()
@@ -23,12 +25,12 @@ res_col = sprintf('%s_residual', phenotype)
 # otherwise move the 25 lowest and 25 highest points to extreme
 mark_extreme = function(single_gt_data, ...) {
     nobs = nrow(single_gt_data)
-    if (nobs < 100) {
+    if (nobs < 200) {
 	return(single_gt_data %>% add_column(extreme = TRUE))
     } else {
 	return(single_gt_data %>% 
 	       arrange(!!as.name(res_col)) %>%
-	       mutate(extreme = if_else(row_number() <= 25 | row_number() >= nobs-24, TRUE, FALSE))
+	       mutate(extreme = if_else(row_number() <= 50 | row_number() >= nobs-49, TRUE, FALSE))
         )
     }
 }
@@ -38,11 +40,16 @@ data = data %>%
 	ungroup() %>% 
 	mutate(factor_gt = as.factor(gt))
 
+gt_counts = data %>% 
+    group_by(gt) %>% 
+    summarize(n=n()) %>%
+    mutate(xlab = sprintf("%0.1f\nn = %i", gt, n))
+
 #data %>% slice_min(!!as.name(res_col), n=100) %>% print(n=100)
 
-png(sprintf("%s/%s_%s.png", plot_dir, chrom, pos))
+#png(sprintf("%s/%s_%s.png", plot_dir, chrom, pos))
 
-ggplot() + geom_dotplot(
+p1 = ggplot() + geom_dotplot(
     data=data %>% filter(extreme == TRUE),
     mapping=aes_string(x='factor_gt', y=res_col),
     binaxis="y",
@@ -54,99 +61,41 @@ ggplot() + geom_dotplot(
     mapping=aes_string('factor_gt', res_col),
     scale="count",
     na.rm=TRUE
+) + geom_abline(
+    slope=coeff,
+    intercept=intercept
+) + ylab("") + xlab("Repeat unit diff from ref") +
+scale_x_discrete(labels=gt_counts$xlab) +
+ggtitle("With 50 points at extremes (per gt)")
+
+p2 = ggplot() + geom_violin(
+    data=data %>% filter(extreme == FALSE),
+    mapping=aes_string('factor_gt', res_col),
+    scale="count",
+    na.rm=TRUE
+) + geom_abline(
+    slope=coeff,
+    intercept=intercept
+) + ylab("") + xlab("Repeat unit diff from ref") +
+scale_x_discrete(labels=gt_counts$xlab) +
+ggtitle("No extrema") + 
+annotation_compass(
+    sprintf("assoc coeff: %0.2e\nintercept: %0.2e\np-val: %0.2e", coeff, intercept, pval),
+    'NE'
+)
+         	
+
+plot = arrangeGrob(
+    p1,
+    p2,
+    nrow=1,
+    top=sprintf("Linear association genotype ~ residual %s at %s:%s\n(residual after accounting for covariates)", phenotype, chrom, pos),
+    left=sprintf("residual %s (%s)\n", phenotype, unit),
+    bottom=sprintf(
+        "Reference allele length: %i, repeat unit size: %s\nreference allele: %s",
+	nchar(ref), period, ref
+    )
 )
 
-ignore = dev.off()
+ggsave(sprintf("%s/%s_%s.png", plot_dir, chrom, pos), plot=plot, height=7, width=14)
 
-#
-#   fig.suptitle(
-#        f"Linear associations at individual loci against trait {args.phenotype} "
-#        "(covariate associations not plotted)"
-#    )
-#    for plot_idx, locus in enumerate(args.locus):
-#        ax = axs[plot_idx % 2, plot_idx//2]
-#        chrom, pos = locus.split(":")
-#
-#        with open(f'{assoc_dir}/results/{args.phenotype}.txt') as results:
-#            coeff = None
-#            for line in results:
-#                line_chrom, line_pos = line.split()[:2]
-#                if chrom == line_chrom and pos == line_pos:
-#                    coeff = line.split()[5]
-#                    coeff = float(coeff)
-#                    break
-#            if coeff is None:
-#                raise ValueError(f"Couldn't find {locus} in results file"
-#                                 f" {results.name}!")
-#                
-#
-#        vcf = cyvcf2.VCF(
-#            f'{ukb}/str_imputed/runs/{args.imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz'
-#        )
-#        record = next(iter(vcf(locus)))
-#        ref = record.REF
-#        period = record.INFO['PERIOD']
-#        period = int(period)
-#        bpdiffs = record.INFO['BPDIFFS']
-#        bpdiffs = np.array(bpdiffs)
-#        bpdiffs_repeat_units = bpdiffs/period
-#
-#        idx_gts = record.genotype.array()[:, :-1]
-#        len_gts = np.zeros(idx_gts.shape)
-#        for idx, diff in enumerate(bpdiffs_repeat_units):
-#            len_gts[idx_gts == idx] = diff
-#        avg_len_gts = np.sum(len_gts, axis=1)/2
-#        '''
-#        command = f"""
-#        source ~/.bashrc ;
-#        conda activate ukb ;
-#        bcftools query -f "REF %BPDIFFS %PERIOD" \\
-#            {ukb}/snpstr/info_field/chr{chrom}.vcf.gz
-#        """
-#        out = sp.run(command, shell=True, capture_output=True, text=True)
-#        if out.stderr:
-#            print("Command failed with stderr:\n", out.stderr)
-#            sys.exit(1)
-#        ref, bpdiffs, period = out.stdout.split()
-#        bpdiffs = bpdiffs.split(',')
-#        '''
-#
-#        ax.set_title(f"Locus {locus}")
-#        ax.set_ylabel(unit)
-#        ax.set_xlabel("Diff from ref in repeat units")
-#        ax.annotate(
-#            f"Repeat period: {period}\tRef allele: {ref}\tLen: {len(ref)}",
-#            (0, -20)
-#        )
-#
-#        phenotypes_by_genotypes = []
-#        axis_vals = []
-#        unique_gts = np.unique(avg_len_gts)
-#        for gt in unique_gts:
-#            samples = np.array(vcf.samples)[avg_len_gts == gt]
-#            samples = np.char.partition(samples, '_')[:, 0]
-#            samples = samples.astype(int)
-#            vals = data[np.isin(data[:, 0], samples), 1]
-#            if len(vals) == 0:
-#                continue
-#
-#            axis_vals.append(gt)
-#            phenotypes_by_genotypes.append(
-#                data[np.isin(data[:, 0], samples), 1]
-#            )
-#        axis_vals = np.array(axis_vals)
-#        print(axis_vals)
-#        ax.violinplot(
-#            phenotypes_by_genotypes,
-#            positions=axis_vals,
-#        )
-#        ax.plot(axis_vals, axis_vals*coeff,
-#                label=f"Best fit line\n(slope == {coeff:.2e} {unit}/repeat)")
-#        ax.legend()
-#    outloc = f'{assoc_dir}/loci_plots_{"_".join(args.locus)}.png'
-#    outloc = "_".join(outloc.split(':'))
-#    plt.savefig(outloc)
-#
-#
-#if __name__ == "__main__":
-#    main()
