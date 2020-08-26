@@ -43,7 +43,7 @@ data = data %>%
 gt_counts = data %>% 
     group_by(gt) %>% 
     summarize(n=n()) %>%
-    mutate(xlab = sprintf("%0.1f\nn = %i", gt, n))
+    mutate(xlab = sprintf("%0.1f\n%sn=%i", gt, ifelse(row_number() %% 2 == 0, '\n', ''), n))
 
 #data %>% slice_min(!!as.name(res_col), n=100) %>% print(n=100)
 
@@ -51,46 +51,46 @@ gt_counts = data %>%
 
 p1 = ggplot() + geom_dotplot(
     data=data %>% filter(extreme == TRUE),
-    mapping=aes_string(x='factor_gt', y=res_col),
+    mapping=aes_string('gt', res_col, group='factor_gt'),
     binaxis="y",
     stackdir="center",
     dotsize=0.2,
     binwidth=(max(data[[res_col]]) - min(data[[res_col]]))/100
 ) + geom_violin(
     data=data %>% filter(extreme == FALSE),
-    mapping=aes_string('factor_gt', res_col),
+    mapping=aes_string('gt', res_col, group='factor_gt'),
     scale="count",
     na.rm=TRUE
 ) + geom_abline(
     slope=coeff,
     intercept=intercept
-) + ylab("") + xlab("Repeat unit diff from ref") +
-scale_x_discrete(labels=gt_counts$xlab) +
-ggtitle("With 50 points at extremes (per gt)")
+) + ylab("") + xlab("Avg diff from ref (repeats)") +
+scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
+theme(axis.text.x = element_text(size=9)) +
+ggtitle("With 50 points at extremes (per gt)") +
+labs(caption=" ", alpha=0) #space this graph the same as the one below
 
 p2 = ggplot() + geom_violin(
     data=data %>% filter(extreme == FALSE),
-    mapping=aes_string('factor_gt', res_col),
+    mapping=aes_string('gt', res_col, group='factor_gt'),
     scale="count",
-    na.rm=TRUE
+    na.rm=TRUE,
 ) + geom_abline(
     slope=coeff,
-    intercept=intercept
-) + ylab("") + xlab("Repeat unit diff from ref") +
-scale_x_discrete(labels=gt_counts$xlab) +
-ggtitle("No extrema") + 
-annotation_compass(
-    sprintf("assoc coeff: %0.2e\nintercept: %0.2e\np-val: %0.2e", coeff, intercept, pval),
-    'NE'
-)
-         	
+    intercept=intercept,
+    show.legend=TRUE
+) + ylab("") + xlab("Avg diff from ref (repeats)") +
+scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
+theme(axis.text.x = element_text(size=9)) +
+ggtitle("No extrema") +
+labs(caption=sprintf("(%s values are residuals after regressing out covariates)", phenotype))
 
 plot = arrangeGrob(
     p1,
     p2,
     nrow=1,
-    top=sprintf("Linear association genotype ~ residual %s at %s:%s\n(residual after accounting for covariates)", phenotype, chrom, pos),
-    left=sprintf("residual %s (%s)\n", phenotype, unit),
+    top=sprintf("STR length ~ %s\nLinear association at %s:%s\nP-value: %0.2e    Slope: %0.2e    Intercept %0.2f", phenotype, chrom, pos, pval, coeff, intercept),
+    left=sprintf("%s (%s)\n", phenotype, unit),
     bottom=sprintf(
         "Reference allele length: %i, repeat unit size: %s\nreference allele: %s",
 	nchar(ref), period, ref
