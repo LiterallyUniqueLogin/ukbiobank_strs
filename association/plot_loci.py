@@ -74,7 +74,8 @@ def main():
             plot_info.write(f'{intercept}\n')
             plot_info.write(f'{p}\n')
 
-        bpdiffs = record.INFO['BPDIFFS']
+        bpdiffs = list(record.INFO['BPDIFFS'])
+        bpdiffs.insert(0, 0)
         bpdiffs = np.array(bpdiffs)
         bpdiffs_repeat_units = bpdiffs/period
 

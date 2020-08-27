@@ -107,7 +107,8 @@ def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
     plt.savefig(f'{ukb}/association/runs/{run_name}/qq_plot.png')
 
 
-def make_manhattan_plots(phenotypes, results, snp_summary_stats, known_assocs, run_name):
+def make_manhattan_plots(phenotypes, results, snp_summary_stats,
+                         snp_ss_description, known_assocs, run_name):
     # plot Manhattan plots
     nphenotypes = len(phenotypes)
     fig, axs = plt.subplots(nphenotypes, figsize=(30, 5*nphenotypes))
@@ -128,10 +129,12 @@ def make_manhattan_plots(phenotypes, results, snp_summary_stats, known_assocs, r
                  color=colors['red'])
 
         if phenotype in snp_summary_stats:
-            plot_manhattan(ax, snp_summary_stats[phenotype], 'SNPs',
+            desc = f'SNPs ({snp_ss_description[phenotype]})'
+            plot_manhattan(ax, snp_summary_stats[phenotype], desc,
                            ('royalblue', 'cornflowerblue'))
 
-        plot_manhattan(ax, results[phenotype], 'STRs',
+        plot_manhattan(ax, results[phenotype],
+                       'STRs (Ancestry: European, n=500,000)',
                        ('mediumvioletred', 'deeppink'))
 
         if phenotype in known_assocs:
@@ -161,7 +164,15 @@ def make_manhattan_plots(phenotypes, results, snp_summary_stats, known_assocs, r
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("run_name")
+    parser.add_argument(
+        "--manhattan-regions",
+        help="comma separated list of regions to make manhattan plots for"
+    )
     args = parser.parse_args()
+    if args.manhattan_regions:
+        regions = args.manhattan_regions.split(',')
+    else:
+        regions = None
 
     phenotypes = ['height', 'total_bilirubin']
 
@@ -177,12 +188,14 @@ def main():
         results[phenotype] = prep_data(results[phenotype])
 
     snp_summary_stats = {}
+    snp_ss_description = {}
     snp_summary_stats['height'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/height/"
          "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
         usecols=(0, 1, 8),
         skiprows=1
     )
+    snp_ss_description['height'] = 'Ancestry: European, n=700,000'
     snp_summary_stats['total_bilirubin'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/bilirubin/"
          "phenocode-TBil_GWAS_in_BBJ_autosome.tsv"),
@@ -190,6 +203,7 @@ def main():
         skiprows=1,
         delimiter='\t'
     )
+    snp_ss_description['total_bilirubin'] = 'Ancestry: Japanese, n=110,000'
     for phenotype in snp_summary_stats:
         snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])
 
@@ -226,10 +240,27 @@ def main():
     for phenotype in known_assocs:
         known_assocs[phenotype] = prep_data(known_assocs[phenotype])
 
-
-    # make_qq_plots(phenotypes, results, snp_summary_stats, args.run_name)
-    make_manhattan_plots(phenotypes, results, snp_summary_stats, known_assocs,
-                        args.run_name)
+    if not regions:
+        make_qq_plots(phenotypes, results, snp_summary_stats, args.run_name)
+        make_manhattan_plots(
+            phenotypes,
+            results,
+            snp_summary_stats,
+            snp_ss_description,
+            known_assocs,
+            args.run_name
+        )
+    else:
+        for region in regions:
+            make_manhattan_plots(
+                phenotypes,
+                results,
+                snp_summary_stats,
+                snp_ss_description,
+                known_assocs,
+                args.run_name,
+                region
+            )
 
 if __name__ == "__main__":
     main()

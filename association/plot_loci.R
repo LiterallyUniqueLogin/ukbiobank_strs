@@ -19,6 +19,7 @@ pval = as.numeric(assoc_info[5])
 
 data = read_csv(sprintf("%s/%s_%s.csv", plot_dir, chrom, pos))
 data = data %>% drop_na()
+data = data %>% mutate(first = ifelse(row_number() <= 10, TRUE, FALSE))
 res_col = sprintf('%s_residual', phenotype)
 
 # for each category, if it has length < 100, move all its values to extreme
@@ -26,11 +27,12 @@ res_col = sprintf('%s_residual', phenotype)
 mark_extreme = function(single_gt_data, ...) {
     nobs = nrow(single_gt_data)
     if (nobs < 200) {
-	return(single_gt_data %>% add_column(extreme = TRUE))
+	return(single_gt_data %>% add_column(extreme = TRUE) %>% add_column(filtered = TRUE))
     } else {
 	return(single_gt_data %>% 
 	       arrange(!!as.name(res_col)) %>%
-	       mutate(extreme = if_else(row_number() <= 50 | row_number() >= nobs-49, TRUE, FALSE))
+	       mutate(extreme = if_else(row_number() <= 50 | row_number() >= nobs-49, TRUE, FALSE)) %>%
+	       add_column(filtered = FALSE)
         )
     }
 }
@@ -44,10 +46,6 @@ gt_counts = data %>%
     group_by(gt) %>% 
     summarize(n=n()) %>%
     mutate(xlab = sprintf("%0.1f\n%sn=%i", gt, ifelse(row_number() %% 2 == 0, '\n', ''), n))
-
-#data %>% slice_min(!!as.name(res_col), n=100) %>% print(n=100)
-
-#png(sprintf("%s/%s_%s.png", plot_dir, chrom, pos))
 
 p1 = ggplot() + geom_dotplot(
     data=data %>% filter(extreme == TRUE),
@@ -70,20 +68,38 @@ theme(axis.text.x = element_text(size=9)) +
 ggtitle("With 50 points at extremes (per gt)") +
 labs(caption=" ", alpha=0) #space this graph the same as the one below
 
-p2 = ggplot() + geom_violin(
+p2 = ggplot( 
     data=data %>% filter(extreme == FALSE),
-    mapping=aes_string('gt', res_col, group='factor_gt'),
+    mapping=aes_string('gt', res_col, group='factor_gt')
+) + geom_violin(
     scale="count",
+    na.rm=TRUE
+) + stat_summary(
+    data=data %>% filter(filtered == FALSE),
+    aes(shape="mean"),
+    fun.data='mean_cl_normal',
+    color='red',
     na.rm=TRUE,
+    size=0.3
 ) + geom_abline(
     slope=coeff,
     intercept=intercept,
     show.legend=TRUE
 ) + ylab("") + xlab("Avg diff from ref (repeats)") +
+scale_shape_manual("", values=c("mean"=19)) +
 scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
 theme(axis.text.x = element_text(size=9)) +
-ggtitle("No extrema") +
+ggtitle("Extrema not plotted") +
 labs(caption=sprintf("(%s values are residuals after regressing out covariates)", phenotype))
+#+ geom_dotplot(
+#    data=data %>% filter(first == TRUE),
+#    mapping=aes_string('gt', res_col, group='factor_gt'),
+#    binaxis="y",
+#    stackdir="center",
+#    dotsize=0.5,
+#    color='red',
+#    binwidth=(max(data[[res_col]]) - min(data[[res_col]]))/100
+#)
 
 plot = arrangeGrob(
     p1,

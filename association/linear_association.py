@@ -225,7 +225,6 @@ def load_bilirubin(df, readme, phenotypes):
         print("done")
 
 
-@dask.delayed
 def perform_association_subset(assoc_dir,
                                imputation_run_name,
                                region,
@@ -243,7 +242,7 @@ def perform_association_subset(assoc_dir,
                       f" p_{dep_var} coeff_{dep_var} coeff_intercept\n")
         results.flush()
         vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
-                    f'vcfs/strs_only/chr{chrom}.vcf.gz')
+                    f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
         vcf = cyvcf2.VCF(vcf_floc)
 
         vcf_region = vcf(region)
@@ -301,6 +300,10 @@ def perform_association_subset(assoc_dir,
 
             # finalzie gts for regression
             avg_len_gt = np.sum(len_gts, axis=1)/2
+            # convert from length in bp to length in diff from ref in repeat
+            # units
+            avg_len_gt -= seq_allele_lens[0]
+            avg_len_gt /= locus.INFO['PERIOD']
             df['gt'] = avg_len_gt
 
             # make sure this locus doesn't have only one nonfiltered genotype
@@ -325,6 +328,17 @@ def perform_association_subset(assoc_dir,
             intercept_coef = reg_result.params['intercept']
             results.write(f" {pval:.2e} {coef} {intercept_coef}")
 
+            #"""
+            predictions = reg_result.predict(df[['gt', 'intercept']])
+            df[f'{dep_var}_final_residual'] = df[f'{dep_var}_residual'] - predictions
+            df.to_csv(
+                f'{assoc_dir}/results/batches/{dep_var}_{region_string}.data',
+                sep=' ',
+                columns=['id', f'{dep_var}_final_residual', 'gt'],
+                index=False
+            )
+            #"""
+
             # output results
             results.write("\n")
             results.flush()
@@ -342,7 +356,6 @@ def perform_association_subset(assoc_dir,
     return region_string
 
 
-@dask.delayed
 def concat_batches(results_dir, dep_var, region_strings):
     with open(f'{results_dir}/{dep_var}.txt', 'w') as outfile:
         first = True
@@ -358,6 +371,28 @@ def concat_batches(results_dir, dep_var, region_strings):
                         continue
                     outfile.write(line)
 
+def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
+                              loci):
+    os.mkdir(f'{assoc_dir}/run_logs')
+    os.mkdir(f'{assoc_dir}/results')
+    os.mkdir(f'{assoc_dir}/results/batches')
+   
+    print("writing out results for each phenotype, region pair. "
+          "see run_logs/<phenotype>_<region>.log for logs and "
+          "see results/batches/<phenotype>_<region>.txt for results.",
+          flush=True)
+    for dep_var in dep_vars:
+        locus_strings = []
+        for locus in loci:
+            perform_association_subset(
+                assoc_dir,
+                imputation_run_name,
+                locus,
+                dep_var,
+                df
+            )
+            locus_strings.append(locus.replace(':', '_').replace('-', '_'))
+        concat_batches(f'{assoc_dir}/results', dep_var, locus_strings)
 
 def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     dask_output_dir = f'{assoc_dir}/dask_output_logs'
@@ -374,10 +409,10 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     cluster.adapt(maximum_jobs=300)
     client = dask.distributed.Client(cluster)
 
-    print("Writing out results for each phenotype, region pair. "
-          "See run_logs/<phenotype>_<region>.log for logs and "
-          "See results/batches/<phenotype>_<region>.txt for results.",
-         flush=True)
+    print("writing out results for each phenotype, region pair. "
+          "see run_logs/<phenotype>_<region>.log for logs and "
+          "see results/batches/<phenotype>_<region>.txt for results.",
+          flush=True)
 
     # prep the data frame for being distributed across the cluster
     # see
@@ -396,14 +431,14 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
         for chrom in (2, 3):
             for start_pos in range(1, int(chr_lens[chrom-1]), int(1e7)):
                 #10Mbp regions
-                tasks.append(perform_association_subset(
+                tasks.append(dask.delayed(perform_association_subset)(
                     assoc_dir,
                     imputation_run_name,
                     f'{chrom}:{start_pos}-{start_pos + int(1e7) - 1}',
                     dep_var,
                     df
                 ))
-        overall_dep_tasks.append(concat_batches(
+        overall_dep_tasks.append(dask.delayed(concat_batches)(
             f'{assoc_dir}/results', dep_var, tasks
         ))
     futures = client.compute(overall_dep_tasks)
@@ -421,19 +456,23 @@ def main():  # noqa: D103
         'association_run_name',
         help="The name to give this association run"
     )
-    """
     parser.add_argument(
-        'regions',
-        help=('comma separated list with elements of the form chr:start-end '
-              'where chrom is mandatory but the rest are not')
+        '--loci',
+        help='comma separated list with elements of the form chr:pos'
     )
-    """
     args = parser.parse_args()
 
     sample_filtering_run_name = args.sample_filtering_run_name
     imputation_run_name = args.imputation_run_name
     association_run_name = args.association_run_name
-    # regions = args.regions.split(',')
+    if args.loci:
+        pre_format_loci = args.loci.split(',')
+        loci = []
+        for locus in pre_format_loci:
+            chrom, pos = locus.split(':')
+            loci.append(f'{chrom}:{pos}-{pos}')
+    else:
+        loci = None
 
     assoc_dir = f'{ukb}/association/runs/{association_run_name}'
     if os.path.exists(assoc_dir):
@@ -547,12 +586,17 @@ def main():  # noqa: D103
             "number of length alleles with between 1 and 4 copies in all "
             "samples which were filtered due to rarity.\n"
         )
-        readme.write("Perofrming linear association of residual phenotypes"
-                     "against allele length averaged over both haploid calls\n")
+        readme.write("Performing linear association of residual phenotypes "
+                     "against allele length averaged over both haploid calls."
+                     " Coefficients are reported as change in phenotype per "
+                     "difference from reference allele measured in repeat "
+                     "copies.\n")
         readme.flush()
 
-        run_associations(assoc_dir, imputation_run_name, df, dep_vars)
-
+        if loci is not None:
+            run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars, loci)
+        else:
+            run_associations(assoc_dir, imputation_run_name, df, dep_vars)
 
 if __name__ == "__main__":
     main()
