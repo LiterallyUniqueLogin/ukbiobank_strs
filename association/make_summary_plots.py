@@ -19,8 +19,8 @@ def prep_data(data):
     pvals = data[:, 2]
     pvals[pvals == 0] = min(pvals[pvals != 0])
     pvals[:] = -np.log10(pvals)
-    pvals[pvals > HEIGHT_CUTOFF] = HEIGHT_CUTOFF
     return data[np.argsort(data[:, 2])]
+
 
 # gets an array of x-axis vals of the corresponding length
 def qq_x_axis(length):
@@ -28,7 +28,11 @@ def qq_x_axis(length):
     trans_uniform = -np.log10(uniform)[::-1]
     return trans_uniform
 
-def plot_qq(ax, prepped_pvals, label, color):
+
+def plot_qq(ax, prepped_pvals, label, color, height_cutoff):
+    if height_cutoff:
+        prepped_pvals = prepped_pvals.copy()
+        prepped_pvals[prepped_pvals > HEIGHT_CUTOFF] = HEIGHT_CUTOFF
     xs = qq_x_axis(len(prepped_pvals))
     ax.scatter(
         xs,
@@ -38,27 +42,9 @@ def plot_qq(ax, prepped_pvals, label, color):
         label=label
     )
 
-def plot_manhattan(ax, data, label, color_pair):
-    # Trim to chroms 2, 3
-    first = True
-    for chrom in 2, 3:
-        if not first:
-            label = None
-        chrom_data = data[data[:, 0] == chrom, :]
-        xs = chrom_data[:, 1]
-        if chrom == 3:
-            xs += 243199373 #offset by len of chr 2
-        ax.scatter(
-            xs,
-            chrom_data[:, 2],
-            color=colors[color_pair[chrom % 2]],
-            label=label,
-            marker='.'#,
-            #alpha=0.5
-        )
-        first = False
 
-def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
+def make_qq_plots(phenotypes, results, snp_summary_stats, run_name,
+                  height_cutoff):
     # plot QQ plots
     nphenotypes = len(phenotypes)
     fig, axs = plt.subplots(nphenotypes, figsize=(10, 5*nphenotypes))
@@ -73,19 +59,21 @@ def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
             ax = axs
         ax.set_title(f'{phenotype}')
         ax.set_ylabel('-log_10(pval)')
-        ax.set_xlabel(f'-log_10(Uniform dist) (total STR loci = {nresults})')
+        ax.set_xlabel(f'-log_10(Uniform dist) (# STR loci = {nresults})')
 
         if phenotype in snp_summary_stats:
             max_len = max(snp_summary_stats[phenotype].shape[0], nresults)
             plot_qq(ax, snp_summary_stats[phenotype][:, 2],
-                    'SNPs genome wide', 'royalblue')
+                    'SNPs', 'royalblue',
+                    height_cutoff)
         else:
             max_len = nresults
 
-        plot_qq(ax, results[phenotype][:, 2], 'STRs on chr2,3',
-                'mediumvioletred')
+        plot_qq(ax, results[phenotype][:, 2], 'STRs',
+                'mediumvioletred', height_cutoff)
         plot_qq(ax, qq_x_axis(max_len),
-                'y=x, expectation under the null', 'gray')
+                'y=x, expectation under the null', 'gray',
+                height_cutoff)
 
         crosses_gws = np.argmax(results[phenotype][:, 2]
                                 > GENOME_WIDE_TRANS_SIG)
@@ -104,16 +92,50 @@ def make_qq_plots(phenotypes, results, snp_summary_stats, run_name):
 
         plt_count += 1
 
-    plt.savefig(f'{ukb}/association/runs/{run_name}/qq_plot.png')
+    cutoff_txt = ''
+    if not height_cutoff:
+        cutoff_txt = '_no_cutoff'
+    plt.savefig(f'{ukb}/association/runs/{run_name}/qq_plot{cutoff_txt}.png')
 
 
-def make_manhattan_plots(phenotypes, results, snp_summary_stats,
-                         snp_ss_description, known_assocs, run_name):
+def plot_manhattan(ax, data, label, color_pair, chr_lens, height_cutoff):
+    if height_cutoff:
+        data = data.copy()
+        data[data[:, 2] > HEIGHT_CUTOFF, 2] = HEIGHT_CUTOFF
+    first = True
+    for chrom in range(1, 23):
+        if not first:
+            label = None
+        chrom_data = data[data[:, 0] == chrom, :]
+        xs = chrom_data[:, 1]
+        xs += np.sum(chr_lens[0:(chrom-1)])
+        ax.scatter(
+            xs,
+            chrom_data[:, 2],
+            color=colors[color_pair[chrom % 2]],
+            label=label,
+            marker='.'#,
+            #alpha=0.5
+        )
+        first = False
+
+
+def make_genome_manhattan_plots(phenotypes, results, snp_summary_stats,
+                                snp_ss_description, known_assocs, run_name,
+                                height_cutoff):
     # plot Manhattan plots
     nphenotypes = len(phenotypes)
-    fig, axs = plt.subplots(nphenotypes, figsize=(30, 5*nphenotypes))
-    fig.suptitle('Manhattan plots (chr2,3)')
+    fig, axs = plt.subplots(nphenotypes, figsize=(300, 5*nphenotypes))
+    fig.suptitle('Manhattan plots')
     fig.tight_layout(pad=5.0)
+    chr_lens = np.genfromtxt(
+        f'{ukb}/misc_data/genome/chr_lens.txt',
+        skip_header=1,
+        usecols=(1),
+        dtype=int
+    )
+    max_len = np.sum(chr_lens)
+
     plt_count = 0
     for phenotype in phenotypes:
         if len(phenotypes) > 1:
@@ -122,34 +144,35 @@ def make_manhattan_plots(phenotypes, results, snp_summary_stats,
             ax = axs
         ax.set_title(f'{phenotype}')
         ax.set_ylabel('-log_10(pval)')
-        ax.set_xlabel(f'Position (1e7 bp)')
+        ax.set_xlabel('Position (1e7 bp)')
 
-        max_len = 243199373 + 198022430 # len chr2 + chr3
         ax.plot([0, max_len], [GENOME_WIDE_TRANS_SIG] * 2, label='p = 5e-8',
                  color=colors['red'])
 
         if phenotype in snp_summary_stats:
             desc = f'SNPs ({snp_ss_description[phenotype]})'
             plot_manhattan(ax, snp_summary_stats[phenotype], desc,
-                           ('royalblue', 'cornflowerblue'))
+                           ('royalblue', 'cornflowerblue'), chr_lens,
+                           height_cutoff)
 
         plot_manhattan(ax, results[phenotype],
                        'STRs (Ancestry: European, n=500,000)',
-                       ('mediumvioletred', 'deeppink'))
+                       ('mediumvioletred', 'deeppink'), chr_lens,
+                       height_cutoff)
 
         if phenotype in known_assocs:
             plot_manhattan(ax, known_assocs[phenotype], 'GWAS Catalog Hits',
-                           ('goldenrod', 'gold'))
+                           ('goldenrod', 'gold'), chr_lens, height_cutoff)
 
 
         ax.legend()
 
         ticks = []
         tick_labels = []
-        for chrom, length in (2, 243199373), (3, 198022430):
+        for chrom, length in enumerate(chr_lens):
+            chrom += 1
             new_ticks = np.arange(0, length, int(5e7))
-            if chrom == 3:
-                new_ticks += 243199373
+            new_ticks += np.sum(chr_lens[0:(chrom-1)])
             ticks.extend(new_ticks)
             tick_labels.append(f'chr{chrom}:0')
             tick_labels.extend(str(int(tick)) for tick in np.arange(5, length/1e7, 5))
@@ -158,7 +181,70 @@ def make_manhattan_plots(phenotypes, results, snp_summary_stats,
 
         plt_count += 1
 
-    plt.savefig(f'{ukb}/association/runs/{run_name}/manhattan_plot.png')
+    cutoff_txt = ''
+    if not height_cutoff:
+        cutoff_txt = '_no_cutoff'
+    plt.savefig(f'{ukb}/association/runs/{run_name}/manhattan_plot_all{cutoff_txt}.png')
+
+
+def make_region_manhattan_plot(results, snp_summary_stats,
+                         snp_ss_description, known_assocs, run_name,
+                         region):
+    chr_lens = np.genfromtxt(
+        f'{ukb}/misc_data/genome/chr_lens.txt',
+        skip_header=1,
+        usecols=(1),
+        dtype=int
+    )
+    os.makedirs(f'{ukb}/association/runs/{run_name}/regional_plots', exist_ok=True)
+
+    def subset(arr, chrom, start, end):
+        arr = arr[arr[:, 0] == chrom, :]
+        arr = arr[arr[:, 1] >= start, :]
+        return arr[arr[:, 1] <= end, :]
+
+    chrom, locus, phenotype = region.split(":")
+    chrom = int(chrom)
+    if '-' in locus:
+        start, end = (int(x) for x in locus.split('-'))
+    else:
+        pos = int(locus)
+        start, end = pos - int(5e5), pos + int(5e5)
+
+    fig, ax = plt.subplots()
+    fig.suptitle(f'Associations with {phenotype}')
+    fig.tight_layout(pad=5.0)
+    ax.set_title(f'{phenotype}')
+    ax.set_ylabel('-log_10(pval)')
+    ax.set_xlabel('Position')
+
+    offset = np.sum(chr_lens[0:(chrom-1)])
+    ax.plot([start+offset, end+offset], [GENOME_WIDE_TRANS_SIG] * 2, label='p = 5e-8',
+             color=colors['red'])
+
+    if phenotype in snp_summary_stats:
+        desc = f'SNPs ({snp_ss_description[phenotype]})'
+        plot_manhattan(ax,
+                       subset(snp_summary_stats[phenotype], chrom, start, end),
+                       desc,
+                       ('royalblue', 'cornflowerblue'),
+                       chr_lens, False)
+
+    plot_manhattan(ax,
+                   subset(results[phenotype], chrom, start, end),
+                   'STRs (Ancestry: European, n=500,000)',
+                   ('mediumvioletred', 'deeppink'),
+                   chr_lens, False)
+
+    if phenotype in known_assocs:
+        plot_manhattan(ax,
+                       subset(known_assocs[phenotype], chrom, start, end),
+                       'GWAS Catalog Hits',
+                       ('goldenrod', 'gold'),
+                       chr_lens, False)
+    ax.legend()
+
+    plt.savefig(f'{ukb}/association/runs/{run_name}/regional_plots/{phenotype}_{chrom}_{start}_{end}.png')
 
 
 def main():
@@ -166,7 +252,10 @@ def main():
     parser.add_argument("run_name")
     parser.add_argument(
         "--manhattan-regions",
-        help="comma separated list of regions to make manhattan plots for"
+        help=("comma separated list of regions to make manhattan plots for. "
+              "Each region is of the form chrom:start-end:phenotype or "
+              "chrom:pos:phenotype in which case a 1Mb region around the "
+              "position is shown ")
     )
     args = parser.parse_args()
     if args.manhattan_regions:
@@ -241,19 +330,21 @@ def main():
         known_assocs[phenotype] = prep_data(known_assocs[phenotype])
 
     if not regions:
-        make_qq_plots(phenotypes, results, snp_summary_stats, args.run_name)
-        make_manhattan_plots(
-            phenotypes,
-            results,
-            snp_summary_stats,
-            snp_ss_description,
-            known_assocs,
-            args.run_name
-        )
+        for cutoff in {True, False}:
+            make_qq_plots(phenotypes, results, snp_summary_stats,
+                          args.run_name, cutoff)
+            make_genome_manhattan_plots(
+                phenotypes,
+                results,
+                snp_summary_stats,
+                snp_ss_description,
+                known_assocs,
+                args.run_name,
+                cutoff
+            )
     else:
         for region in regions:
-            make_manhattan_plots(
-                phenotypes,
+            make_region_manhattan_plot(
                 results,
                 snp_summary_stats,
                 snp_ss_description,

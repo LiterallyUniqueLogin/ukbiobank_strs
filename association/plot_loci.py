@@ -35,6 +35,7 @@ def main():
 
     with open(f'{assoc_dir}/phenotypes.txt') as units_file:
         first = True
+        success = False
         for line in units_file:
             if first:
                 first = False
@@ -43,7 +44,11 @@ def main():
             if phen == args.phenotype:
                 with open(f'{plot_dir}/info.txt', 'w') as phenotype_info:
                     phenotype_info.write(f'{unit}\n')
+                    success = True
                     break
+        if not success:
+            print(f"Couldn't find phenotype {args.phenotype}", file=sys.stderr)
+            sys.exit(1)
 
     for plot_idx, locus in enumerate(args.locus):
         chrom, pos = locus.split(":")
@@ -110,7 +115,7 @@ def main():
         command = f"""
         source ~/.bashrc ;
         conda activate ukb ;
-        Rscript {ukb}/association/plot_loci.R \
+        Rscript {ukb}/association/plot_loci_helper.R \
                 {plot_dir} {chrom} {pos} {args.phenotype}
         """
         sp.run(command, check=True, shell=True)

@@ -14,13 +14,18 @@ import os
 import os.path
 import sys
 import time
+from typing import List, Optional
 
 import cyvcf2
 import dask
 import dask.distributed
 import dask_jobqueue
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import numpy.random
+import sklearn.model_selection
+import sklearn.neighbors
 from statsmodels.regression.linear_model import OLS
 
 ukb = os.environ['UKB']
@@ -79,6 +84,33 @@ def load_covars(readme):
     indep_col_names = ['intercept', 'sex']
     indep_col_names.extend(pc_col_names)
     df = pd.concat((ids_and_sex, pcs, const_df), axis=1)
+
+    # Age will be included as a covariate for all dependent variables
+    # to prevent confounding.
+    # If not, then if age was correlated with the dependent variable,
+    # any loci which caused people to live longer or shorter would be
+    # spuriously associated with the dependent variable.
+    # However, each dependent variable measured during an assessment may
+    # have been measured at one of multiple assessments.
+    # As such, each measured dependent variable needs to specify which assessments
+    # the age should be drawn from for each participant.
+    # So we load ages for each assessment here but do not mark them as
+    # independent variables to be directly included in the analysis.
+    age_file_name = f'{ukb}/main_dataset/extracted_data/assessment_age.csv'
+    readme.write(
+        f"Adding ages at assessments. File: {age_file_name}\n"
+    )
+    assessment_age = pd.read_csv(
+        age_file_name,
+        names=["id", "age_assess_init", "age_assess_repeat", "age_assess_image"],
+        dtype={"id": int,
+               "age_assess_init": float,
+               "age_assess_repeat": float,
+               "age_assess_iamge": float},
+        skiprows=1
+    )
+    df = pd.merge(df, assessment_age, how="inner", on="id")
+
     print("done")
     return df, indep_col_names
 
@@ -92,20 +124,24 @@ def load_height(df, readme, phenotypes):
     Returns
     -------
     pd.DataFrame :
-       Same as the input, but with two rows appended.
+       Same as the input, but with three rows appended.
        The first is 'height' as a float
        (heights are measured in half cms)
        The second is 'height_sampling'
        and is categorical 0, 1 or 2
-       specifying which visit height was retrieved on.
+       specifying whether height was measured on the
+       initial assessment, the first repeat assessment or
+       the imaging assessment, respectively.
        Only first visit where height was retrieved is
        recorded.
+       The last is 'height_age', namely the age of the ppt
+       at the assessment specified by 'height_sampling'
     """
     print("Loading height ... ", end="", flush=True)
     phenotypes.write("height:cm\n")
     floc = f'{ukb}/main_dataset/extracted_data/height.txt'
     readme.write(
-        f"Adding height phenotype and sampling visit. File: {floc}. "
+        f"Adding height phenotype, sampling visit and age at sampling visit. File: {floc}. "
         f"Only reporting first height measurement taken even if there "
         f"were multiple at different vists\n"
     )
@@ -114,27 +150,35 @@ def load_height(df, readme, phenotypes):
         names=["id", "height", "height_sampling"],
         dtype={"id": "int",
                "height": float,
-               "height_sampling": "category"},
+               "height_sampling": float},
         skiprows=4,
         sep=" "
     )
+    height_df.loc[pd.isna(height_df['height']), 'height_sampling'] = np.nan
+    height_df.loc[pd.isna(height_df['height_sampling']), 'height'] = np.nan
+
     # taller than tallest person or shorter than shortest adult
     filter_extremes = np.logical_or(height_df['height'] > 274,
                                     height_df['height'] < 54)
     n_filtered = np.sum(filter_extremes)
     readme.write(f"Filtering {n_filtered} height values that are taller than "
                  "the world's tallest person or shorter than the shortest.\n")
-    height_df.loc[filter_extremes, 'height'] = np.nan
+    height_df.loc[filter_extremes, ['height', 'height_sampling']] = np.nan
 
-    try:
-        return pd.merge(
-            df,
-            height_df,
-            how="left",
-            on="id"
-        )
-    finally:
-        print("done")
+    df = pd.merge(
+        df,
+        height_df,
+        how="left",
+        on="id"
+    )
+
+    readme.write("Adding age at height measurement as a covariate\n")
+    start_idx = df.columns.get_loc('age_assess_init')
+    has_height = ~np.isnan(df['height'])
+    df.loc[has_height, 'height_age'] = \
+        df.values[has_height.values, start_idx + df.loc[has_height, 'height_sampling'].astype(int)]
+    print("done")
+    return df, ['height_age']
 
 
 def load_bilirubin(df, readme, phenotypes):
@@ -146,17 +190,20 @@ def load_bilirubin(df, readme, phenotypes):
     Returns
     -------
     pd.DataFrame :
-       Same as input df, but with two float rows appended.
-       They are 'direct_bilirubin' and
-       'total_bilirubin'. 'indirect_bilirubin'
-       can be calculated as total - direct.
-       These only reflect measurements made at the first
-       visit, follow up measurements are ignored
-       as I do not know if bilirubin values change as people
-       age or if I should be adjusting for that.
-       Unsure why someone would get a value for
-       total or direct_bilirubin but not the other,
-       so for now make sure both exist or NaN them both
+       Same as input df, but with four rows appended.
+       The first recorded measurement is 'total_bilirubin'.
+       The next column is 'total_bilirubin_age' and is the age
+       at which that measurement was taken. The next column is
+       'direct_bilirubin' which is set only for those ppts which
+       had that measurement made at the same assessment as the total_bilirubin
+       measurement. For those ppts, indirect bilirubin is calculated as
+       total_bilirubin - direct_bilirubin.
+
+       NOTE: it seems (table 1 :
+           http://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/serum_biochemistry.pdf
+       ) that direct bilirubin values < 1 were filtered due to lack of
+       precision, meaning that extant direct bilirubin levels are highly
+       subject to bias.
     """
     print("Loading bilirubin ... ", end="", flush=True)
     phenotypes.write("total_bilirubin:umol/L\n")
@@ -164,31 +211,40 @@ def load_bilirubin(df, readme, phenotypes):
     phenotypes.write("indirect_bilirubin:umol/L\n")
     floc = f'{ukb}/main_dataset/extracted_data/bilirubin.csv'
     readme.write(
-        f"Adding direct, total and indirect_bilirubin phenotypes. File: {floc}. "
-        f"Only recording first visit's value, regardless of whether "
-        f"it is not present and/or there is a follow up visit value. "
-        f"NaNing total values where direct is missing (or visa versa) "
-        f"as an overly conservative approach to making sure we have clean "
-        f"data as a I don't know why we'd be missing one but not both. "
-        f"This effectively cuts down 70k total_bilirubin measurements "
-        f"which don't have direct counterparts. The indirect phenotype"
-        f" is simply calculated as total - direct.\n"
+        f"Adding direct, total and indirect_bilirubin phenotypes "
+        f"and date of measurement, File: {floc}. "
+        f"total_bilirubin is taken from the first assessment where it was "
+        f"sampled, if any. direct_bilirubin is taken from that same assessment "
+        f"if taken there. direct will not be taken from the other assessment. "
+        f"direct will not be recorded if total is not."
+        f"There are 70k total_bilirubin measurements with no corresponding "
+        f"direct_bilirubin measurement and I do not know why, concerning."
+        f"Almost all direct_bilirubin measurements have corresponding "
+        f"total_bilirubin measurements, so no issue here."
+        f"The indirect phenotype is simply calculated as total - direct.\n"
     )
     bilirubin_df = pd.read_csv(
         floc,
-        names=["id", "direct_bilirubin", "total_bilirubin"],
+        names=["id", "dbil0", "dbil1", "tbil0", "tbil1"],
         header=0,
-        usecols=[0, 1, 3],
-        dtype={"id": "int",
-               "direct_bilirubin" : float,
-               "total_bilirubin" : float},
+        dtype={"id": int,
+               "dbil0" : float,
+               "dbil1" : float,
+               "tbil0" : float,
+               "tbil1" : float},
         quotechar='"'
     )
-    direct_nan = np.isnan(bilirubin_df['direct_bilirubin'])
-    total_nan = np.isnan(bilirubin_df['total_bilirubin'])
-    bilirubin_df.loc[direct_nan, 'total_bilirubin'] = np.nan
-    bilirubin_df.loc[total_nan, 'direct_bilirubin'] = np.nan
-   
+    has_tbil0 = ~np.isnan(bilirubin_df.loc[:, 'tbil0'])
+    bilirubin_df.loc[has_tbil0, 'bilirubin_assessment'] = 0
+    bilirubin_df.loc[~has_tbil0, 'bilirubin_assessment'] = 1
+    bilirubin_df.loc[has_tbil0, 'total_bilirubin'] = bilirubin_df.loc[has_tbil0, 'tbil0']
+    bilirubin_df.loc[has_tbil0, 'direct_bilirubin'] = bilirubin_df.loc[has_tbil0, 'dbil0']
+    bilirubin_df.loc[~has_tbil0, 'total_bilirubin'] = bilirubin_df.loc[~has_tbil0, 'tbil1']
+    bilirubin_df.loc[~has_tbil0, 'direct_bilirubin'] = bilirubin_df.loc[~has_tbil0, 'dbil1']
+    has_tbil = ~np.isnan(bilirubin_df.loc[:, 'total_bilirubin'])
+    bilirubin_df.loc[~has_tbil, ['direct_bilirubin', 'bilirubin_assessment']] = np.nan
+    bilirubin_df.drop(['tbil0', 'tbil1', 'dbil0', 'dbil1'], axis=1)
+
     # Add indirect:
     bilirubin_df['indirect_bilirubin'] = (
         bilirubin_df['total_bilirubin'] -
@@ -207,22 +263,137 @@ def load_bilirubin(df, readme, phenotypes):
     # max bilirubin value right now is 144. I don't know enough to say that
     # this is too high, so no max filter
 
-    """
-    both_nan = np.logical_and(direct_nan, total_nan)
-    print("Direct nan count", np.sum(direct_nan))  # 103892
-    print("total nan count", np.sum(total_nan))  # 34945
-    print("both nan count", np.sum(both_nan))  # 34601
-    """
+    df = pd.merge(
+        df,
+        bilirubin_df,
+        how="left",
+        on="id"
+    )
+    
+    readme.write("Adding age at bilirubin measurement as a covariate\n")
+    df.loc[has_tbil0, 'bilirubin_age'] = df.loc[has_tbil0, 'age_assess_init']
+    df.loc[~has_tbil0, 'bilirubin_age'] = df.loc[~has_tbil0, 'age_assess_repeat']
+    df.loc[~has_tbil, 'bilirubin_age'] = np.nan
 
-    try:
-        return pd.merge(
-            df,
-            bilirubin_df,
-            how="left",
-            on="id"
+    print("done")
+    return df, ['bilirubin_age']
+
+
+# copied from plot_stats branch of trtools
+def PlotKDE(data: np.ndarray,
+            xlabel: str,
+            title: str,
+            fname: str,
+            strata_labels: Optional[List[str]] = None,
+            random_state: int = 13):
+    """
+    Plots a kernel density estimation of the distribution.
+    This is a smoother representation of the distribution
+    than a historgram. Kernel bandwidth (which determins plot
+    smoothness) is determined by cross validation (if more
+    than 1000 loci, training is done on a subset of 1000
+    chosen at random).
+    Parameters
+    ----------
+    data:
+        Either a 1D array of statistics to create a histogram of,
+        or a 2D array where each column represents a different stratification
+        of the data that will get a different line in the plot
+    xlabel:
+        the x label for the graph
+    title:
+        the title for the graph
+    fname:
+        the file name to save the graph. Must include the extension,
+        and one that matplotlib will recognize so that it produces
+        a file of that type.
+    strata_labels:
+        if data is 2D, then a different label for each column in data
+    randome_state:
+        used to control the splitting in the cross validation.
+    """
+    if len(data.shape) == 1:
+        data = data.reshape(-1, 1)
+    elif strata_labels is not None:
+        assert len(strata_labels) == data.shape[1]
+
+    n_strata = data.shape[1]
+
+    fig, ax = plt.subplots()
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Probability density")
+
+    # Fit and plot each stratum individually
+    for col in range(n_strata):
+        stratum = data[:, col]
+        stratum = stratum[~np.isnan(stratum)]
+        # only train on up to 1k loci for speed. Select a random subset
+        # it would be nice to train on the same subset of loci for each strata
+        # but that isn't feasible if some strata have many more nan's than
+        # others
+        max_loci = int(1e3)
+        if len(stratum) > max_loci:
+            rng = numpy.random.default_rng(random_state)
+            stratum = stratum[rng.choice(len(stratum), size=max_loci, replace=False)]
+
+        # code from
+        # https://jakevdp.github.io/PythonDataScienceHandbook/05.13-kernel-density-estimation.html
+        stratum = stratum.reshape(-1, 1)
+
+        # Use gridsearch to choose the bandwidth
+        kfold = sklearn.model_selection.KFold(
+            n_splits=5,
+            random_state=random_state,
+            shuffle=True
         )
-    finally:
-        print("done")
+        bandwidths = 10 ** np.linspace(-1.8, 1.8, 20)
+        grid = sklearn.model_selection.GridSearchCV(
+            sklearn.neighbors.KernelDensity(kernel='gaussian'),
+            {'bandwidth': bandwidths},
+            cv=kfold
+        )
+        grid.fit(stratum)
+        bandwidth = grid.best_params_['bandwidth']
+
+        #compute the kde with the best bandwidth
+        stratum = data[:, col] # now use all the data
+        stratum = stratum[~np.isnan(stratum)]
+        stratum = stratum.reshape(-1, 1)
+        kde = sklearn.neighbors.KernelDensity(kernel='gaussian',
+                                              bandwidth=bandwidth)
+        kde.fit(stratum)
+        min_val = np.min(stratum)
+        max_val = np.max(stratum)
+        eps = (max_val - min_val)/10e3
+        xs = np.arange(min_val - eps, max_val + eps, eps)
+        curve = np.exp(kde.score_samples(xs.reshape(-1, 1)))
+
+        # plot
+        if n_strata == 1:
+            ax.fill_between(xs, curve)
+        else:
+            ax.plot(xs, curve, label=strata_labels[col])
+    if n_strata > 1:
+        ax.legend()
+    plt.savefig(fname)
+
+
+def plot_phenotype_by_sex(df, phenotype, fname, unit, title):
+    print(f"Plotting {title} ... ", flush=True, end="")
+    plot_df = df.loc[:, [phenotype, 'sex']].copy()
+    plot_df.loc[:, f'male_{phenotype}'] = plot_df[phenotype]
+    plot_df.loc[:, f'female_{phenotype}'] = plot_df[phenotype]
+    plot_df.loc[plot_df.loc[:, 'sex'] == 2, f'male_{phenotype}'] = np.nan
+    plot_df.loc[plot_df.loc[:, 'sex'] == 1, f'female_{phenotype}'] = np.nan
+    PlotKDE(
+        plot_df.loc[:, [f'male_{phenotype}', f'female_{phenotype}']].values,
+        f'{phenotype} ({unit})',
+        title,
+        fname,
+        ['male', 'female']
+    )
+    print("done", flush=True)
 
 
 def perform_association_subset(assoc_dir,
@@ -251,6 +422,10 @@ def perform_association_subset(assoc_dir,
         batch_size = 50
         total_time = 0
         for locus in vcf_region:
+            if 'PERIOD' not in dict(locus.INFO):
+                # there are a few duplicate loci which I didn't handle
+                # properly, this identifies and removes them
+                continue
             # setup for this locus
             n_loci += 1
             start_time = time.time()
@@ -328,7 +503,7 @@ def perform_association_subset(assoc_dir,
             intercept_coef = reg_result.params['intercept']
             results.write(f" {pval:.2e} {coef} {intercept_coef}")
 
-            #"""
+            """
             predictions = reg_result.predict(df[['gt', 'intercept']])
             df[f'{dep_var}_final_residual'] = df[f'{dep_var}_residual'] - predictions
             df.to_csv(
@@ -337,7 +512,7 @@ def perform_association_subset(assoc_dir,
                 columns=['id', f'{dep_var}_final_residual', 'gt'],
                 index=False
             )
-            #"""
+            """
 
             # output results
             results.write("\n")
@@ -377,7 +552,7 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
     os.mkdir(f'{assoc_dir}/results')
     os.mkdir(f'{assoc_dir}/results/batches')
    
-    print("writing out results for each phenotype, region pair. "
+    print("Writing out results for each phenotype, region pair. "
           "see run_logs/<phenotype>_<region>.log for logs and "
           "see results/batches/<phenotype>_<region>.txt for results.",
           flush=True)
@@ -409,7 +584,7 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     cluster.adapt(maximum_jobs=300)
     client = dask.distributed.Client(cluster)
 
-    print("writing out results for each phenotype, region pair. "
+    print("Writing out results for each phenotype, region pair. "
           "see run_logs/<phenotype>_<region>.log for logs and "
           "see results/batches/<phenotype>_<region>.txt for results.",
           flush=True)
@@ -428,7 +603,7 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     overall_dep_tasks = []
     for dep_var in dep_vars:
         tasks = []
-        for chrom in (2, 3):
+        for chrom in range(1, 23):
             for start_pos in range(1, int(chr_lens[chrom-1]), int(1e7)):
                 #10Mbp regions
                 tasks.append(dask.delayed(perform_association_subset)(
@@ -488,11 +663,23 @@ def main():  # noqa: D103
         readme.write(f"Run args: {args}\n")
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
-        phenotypes.write("phenotype_name:unit\n")
+        phenotypes.write("phenotype:unit\n")
 
         df, indep_vars = load_covars(readme)
-        df = load_height(df, readme, phenotypes)
-        df = load_bilirubin(df, readme, phenotypes)
+        df, height_indep_vars = load_height(df, readme, phenotypes)
+        df, bilirubin_indep_vars = load_bilirubin(df, readme, phenotypes)
+
+        # covariate columns:
+        dep_vars = [
+            'height',
+            'total_bilirubin',
+            #'direct_bilirubin',
+            #'indirect_bilirubin'
+        ]
+        pheno_indep_vars = {
+            'height': height_indep_vars,
+            'total_bilirubin': bilirubin_indep_vars
+        }
 
         # Already calculated the largest unrelated subset of a filtering list
         # based on height. Will need to do this more intelligently when we
@@ -537,31 +724,59 @@ def main():  # noqa: D103
             )
             readme.write('\n')
 
+        plot_dirs = {}
+        for dep_var in dep_vars:
+            plot_dirs[dep_var] = f'{assoc_dir}/{dep_var}_summary_plots'
+            os.mkdir(plot_dirs[dep_var])
+
+        plot_phenotype_by_sex(
+            df,
+            'total_bilirubin',
+            f'{plot_dirs["total_bilirubin"]}/measured.png',
+            'umol/L',
+            'Measured total_bilirubin'
+        )
+
+        readme.write("Log transforming total_bilirubin\n")
+        df.loc[:, 'total_bilirubin'] = np.log(df.loc[:, 'total_bilirubin'])
+
+        plot_phenotype_by_sex(
+            df,
+            'total_bilirubin',
+            f'{plot_dirs["total_bilirubin"]}/log_transform.png',
+            'log(umol/L)',
+            'Log transform total_bilirubin'
+        )
+
+        plot_phenotype_by_sex(
+            df,
+            'height',
+            f'{plot_dirs["height"]}/measured.png',
+            'cm',
+            'Measured height'
+        )
+
         readme.write("Performing linear association against listed covariates"
                      " to get phenotypes residuals\n")
-        # covariate columns:
-        dep_vars = [
-            'height',
-            'total_bilirubin',
-            #'direct_bilirubin',
-            #'indirect_bilirubin'
-        ]
 
         print("Running associations of phenotypes against covariates to get"
               " residuals ... ", end='', flush=True)
+        units = {'height': 'cm', 'total_bilirubin': 'log(umol/L)'}
         for dep_var in dep_vars:
+            curr_indep_vars = indep_vars.copy()
+            curr_indep_vars.extend(pheno_indep_vars[dep_var])
             with open(f'{assoc_dir}/{dep_var}_residual_results.txt', 'w') as res_results:
                 model = OLS(
                     df[dep_var],
-                    df[indep_vars],
+                    df[curr_indep_vars],
                     missing='drop'
                 )
                 reg = model.fit()
                 res_results.write("indep_var p coeff\n")
-                for var in indep_vars:
+                for var in curr_indep_vars:
                     res_results.write(f'{var} {reg.pvalues[var]:.2e} '
                                       f'{reg.params[var]}\n')
-                predictions = reg.predict(df[indep_vars])
+                predictions = reg.predict(df[curr_indep_vars])
                 df[f'{dep_var}_residual'] = df[dep_var] - predictions
         #Write out the csv we're going to be running associations on
         df.to_csv(
@@ -570,6 +785,14 @@ def main():  # noqa: D103
             index=False
         )
         print("done", flush=True)
+        for dep_var in dep_vars:
+            plot_phenotype_by_sex(
+                df,
+                f'{dep_var}_residual',
+                f'{plot_dirs[dep_var]}/residual.png',
+                f'residual {units[dep_var]}',
+                f'Residual {dep_var}'
+            )
 
         readme.write(f"Using str calls from imputed run {imputation_run_name}\n")
         readme.write(

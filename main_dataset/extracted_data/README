@@ -6,4 +6,4 @@ bilirubin_fields.txt - list of extracted fields (direct, total)
  - currently does not contain any covariates detailing the extraction process
 
 generated via the command (from the raw_data) directory:
-../../ukb_utilities/ukbconv ukb41414.enc_ukb csv -e../../ukb_utilities/encoding.ukb -i../extracted_data/bilirubin_fields.txt -o../extracted_data/bilirubin
+../../ukb_utilities/ukbconv ../raw_data/ukb41414.enc_ukb csv -e../../ukb_utilities/encoding.ukb -i../extracted_data/bilirubin_fields.txt -o../extracted_data/bilirubin
