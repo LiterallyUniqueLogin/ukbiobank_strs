@@ -1,0 +1,22 @@
+The NHGRI-EBI catalog
+wget https://www.ebi.ac.uk/gwas/api/search/downloads/alternative
+mv alternative catalog_hg38.tsv
+# Description of columns: https://www.ebi.ac.uk/gwas/docs/fileheaders#_file_headers_for_catalog_version_1_0_1
+
+# Create a bed file of the chrom and pos
+# For each row, print the line number it came from as column 4
+# liftover doesn't muck with these, so they can be used to back identify which regions came from which lines in the original tsv
+# for results which don't have a single integer chrom 1-22, omit them from the bed file
+tail -n +2 catalog_hg38.tsv | \
+	awk 'BEGIN { FS = "\t" } ; { if ( $12 ~ /^[0-9]$/ || $12 ~ /^1[0-9]$/ || $12 ~ /^2[0-2]$/) { print "chr" $12 " " $13 - 1 " " $13 " " NR } } ' > catalog_hg38.bed
+
+# liftOver to hg19
+wget http://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHg19.over.chain.gz
+liftOver catalog_hg38.bed hg38ToHg19.over.chain.gz catalog_hg19.bed hg38ToHg19.unmapped.bed
+
+# conversion
+python create_hg19_catalog.py
+
+
+Counting associations by type: (will fail on lines with a ^ in them)
+cat catalog.tsv | sed -e 's/\t/^/g' | awk 'BEGIN { FS ="^" } ; { print $8 }' | sort | uniq -c | vim -

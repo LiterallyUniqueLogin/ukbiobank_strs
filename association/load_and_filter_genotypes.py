@@ -8,9 +8,12 @@ and then return yield them
 
 import os
 import os.path
+import time
+from typing import List, Tuple
 
 import cyvcf2
 import numpy as np
+import numpy.ma
 
 ukb = os.environ['UKB']
 
@@ -19,6 +22,10 @@ def filtered_strs(imputation_run_name,
                        region):
     """
     Iterate over a region returning genotypes at STR loci.
+
+	First value yielded is the array of samples in the VCF
+	Every subsequent value is the tuple
+	(genotypes, chrom, pos, filtered_samples, filtered_rare_alleles)
 
     Samples with imputed genotypes with too low an expected probability
     have their genotypes set to nan
@@ -31,6 +38,7 @@ def filtered_strs(imputation_run_name,
     vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_floc)
+    yield vcf.samples
 
     vcf_region = vcf(region)
     for locus in vcf_region:
@@ -98,4 +106,72 @@ def filtered_strs(imputation_run_name,
             n_filtered_samples,
             filtered_rare_alleles
         )
+
+
+def load_all_haplotypes(variant_generator, samplelist):
+    '''
+    Load all the haplotypes in an interator.
+
+    Takes in a generator of haplotypes
+    which returns 2D arrays of size nsamples x 2
+    and returns a 2D array of size (2 x nsamples) x loci
+
+    Parameters
+    ----------
+    samplelist:
+        list of samples to keep
+
+    Returns
+    -------
+    Tuple[np.ndarray, List[int]]:
+        The 2D array of haplotypes and a
+        list of positions for each locus
+    '''
+    gts_per_locus_list = []
+    poses = []
+    samples = next(variant_generator)
+
+    print("Loading haplotypes ... ")
+    nloci = 0
+    batch_time = 0
+    batch_size = 50
+    total_time = 0
+    start_time = time.time()
+    for len_gts, _, pos, _, _  in variant_generator:
+        gts_per_locus_list.append(len_gts)
+        poses.append(pos)
+
+        nloci += 1
+        duration = time.time() - start_time
+        total_time += duration
+        batch_time += duration
+        if nloci % batch_size == 0:
+            print(
+                f"time/locus (last {batch_size}): "
+                f"{batch_time/batch_size:.2e}s\t\t\t"
+                f"time/locus ({nloci} total loci): {total_time/nloci:.2e}s",
+                flush=True,
+                end='\r'
+            )
+            batch_time = 0
+        start_time = time.time()
+    sys.stdout.write('\033[2K\033[1G') # erase and go to beginning of line?
+    # https://stackoverflow.com/questions/5290994/remove-and-replace-printed-items
+    print(
+        f"Done loading haplotypes. "
+        f"time/locus ({nloci} total loci): {total_time/nloci:.2e}s",
+        flush=True
+    )
+    gts_per_locus = np.stack(gts_per_locus_list, axis=-1)
+    samples_to_use = np.isin(samples, samplelist)
+    gts_per_locus = gts_per_locus[samples_to_use, :, :]
+
+    # shape is now participant x haplotype x locus
+    # all haplotypes are equally useful here, regardless of which person
+    # they come from, so combine the first two dimensions into one
+    gts_per_locus = gts_per_locus.reshape(gts_per_locus.shape[0]*2,
+                                          gts_per_locus.shape[2])
+    gts_per_locus = numpy.ma.masked_invalid(gts_per_locus)
+    return gts_per_locus, np.array(poses)
+
 

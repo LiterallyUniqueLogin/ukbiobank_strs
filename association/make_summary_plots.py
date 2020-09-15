@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 
 from matplotlib.colors import CSS4_COLORS as colors
 import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ from matplotlib.transforms import Affine2D
 from mpl_toolkits.axisartist.grid_finder import MaxNLocator
 import scipy.ndimage
 import matplotlib.patches
+import matplotlib.path
 
 import load_and_filter_genotypes
 
@@ -198,7 +200,7 @@ def make_genome_manhattan_plots(phenotypes, results, snp_summary_stats,
 
 def make_region_plot(results, snp_summary_stats,
                      snp_ss_description, known_assocs, run_name,
-                     imputation_run_name, region):
+                     imputation_run_name, filtering_run_name, region):
     chrom, locus, phenotype = region.split(":")
     chrom = int(chrom)
     if '-' in locus:
@@ -208,6 +210,16 @@ def make_region_plot(results, snp_summary_stats,
         start, end = pos - int(5e5), pos + int(5e5)
 
     os.makedirs(f'{ukb}/association/runs/{run_name}/regional_plots', exist_ok=True)
+
+    fname = f'{ukb}/sample_qc/runs/{filtering_run_name}/combined_unrelated.sample'
+    samplelist = np.genfromtxt(
+        fname,
+        skip_header=1,
+        usecols=[0],
+        dtype='U7'
+    ).reshape(-1)
+    samplelist = numpy.char.add(numpy.char.add(samplelist, '_'), samplelist)
+
     fig_height = 10
     fig_width = 8
     width_sides = 0.1
@@ -216,40 +228,32 @@ def make_region_plot(results, snp_summary_stats,
     height_spacing = absolute_height_spacing/fig_height
     absolute_width_spacing = 0.8
     width_spacing = absolute_width_spacing/fig_width
-    cbar_width_abs = 0.5
+    cbar_width_abs = 0.25
     cbar_width = cbar_width_abs/fig_width
     fig = plt.figure(figsize = (fig_width, fig_height))
     manhattan_ax = fig.add_axes([
         width_sides,
-        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width) + height_spacing,
+        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2) + height_spacing,
         1 - 2*width_sides - width_spacing - cbar_width,
-        1 - (fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width) + height_spacing) - fig_width/fig_height*width_sides,
+        1 - (fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2) + height_spacing) - fig_width/fig_height*width_sides,
     ])
-    #from 
-    # https://matplotlib.org/gallery/axisartist/demo_floating_axes.html
-    '''
-    tr = Affine2D().scale(1, 1).rotate_deg(45)
-    grid_helper = floating_axes.GridHelperCurveLinear(
-        tr, extremes=(-0.5, 3.5, 0, 4),
-        grid_locator1=MaxNLocator(nbins=4),
-        grid_locator2=MaxNLocator(nbins=4))
-    '''
     heatmap_ax = fig.add_axes([
         width_sides,
         height_sides,
         1 - 2*width_sides - width_spacing - cbar_width,
-        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)
+        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2)
     ])
     cbar_ax = fig.add_axes([
         1 - width_sides - cbar_width,
         height_sides,
         cbar_width,
-        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)
+        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2)
     ])
     
     fig.suptitle(f'Associations with {phenotype}', fontsize='large')
-    # fig.tight_layout(pad=5.0)
-    #'''
+
+    print("Drawing Manhattan plot ... ", end='', flush=True)
+    start_time = time.time()
     make_region_manhattan_plot(
         manhattan_ax,
         results,
@@ -261,14 +265,16 @@ def make_region_plot(results, snp_summary_stats,
         end,
         phenotype
     )
-    #'''
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
     make_ld_heatmap(
         heatmap_ax,
         cbar_ax,
         imputation_run_name,
         chrom,
         start,
-        end
+        end,
+        samplelist
     )
 
     plt.savefig(f'{ukb}/association/runs/{run_name}/regional_plots/{phenotype}_{chrom}_{start}_{end}.png')
@@ -318,113 +324,66 @@ def make_region_manhattan_plot(ax, results, snp_summary_stats,
     ax.legend()
 
 
-def make_ld_heatmap(ax, cbar_ax, imputation_run_name, chrom, start, end):
-    '''
-    gts_per_locus_list = []
-    poses = []
-    count = 0
-    for len_gts, _, pos, _, _ in \
-            load_and_filter_genotypes.filtered_strs(
-                imputation_run_name, f'{chrom}:{start}-{end}'):
-        count += 1
-        print(f"loaded str {count}", end="\r")
-        gts_per_locus_list.append(len_gts)
-        poses.append(pos)
-        if count == 20:
-            end = pos
-            break
-    gts_per_locus = np.stack(gts_per_locus_list, axis=-1)
-    # shape is now participant x haplotype x locus
-    # all haplotypes are equally useful here, regardless of which person
-    # they come from, so combine the first two dimensions into one
-    gts_per_locus = gts_per_locus.reshape(gts_per_locus.shape[0]*2,
-                                          gts_per_locus.shape[2])
-    gts_per_locus = numpy.ma.masked_invalid(gts_per_locus)
-    # shape is hapltoype x locus
+def make_ld_heatmap(ax, cbar_ax, imputation_run_name, chrom, start, end,
+                    samplelist):
+    gts_per_locus, poses = load_and_filter_genotypes.load_all_haplotypes(
+        load_and_filter_genotypes.filtered_strs(
+            imputation_run_name,
+            f'{chrom}:{start}-{end}'
+        ),
+        samplelist
+    )
+
+    print("Correlating loci ... ", end='', flush=True)
+    start_time = time.time()
     corrcoefs = np.square(numpy.ma.corrcoef(gts_per_locus, rowvar=False))
-    '''
-    corrcoefs = np.array([
-        [1.0, 0.058071465626636495, 0.31039026622741855,         0.11832356183390194, 0.2666239166247261, 0.3686336628398046,         0.036703468456753756, 0.12210677207762605, 0.07739021666281841,         0.3366440537450745, 0.04087319746675118, 0.2857763238357282,         0.1003312933352248, 0.050749336024172864, 0.11504098423537285,         0.10278600878593348, 0.0713853075335143, 0.0005882198401218372,         0.6596429911239123, 0.05612157977115239],
-        [0.058071465626636495, 1.0, 0.17439041646473993,         0.144967015184881, 8.3677484131342e-05, 0.21559221216050953,         0.014825911232766132, 0.01857279872205382, 0.015255547303802117,         0.15968081145945595, 0.40815861087486754, 0.08914653789493271,         0.01911698601627397, 0.41693754653588977, 0.2672161253816999,         0.2067087037671558, 0.09272423301145619, 0.2659691819828519,         0.08194731624019555, 0.09222605754295815],
-        [0.31039026622741855, 0.17439041646473993, 1.0,         0.38551567117737606, 0.7343243054661031, 0.8217461894541107,         0.15188934959254602, 0.4159141241942624, 0.2114553830145246,         0.8472791026094442, 0.04368056683910006, 0.0389213827552414,         0.369038804592888, 0.04449362332323188, 0.5081728406541677,         0.25876668357374333, 0.24239313465856385, 0.06495314281347224,         0.17532878446908992, 0.18753979540658586],
-        [0.11832356183390194, 0.144967015184881, 0.38551567117737606,
-         1.0, 0.7462206885167709, 0.24998359744811396,         0.22346954411248376, 0.6490160939335295, 0.14840730286125933,
-         0.33516029122261903, 0.14777302415261417, 0.005907316802405638,
-         0.564288706836558, 0.1417074234459837, 0.05189700886071217,         0.003655399326966783, 0.6225080542395888, 0.5752432475578055,
-         0.02736581235072704, 0.5360220629255285],
-        [0.2666239166247261, 8.3677484131342e-05, 0.7343243054661031,         0.7462206885167709, 1.0, 0.6700760945525388, 0.2642028779591854,
-         0.7088775573885092, 0.2958783093536479, 0.7604641377025146,         6.983542768531956e-06, 0.00664560136458498, 0.5172200524665731,
-         4.952655836873531e-05, 0.3247156995587446, 0.15739013337053775,         0.5382658075071728, 0.24996700110532735, 0.11861618397955083,
-         0.4522720115026945],
-        [0.3686336628398046, 0.21559221216050953, 0.8217461894541107,
-         0.24998359744811396, 0.6700760945525388, 1.0,         0.10003124540013952, 0.3106301704836652, 0.21613028289487288,         0.9730567168361598, 0.18746774301413202, 0.0844664940169808,         0.28673785043178296, 0.19081473143416405, 0.7327025492269393,
-         0.44308797119845167, 0.1487738115586195, 0.006543633620788875,         0.22763309745808125, 0.1112278947033518],
-        [0.036703468456753756, 0.014825911232766132, 0.15188934959254602,    0.22346954411248376, 0.2642028779591854, 0.10003124540013952,         1.0, 0.26114186878884665, 0.09010575205392872,         0.11679798737566167, 0.013507489926201259, 0.11362917065992822,         0.12866754663076685, 0.014979075630485663, 0.04119134587106534,         0.00861892635131197, 0.1860675845121037, 0.05847253948401881,         0.08746186464625146, 0.17144604385012333],
-        [0.12210677207762605, 0.01857279872205382, 0.4159141241942624,         0.6490160939335295, 0.7088775573885092, 0.3106301704836652,         0.26114186878884665, 1.0, 0.21403457661139338,         0.390111625473481, 0.16301451338044487, 0.0005304338043141785,         0.6629820336910666, 0.16583874933899864, 0.06454587244282098,         0.00010672131389127171, 0.5209823122141619, 0.44558330645628375,         0.04384179374835876, 0.4590256692595173],
-        [0.07739021666281841, 0.015255547303802117, 0.2114553830145246,         0.14840730286125933, 0.2958783093536479, 0.21613028289487288,         0.09010575205392872, 0.21403457661139338, 1.0,         0.24757751947416348, 0.01363575507646984, 0.021542674459145515,         0.13024984905167544, 0.013569926260719381, 0.13109331215663364,         0.06384989157702367, 0.2138741444855752, 0.03931601647156595,         0.0568629174124288, 0.18176105430855347],
-        [0.3366440537450745, 0.15968081145945595, 0.8472791026094442,         0.33516029122261903, 0.7604641377025146, 0.9730567168361598,         0.11679798737566167, 0.390111625473481, 0.24757751947416348,
-         1.0, 0.1404875742798725, 0.05796312871685066,         0.34246178788637455, 0.14249308655987353, 0.6928852050292633,
-         0.40927283216312144, 0.20694396926606445, 0.026127290331885752,
-         0.20082206001798228, 0.1617429018277851],
-        [0.04087319746675118, 0.40815861087486754, 0.04368056683910006,
-         0.14777302415261417, 6.983542768531956e-06, 0.18746774301413202,
-         0.013507489926201259, 0.16301451338044487, 0.01363575507646984,         0.1404875742798725, 1.0, 0.07814618589925182,
-         0.16684308204409265, 0.9621898331200696, 0.34997387678094666,         0.5348639079954022, 0.09324185388311972, 0.4826224328807197,
-         0.06967122699030351, 0.08393838158065155],
-        [0.2857763238357282, 0.08914653789493271, 0.0389213827552414,
-         0.005907316802405638, 0.00664560136458498, 0.0844664940169808,         0.11362917065992822, 0.0005304338043141785,
-         0.021542674459145515, 0.05796312871685066, 0.07814618589925182,         1.0, 0.12949350351575606, 0.09031179276294585,         0.19091450250352562, 0.20319448214863198, 0.10190639880147831,         1.8531189180076446e-05, 0.7972804653394614, 0.0762162963091056],
-        [0.1003312933352248, 0.01911698601627397, 0.369038804592888,                                                                                                                0.564288706836558, 0.5172200524665731, 0.28673785043178296,         0.12866754663076685, 0.6629820336910666, 0.13024984905167544,         0.34246178788637455, 0.16684308204409265, 0.12949350351575606,         1.0, 0.15730196543167624, 0.16945520238280368,         0.02160853389929099, 0.6111280544647345, 0.5782002029451881,         0.13121234407684249, 0.4992745922904188],
-        [0.050749336024172864, 0.41693754653588977, 0.04449362332323188,         0.1417074234459837, 4.952655836873531e-05, 0.19081473143416405,         0.014979075630485663, 0.16583874933899864, 0.013569926260719381,         0.14249308655987353, 0.9621898331200696, 0.09031179276294585,         0.15730196543167624, 1.0, 0.3428637796344565,         0.5364709375683436, 0.08864814163740822, 0.4790811763638503,         0.07770298431330631, 0.08573821691306112],
-        [0.11504098423537285, 0.2672161253816999, 0.5081728406541677,         0.05189700886071217, 0.3247156995587446, 0.7327025492269393,         0.04119134587106534, 0.06454587244282098, 0.13109331215663364,         0.6928852050292633, 0.34997387678094666, 0.19091450250352562,         0.16945520238280368, 0.3428637796344565, 1.0,         0.6350240818195402, 0.09372032543384298, 0.00019656741120168734,         0.17613645231728325, 0.06314593881929084],
-        [0.10278600878593348, 0.2067087037671558, 0.25876668357374333,         0.003655399326966783, 0.15739013337053775, 0.44308797119845167,         0.00861892635131197, 0.00010672131389127171,
-         0.06384989157702367, 0.40927283216312144, 0.5348639079954022,         0.20319448214863198, 0.02160853389929099, 0.5364709375683436,
-         0.6350240818195402, 1.0, 0.056766270469723296,
-         0.042838772162018465, 0.18882227157951142, 0.04049640326843064],
-        [0.0713853075335143, 0.09272423301145619, 0.24239313465856385,
-         0.6225080542395888, 0.5382658075071728, 0.1487738115586195,
-         0.1860675845121037, 0.5209823122141619, 0.2138741444855752,         0.20694396926606445, 0.09324185388311972, 0.10190639880147831,
-         0.6111280544647345, 0.08864814163740822, 0.09372032543384298,         0.056766270469723296, 1.0, 0.6140391801532973,
-         0.1123206000388427, 0.8821447986410944],
-        [0.0005882198401218372, 0.2659691819828519, 0.06495314281347224,
-         0.5752432475578055, 0.24996700110532735, 0.006543633620788875,         0.05847253948401881, 0.44558330645628375, 0.03931601647156595,
-         0.026127290331885752, 0.4826224328807197,         1.8531189180076446e-05, 0.5782002029451881, 0.4790811763638503,         0.00019656741120168734, 0.042838772162018465,         0.6140391801532973, 1.0, 0.0011227638445394537,
-         0.5444783725254136],
-        [0.6596429911239123, 0.08194731624019555, 0.17532878446908992,                                                                                                              0.02736581235072704, 0.11861618397955083, 0.22763309745808125,         0.08746186464625146, 0.04384179374835876, 0.0568629174124288,         0.20082206001798228, 0.06967122699030351, 0.7972804653394614,         0.13121234407684249, 0.07770298431330631, 0.17613645231728325,         0.18882227157951142, 0.1123206000388427, 0.0011227638445394537,         1.0, 0.1015663120524458],
-        [0.05612157977115239, 0.09222605754295815, 0.18753979540658586,         0.5360220629255285, 0.4522720115026945, 0.1112278947033518,         0.17144604385012333, 0.4590256692595173, 0.18176105430855347,         0.1617429018277851, 0.08393838158065155, 0.0762162963091056,         0.4992745922904188, 0.08573821691306112, 0.06314593881929084,         0.04049640326843064, 0.8821447986410944, 0.5444783725254136,         0.1015663120524458, 1.0]])
-    poses = [233669089, 233674690, 233685026, 233686648, 233705236, 233706170, 233707844, 233708271, 233712201, 233720636, 233728289, 233730244, 233732861, 233740056, 233744126, 233747763, 233752933, 
-233760237, 233767702, 233768147]
-    end = poses[-1]
-    poses = np.array(poses)
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
+    print("Drawing LD heatmap ... ", end='', flush=True)
+    start_time = time.time()
+
     mesh1D = np.linspace(start, end, 500, endpoint=True)
     meshx, meshy = np.meshgrid(mesh1D, mesh1D)
     meshx_exp = np.expand_dims(meshx, axis=2)
     meshy_exp = np.expand_dims(meshy, axis=2)
-    closestx = np.argmin(np.abs(meshx_exp - poses.reshape(1, 1, -1)), axis=2)
-    closesty = np.argmin(np.abs(meshy_exp - poses.reshape(1, 1, -1)), axis=2)
+    closestx = np.argmin(np.abs(meshx_exp - poses.reshape((1, 1, -1))), axis=2)
+    closesty = np.argmin(np.abs(meshy_exp - poses.reshape((1, 1, -1))), axis=2)
     z = corrcoefs[closestx, closesty]
     z = z.reshape(meshx.shape)
     z = scipy.ndimage.rotate(z, 45)
-    # do I need to reflect this across the x-axis?
-    im = ax.imshow(z, extent=(start,end,start,end))
-    im.set_clip_path(matplotlib.patches.Rectangle(
-        (start, start), end-start, (end-start)/2,
-        transform=ax.transData
+
+    im = ax.imshow(
+        z,
+        extent=(start,end,start,end),
+        vmin=0,
+        vmax=1,
+        cmap='YlOrRd'
+    )
+    midpoint = (start+end)/2
+    im.set_clip_path(matplotlib.patches.PathPatch(
+        matplotlib.path.Path(
+            [[start, midpoint], [midpoint, start], [end, midpoint]]
+        ), transform=ax.transData
     ))
-    #tr = Affine2D().rotate_deg_around((end+start)/2, (end+start)/2, 45)
-    #pcm = ax.imshow(z, extent=(start,end,start,end), transform = tr)
-    #ax.set_xlim(-1e9, 1e9)
-    #ax.set_ylim(-1e9, 1e9)
+
     ax.set_xlim(start, end)
     ax.set_ylim(start, (start+end)/2)
     ax.set_aspect('equal', adjustable='box')
-    cbar = ax.figure.colorbar(im, cax=cbar_ax)
-    cbar.ax.set_ylabel("Correlation between loci", rotation=-90, va="bottom")
+    ax.axis('off')
+
+    cbar = ax.figure.colorbar(
+        im,
+        cax=cbar_ax
+    )
+    cbar.ax.set_ylabel("Correlation between STRs", rotation=-90, va="bottom")\
+
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("run_name")
     parser.add_argument("imputation_run_name")
+    parser.add_argument("filtering_run_name")
     parser.add_argument(
         "--regions",
         help=("comma separated list of regions to make summary plots for. "
@@ -441,20 +400,25 @@ def main():
     phenotypes = ['height', 'total_bilirubin']
 
     results = {}
-    #'''
     for phenotype in phenotypes:
+        print(f"Loading results for {phenotype} ... ", end='', flush=True)
+        start_time = time.time()
         results[phenotype] = np.loadtxt(
             f'{ukb}/association/runs/{args.run_name}/results/{phenotype}.txt',
             usecols=[0, 1, 4],
             skiprows=1
         )
+        print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
     #TODO fix nan alleles!
     for phenotype in phenotypes:
         results[phenotype] = prep_data(results[phenotype])
-    #'''
+
     snp_summary_stats = {}
     snp_ss_description = {}
-    #'''
+
+    print(f"Loading SNP summary stats for height  ... ", end='', flush=True)
+    start_time = time.time()
     snp_summary_stats['height'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/height/"
          "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
@@ -462,6 +426,10 @@ def main():
         skiprows=1
     )
     snp_ss_description['height'] = 'Ancestry: European, n=700,000'
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
+    print(f"Loading SNP summary stats for total bilirubin ... ", end='', flush=True)
+    start_time = time.time()
     snp_summary_stats['total_bilirubin'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/bilirubin/"
          "phenocode-TBil_GWAS_in_BBJ_autosome.tsv"),
@@ -470,12 +438,16 @@ def main():
         delimiter='\t'
     )
     snp_ss_description['total_bilirubin'] = 'Ancestry: Japanese, n=110,000'
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
     for phenotype in snp_summary_stats:
         snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])
     
     # Load the NHGRI-EBI GWAS catalog
+    print(f"Loading GWAS catalog results ... ", end='', flush=True)
+    start_time = time.time()
     catalog = np.loadtxt(
-        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog.tsv',
+        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
         usecols=[11, 12, 27],
         delimiter='\t',
         skiprows=1,
@@ -483,7 +455,7 @@ def main():
     )
     # omit results that are not mapped to a recognizable chromosome
     catalog_names = np.loadtxt(
-        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog.tsv',
+        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
         usecols=[7],
         delimiter='\t',
         skiprows=1,
@@ -494,10 +466,9 @@ def main():
     catalog_names = catalog_names[filter_weird_chroms]
     catalog = catalog[filter_weird_chroms, :]
     catalog = catalog.astype(float)
-    #'''
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
     known_assocs = {}
-    #'''
     known_assocs['height'] = catalog[np.equal(catalog_names, 'Height'), :]
     bil_catalog_trait_names = [
         'Total bilirubin levels',
@@ -507,7 +478,6 @@ def main():
             catalog[np.isin(catalog_names, bil_catalog_trait_names), :]
     for phenotype in known_assocs:
         known_assocs[phenotype] = prep_data(known_assocs[phenotype])
-    #'''
 
     if not regions:
         for cutoff in {True, False}:
@@ -531,6 +501,7 @@ def main():
                 known_assocs,
                 args.run_name,
                 args.imputation_run_name,
+                args.filtering_run_name,
                 region
             )
 
