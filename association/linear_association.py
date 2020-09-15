@@ -10,6 +10,7 @@ and pumps them in to scipy
 
 import argparse
 import datetime
+import functools
 import os
 import os.path
 import sys
@@ -27,6 +28,8 @@ import numpy.random
 import sklearn.model_selection
 import sklearn.neighbors
 from statsmodels.regression.linear_model import OLS
+
+import load_and_filter_genotypes
 
 ukb = os.environ['UKB']
 
@@ -412,84 +415,22 @@ def perform_association_subset(assoc_dir,
         results.write("chrom pos #samples_GP_filtered #filtered_rare_alleles"
                       f" p_{dep_var} coeff_{dep_var} coeff_intercept\n")
         results.flush()
-        vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
-                    f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
-        vcf = cyvcf2.VCF(vcf_floc)
 
-        vcf_region = vcf(region)
         n_loci = 0
         batch_time = 0
         batch_size = 50
         total_time = 0
-        for locus in vcf_region:
-            if 'PERIOD' not in dict(locus.INFO):
-                # there are a few duplicate loci which I didn't handle
-                # properly, this identifies and removes them
-                continue
-            # setup for this locus
+        start_time = time.time()
+        for len_gts, chrom, pos, n_filtered_samples, filtered_rare_alleles \
+                in load_and_filter_genotypes.filtered_strs(
+                    imputation_run_name, region
+                ):
             n_loci += 1
-            start_time = time.time()
-            results.write(f"{locus.CHROM} {locus.POS}")
+            results.write(f"{chrom} {pos} {n_filtered_samples} "
+                          f"{filtered_rare_alleles}")
 
-            # gt entries are sequence allele indexes
-            idx_gts = locus.genotype.array()[:, :2]
-            seq_allele_lens = [len(allele) for allele in locus.ALT]
-            seq_allele_lens.insert(0, len(locus.REF))
-
-            # get Beagle genotype probability
-            aps = []
-            for copy in 1, 2:
-                ap = locus.format(f'AP{copy}')
-                ref_prob = np.maximum(0, 1 - np.sum(ap, axis=1))
-                ref_prob = ref_prob.reshape(-1, 1)
-                ap = np.concatenate((ref_prob, ap), axis=1)
-                ap = ap[np.arange(ap.shape[0]), idx_gts[:, (copy - 1)]]
-                aps.append(ap)
-            gp = np.multiply(aps[0], aps[1])
-
-            # filter calls whose phased genotype probability
-            # as estimated by Beagle is below .9
-            # convert to float so we can use np.nan
-            len_gts = np.zeros(idx_gts.shape, dtype=float)
-            filtered_samples = gp < .9
-            len_gts[filtered_samples, :] = np.nan
-            n_filtered_samples = np.sum(filtered_samples)
-            results.write(f" {n_filtered_samples}")
-
-            # modify gt entries to be length alleles
-            for seq_allele_idx, seq_allele_len in enumerate(seq_allele_lens):
-                len_gts[idx_gts == seq_allele_idx] = seq_allele_len
-
-            # filter length alleles with too few occurrences
-            len_alleles, counts = np.unique(
-                len_gts[~np.isnan(len_gts)],
-                return_counts=True
-            )
-            filtered_rare_alleles = 0
-            for len_allele_idx, len_allele in enumerate(len_alleles):
-                if (counts[len_allele_idx] > 0 and
-                        counts[len_allele_idx] < 5):
-                    len_gts[len_gts == len_allele] = np.nan
-                    filtered_rare_alleles += 1
-            results.write(f" {filtered_rare_alleles}")
-
-            # finalzie gts for regression
             avg_len_gt = np.sum(len_gts, axis=1)/2
-            # convert from length in bp to length in diff from ref in repeat
-            # units
-            avg_len_gt -= seq_allele_lens[0]
-            avg_len_gt /= locus.INFO['PERIOD']
             df['gt'] = avg_len_gt
-
-            # make sure this locus doesn't have only one nonfiltered genotype
-            not_nans = avg_len_gt[~np.isnan(avg_len_gt)]
-            trivial_data = np.all(not_nans == not_nans[0])
-            if trivial_data:
-                # OLS thinks models with trivial data are infinitely
-                # significant. For our purposes, they are not
-                # significant at all.
-                results.write(f" 1 nan")
-                continue
 
             #do da regression
             model = OLS(
@@ -502,17 +443,6 @@ def perform_association_subset(assoc_dir,
             coef = reg_result.params['gt']
             intercept_coef = reg_result.params['intercept']
             results.write(f" {pval:.2e} {coef} {intercept_coef}")
-
-            """
-            predictions = reg_result.predict(df[['gt', 'intercept']])
-            df[f'{dep_var}_final_residual'] = df[f'{dep_var}_residual'] - predictions
-            df.to_csv(
-                f'{assoc_dir}/results/batches/{dep_var}_{region_string}.data',
-                sep=' ',
-                columns=['id', f'{dep_var}_final_residual', 'gt'],
-                index=False
-            )
-            """
 
             # output results
             results.write("\n")
@@ -528,6 +458,7 @@ def perform_association_subset(assoc_dir,
                 )
                 log.flush()
                 batch_time = 0
+            start_time = time.time()
     return region_string
 
 
@@ -569,6 +500,18 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
             locus_strings.append(locus.replace(':', '_').replace('-', '_'))
         concat_batches(f'{assoc_dir}/results', dep_var, locus_strings)
 
+
+# see here:
+# https://stackoverflow.com/questions/57118226/how-to-properly-use-dasks-upload-file-to-pass-local-code-to-workers
+def _worker_upload(dask_worker, *, data, fname):
+    dask_worker.loop.add_callback(
+        callback=dask_worker.upload_file,
+        comm=None,  # not used
+        filename=fname,
+        data=data,
+        load=True)
+
+
 def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     dask_output_dir = f'{assoc_dir}/dask_output_logs'
     os.mkdir(dask_output_dir)
@@ -583,6 +526,23 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     )
     cluster.adapt(maximum_jobs=300)
     client = dask.distributed.Client(cluster)
+    # currently dask cannot handle python files that are imported
+    # locally. Have to upload it to all workers on the cluster,
+    # but also have to make sure new workers
+    # get the file too
+    # see here:
+    # https://stackoverflow.com/questions/57118226/how-to-properly-use-dasks-upload-file-to-pass-local-code-to-workers
+
+    fname = 'load_and_filter_genotypes.py'
+    with open(fname, 'rb') as f:
+        data = f.read()
+
+    client.register_worker_callbacks(
+        setup=functools.partial(
+            _worker_upload, data=data, fname=fname,
+        )
+    )
+
 
     print("Writing out results for each phenotype, region pair. "
           "see run_logs/<phenotype>_<region>.log for logs and "
