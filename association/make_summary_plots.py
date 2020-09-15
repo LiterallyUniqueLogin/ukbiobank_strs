@@ -10,6 +10,8 @@ import numpy.ma
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 from matplotlib.transforms import Affine2D
 from mpl_toolkits.axisartist.grid_finder import MaxNLocator
+import scipy.ndimage
+import matplotlib.patches
 
 import load_and_filter_genotypes
 
@@ -247,7 +249,7 @@ def make_region_plot(results, snp_summary_stats,
     
     fig.suptitle(f'Associations with {phenotype}', fontsize='large')
     # fig.tight_layout(pad=5.0)
-    '''
+    #'''
     make_region_manhattan_plot(
         manhattan_ax,
         results,
@@ -259,7 +261,7 @@ def make_region_plot(results, snp_summary_stats,
         end,
         phenotype
     )
-    '''
+    #'''
     make_ld_heatmap(
         heatmap_ax,
         cbar_ax,
@@ -393,21 +395,30 @@ def make_ld_heatmap(ax, cbar_ax, imputation_run_name, chrom, start, end):
     poses = [233669089, 233674690, 233685026, 233686648, 233705236, 233706170, 233707844, 233708271, 233712201, 233720636, 233728289, 233730244, 233732861, 233740056, 233744126, 233747763, 233752933, 
 233760237, 233767702, 233768147]
     end = poses[-1]
-    nui = matplotlib.image.NonUniformImage(
-        ax,
-        interpolation='nearest',
-        cmap = "YlOrRd",
-        extent=(start, end, start, end),
-        clip_on=True
-    )
-    ax.images.append(nui)
-    nui.set_data(poses, poses, corrcoefs)
-    trans_data = Affine2D().rotate_deg(45)# + ax.transData
-    nui.set_transform(trans_data)
+    poses = np.array(poses)
+    mesh1D = np.linspace(start, end, 500, endpoint=True)
+    meshx, meshy = np.meshgrid(mesh1D, mesh1D)
+    meshx_exp = np.expand_dims(meshx, axis=2)
+    meshy_exp = np.expand_dims(meshy, axis=2)
+    closestx = np.argmin(np.abs(meshx_exp - poses.reshape(1, 1, -1)), axis=2)
+    closesty = np.argmin(np.abs(meshy_exp - poses.reshape(1, 1, -1)), axis=2)
+    z = corrcoefs[closestx, closesty]
+    z = z.reshape(meshx.shape)
+    z = scipy.ndimage.rotate(z, 45)
+    # do I need to reflect this across the x-axis?
+    im = ax.imshow(z, extent=(start,end,start,end))
+    im.set_clip_path(matplotlib.patches.Rectangle(
+        (start, start), end-start, (end-start)/2,
+        transform=ax.transData
+    ))
+    #tr = Affine2D().rotate_deg_around((end+start)/2, (end+start)/2, 45)
+    #pcm = ax.imshow(z, extent=(start,end,start,end), transform = tr)
+    #ax.set_xlim(-1e9, 1e9)
+    #ax.set_ylim(-1e9, 1e9)
     ax.set_xlim(start, end)
-    ax.set_ylim(start, end)
+    ax.set_ylim(start, (start+end)/2)
     ax.set_aspect('equal', adjustable='box')
-    cbar = ax.figure.colorbar(nui, cax=cbar_ax)
+    cbar = ax.figure.colorbar(im, cax=cbar_ax)
     cbar.ax.set_ylabel("Correlation between loci", rotation=-90, va="bottom")
 
 def main():
@@ -430,7 +441,7 @@ def main():
     phenotypes = ['height', 'total_bilirubin']
 
     results = {}
-    '''
+    #'''
     for phenotype in phenotypes:
         results[phenotype] = np.loadtxt(
             f'{ukb}/association/runs/{args.run_name}/results/{phenotype}.txt',
@@ -440,10 +451,10 @@ def main():
     #TODO fix nan alleles!
     for phenotype in phenotypes:
         results[phenotype] = prep_data(results[phenotype])
-    '''
+    #'''
     snp_summary_stats = {}
     snp_ss_description = {}
-    '''
+    #'''
     snp_summary_stats['height'] = np.loadtxt(
         (f"{ukb}/misc_data/snp_summary_stats/height/"
          "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
@@ -483,10 +494,10 @@ def main():
     catalog_names = catalog_names[filter_weird_chroms]
     catalog = catalog[filter_weird_chroms, :]
     catalog = catalog.astype(float)
-    '''
+    #'''
 
     known_assocs = {}
-    '''
+    #'''
     known_assocs['height'] = catalog[np.equal(catalog_names, 'Height'), :]
     bil_catalog_trait_names = [
         'Total bilirubin levels',
@@ -496,7 +507,7 @@ def main():
             catalog[np.isin(catalog_names, bil_catalog_trait_names), :]
     for phenotype in known_assocs:
         known_assocs[phenotype] = prep_data(known_assocs[phenotype])
-    '''
+    #'''
 
     if not regions:
         for cutoff in {True, False}:
