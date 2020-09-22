@@ -3,17 +3,17 @@ import os
 import time
 
 from matplotlib.colors import CSS4_COLORS as colors
-import matplotlib.pyplot as plt
+import matplotlib.colors
 import matplotlib.image
-import numpy as np
-import numpy.ma
-
-import mpl_toolkits.axisartist.floating_axes as floating_axes
-from matplotlib.transforms import Affine2D
-from mpl_toolkits.axisartist.grid_finder import MaxNLocator
-import scipy.ndimage
 import matplotlib.patches
 import matplotlib.path
+import matplotlib.pyplot as plt
+from matplotlib.transforms import Affine2D
+import numpy as np
+import numpy.ma
+import numpy.random
+
+import scipy.ndimage
 
 import load_and_filter_genotypes
 
@@ -125,9 +125,9 @@ def plot_manhattan(ax, data, label, color_pair, chr_lens, height_cutoff):
             chrom_data[:, 2],
             color=colors[color_pair[chrom % 2]],
             label=label,
-            marker='.'#,
-            #alpha=0.5
+            marker='.'
         )
+        ax.margins(0, 0.05)
         first = False
 
 
@@ -198,7 +198,7 @@ def make_genome_manhattan_plots(phenotypes, results, snp_summary_stats,
     plt.savefig(f'{ukb}/association/runs/{run_name}/manhattan_plot_all{cutoff_txt}.png')
 
 
-def make_region_plot(results, snp_summary_stats,
+def make_region_plots(results, snp_summary_stats,
                      snp_ss_description, known_assocs, run_name,
                      imputation_run_name, filtering_run_name, region):
     chrom, locus, phenotype = region.split(":")
@@ -218,66 +218,120 @@ def make_region_plot(results, snp_summary_stats,
         usecols=[0],
         dtype='U7'
     ).reshape(-1)
-    samplelist = numpy.char.add(numpy.char.add(samplelist, '_'), samplelist)
+    samplelist = np.char.add(np.char.add(samplelist, '_'), samplelist)
 
-    fig_height = 10
-    fig_width = 8
-    width_sides = 0.1
-    height_sides = width_sides * fig_width/fig_height
-    absolute_height_spacing = 0.15 * 8
-    height_spacing = absolute_height_spacing/fig_height
-    absolute_width_spacing = 0.8
-    width_spacing = absolute_width_spacing/fig_width
-    cbar_width_abs = 0.25
-    cbar_width = cbar_width_abs/fig_width
-    fig = plt.figure(figsize = (fig_width, fig_height))
-    manhattan_ax = fig.add_axes([
-        width_sides,
-        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2) + height_spacing,
-        1 - 2*width_sides - width_spacing - cbar_width,
-        1 - (fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2) + height_spacing) - fig_width/fig_height*width_sides,
-    ])
-    heatmap_ax = fig.add_axes([
-        width_sides,
-        height_sides,
-        1 - 2*width_sides - width_spacing - cbar_width,
-        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2)
-    ])
-    cbar_ax = fig.add_axes([
-        1 - width_sides - cbar_width,
-        height_sides,
-        cbar_width,
-        fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2)
-    ])
-    
-    fig.suptitle(f'Associations with {phenotype}', fontsize='large')
-
-    print("Drawing Manhattan plot ... ", end='', flush=True)
-    start_time = time.time()
-    make_region_manhattan_plot(
-        manhattan_ax,
-        results,
-        snp_summary_stats,
-        snp_ss_description,
-        known_assocs,
-        chrom,
-        start,
-        end,
-        phenotype
-    )
-    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-
-    make_ld_heatmap(
-        heatmap_ax,
-        cbar_ax,
-        imputation_run_name,
-        chrom,
-        start,
-        end,
+    gts_per_str, str_poses, str_samples  = load_and_filter_genotypes.load_all_haplotypes(
+        load_and_filter_genotypes.filtered_strs(
+            imputation_run_name,
+            f'{chrom}:{start}-{end}'
+        ),
         samplelist
     )
+    gts_per_snp, snp_poses, snp_samples = load_and_filter_genotypes.load_all_haplotypes(
+        load_and_filter_genotypes.filtered_snps(f'{chrom}:{start}-{end}'),
+        samplelist
+    )
+    assert set(str_samples) == set(snp_samples)
 
-    plt.savefig(f'{ukb}/association/runs/{run_name}/regional_plots/{phenotype}_{chrom}_{start}_{end}.png')
+    for plot_num in range(3):
+        if plot_num == 0:
+            print("Making STR heatmap plot ... ", flush=True)
+        elif plot_num == 1:
+            print("Making SNP heatmap plot ... ", flush=True)
+        elif plot_num == 2:
+            print("Making SNP-STR heatmap plot ... ", flush=True)
+        else:
+            raise ValueError()
+
+        fig_height = 14
+        fig_width = 14
+        width_sides = 0.1
+        height_sides = width_sides * fig_width/fig_height
+        absolute_height_spacing = 0.15 * 8
+        height_spacing = absolute_height_spacing/fig_height
+        absolute_width_spacing = 0.8
+        width_spacing = absolute_width_spacing/fig_width
+        cbar_width_abs = 0.25
+        cbar_width = cbar_width_abs/fig_width
+        fig = plt.figure(figsize = (fig_width, fig_height))
+        manhattan_ax = fig.add_axes([
+            width_sides,
+            fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2) + height_spacing,
+            1 - 2*width_sides - width_spacing - cbar_width,
+            1 - (fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2) + height_spacing) - fig_width/fig_height*width_sides,
+        ])
+        heatmap_ax = fig.add_axes([
+            width_sides,
+            height_sides,
+            1 - 2*width_sides - width_spacing - cbar_width,
+            fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2)
+        ])
+        cbar_ax = fig.add_axes([
+            1 - width_sides - cbar_width,
+            height_sides,
+            cbar_width,
+            fig_width/fig_height*(1 - 2*width_sides - width_spacing - cbar_width)/np.sqrt(2)
+        ])
+        
+        fig.suptitle(f'Associations with {phenotype}', fontsize='large')
+
+        print("Drawing Manhattan plot ... ", end='', flush=True)
+        start_time = time.time()
+        make_region_manhattan_plot(
+            manhattan_ax,
+            results,
+            snp_summary_stats,
+            snp_ss_description,
+            known_assocs,
+            chrom,
+            start,
+            end,
+            phenotype
+        )
+        print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
+        if plot_num == 0:
+            gts_per_locus = gts_per_str
+            poses = str_poses
+            fname = 'str'
+            cbar_name = 'STRs'
+        elif plot_num == 1:
+            gts_per_locus = gts_per_snp
+            poses = snp_poses
+            fname = 'snp'
+            cbar_name = 'SNPs'
+        elif plot_num == 2:
+            def double_array(arr):
+                '''1D array arr'''
+                arr_2d = arr.reshape(-1, 1)
+                return np.concatenate((arr_2d, arr_2d), axis=1).reshape(-1)
+
+            str_sample_sort = np.argsort(str_samples)
+            snp_sample_sort = np.argsort(snp_samples)
+            gts_per_locus = numpy.ma.concatenate(
+                (
+                    gts_per_str[double_array(str_sample_sort), :],
+                    gts_per_snp[double_array(snp_sample_sort), :]
+                ),
+                axis = 1
+            )
+
+            poses = np.concatenate((str_poses, snp_poses))
+            fname = 'combined'
+            cbar_name = 'loci (STRs and SNPs)'
+        else:
+            raise ValueError()
+        make_ld_heatmap(
+            heatmap_ax,
+            cbar_ax,
+            gts_per_locus,
+            poses,
+            start,
+            end,
+            cbar_name
+        )
+
+        plt.savefig(f'{ukb}/association/runs/{run_name}/regional_plots/{phenotype}_{chrom}_{start}_{end}_{fname}_heatmap.png')
 
 def make_region_manhattan_plot(ax, results, snp_summary_stats,
                          snp_ss_description, known_assocs,
@@ -324,30 +378,43 @@ def make_region_manhattan_plot(ax, results, snp_summary_stats,
     ax.legend()
 
 
-def make_ld_heatmap(ax, cbar_ax, imputation_run_name, chrom, start, end,
-                    samplelist):
-    gts_per_locus, poses = load_and_filter_genotypes.load_all_haplotypes(
-        load_and_filter_genotypes.filtered_strs(
-            imputation_run_name,
-            f'{chrom}:{start}-{end}'
-        ),
-        samplelist
-    )
+def make_ld_heatmap(ax, cbar_ax, gts_per_locus, poses, start, end, cbar_name):
+    rand = numpy.random.default_rng(seed=13)
+    gts_per_locus = gts_per_locus[
+        rand.choice(gts_per_locus.shape[0], size=int(5e4), replace=False),
+        :
+    ].copy() # random subset to make computations not take forever
+    # perhaps copying this into a new array which is not a view will
+    # make the correlation below faster
 
-    print("Correlating loci ... ", end='', flush=True)
+    print("Correlating and sorting loci ... ", end='', flush=True)
     start_time = time.time()
     corrcoefs = np.square(numpy.ma.corrcoef(gts_per_locus, rowvar=False))
+
+    sort_order = np.argsort(poses)
+    poses = poses[sort_order]
+    corrcoefs = corrcoefs[sort_order, :]
+    corrcoefs = corrcoefs[:, sort_order]
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
     print("Drawing LD heatmap ... ", end='', flush=True)
     start_time = time.time()
 
-    mesh1D = np.linspace(start, end, 500, endpoint=True)
+    mesh1D = np.linspace(start, end, 10000, endpoint=True)
     meshx, meshy = np.meshgrid(mesh1D, mesh1D)
-    meshx_exp = np.expand_dims(meshx, axis=2)
-    meshy_exp = np.expand_dims(meshy, axis=2)
-    closestx = np.argmin(np.abs(meshx_exp - poses.reshape((1, 1, -1))), axis=2)
-    closesty = np.argmin(np.abs(meshy_exp - poses.reshape((1, 1, -1))), axis=2)
+    def find_closest(mesh):
+        nearest_above = np.searchsorted(poses, mesh)
+        nearest_below = nearest_above - 1
+        nearest_above[nearest_above == len(poses)] = len(poses) - 1
+        nearest_below[nearest_below < 0] = 0
+        pos_above = poses[nearest_above]
+        pos_below = poses[nearest_below]
+        nearest_idx = nearest_above
+        below_closer = np.abs(pos_below - mesh) < np.abs(pos_above - mesh)
+        nearest_idx[below_closer] = nearest_below[below_closer]
+        return nearest_idx
+    closestx = find_closest(meshx)
+    closesty = find_closest(meshy)
     z = corrcoefs[closestx, closesty]
     z = z.reshape(meshx.shape)
     z = scipy.ndimage.rotate(z, 45)
@@ -357,7 +424,8 @@ def make_ld_heatmap(ax, cbar_ax, imputation_run_name, chrom, start, end,
         extent=(start,end,start,end),
         vmin=0,
         vmax=1,
-        cmap='YlOrRd'
+        cmap='YlOrRd',
+        norm=matplotlib.colors.TwoSlopeNorm(vmin=0, vcenter=0.05, vmax=1)
     )
     midpoint = (start+end)/2
     im.set_clip_path(matplotlib.patches.PathPatch(
@@ -375,7 +443,7 @@ def make_ld_heatmap(ax, cbar_ax, imputation_run_name, chrom, start, end,
         im,
         cax=cbar_ax
     )
-    cbar.ax.set_ylabel("Correlation between STRs", rotation=-90, va="bottom")\
+    cbar.ax.set_ylabel(f"Correlation between {cbar_name}", rotation=-90, va="bottom")\
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
@@ -494,7 +562,7 @@ def main():
             )
     else:
         for region in regions:
-            make_region_plot(
+            make_region_plots(
                 results,
                 snp_summary_stats,
                 snp_ss_description,

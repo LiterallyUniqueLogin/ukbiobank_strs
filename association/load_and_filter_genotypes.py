@@ -10,7 +10,9 @@ import os
 import os.path
 import time
 from typing import List, Tuple
+import sys
 
+import bgen_reader
 import cyvcf2
 import numpy as np
 import numpy.ma
@@ -27,6 +29,8 @@ def filtered_strs(imputation_run_name,
 	Every subsequent value is the tuple
 	(genotypes, chrom, pos, filtered_samples, filtered_rare_alleles)
 
+    genotypes have the unit: difference in # repeats from the reference
+
     Samples with imputed genotypes with too low an expected probability
     have their genotypes set to nan
     Samples with genotypes that are too rare have their genotypes set to nan
@@ -35,10 +39,10 @@ def filtered_strs(imputation_run_name,
     and then next qualifying locus is yielded
     """
     chrom, _ = region.split(':')
-    vcf_floc = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
+    vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
-    vcf = cyvcf2.VCF(vcf_floc)
-    yield vcf.samples
+    vcf = cyvcf2.VCF(vcf_fname)
+    yield np.array(vcf.samples)
 
     vcf_region = vcf(region)
     for locus in vcf_region:
@@ -89,8 +93,9 @@ def filtered_strs(imputation_run_name,
                 filtered_rare_alleles += 1
 
         # make sure this locus doesn't have only one nonfiltered genotype
+        # (or worse, no nonfiltered genotypes)
         not_nans = len_gts[~np.isnan(len_gts)]
-        trivial_data = np.all(not_nans == not_nans[0])
+        trivial_data = len(not_nans) == 0 or np.all(not_nans == not_nans[0])
         if trivial_data:
             continue
 
@@ -105,6 +110,89 @@ def filtered_strs(imputation_run_name,
             locus.POS,
             n_filtered_samples,
             filtered_rare_alleles
+        )
+
+
+def filtered_snps(region):
+    """
+    Iterate over a region returning genotypes at SNP loci.
+
+    Currently returns microarray measured SNPs that have been QCed,
+    not all microarray measured SNPs, and not imputed SNPs
+
+	First value yielded is the array of samples in the VCF
+	Every subsequent value is the tuple
+	(genotypes, chrom, pos, filtered_samples, filtered_rare_alleles)
+
+    genotypes have the unit:
+        0 (hom. 1st allele),
+        0.5 (het)
+        1 (hom. 2nd allele)
+    note that bgen files don't distinguish between reference and alt
+    alleles. 1st allele may or may not be the reference
+
+    Expecting all samples in the input file to have 0 or 1 probs
+    so filtered_samples will always be zero
+
+    If either allele is too rare, the locus will be skipped for being
+    too homozygous
+
+    Because of this, any locus that is yielded will ahve filtered_rare_alleles
+    as zero
+    """
+    chrom, posses = region.split(':')
+    start, end = posses.split('-')
+    start = int(start)
+    end = int(end)
+    bgen_fname = f'{ukb}/microarray/ukb_hap_chr{chrom}_v2.bgen'
+    samples_fname = f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample'
+    bgen = bgen_reader.read_bgen(bgen_fname,
+                                 samples_filepath=samples_fname,
+                                 verbose=False)
+    variants = bgen["variants"].compute()
+    genotypes = bgen["genotype"]
+    samples = bgen["samples"].to_numpy(dtype='U7')
+    samples = np.char.add(np.char.add(samples, '_'), samples)
+    yield samples
+
+    for variant_num, pos in enumerate(variants['pos']):
+        if pos < start:
+            continue
+        if pos > end:
+            break
+
+        genotype_info = genotypes[variant_num].compute()
+
+        # make sure the record looks as expected
+        assert np.all(np.logical_or(
+            genotype_info['probs'] == 0, genotype_info['probs'] == 1
+        ))
+        assert genotype_info['probs'].shape[1] == 4
+        assert genotype_info['phased']
+        assert np.all(genotype_info['ploidy'] == 2)
+        assert not np.any(genotype_info['missing'])
+
+        # for this dataset, these aren't probs but hardcalls
+        gts = genotype_info['probs']
+
+        n_first_allele = np.sum(gts[:, [0,2]])
+        if n_first_allele <  5:
+            continue
+        n_second_allele = np.sum(gts[:, [1,3]])
+        if n_second_allele <  5:
+            continue
+
+        # Since all alleles are bialleleic, the genotype can
+        # be written as the presence or absence of the second allele
+        # for each haplotype for each participant
+        reformatted_gts = gts[:, [1,3]]
+
+        yield (
+            reformatted_gts,
+            chrom,
+            pos,
+            0,
+            0
         )
 
 
@@ -131,7 +219,7 @@ def load_all_haplotypes(variant_generator, samplelist):
     poses = []
     samples = next(variant_generator)
 
-    print("Loading haplotypes ... ")
+    print("Loading haplotypes ... ", flush=True)
     nloci = 0
     batch_time = 0
     batch_size = 50
@@ -159,7 +247,7 @@ def load_all_haplotypes(variant_generator, samplelist):
     # https://stackoverflow.com/questions/5290994/remove-and-replace-printed-items
     print(
         f"Done loading haplotypes. "
-        f"time/locus ({nloci} total loci): {total_time/nloci:.2e}s",
+        f"time: {total_time:.2e}s ({nloci} total loci)",
         flush=True
     )
     gts_per_locus = np.stack(gts_per_locus_list, axis=-1)
@@ -172,6 +260,6 @@ def load_all_haplotypes(variant_generator, samplelist):
     gts_per_locus = gts_per_locus.reshape(gts_per_locus.shape[0]*2,
                                           gts_per_locus.shape[2])
     gts_per_locus = numpy.ma.masked_invalid(gts_per_locus)
-    return gts_per_locus, np.array(poses)
+    return gts_per_locus, np.array(poses), samples[samples_to_use]
 
 

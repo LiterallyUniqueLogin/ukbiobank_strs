@@ -61,13 +61,14 @@ p1 = ggplot() + geom_dotplot(
     na.rm=TRUE
 ) + geom_abline(
     slope=coeff,
-    intercept=intercept
+    intercept=intercept,
+    linetype='dashed'
 ) + ylab("") + xlab("Avg diff from ref (repeats)") +
-scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
-theme(axis.text.x = element_text(size=9)) +
-ggtitle("With 50 points at extremes (per gt)") +
-labs(caption=" ", alpha=0) #space this graph the same as the one below
-
+  scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
+  theme(axis.text.x = element_text(size=9)) +
+  ggtitle("With 50 points at extremes (per gt)") +
+  labs(caption=" ", alpha=0) #space this graph the same as the one below
+  
 p2 = ggplot( 
     data=data %>% filter(extreme == FALSE),
     mapping=aes_string('gt', res_col, group='factor_gt')
@@ -76,21 +77,32 @@ p2 = ggplot(
     na.rm=TRUE
 ) + stat_summary(
     data=data %>% filter(filtered == FALSE),
-    aes(shape="mean"),
-    fun.data='mean_cl_normal',
-    color='red',
+    aes(color='mean', shape="mean"),
+    fun='mean',
     na.rm=TRUE,
     size=0.3
+) + stat_summary(
+    data=data %>% filter(filtered == FALSE),
+    aes(group="factor_gt",
+	color='mean'),
+    fun='mean',
+    na.rm=TRUE,
+    geom="line",
 ) + geom_abline(
-    slope=coeff,
-    intercept=intercept,
-    show.legend=TRUE
+    aes(slope=coeff,
+	intercept=intercept,
+        color='best fit linear model'),
+    linetype='dashed',
+    show.legend=c("color"=TRUE),
 ) + ylab("") + xlab("Avg diff from ref (repeats)") +
-scale_shape_manual("", values=c("mean"=19)) +
-scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
-theme(axis.text.x = element_text(size=9)) +
-ggtitle("Extrema not plotted") +
-labs(caption=sprintf("(%s values are residuals after regressing out covariates)", phenotype))
+  scale_shape_manual("", values=c("mean"=19)) + 
+  scale_color_manual("", values=c("mean"="red", "best fit linear model"="black")) + 
+  guides(shape="none", color=guide_legend("")) +
+  scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
+  theme(axis.text.x = element_text(size=9)) +
+  ggtitle("Extrema not plotted") +
+  labs(caption=sprintf("(%s values are residuals after regressing out covariates)",phenotype),
+       color="legend")
 #+ geom_dotplot(
 #    data=data %>% filter(first == TRUE),
 #    mapping=aes_string('gt', res_col, group='factor_gt'),

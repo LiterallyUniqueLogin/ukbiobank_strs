@@ -420,17 +420,31 @@ def perform_association_subset(assoc_dir,
         batch_time = 0
         batch_size = 50
         total_time = 0
+        str_iter = load_and_filter_genotypes.filtered_strs(
+            imputation_run_name, region
+        )
+        samples = next(str_iter)
+        samples = np.char.partition(samples, '_')[:, 0].astype(int)
+
+        # make sure df samples are in the same order as the VCF
+        # they should already be, but just to make certain
+        id_df = pd.DataFrame({'id': samples})
+        df = pd.merge(id_df, df, how='inner', on='id')
+
         start_time = time.time()
         for len_gts, chrom, pos, n_filtered_samples, filtered_rare_alleles \
-                in load_and_filter_genotypes.filtered_strs(
-                    imputation_run_name, region
-                ):
+                in str_iter:
             n_loci += 1
             results.write(f"{chrom} {pos} {n_filtered_samples} "
                           f"{filtered_rare_alleles}")
 
             avg_len_gt = np.sum(len_gts, axis=1)/2
             df['gt'] = avg_len_gt
+
+            if np.all(df[['gt', f'{dep_var}_residual']].isnull().any(axis=1)):
+                results.write(f" 1 nan nan\n")
+                results.flush()
+                continue
 
             #do da regression
             model = OLS(
@@ -595,6 +609,11 @@ def main():  # noqa: D103
         '--loci',
         help='comma separated list with elements of the form chr:pos'
     )
+    parser.add_argument(
+        '--debug',
+        help='omits some steps to be faster',
+        action='store_true'
+    )
     args = parser.parse_args()
 
     sample_filtering_run_name = args.sample_filtering_run_name
@@ -689,32 +708,34 @@ def main():  # noqa: D103
             plot_dirs[dep_var] = f'{assoc_dir}/{dep_var}_summary_plots'
             os.mkdir(plot_dirs[dep_var])
 
-        plot_phenotype_by_sex(
-            df,
-            'total_bilirubin',
-            f'{plot_dirs["total_bilirubin"]}/measured.png',
-            'umol/L',
-            'Measured total_bilirubin'
-        )
+        if not args.debug:
+            plot_phenotype_by_sex(
+                df,
+                'total_bilirubin',
+                f'{plot_dirs["total_bilirubin"]}/measured.png',
+                'umol/L',
+                'Measured total_bilirubin'
+            )
 
         readme.write("Log transforming total_bilirubin\n")
         df.loc[:, 'total_bilirubin'] = np.log(df.loc[:, 'total_bilirubin'])
 
-        plot_phenotype_by_sex(
-            df,
-            'total_bilirubin',
-            f'{plot_dirs["total_bilirubin"]}/log_transform.png',
-            'log(umol/L)',
-            'Log transform total_bilirubin'
-        )
+        if not args.debug:
+            plot_phenotype_by_sex(
+                df,
+                'total_bilirubin',
+                f'{plot_dirs["total_bilirubin"]}/log_transform.png',
+                'log(umol/L)',
+                'Log transform total_bilirubin'
+            )
 
-        plot_phenotype_by_sex(
-            df,
-            'height',
-            f'{plot_dirs["height"]}/measured.png',
-            'cm',
-            'Measured height'
-        )
+            plot_phenotype_by_sex(
+                df,
+                'height',
+                f'{plot_dirs["height"]}/measured.png',
+                'cm',
+                'Measured height'
+            )
 
         readme.write("Performing linear association against listed covariates"
                      " to get phenotypes residuals\n")
@@ -745,14 +766,15 @@ def main():  # noqa: D103
             index=False
         )
         print("done", flush=True)
-        for dep_var in dep_vars:
-            plot_phenotype_by_sex(
-                df,
-                f'{dep_var}_residual',
-                f'{plot_dirs[dep_var]}/residual.png',
-                f'residual {units[dep_var]}',
-                f'Residual {dep_var}'
-            )
+        if not args.debug:
+            for dep_var in dep_vars:
+                plot_phenotype_by_sex(
+                    df,
+                    f'{dep_var}_residual',
+                    f'{plot_dirs[dep_var]}/residual.png',
+                    f'residual {units[dep_var]}',
+                    f'Residual {dep_var}'
+                )
 
         readme.write(f"Using str calls from imputed run {imputation_run_name}\n")
         readme.write(
