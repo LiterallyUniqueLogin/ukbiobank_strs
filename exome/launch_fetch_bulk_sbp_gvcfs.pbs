@@ -3,8 +3,8 @@
 #PBS -N launch_fetch_bulk_spb_gvcfs
 #PBS -l nodes=1:ppn=2
 #PBS -l walltime=72:00:00
-#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/exome/spb_vcfs/output
-#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/exome/spb_vcfs/output
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/exome/spb_vcfs_output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/exome/spb_vcfs_output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a

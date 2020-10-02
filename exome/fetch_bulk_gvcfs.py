@@ -45,7 +45,7 @@ def main():  # noqa: D103
                         help="name of a file in the exome directory")
     args = parser.parse_args()
     vcf_dir = f'{ukb}/exome/{args.pipeline_name}_vcfs'
-    output_dir = f'{vcf_dir}/output'
+    output_dir = f'{vcf_dir}_output'
     bulk_floc = f'{ukb}/exome/{args.bulk_file}'
 
     assert os.path.exists(vcf_dir)

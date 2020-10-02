@@ -7,19 +7,12 @@ Bycroft, C., Freeman, C., Petkova, D. et al. The UK Biobank resource with deep p
 
 The contents of this directory (each directory has its own README):
 array_imputed - the 90m genotypes imputed from the microarray chips
-association - contains any code and results from association testing
-exome - the UKB whole exome sequencing data. NOTE: this has been recalled
-   and is only expected to be rereleased Spring 2020
-genetic_maps - genetics maps for hg19 downloaded from Beagle, used during Beagle's phasing routine
+exome - the UKB whole exome sequencing data.
 main_dataset - contains the phenotypes we have access to through UKB
 	Doesn't consist of bulk data (microarray data, exomes, imaging, etc.)
 microarray - the 650k snp genotypes gathered by microarray chips
-misc_data - miscellaneous small pieces of data associated with the larger datasets
-	in the above folders, but downloaded from separate sources
-pre_imputation_qc: tests done before imputing STRs into the datasets
-snpstr: Shubham's SNP-STR reference panel
-str-imputed: the UKB genetic data after STR imputation
-ukb.env: the command used to generate the default environment with the software 
-    tools used in this project
+misc_data - miscellaneous small pieces of data associated with or used
+	in conjunction with the datasets in the other folders,
+	but downloaded from separate sources
 ukb_utilities - the utilities used to download all the data from the data showcase
 

@@ -3,3 +3,5 @@ website: http://jenger.riken.jp/en/result
 corresponding manhattan plot: http://jenger.riken.jp:8080/pheno/TBil_GWAS_in_BBJ_autosome
 click on summary stats
 Cite this: Kanai, M., Akiyama, M., Takahashi, A. et al. Genetic analysis of quantitative traits in the Japanese population links cell types to complex human diseases. Nat Genet 50, 390–400 (2018). https://doi.org/10.1038/s41588-018-0047-6
+
+This http://jenger.riken.jp:8080/about confirms that all loci are with respect to hg19

@@ -1,0 +1,20 @@
+#!/bin/bash
+#PBS -q home
+#PBS -N plot_new_tbil_hits
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=96:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/association/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/association/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+source "$HOME"/.bashrc
+cd "$UKB/association" || { echo "Directory $UKB/association doesn't exist" ; exit 1 ; }
+conda activate ukb
+python make_summary_plots.py \
+	full_genome_first \
+	first_pass \
+	height \
+	--regions "$(awk '{ printf $1 ":" $2 ":total_bilirubin," }' runs/full_genome_first/results/total_bilirubin_new_hits.txt | sed -e 's/,$//' )"
+conda deactivate

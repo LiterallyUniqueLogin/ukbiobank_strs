@@ -1,1 +1,0 @@
-../../../resources/source/beagle_genetic_maps/README.txt

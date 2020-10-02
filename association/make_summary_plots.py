@@ -109,26 +109,40 @@ def make_qq_plots(phenotypes, results, snp_summary_stats, run_name,
     plt.savefig(f'{ukb}/association/runs/{run_name}/qq_plot{cutoff_txt}.png')
 
 
-def plot_manhattan(ax, data, label, color_pair, chr_lens, height_cutoff):
+def plot_manhattan(ax, data, label, color_pair, chr_lens, height_cutoff,
+                   chrom=None):
     if height_cutoff:
         data = data.copy()
         data[data[:, 2] > HEIGHT_CUTOFF, 2] = HEIGHT_CUTOFF
     first = True
-    for chrom in range(1, 23):
-        if not first:
-            label = None
+    if chrom is None:
+        for chrom in range(1, 23):
+            if not first:
+                label = None
+            chrom_data = data[data[:, 0] == chrom, :]
+            xs = chrom_data[:, 1]
+            xs += np.sum(chr_lens[0:(chrom-1)])
+            ax.scatter(
+                xs,
+                chrom_data[:, 2],
+                color=colors[color_pair[chrom % 2]],
+                label=label,
+                marker='.'
+            )
+            ax.margins(0, 0.05)
+            first = False
+    else:
         chrom_data = data[data[:, 0] == chrom, :]
-        xs = chrom_data[:, 1]
-        xs += np.sum(chr_lens[0:(chrom-1)])
         ax.scatter(
-            xs,
+            chrom_data[:, 1],
             chrom_data[:, 2],
-            color=colors[color_pair[chrom % 2]],
+            color=colors[color_pair[0]],
             label=label,
-            marker='.'
+            marker='.',
         )
         ax.margins(0, 0.05)
-        first = False
+
+
 
 
 def make_genome_manhattan_plots(phenotypes, results, snp_summary_stats,
@@ -233,7 +247,8 @@ def make_region_plots(results, snp_summary_stats,
     )
     assert set(str_samples) == set(snp_samples)
 
-    for plot_num in range(3):
+    #for plot_num in range(3): only plot STR heatmaps, not SNP or combined
+    for plot_num in range(1):
         if plot_num == 0:
             print("Making STR heatmap plot ... ", flush=True)
         elif plot_num == 1:
@@ -349,10 +364,9 @@ def make_region_manhattan_plot(ax, results, snp_summary_stats,
         return arr[arr[:, 1] <= end, :]
 
     ax.set_ylabel('-log_10(pval)')
-    ax.set_xlabel('Position')
+    ax.set_xlabel(f'Position (chromosome {chrom})')
 
-    offset = np.sum(chr_lens[0:(chrom-1)])
-    ax.plot([start+offset, end+offset], [GENOME_WIDE_TRANS_SIG] * 2, label='p = 5e-8',
+    ax.plot([start, end], [GENOME_WIDE_TRANS_SIG] * 2, label='p = 5e-8',
              color=colors['red'])
 
     if phenotype in snp_summary_stats:
@@ -361,20 +375,20 @@ def make_region_manhattan_plot(ax, results, snp_summary_stats,
                        subset(snp_summary_stats[phenotype], chrom, start, end),
                        desc,
                        ('royalblue', 'cornflowerblue'),
-                       chr_lens, False)
+                       chr_lens, False, chrom=chrom)
 
     plot_manhattan(ax,
                    subset(results[phenotype], chrom, start, end),
                    'STRs (Ancestry: European, n=500,000)',
                    ('mediumvioletred', 'deeppink'),
-                   chr_lens, False)
+                   chr_lens, False, chrom=chrom)
 
     if phenotype in known_assocs:
         plot_manhattan(ax,
                        subset(known_assocs[phenotype], chrom, start, end),
                        'GWAS Catalog Hits',
                        ('goldenrod', 'gold'),
-                       chr_lens, False)
+                       chr_lens, False, chrom=chrom)
     ax.legend()
 
 
@@ -447,32 +461,63 @@ def make_ld_heatmap(ax, cbar_ax, gts_per_locus, poses, start, end, cbar_name):
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("run_name")
-    parser.add_argument("imputation_run_name")
-    parser.add_argument("filtering_run_name")
-    parser.add_argument(
-        "--regions",
-        help=("comma separated list of regions to make summary plots for. "
-              "Each region is of the form chrom:start-end:phenotype or "
-              "chrom:pos:phenotype in which case a 1Mb region around the "
-              "position is shown ")
-    )
-    args = parser.parse_args()
-    if args.regions:
-        regions = args.regions.split(',')
-    else:
-        regions = None
+def generate_hit_list(
+            phenotypes,
+            results,
+            snp_summary_stats,
+            known_assocs,
+            run_name,
+            new
+        ):
+    close = 1e6
+    for phenotype in phenotypes:
+        curr_results = results[phenotype]
+        curr_known_hits = known_assocs[phenotype]
+        curr_snps = snp_summary_stats[phenotype]
+        curr_hits = curr_results[
+            curr_results[:, 2] > GENOME_WIDE_TRANS_SIG,
+            :
+        ]
+        curr_snp_hits = curr_snps[
+            curr_snps[:, 2] > GENOME_WIDE_TRANS_SIG,
+            :
+        ]
+        if new:
+            fname = f'{ukb}/association/runs/{run_name}/results/{phenotype}_new_hits.txt'
+        else:
+            fname = f'{ukb}/association/runs/{run_name}/results/{phenotype}_signals.txt'
+        with open(fname, 'w') as hit_file:
+            for chrom in range(1,23):
+                chrom_hits = curr_hits[curr_hits[:, 0] == chrom, :]
+                chrom_snp_hits = curr_snp_hits[curr_snp_hits[:, 0] == chrom, :]
+                chrom_known_hits = curr_known_hits[curr_known_hits[:, 0] == chrom, :]
 
-    phenotypes = ['height', 'total_bilirubin']
+                pos_diff = np.abs(chrom_hits[:, 1:2] - chrom_hits[:, 1:2].T)
+                nhits = chrom_hits.shape[0]
+                # make it so that each point doesn't disquality itself
+                # by being too close to itself
+                pos_diff[np.arange(nhits), np.arange(nhits)] = close*2
+                for hit in range(nhits):
+                    hit_p = chrom_hits[hit, 2]
+                    #best hit among our findings
+                    if np.all(hit_p > chrom_hits[pos_diff[hit, :] < close, 2]):
+                        hit_pos = int(chrom_hits[hit, 1])
+                        # not close to any SNP hit
+                        if new and np.any(np.abs(hit_pos - chrom_snp_hits[:, 1]) < close):
+                            continue
+                        # not close to any already known hit
+                        if new and np.any(np.abs(hit_pos - chrom_known_hits[:, 1]) < close):
+                            continue
+                        hit_file.write(f'{chrom} {hit_pos}\n')
 
+
+def load_data(phenotypes, run_name):
     results = {}
     for phenotype in phenotypes:
         print(f"Loading results for {phenotype} ... ", end='', flush=True)
         start_time = time.time()
         results[phenotype] = np.loadtxt(
-            f'{ukb}/association/runs/{args.run_name}/results/{phenotype}.txt',
+            f'{ukb}/association/runs/{run_name}/results/{phenotype}.txt',
             usecols=[0, 1, 4],
             skiprows=1
         )
@@ -524,33 +569,93 @@ def main():
     # omit results that are not mapped to a recognizable chromosome
     catalog_names = np.loadtxt(
         f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
-        usecols=[7],
+        usecols=[7, 34],
         delimiter='\t',
         skiprows=1,
         dtype=object
-    )
+    ).astype('U')
+    catalog_names = np.char.lower(catalog_names)
     filter_weird_chroms = np.isin(catalog[:, 0],
                                   list(str(chrom) for chrom in range(1, 23)))
-    catalog_names = catalog_names[filter_weird_chroms]
+    catalog_names = catalog_names[filter_weird_chroms, :]
     catalog = catalog[filter_weird_chroms, :]
     catalog = catalog.astype(float)
-    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
     known_assocs = {}
-    known_assocs['height'] = catalog[np.equal(catalog_names, 'Height'), :]
-    bil_catalog_trait_names = [
-        'Total bilirubin levels',
-        'Bilirubin levels'
-    ]
+    height_rows = np.logical_and(
+        catalog_names[:, 1] == 'body height',
+        catalog_names[:, 0] != "pericardial adipose tissue adjusted for height and weight"
+    )
+    known_assocs['height'] = catalog[height_rows, :]
     known_assocs['total_bilirubin'] = \
-            catalog[np.isin(catalog_names, bil_catalog_trait_names), :]
+            catalog[catalog_names[:, 1] == 'bilirubin measurement', :]
+
     for phenotype in known_assocs:
         known_assocs[phenotype] = prep_data(known_assocs[phenotype])
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-    if not regions:
+    return results, snp_summary_stats, snp_ss_description, known_assocs
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("run_name")
+    parser.add_argument("imputation_run_name")
+    parser.add_argument("filtering_run_name")
+    parser.add_argument(
+        "--regions",
+        help=("comma separated list of regions to make summary plots for. "
+              "Each region is of the form chrom:start-end:phenotype or "
+              "chrom:pos:phenotype in which case a 1Mb region around the "
+              "position is shown")
+    )
+    parser.add_argument(
+        "--new_hits",
+        action="store_true",
+        help=("generate a file new_hits.txt containing a list of loci which"
+              " have a hit in our GWAS but no hits in the comparison GWAS "
+              "or GWAS catalog within 1 Mbase in either direction")
+    )
+    parser.add_argument(
+        "--signals",
+        action="store_true",
+        help=("generate a file signals.txt containing a list of loci which"
+              " have a hit in our GWAS . Signal loci are defined to be peaks"
+              " within 1Mb regions.")
+    )
+    parser.add_argument(
+        "--manhattan_only",
+        action="store_true"
+    )
+    args = parser.parse_args()
+    assert not args.manhattan_only and (args.regions or args.new_hits or
+                                        args.signals)
+    assert not args.regions and (args.new_hits or args.signals)
+    assert not args.new_hits and args.signals
+    if args.regions:
+        regions = args.regions.split(',')
+    else:
+        regions = None
+
+    phenotypes = ['height', 'total_bilirubin']
+
+    results, snp_summary_stats, snp_ss_description, known_assocs = \
+        load_data(phenotypes, args.run_name)
+
+    if args.new_hits or args.signals:
+        generate_hit_list(
+            phenotypes,
+            results,
+            snp_summary_stats,
+            known_assocs,
+            args.run_name,
+            args.new_hits
+        )
+    elif not regions:
         for cutoff in {True, False}:
-            make_qq_plots(phenotypes, results, snp_summary_stats,
-                          args.run_name, cutoff)
+            if not args.manhattan_only:
+                make_qq_plots(phenotypes, results, snp_summary_stats,
+                              args.run_name, cutoff)
             make_genome_manhattan_plots(
                 phenotypes,
                 results,

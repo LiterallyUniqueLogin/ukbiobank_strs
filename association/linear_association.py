@@ -209,7 +209,7 @@ def load_bilirubin(df, readme, phenotypes):
        subject to bias.
     """
     print("Loading bilirubin ... ", end="", flush=True)
-    phenotypes.write("total_bilirubin:umol/L\n")
+    phenotypes.write("total_bilirubin:log(umol/L)\n")
     phenotypes.write("direct_bilirubin:umol/L\n")
     phenotypes.write("indirect_bilirubin:umol/L\n")
     floc = f'{ukb}/main_dataset/extracted_data/bilirubin.csv'
@@ -718,6 +718,7 @@ def main():  # noqa: D103
             )
 
         readme.write("Log transforming total_bilirubin\n")
+        # figure out how to tie this to the unit it the units file above
         df.loc[:, 'total_bilirubin'] = np.log(df.loc[:, 'total_bilirubin'])
 
         if not args.debug:

@@ -1,0 +1,24 @@
+This directory contains the phenotypes we have access to through UKB
+Doesn't consist of bulk data (microarray data, exomes, imaging, etc.)
+raw_data/
+ *.html - a visual index of what data we have access to
+ *.csv - a csv of all the data in an enc file (too large for request 41414)
+ *.enc - the enc files containing the data we requested
+ *.key - the keys used to authenticate our requests
+ *.enc_ukb - the unpacked enc files
+ Two requests: 41414 and 29170
+ Read below for an explanation of how these files were downloaded/produced
+extracted_data/
+ any data that was extracted from a enc_ukb file that isn't a full csv
+ of all the data contained in it
+scripts/
+ helper scripts I've written
+ scripts/output contains the output of the pbs scripts in scripts/
+request_2020_march/
+ contains the temporary files I generated while creating
+ a list of data fields to request from the UKB administration at that date
+all_fields.csv
+  downloaded from some part of the showcase website
+  that I didn't document
+
+
