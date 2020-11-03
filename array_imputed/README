@@ -3,5 +3,24 @@ See this paper for a description of the imputation procedure:
 www.nature.com/articles/s41586-018-0579-z
 Bycroft, C., Freeman, C., Petkova, D. et al. The UK Biobank resource with deep phenotyping and genomic data. Nature 562, 203~@~S209 (2018) doi:10.1038/s41586-018-0579-zB
 
-Currently nothing downloaded here. Use the same downloadAll.sh script
-as in microarray/ except replace hap with imp
+
+Download guide:
+https://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/ukbgene_instruct.html
+
+MFI: (MAF + Info)
+https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=1967
+ wget  -nd  biobank.ctsu.ox.ac.uk/showcase/showcase/auxdata/ukb_imp_mfi.tgz
+
+Index:
+https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=1965
+ wget  -nd  biobank.ctsu.ox.ac.uk/showcase/showcase/auxdata/ukb_imp_bgi.tgz
+
+Samples:
+../ukb_utilities/ukbgene imp -m -c1 -a../main_dataset/raw_data/k29170.keylA
+# doing this with multiple different chromosomes yields identical files,
+# so chrom 1 is sufficient
+
+Variants:
+python fetch_imputed_files.py
+
+# TODO - check if imputed variant files also contain original microarray variants or no

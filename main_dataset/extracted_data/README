@@ -7,3 +7,5 @@ bilirubin_fields.txt - list of extracted fields (direct, total)
 
 generated via the command (from the raw_data) directory:
 ../../ukb_utilities/ukbconv ../raw_data/ukb41414.enc_ukb csv -e../../ukb_utilities/encoding.ukb -i../extracted_data/bilirubin_fields.txt -o../extracted_data/bilirubin
+
+NonCancerIllnessCode20002.csv, icd10.csv and icd9.csv are all only partially complete
