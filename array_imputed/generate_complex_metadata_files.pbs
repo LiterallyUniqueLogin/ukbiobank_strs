@@ -1,0 +1,19 @@
+#!/bin/bash
+#PBS -q home
+#PBS -N generate_metadata_files
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=168:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/array_imputed/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/array_imputed/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+source "$HOME"/.bashrc
+cd "$UKB/array_imputed" || { echo "Directory $UKB/array_imputed doesn't exist" ; exit 1 ; }
+conda activate ukb
+for file in *.bgen ; do
+	python -c 'import bgen_reader; bgen_reader.open_bgen("'$file'", allow_complex=True)' &
+done
+wait
+conda deactivate

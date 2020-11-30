@@ -8,11 +8,14 @@ def get_alleles(variants, pos):
     return allele_sets
 
 for chrom in range(1, 23):
+    if chrom == 10:
+        continue
     print("Working on chrom ", chrom, flush=True)
     imputed_variants = \
-            bgen_reader.read_bgen(f"ukb_imp_chr{chrom}_v3.bgen")['variants'].compute()
+            bgen_reader.read_bgen(f"ukb_imp_chr{chrom}_v3.bgen", verbose=False)['variants'].compute()
     array_variants = \
-            bgen_reader.read_bgen(f"../microarray/ukb_hap_chr{chrom}_v2.bgen")['variants'].compute()
+            bgen_reader.read_bgen(f"../microarray/ukb_hap_chr{chrom}_v2.bgen",
+                                 verbose=False)['variants'].compute()
     assert (imputed_variants.nalleles == 2).all()
     assert (array_variants.nalleles == 2).all()
 

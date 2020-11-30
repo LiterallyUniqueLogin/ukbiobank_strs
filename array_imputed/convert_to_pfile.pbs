@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -q hotel
+#PBS -N convert_imputed_to_pfile
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=96:00:00
+#PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/array_imputed/output
+#PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/array_imputed/output
+#PBS -V
+#PBS -M jmargoli@ucsd.edu
+#PBS -m a
+
+source "$HOME"/.bashrc
+echo CHR "$CHR"
+echo CHR "$CHR" 1>&2
+conda activate ukb
+"$UKB"/utilities/plink2 \
+	--bgen "$UKB"/array_imputed/ukb_imp_chr"$CHR"_v3.bgen ref-first \
+	--sample "$UKB"/array_imputed/ukb46122_imp_chr1_v3_s487283.sample \
+	--make-pgen \
+	--out $UKB/array_imputed/pfile_converted/chr"$CHR"
+conda deactivate
+

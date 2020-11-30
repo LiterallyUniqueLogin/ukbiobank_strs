@@ -23,4 +23,14 @@ Samples:
 Variants:
 python fetch_imputed_files.py
 
-# TODO - check if imputed variant files also contain original microarray variants or no
+confirmed that imputed variant bgens do not contain variants
+genotyped by the original microarrays
+Confirmed imputed variant bgens have the reference as the first allele
+except for some errors in chromosomes 21 and 22 as identified
+by confirm_first_allele_is_ref.py  
+I don't know why the issues are so sporadic within those chroms
+and are confined to those chroms, its possible I'm doing something wrong.
+But looking at a genome browser for hg19 it looks like my script is working
+and the variants in the imputed file are in fact wrong
+the variants with problems were taken from the output of the python script
+and copied into misrepresented_variants.txt
