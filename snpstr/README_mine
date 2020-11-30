@@ -30,3 +30,4 @@ grep $sample igsr_samples.tsv ; done ; } | cut -f4-5 | sort | uniq -c
 
 Two new populations show up: Toscani and CEPH (European ancestry Utah residents)
 
+tail -n +2 Saini_etal_SuppTable2.txt > str_ids.txt
