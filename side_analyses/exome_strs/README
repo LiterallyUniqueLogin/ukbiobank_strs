@@ -1,14 +1,10 @@
-hg38 bed:  wget  -nd  biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/xgen_plus_spikein.b38.bed
-hg38_renamed.bed: awk '{ print "chr" $0 ; }' hg38.bed > hg38_renamed.bed
-liftOver: https://genome-store.ucsc.edu/products/ (after logging in)
-hg38ToHg19.over.chain.gz: http://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/
-hg19.bed: liftOver hg38_renamed.bed hg38ToHg19.over.chain.gz hg19.bed hg38ToHg19.unmapped.bed
-bedtools: wget https://github.com/arq5x/bedtools2/releases/download/v2.29.2/bedtools.static.binary
-names.txt: for chr in $(seq 1 22) X Y ; do echo "chr${chr}" >> names.txt ; done
-hg19_sorted.bed: bedtools sort -g names.txt -i hg19.bed > hg19_sorted.bed
-hg19_cleaned.bed: bedtools merge -i hg19_sorted.bed > hg19_cleaned.bed
-str_ids.txt: sort /gymreklab-tscc/jmargoli/ukbiobank/snpstr/str_ids.txt | uniq -u > str_ids.txt
-hg19_final.bed: sed -e 's/chr//' hg19_cleaned.bed > hg19_final.bed
-hg19_final.chr.bed: sed -e 's/^/chr/' hg19_final.bed > hg19_final.chr.bed
-exome_vcfs: for chr in $(seq 1 22) ; do bcftools view -i ID=@str_ids.txt -R hg19_final.bed -O z /gymreklab-tscc/jmargoli/ukbiobank/snpstr/1kg.snp.str.chr${chr}.vcf.gz  -o exome_vcfs/chr${chr}.vcf.gz & done
-exome vcf count: 783: for chr in $(seq 1 22) ; do zcat exome_vcfs/chr${chr}.vcf.gz | grep -v '^#' | wc -l ; done | datamash sum 1
+# see here https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=3801
+wget  -nd  biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/xgen_plus_spikein.b38.bed ; mv xgen_plus_spikein.b38.bed exome_hg38.bed
+awk '{ print "chr" $0 ; }' exome_hg38.bed > exome_hg38_chr.bed
+wget https://github.com/HipSTR-Tool/HipSTR-references/raw/master/human/hg38.hipstr_reference.bed.gz
+python generate_snpstr_strs_hg38.py
+bedtools intersect -u -f 1 -a snpstr_strs_hg38.bed -b exome_hg38_chr.bed > snpstr_exome_strs_hg38.bed
+
+# note that because of -f 1 Human_STR_2876 isn't included because it only partially
+# overlaps the exome region
+# whileas Human_STR_1214 is included because it fully overalps the exome region
