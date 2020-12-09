@@ -2,3 +2,5 @@ testing
 str_beds
 *.fa
 *.fa.fai
+failed
+check_1*

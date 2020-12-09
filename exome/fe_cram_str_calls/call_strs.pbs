@@ -18,51 +18,7 @@
 # The timing is from a single run, maybe it was faster than average.
 # While there is an average of 10 cores/condo job, if we keep getting assigned to memory-poor nodes then the cost could almost double.
 
-if [ -z "$BATCH" ] ; then echo "BATCH variable is unset" ; exit 1 ; fi
-if [ -z "$STR" ] ; then echo "STR variable is unset" ; exit 1 ; fi
-if (( ! ("$BATCH" >= 1 && "$BATCH" <= 10) )) ; then
-	echo "BATCH $BATCH is not between 1 and 10" ; exit 1 
-fi
-if (( ! ("$STR" >= 1 && "$STR" <= 1247) )) ; then
-	echo "STR $STR is not between 1 and 616" ; exit 1 
-fi
+cd "$UKB"/exome/fe_cram_str_calls/ || { echo "Can't get to $UKB/exome/fe_cram_str_calls/ ; exiting " ; exit 1 ; }
 
-echo BATCH "$BATCH" STR "$STR"
-echo BATCH "$BATCH" STR "$STR" 1>&2
+source ./call_strs.sh
 
-job_name="$STR"_"$BATCH"
-
-cd "$UKB"/exome/fe_crams/ || { echo "Can't get to $UKB/exome/fe_crams/ ; exiting " ; exit 1 ; }
-
-# keep track of memory usage
-{ while true; do
-	mem_monitor
-	sleep 5
-	echo
-done } > "$UKB"/exome/fe_cram_str_calls/output/"$job_name".mem_monitor &
-
-samples_per_batch=4000
-CRAM_FILES=$({ for file in *cram ; do if [[ ! "$file" =~ _ ]] ; then echo "$file" ; fi ; done ; } | head -n $((samples_per_batch*BATCH)) | tail -n "$samples_per_batch" | tr '\n' , | sed -e 's/,$//')
-echo CRAM_FILES "$CRAM_FILES"
-
-#uses hg38
-#https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=1000
-#need to set the library for each cram file because the cram file RG tags don't have LB fields
-#so just use the CRAM filename for the library name.
-# only 4000 files allowed open at once
-# see /etc/security/limits.conf
-{ time /projects/ps-gymreklab/jmargoli/ukbiobank/utilities/hipstr/hipstr/HipSTR \
-	--bams "$CRAM_FILES" \
-	--bam-libs "$CRAM_FILES" \
-	--bam-samps "$CRAM_FILES" \
-	--fasta "$UKB"/exome/fe_cram_str_calls/hg38_no_chr.fa \
-	--regions "$UKB"/exome/fe_cram_str_calls/str_beds/"$STR".bed \
-	--str-vcf "$UKB"/exome/fe_cram_str_calls/vcfs/"$job_name".vcf.gz ; } \
-	> "$UKB"/exome/fe_cram_str_calls/output/"$job_name".hipstr.stdout \
-	2> "$UKB"/exome/fe_cram_str_calls/output/"$job_name".hipstr.stderr
-
-# kill the mem_monitor process
-kill -9 %1
-
-# useful for running locally
-cd "$UKB"/exome/fe_cram_str_calls/
