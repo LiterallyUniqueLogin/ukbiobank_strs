@@ -1,10 +1,31 @@
-# see here https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=3801
-wget  -nd  biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/xgen_plus_spikein.b38.bed ; mv xgen_plus_spikein.b38.bed exome_hg38.bed
-awk '{ print "chr" $0 ; }' exome_hg38.bed > exome_hg38_chr.bed
-wget https://github.com/HipSTR-Tool/HipSTR-references/raw/master/human/hg38.hipstr_reference.bed.gz
-python generate_snpstr_strs_hg38.py
-bedtools intersect -u -f 1 -a snpstr_strs_hg38.bed -b exome_hg38_chr.bed > snpstr_exome_strs_hg38.bed
+python make_snpstr_bed.py
+#bedPlus argument means that the fields 4+ get carried over directly instead of being interpreted as standard bed fields
+$UKB/utilities/liftOver/liftOver -bedPlus=3 snpstr_strs_19.bed $UKB/utilities/liftOver/hg19ToHg38.over.chain.gz snpstr_strs_38_unsorted.bed unmapped_19to38_snpstr_strs.bed
+# everything lifts over to 38! Woo!
+for chr in $(seq 1 22); do echo "chr$chr" >> chr.names ; done
+bedtools sort -i snpstr_strs_38_unsorted.bed -g chr.name > snpstr_strs_38.bed
 
-# note that because of -f 1 Human_STR_2876 isn't included because it only partially
+# see here https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=3801
+wget  -nd  biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/xgen_plus_spikein.b38.bed ; mv xgen_plus_spikein.b38.bed exome_38.bed
+awk '{ print "chr" $0 ; }' exome_38.bed > exome_38_chr.bed
+
+bedtools intersect -u -f 1 -a snpstr_strs_38.bed -b exome_38_chr.bed > snpstr_exome_strs_38.bed
+
+# note that because of -f 1 STR_2876 isn't included because it only partially
 # overlaps the exome region
 # whileas Human_STR_1214 is included because it fully overalps the exome region
+# Per slack discussion with Melissa:
+# Exome sequencing generally covers the boundaries of the target file and 
+# a bit more. If there are massive expansions in the target region then this
+# guarantee will fail. But small STR expansions should generally be captured by 
+# exome sequencing, so it's reasonable to include STRs that are at/near the boundaries
+# of the capture region. Just subject any use of the STRs to standard filtering.
+
+awk '{print $6}' snpstr_exome_strs_38.bed > snpstr_exome_str_ids.txt
+sed -e 's%/%_%g' snpstr_exome_str_ids.txt > snpstr_exome_str_cleaned_ids.txt
+
+
+###
+# grabbbing exome calls from hg19 from original reference panel:
+for chr in $(seq 1 22) ; do bcftools query -i ID=@$UKB/side_analyses/exome_strs/snpstr_exome_str_ids.txt -f '%ID %REF %ALT [%GT:]\n' /projects/ps-gymreklab/jmargoli/ukbiobank/snpstr/1kg.snp.str.chr${chr}.vcf.gz > snpstr_panel_exome_calls_hg19_chr${chr}.txt & done
+

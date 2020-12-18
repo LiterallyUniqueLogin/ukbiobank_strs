@@ -1,0 +1,46 @@
+STRs with no VCFs:
+
+
+STRs with VCFs that can't be unzipped:
+
+(1) STR_153403
+(1) STR_198845
+
+STRs with truncated VCFs:
+
+(1) STR_1209762
+(1) STR_665433
+
+No STRs with VCFs ending in truncated lines
+
+-----------------------------------
+
+No STRs with too many open files
+
+No STRs with too many reads
+
+All STRs with too few reads have truncated VCFs
+STRs with too few reads
+
+
+all strs with no spanning reads have truncated vcfs
+strs with no spanning reads
+
+(1) STR_665433
+
+all strs where stutter model training failed have truncated vcfs
+strs where stutter model training failed
+
+(1) STR_1209762
+
+No killed STRs
+
+All undecodable STRs have zip-broken VCFs
+Undecodable STRs
+
+(1) STR_153403
+(1) STR_198845
+
+STRs with unidentified errors
+
+

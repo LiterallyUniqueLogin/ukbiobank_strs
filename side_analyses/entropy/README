@@ -1,5 +1,24 @@
-There are 782 loci in the exome tab files
-Confirmed there are 782 exome loci
-{ for chr in $(seq 1 22) ; do echo "Working on chr$chr" >&2 ; bcftools query -R ../../exome_strs/hg19_final.bed -f '%ID\n' -i ID=@$UKB/snpstr/str_ids.txt /projects/ps-gymreklab/jmargoli/ukbiobank/snpstr/1kg.snp.str.chr${chr}.vcf.gz ; done ; } | wc -l
+The exome_filtered analysis was done using a slightly different set of STRs
+than I now count as exome STRs. But I've concluded that it is a set
+of 627 STRs, whileas my current exome STR set is 630 STRs, and 626 out 
+of the 627 are included in the current set, so the analysis is still
+almost exactly correct.
 
+Testing this:
+cd exome_filtered
+mkdir temp
+for chr in $(seq 1 22); do sed -e 's/^/chr/' chr"$chr".tab > temp/chr"$chr".tab ; done
+for chr in $(seq 1 22); do sed -i -e 's/chrchrom/chrom/' temp/chr"$chr".tab ; done
+
+# confirm each STR maps to an ID in the SNPSTR reference panel
+# specifically, the patter '\t\.' is not present in the file
+for chr in $(seq 1 22); do
+	bedtools intersect -loj -wa -wb -a temp/chr"$chr".tab -b /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/exome_strs/intermediate_files/snpstr_strs_19.bed
+done | vim -
+
+# compare the mapped IDs to the SNPSTR IDs that I have deemed as exome STRs
+comm -2 \
+	<(for chr in $(seq 1 22) ; do bedtools intersect -loj -wa -wb -a temp/chr"$chr".tab -b /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/exome_strs/intermediate_files/snpstr_strs_19.bed ; done | awk '{print $10}' | sort) \
+	<(sort /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/exome_strs/snpstr_exome_str_ids.txt) \
+	| vim -
 

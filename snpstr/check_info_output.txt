@@ -1,0 +1,9 @@
+Found a duplicate STR ID STR_128915
+Found a duplicate STR ID STR_128955
+Found a duplicate STR ID STR_1461122
+Found a duplicate STR ID STR_613687
+Found a duplicate STR ID STR_887526
+------------
+All SNPSTR STR ids present in the INFO vcfs
+-------------
+Found all str_ids

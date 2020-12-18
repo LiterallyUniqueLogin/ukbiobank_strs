@@ -1,7 +1,11 @@
+
+---------------- hg19.hipstr_reference.bed.gz/hg38.hipstr_reference.bed.gz
+https://github.com/HipSTR-Tool/HipSTR-references/raw/master/human/hg19.hipstr_reference.bed.gz
+https://github.com/HipSTR-Tool/HipSTR-references/raw/master/human/hg38.hipstr_reference.bed.gz
+
 ---------- hipstr_snpstr_exome_bed:
 hg19.hipstr_reference.bed.gz
 Retrieved from page: https://github.com/HipSTR-Tool/HipSTR-references/
-link: https://github.com/HipSTR-Tool/HipSTR-references/raw/master/human/hg19.hipstr_reference.bed.gz
 
 hg19.hipstr_reference.exome.bed
 bedtools intersect -a hg19.hipstr_reference.bed.gz -b /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/exome_strs/hg19_final.chr.bed -wa > hg19.hipstr_reference.exome.bed

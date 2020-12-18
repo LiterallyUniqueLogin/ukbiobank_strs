@@ -13,16 +13,10 @@ if [ ! -f "$STR_BED"  ] ; then
 	echo "STR $STR (cleaned $CLEANED_STR) does not corerspond to a bed file in $UKB/exome/fe_cram_str_calls/str_beds/." ; exit 1 
 fi
 
-ori_max_reads="$MAX_READS"
-if [ -z "$MAX_READS" ] ; then
-	MAX_READS=1000000
-elif [[ ! $MAX_READS =~ [0-9]+ ]] ; then
-	echo "MAX_READS $MAX_READS is not a positive integer"
-	exit 1
-fi
 
-echo BATCH "$BATCH" STR "$STR" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$ori_max_reads"
-echo BATCH "$BATCH" STR "$STR" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$ori_max_reads" 1>&2 
+MAX_READS=10000000
+echo BATCH "$BATCH" STR "$STR" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$MAX_READS"
+echo BATCH "$BATCH" STR "$STR" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$MAX_READS" 1>&2 
 
 job_name="$STR"_batch_"$BATCH"
 
@@ -49,8 +43,8 @@ echo CRAM_FILES "$CRAM_FILES"
 #so just use the CRAM filename for the library name.
 # only 4000 files allowed open at once
 # see /etc/security/limits.conf
-{ echo BATCH "$BATCH" PBS_JOBID "$PBS_JOBID" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$ori_max_reads"
-  echo BATCH "$BATCH" PBS_JOBID "$PBS_JOBID" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$ori_max_reads" 1>&2
+{ echo BATCH "$BATCH" PBS_JOBID "$PBS_JOBID" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$MAX_READS"
+  echo BATCH "$BATCH" PBS_JOBID "$PBS_JOBID" CUT_SAMPLES "$CUT_SAMPLES" MAX_READS "$MAX_READS" 1>&2
   time /projects/ps-gymreklab/jmargoli/ukbiobank/utilities/hipstr/hipstr/HipSTR \
 	--bams "$CRAM_FILES" \
 	--bam-libs "$CRAM_FILES" \

@@ -1,46 +1,58 @@
-for id in $(cat "$UKB"/side_analyses/exome_strs/snpstr_exome_str_cleaned_ids.txt) ; do
-	check=$(BATCH=1 STR=$id	./check_str_calls.sh)
-	if [[ -z "$check" ]] ; then
-		continue
-	else
-		if [[ "$check" =~ .*exist.* ]] ; then
-			missing="$missing $id"
-		elif [[ "$check" =~ .*unzip.* ]] ; then
-			unzip="$unzip $id"
-		elif [[ "$check" =~ .*file[[:space:]]truncated.* ]] ; then
-			truncated="$truncated $id"
-		elif [[ "$check" =~ .*line[[:space:]]truncated.* ]] ; then
-			line_truncated="$line_truncated $id"
+for str in $(cat "$UKB"/side_analyses/exome_strs/snpstr_exome_str_cleaned_ids.txt) ; do
+	for BATCH in $(seq 1 10) ; do
+		check=$(BATCH=$BATCH STR=$str ./check_str_calls.sh)
+		id="${str}_batch_$BATCH"
+		if [[ -z "$check" ]] ; then
+			continue
 		else
-			echo "Found unexpected output from check command"
-			exit 1
+			if [[ "$check" =~ .*exist.* ]] ; then
+				missing="$missing $id"
+			elif [[ "$check" =~ .*unzip.* ]] ; then
+				unzip="$unzip $id"
+			elif [[ "$check" =~ .*file[[:space:]]truncated.* ]] ; then
+				truncated="$truncated $id"
+			elif [[ "$check" =~ .*line[[:space:]]truncated.* ]] ; then
+				line_truncated="$line_truncated $id"
+			else
+				echo "Found unexpected output from check command"
+				exit 1
+			fi
 		fi
-	fi
-
-	unset identified
-	if [[ -n "$(grep many output/"$id"_*err)" ]] ; then
-		many="$many $id"
-		identified=yes
-	fi
-	if [[ -n "$(grep few output/"$id"_*err)" ]] ; then
-		few="$few $id"
-		identified=yes
-	fi
-	if [[ -n "$(grep killed output/"$id"_*err)" ]] ; then
-		killed="$killed $id"
-		identified=yes
-	fi
-	if [[ -n "$(grep decode output/"$id"_*err)" ]] ; then
-		decode="$decode $id"
-		identified=yes
-	fi
-	if [[ -n "$(grep 'No spanning' output/"$id"*err)" ]] ; then
-		spanning="$spanning $id"
-		identified=yes
-	fi
-	if [[ -z "$identified" ]] ; then
-		unidentified="$unidentified $id"
-	fi
+	
+		hipstr_err_file=output/"$id".hipstr.stderr
+		unset identified
+		if [[ -n "$(grep 'many reads' "$hipstr_err_file")" ]] ; then
+			many="$many $id"
+			identified=yes
+		fi
+		if [[ -n "$(grep 'open files' "$hipstr_err_file")" ]] ; then
+			files="$files $id"
+			identified=yes
+		fi
+		if [[ -n "$(grep few "$hipstr_err_file")" ]] ; then
+			few="$few $id"
+			identified=yes
+		fi
+		if [[ -n "$(grep -i killed "$hipstr_err_file")" ]] ; then
+			killed="$killed $id"
+			identified=yes
+		fi
+		if [[ -n "$(grep decode "$hipstr_err_file")" ]] ; then
+			decode="$decode $id"
+			identified=yes
+		fi
+		if [[ -n "$(grep 'No spanning' "$hipstr_err_file")" ]] ; then
+			spanning="$spanning $id"
+			identified=yes
+		fi
+		if [[ -n "$(grep 'Stutter model training failed' "$hipstr_err_file")" ]] ; then
+			training="$training $id"
+			identified=yes
+		fi
+		if [[ -z "$identified" ]] ; then
+			unidentified="$unidentified $id"
+		fi
+	done
 done
 
 function clean {
@@ -83,6 +95,28 @@ else
 	echo
 fi
 
+echo -e "-----------------------------------\n"
+
+if [[ -n "$files" ]] ; then
+	files_not_missing=$(comm -23 <(clean "$files") <(clean "$missing"))
+	if [[ -z "$files_not_missing" ]] ; then
+		echo "All STRs with too many open files have missing VCFs"
+		echo "STRs with too many open files"
+		clean "$files"
+		echo
+	else
+		echo "STRs with too many open files and missing VCFs" 
+		clean "$(comm -12 <(clean "$files") <(clean "$missing"))"
+		echo "STRs with too many open files files and extant VCFs"
+		clean "$files_not_missing"
+		echo
+	fi
+else
+	echo "No STRs with too many open files"
+	echo
+fi
+
+
 if [[ -n "$many" ]] ; then
 	many_not_trunc=$(comm -23 <(clean "$many") <(clean "$truncated"))
 	if [[ -z "$many_not_trunc" ]] ; then
@@ -124,19 +158,38 @@ fi
 if [[ -n "$spanning" ]] ; then
 	spanning_not_trunc=$(comm -23 <(clean "$spanning") <(clean "$truncated"))
 	if [[ -z "$spanning_not_trunc" ]] ; then
-		echo "All STRs with no spanning reads have truncated VCFs"
-		echo "STRs with no spanning reads"
+		echo "all strs with no spanning reads have truncated vcfs"
+		echo "strs with no spanning reads"
 		clean "$spanning"
 		echo
 	else
-		echo "STRs with no spanning reads and truncated VCFs" 
+		echo "strs with no spanning reads and truncated vcfs" 
 		clean "$(comm -12 <(clean "$spanning") <(clean "$truncated"))"
-		echo "STRs with no spanning reads but not truncated VCFs"
+		echo "strs with no spanning reads but not truncated vcfs"
 		clean "$spanning_not_trunc"
 		echo
 	fi
 else
-	echo "No STRs with no spanning reads"
+	echo "no strs with no spanning reads"
+	echo
+fi
+
+if [[ -n "$training" ]] ; then
+	training_not_trunc=$(comm -23 <(clean "$training") <(clean "$truncated"))
+	if [[ -z "$training_not_trunc" ]] ; then
+		echo "all strs where stutter model training failed have truncated vcfs"
+		echo "strs where stutter model training failed"
+		clean "$training"
+		echo
+	else
+		echo "strs where stutter model training failed and truncated vcfs" 
+		clean "$(comm -12 <(clean "$training") <(clean "$truncated"))"
+		echo "strs where stutter model training failed but not truncated vcfs"
+		clean "$training_not_trunc"
+		echo
+	fi
+else
+	echo "no strs where stutter model training failed"
 	echo
 fi
 

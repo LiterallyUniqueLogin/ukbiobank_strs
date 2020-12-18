@@ -2,7 +2,7 @@
 #PBS -q condo 
 #PBS -N call_exome_STRs
 #PBS -l nodes=1
-#PBS -l mem=192GB
+#PBS -l mem=185GB
 #PBS -l walltime=8:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/exome/fe_cram_str_calls/output
 #PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/exome/fe_cram_str_calls/output

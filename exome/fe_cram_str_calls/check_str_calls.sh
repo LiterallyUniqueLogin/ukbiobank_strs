@@ -34,7 +34,6 @@ if [[ "#" == $(echo "$last_line" | cut -c1-1) ]] ; then
 	exit 1
 fi
 
-samples_per_batch=4000
 # last line truncated
 if (( $(echo "$last_line" | wc -w) != $(zcat "$vcf_name" | tail -n 2 | head -n 1 | wc -w) )) ; then
 	echo "$STR"_batch_"$BATCH" last line truncated

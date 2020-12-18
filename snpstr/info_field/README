@@ -1,7 +1,7 @@
 The INFO fields that should have been published with the STRs in the SNP STR reference panel.
 These were lost during Beagle imputation and not readded.
 
-View to remove samples (which I should not have access to), the annotate to remove fields that summarize
+View to remove samples (which I should not have access to), then annotate to remove fields that summarize
 sample data (which again, I should not have access to)
 
 for chr in $(seq 1 22); do
