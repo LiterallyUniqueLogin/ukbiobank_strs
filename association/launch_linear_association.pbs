@@ -1,8 +1,8 @@
 #!/bin/bash
-#PBS -q hotel
+#PBS -q home 
 #PBS -N launch_linear_association
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=96:00:00
+#PBS -l walltime=200:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/association/output
 #PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/association/output
 #PBS -V
@@ -12,10 +12,15 @@
 source "$HOME"/.bashrc
 cd "$UKB/association" || { echo "Directory $UKB/association doesn't exist" ; exit 1 ; }
 conda activate ukb
-run_name=full_genome_first
+run_name=snp_chr_21
+#run_name=str_full_genome_snp_update
 rm -rf runs/$run_name
 python linear_association.py \
-	height first_pass \
-	$run_name
+	height \
+	$run_name \
+	--debug \
+	--imputed_snps \
+	--chromosome 21
+	#--imputation_run_name first_pass
 conda deactivate
 

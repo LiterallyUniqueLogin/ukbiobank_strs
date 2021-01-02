@@ -15,6 +15,7 @@ import os
 import os.path
 import sys
 import time
+import tracemalloc
 from typing import List, Optional
 
 import cyvcf2
@@ -57,6 +58,7 @@ def load_covars(readme):
     readme.write(
         f"Adding participant ID index and sex covariate to df. File: {floc}, cols: {cols}\n"
     )
+    readme.flush()
     ids_and_sex = pd.read_csv(
         floc,
         usecols=cols,
@@ -73,6 +75,7 @@ def load_covars(readme):
         f"Adding PC covariates 1-40. File: {floc}, cols: {cols}. Participants in same "
         f"order as previous file.\n"
     )
+    readme.flush()
     pcs = pd.read_csv(
         floc,
         sep=" ",
@@ -103,6 +106,7 @@ def load_covars(readme):
     readme.write(
         f"Adding ages at assessments. File: {age_file_name}\n"
     )
+    readme.flush()
     assessment_age = pd.read_csv(
         age_file_name,
         names=["id", "age_assess_init", "age_assess_repeat", "age_assess_image"],
@@ -148,6 +152,7 @@ def load_height(df, readme, phenotypes):
         f"Only reporting first height measurement taken even if there "
         f"were multiple at different vists\n"
     )
+    readme.flush()
     height_df = pd.read_csv(
         floc,
         names=["id", "height", "height_sampling"],
@@ -166,6 +171,7 @@ def load_height(df, readme, phenotypes):
     n_filtered = np.sum(filter_extremes)
     readme.write(f"Filtering {n_filtered} height values that are taller than "
                  "the world's tallest person or shorter than the shortest.\n")
+    readme.flush()
     height_df.loc[filter_extremes, ['height', 'height_sampling']] = np.nan
 
     df = pd.merge(
@@ -176,6 +182,7 @@ def load_height(df, readme, phenotypes):
     )
 
     readme.write("Adding age at height measurement as a covariate\n")
+    readme.flush()
     start_idx = df.columns.get_loc('age_assess_init')
     has_height = ~np.isnan(df['height'])
     df.loc[has_height, 'height_age'] = \
@@ -226,6 +233,7 @@ def load_bilirubin(df, readme, phenotypes):
         f"total_bilirubin measurements, so no issue here."
         f"The indirect phenotype is simply calculated as total - direct.\n"
     )
+    readme.flush()
     bilirubin_df = pd.read_csv(
         floc,
         names=["id", "dbil0", "dbil1", "tbil0", "tbil1"],
@@ -261,6 +269,7 @@ def load_bilirubin(df, readme, phenotypes):
     readme.write(f'Filtering {np.sum(filter_neg)} bilirubin values where '
                  'total or direct bilirubin was negative, or direct bilirubin '
                  'was greater than total bilirubin.')
+    readme.flush()
     bilirubin_df.loc[filter_neg,
            ['total_bilirubin', 'direct_bilirubin', 'indirect_bilirubin']] = np.nan
     # max bilirubin value right now is 144. I don't know enough to say that
@@ -274,6 +283,7 @@ def load_bilirubin(df, readme, phenotypes):
     )
     
     readme.write("Adding age at bilirubin measurement as a covariate\n")
+    readme.flush()
     df.loc[has_tbil0, 'bilirubin_age'] = df.loc[has_tbil0, 'age_assess_init']
     df.loc[~has_tbil0, 'bilirubin_age'] = df.loc[~has_tbil0, 'age_assess_repeat']
     df.loc[~has_tbil, 'bilirubin_age'] = np.nan
@@ -399,20 +409,41 @@ def plot_phenotype_by_sex(df, phenotype, fname, unit, title):
     print("done", flush=True)
 
 
+def tracemalloc_dump_snapshot(fname, log, name):
+    log.write(f'Memory usage at {name}: {tracemalloc.get_traced_memory()}\n')
+    log.flush()
+    tracemalloc.take_snapshot().dump(fname)
+
+
 def perform_association_subset(assoc_dir,
                                imputation_run_name,
                                region,
                                dep_var,
-                               df):
-    # make sure to use a local copy of df
-    # so that dask doesn't try to change the copy we were passed
-    df = df.copy(deep=True)
+                               df,
+                               profile_mem_usage):
+    # imputation_run_name = False means use imputed SNPs
+    if profile_mem_usage:
+        tracemalloc.start(50)
     chrom, poses = region.split(':')
     start, end = poses.split('-')
     region_string = f'{chrom}_{start}_{end}'
     with open(f'{assoc_dir}/run_logs/{dep_var}_{region_string}.log', 'w') as log, \
             open(f'{assoc_dir}/results/batches/{dep_var}_{region_string}.txt', 'w') as results:
-        results.write("chrom pos #samples_GP_filtered #filtered_rare_alleles"
+
+        # if not profiling simply hide the function
+        # behind a placeholder that does nothing
+        if not profile_mem_usage:
+            def tracemalloc_dump_snapshot(*args, **kwargs):
+                pass
+
+        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
+        # make sure to use a local copy of df
+        # so that dask doesn't try to change the copy we were passed
+        df = df.copy(deep=True)
+        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_dfcopy', log, 'dfcopy')
+
+        results.write("chrom pos alleles locus_info locus_filtered #unrelated_samples_with_phenotype "
+                      "#samples_GP_filtered allele_distribution monoallelic_skipped"
                       f" p_{dep_var} coeff_{dep_var} coeff_intercept\n")
         results.flush()
 
@@ -420,39 +451,84 @@ def perform_association_subset(assoc_dir,
         batch_time = 0
         batch_size = 50
         total_time = 0
-        str_iter = load_and_filter_genotypes.filtered_strs(
-            imputation_run_name, region
-        )
-        samples = next(str_iter)
-        samples = np.char.partition(samples, '_')[:, 0].astype(int)
 
-        # make sure df samples are in the same order as the VCF
-        # they should already be, but just to make certain
-        id_df = pd.DataFrame({'id': samples})
-        df = pd.merge(id_df, df, how='inner', on='id')
+        use_strs = True
+        if not imputation_run_name:
+            use_strs = False
+
+        if use_strs:
+            genotype_iter = load_and_filter_genotypes.filtered_strs(
+                imputation_run_name, region
+            )
+            samples = next(genotype_iter)
+            samples = np.char.partition(samples, '_')[:, 0].astype(int)
+
+            # make sure df samples are in the same order as the VCF
+            # they should already be, but just to make certain
+            id_df = pd.DataFrame({'id': samples})
+            df = pd.merge(id_df, df, how='left', on='id')
+        else:
+            genotype_iter = load_and_filter_genotypes.filtered_imputed_snps(
+                region
+            )
+            #samples should already be in the correct order
+            #as it is prespecified to be that in the .sample file
+
+        n_samples_with_phenotype = \
+                np.sum(~np.isnan(df[f'{dep_var}_residual']))
 
         start_time = time.time()
-        for len_gts, chrom, pos, n_filtered_samples, filtered_rare_alleles \
-                in str_iter:
+        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
+                         log, 'pre_loop')
+        for len_gts, chrom, pos, allele_names, locus_info, locus_filtered in genotype_iter:
+            tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
+                            log, f'loop_{pos}_start')
             n_loci += 1
-            results.write(f"{chrom} {pos} {n_filtered_samples} "
-                          f"{filtered_rare_alleles}")
+            results.write(f"{chrom} {pos} {allele_names} {locus_info} ")
+            if locus_filtered:
+                results.write(f'{locus_filtered} nan nan nan nan 1 nan nan\n')
+                results.flush()
+                continue
+            else:
+                results.write('False ')
 
             avg_len_gt = np.sum(len_gts, axis=1)/2
             df['gt'] = avg_len_gt
 
-            if np.all(df[['gt', f'{dep_var}_residual']].isnull().any(axis=1)):
-                results.write(f" 1 nan nan\n")
+            unfiltered_samples = np.all(~np.isnan(df[[f'{dep_var}_residual','gt']]), axis=1)
+            n_filtered_alleles = n_samples_with_phenotype - np.sum(unfiltered_samples)
+            results.write(f"{n_samples_with_phenotype} {n_filtered_alleles} ")
+
+            alleles = np.unique(df.loc[unfiltered_samples, 'gt'], return_counts = True)
+            any_alleles = False
+            for count, allele in enumerate(alleles[0]):
+                any_alleles = True
+                if count>0:
+                    results.write(",")
+                results.write(f"{allele}:{alleles[1][count]}")
+            if not any_alleles:
+                results.write("nan")
+            results.write(" ")
+
+            if len(alleles[0]) <= 1:
+                results.write("True 1 nan nan\n")
                 results.flush()
                 continue
+            else:
+                results.write("False ")
+                results.flush()
+            tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
+                             log, f'loop_{pos}_preOLS')
 
             #do da regression
             model = OLS(
-                df[f'{dep_var}_residual'],
-                df[['gt', 'intercept']],
+                df.loc[unfiltered_samples, f'{dep_var}_residual'],
+                df.loc[unfiltered_samples, ['gt', 'intercept']],
                 missing='drop'
             )
             reg_result = model.fit()
+            tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_postOLS',
+                             log, f'loop_{pos}_postOLS')
             pval = reg_result.pvalues['gt']
             coef = reg_result.params['gt']
             intercept_coef = reg_result.params['intercept']
@@ -475,6 +551,12 @@ def perform_association_subset(assoc_dir,
             start_time = time.time()
     return region_string
 
+def invoke_plink_on_subset():
+    pass
+    f"""
+    {ukb}/utilities/plink2 \
+            
+    """
 
 def concat_batches(results_dir, dep_var, region_strings):
     with open(f'{results_dir}/{dep_var}.txt', 'w') as outfile:
@@ -492,10 +574,12 @@ def concat_batches(results_dir, dep_var, region_strings):
                     outfile.write(line)
 
 def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
-                              loci):
+                              loci, profile_mem_usage=False):
     os.mkdir(f'{assoc_dir}/run_logs')
     os.mkdir(f'{assoc_dir}/results')
     os.mkdir(f'{assoc_dir}/results/batches')
+    if profile_mem_usage:
+        os.mkdir(f'{assoc_dir}/profiling')
    
     print("Writing out results for each phenotype, region pair. "
           "see run_logs/<phenotype>_<region>.log for logs and "
@@ -509,7 +593,8 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
                 imputation_run_name,
                 locus,
                 dep_var,
-                df
+                df,
+                profile_mem_usage
             )
             locus_strings.append(locus.replace(':', '_').replace('-', '_'))
         concat_batches(f'{assoc_dir}/results', dep_var, locus_strings)
@@ -526,14 +611,17 @@ def _worker_upload(dask_worker, *, data, fname):
         load=True)
 
 
-def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
+def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
+                     chromosome=None, profile_mem_usage=False):
     dask_output_dir = f'{assoc_dir}/dask_output_logs'
     os.mkdir(dask_output_dir)
     os.mkdir(f'{assoc_dir}/run_logs')
     os.mkdir(f'{assoc_dir}/results')
     os.mkdir(f'{assoc_dir}/results/batches')
+    if profile_mem_usage:
+        os.mkdir(f'{assoc_dir}/profiling')
     cluster = dask_jobqueue.PBSCluster(
-        queue="condo",
+        queue="hotel",
         name="linear_associations",
         walltime="4:00:00",
         log_directory=dask_output_dir
@@ -546,11 +634,9 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
     # get the file too
     # see here:
     # https://stackoverflow.com/questions/57118226/how-to-properly-use-dasks-upload-file-to-pass-local-code-to-workers
-
     fname = 'load_and_filter_genotypes.py'
     with open(fname, 'rb') as f:
         data = f.read()
-
     client.register_worker_callbacks(
         setup=functools.partial(
             _worker_upload, data=data, fname=fname,
@@ -574,18 +660,34 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
         usecols=[1],
         skiprows=1
     )
+    if chromosome:
+        chroms = {int(chromosome)}
+    else:
+        chroms = range(1, 23)
+
+    # many more imputed SNPs than imputed STRs
+    # so to capture ~ the same number per task
+    # use a smaller window for the former
+    if imputation_run_name:
+        # STR run
+        range_per_task = int(1e7)
+    else:
+        # imputed SNP run
+        range_per_task = int(1e6)
+
     overall_dep_tasks = []
     for dep_var in dep_vars:
         tasks = []
-        for chrom in range(1, 23):
-            for start_pos in range(1, int(chr_lens[chrom-1]), int(1e7)):
+        for chrom in chroms:
+            for start_pos in range(1, int(chr_lens[chrom-1]), range_per_task):
                 #10Mbp regions
                 tasks.append(dask.delayed(perform_association_subset)(
                     assoc_dir,
                     imputation_run_name,
-                    f'{chrom}:{start_pos}-{start_pos + int(1e7) - 1}',
+                    f'{chrom}:{start_pos}-{start_pos + range_per_task - 1}',
                     dep_var,
-                    df
+                    df,
+                    profile_mem_usage
                 ))
         overall_dep_tasks.append(dask.delayed(concat_batches)(
             f'{assoc_dir}/results', dep_var, tasks
@@ -600,11 +702,11 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars):
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
     parser.add_argument('sample_filtering_run_name')
-    parser.add_argument('imputation_run_name')
     parser.add_argument(
         'association_run_name',
         help="The name to give this association run"
     )
+    parser.add_argument('--imputation_run_name')
     parser.add_argument(
         '--loci',
         help='comma separated list with elements of the form chr:pos'
@@ -614,11 +716,50 @@ def main():  # noqa: D103
         help='omits some steps to be faster',
         action='store_true'
     )
+    parser.add_argument(
+        '--imputed_snps',
+        action='store_true',
+        help="Use imputed SNP genotypes instead of imputed STR genotypes"
+    )
+    parser.add_argument(
+        '--chromosome',
+        help='run linear associations only for one chrom instead of genome wide'
+    )
+    parser.add_argument(
+        '--profile-memory-usage'
+    )
     args = parser.parse_args()
 
+    assert not (args.chromosome and args.loci)
+
+    if not (
+        (args.imputation_run_name and not args.imputed_snps) or
+        (not args.imputation_run_name and args.imputed_snps)
+    ):
+        print('Error: Expecting exactly one of the arguments --imputation_run_name '
+              'and --imputed_snps')
+        sys.exit()
+
     sample_filtering_run_name = args.sample_filtering_run_name
-    imputation_run_name = args.imputation_run_name
+    samp_fname = f'{ukb}/sample_qc/runs/{sample_filtering_run_name}/combined_unrelated.sample'
+    if not os.path.exists(samp_fname):
+        print(f"Sample file {samp_fname} does not exist!")
+        sys.exit(1)
+
+    use_strs = not args.imputed_snps
+    if use_strs:
+        imputation_run_name = args.imputation_run_name
+        assert os.path.exists(f'{ukb}/str_imputed/runs/{imputation_run_name}/')
+
     association_run_name = args.association_run_name
+    assoc_dir = f'{ukb}/association/runs/{association_run_name}'
+    if os.path.exists(assoc_dir):
+        print(f"Association with run name {association_run_name} already "
+              f"exists!", file=sys.stderr)
+        sys.exit(1)
+
+    os.mkdir(assoc_dir)
+
     if args.loci:
         pre_format_loci = args.loci.split(',')
         loci = []
@@ -628,13 +769,6 @@ def main():  # noqa: D103
     else:
         loci = None
 
-    assoc_dir = f'{ukb}/association/runs/{association_run_name}'
-    if os.path.exists(assoc_dir):
-        print(f"Association with run name {association_run_name} already "
-              f"exists!", file=sys.stderr)
-        sys.exit(1)
-
-    os.mkdir(assoc_dir)
 
     with open(f"{assoc_dir}/README", 'w') as readme, \
             open(f"{assoc_dir}/phenotypes.txt", 'w') as phenotypes:
@@ -642,7 +776,9 @@ def main():  # noqa: D103
         readme.write(f"Run args: {args}\n")
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
+        readme.flush()
         phenotypes.write("phenotype:unit\n")
+        phenotypes.flush()
 
         df, indep_vars = load_covars(readme)
         df, height_indep_vars = load_height(df, readme, phenotypes)
@@ -665,6 +801,7 @@ def main():  # noqa: D103
         # don't use the same samples for bilirubin and height
         floc = f'{ukb}/sample_qc/runs/{sample_filtering_run_name}/combined_unrelated.sample'
         readme.write(f"Subsetting to samples from file {floc}.\n")
+        readme.flush()
         sample_subset = pd.read_csv(
             floc,
             usecols=[0],
@@ -678,17 +815,32 @@ def main():  # noqa: D103
         # order the observations in df
         # based on the order of samples in chr1 vcf
         print("Setting up samples ... ", end="", flush=True)
-        vcf = cyvcf2.VCF(
-            f'{ukb}/str_imputed/runs/{imputation_run_name}/'
-            f'vcfs/strs_only/chr1.vcf.gz'
-        )
-        vcf_samples = list(sample.split("_")[0] for sample in
-                           vcf.samples)
-        samples_df = pd.DataFrame(
-            vcf_samples,
-            columns=['id'],
-            dtype='int'
-        )
+        if use_strs:
+            vcf = cyvcf2.VCF(
+                f'{ukb}/str_imputed/runs/{imputation_run_name}/'
+                f'vcfs/strs_only/chr1.vcf.gz'
+            )
+            vcf_samples = list(sample.split("_")[0] for sample in
+                               vcf.samples)
+            samples_df = pd.DataFrame(
+                vcf_samples,
+                columns=['id'],
+                dtype='int'
+            )
+        else:
+            bgen_samples = []
+            with open(f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample') as samplefile:
+                for num, line in enumerate(samplefile):
+                    if num <= 1:
+                        # skip first two lines
+                        continue
+                    bgen_samples.append(line.split()[0])
+            assert len(bgen_samples) == 487409
+            samples_df = pd.DataFrame(
+                bgen_samples,
+                columns=['id'],
+                dtype='int'
+            )
         df = pd.merge(samples_df, df, how='left', on='id')
         df = df.astype({"id": "category"})
         print("done")
@@ -702,6 +854,7 @@ def main():  # noqa: D103
                     axis=1)))
             )
             readme.write('\n')
+            readme.flush()
 
         plot_dirs = {}
         for dep_var in dep_vars:
@@ -718,6 +871,7 @@ def main():  # noqa: D103
             )
 
         readme.write("Log transforming total_bilirubin\n")
+        readme.flush()
         # figure out how to tie this to the unit it the units file above
         df.loc[:, 'total_bilirubin'] = np.log(df.loc[:, 'total_bilirubin'])
 
@@ -740,6 +894,7 @@ def main():  # noqa: D103
 
         readme.write("Performing linear association against listed covariates"
                      " to get phenotypes residuals\n")
+        readme.flush()
 
         print("Running associations of phenotypes against covariates to get"
               " residuals ... ", end='', flush=True)
@@ -777,32 +932,57 @@ def main():  # noqa: D103
                     f'Residual {dep_var}'
                 )
 
-        readme.write(f"Using str calls from imputed run {imputation_run_name}\n")
-        readme.write(
-            "Filtering calls whose phased genotype probability as estimated "
-            "by Beagle is less than 0.9. Number filtered this way is the "
-            "#samples_GP_filtered column in filtering/<region>.txt"
-        )
-        readme.write(
-            "Convert and collapse sequence alleles to length alleles. "
-            "Removing length alleles with 4 or fewer occurrences. "
-            "For a single association, removing samples with any removed "
-            "alleles. Then convert sample genotypes to their average "
-            "allele length. #filtered_rare_alleles in results.txt is the "
-            "number of length alleles with between 1 and 4 copies in all "
-            "samples which were filtered due to rarity.\n"
-        )
-        readme.write("Performing linear association of residual phenotypes "
-                     "against allele length averaged over both haploid calls."
-                     " Coefficients are reported as change in phenotype per "
-                     "difference from reference allele measured in repeat "
-                     "copies.\n")
-        readme.flush()
+        if use_strs:
+            readme.write(f"Using str calls from imputed run {imputation_run_name}\n")
+            readme.write(
+                "Filtering calls whose phased genotype probability as estimated "
+                "by Beagle is less than 0.9. Number filtered this way is the "
+                "#samples_GP_filtered column in filtering/<region>.txt"
+            )
+            readme.write(
+                "Convert and collapse sequence alleles to length alleles. "
+                "Removing length alleles with 4 or fewer occurrences. "
+                "For a single association, removing samples with any removed "
+                "alleles. Then convert sample genotypes to their average "
+                "allele length. #filtered_rare_alleles in results.txt is the "
+                "number of length alleles with between 1 and 4 copies in all "
+                "samples which were filtered due to rarity.\n"
+            )
+            readme.write("Performing linear association of residual phenotypes "
+                         "against allele length averaged over both haploid calls."
+                         " Coefficients are reported as change in phenotype per "
+                         "difference from reference allele measured in repeat "
+                         "copies.\n")
+            readme.flush()
 
-        if loci is not None:
-            run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars, loci)
+            if loci is not None:
+                run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars, loci,
+                                          profile_mem_usage=args.profile_memory_usage) 
+            else:
+                run_associations(assoc_dir, imputation_run_name, df, dep_vars,
+                                chromosome=args.chromosome,
+                                profile_mem_usage=args.profile_memory_usage)
         else:
-            run_associations(assoc_dir, imputation_run_name, df, dep_vars)
+            readme.write("Using imputed snp calls\n")
+            # see here
+            # https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf
+            readme.write(
+                "Filtering loci whose INFO scores are <0.3.\n"
+            )
+            readme.write(
+                "Filtering calls whose probability as estimated by the UKB "
+                "imputation algorithm is less than 0.9. Number filtered this "
+                "way is the #samples_GP_filtered column in "
+                "filtering/<region>.txt\n"
+            )
+            readme.flush()
+            if loci is not None:
+                run_associations_few_loci(assoc_dir, False, df, dep_vars, loci,
+                                          profile_mem_usage=args.profile_memory_usage)
+            else:
+                run_associations(assoc_dir, False, df, dep_vars,
+                                 chromosome=args.chromosome,
+                                 profile_mem_usage=args.profile_memory_usage)
 
 if __name__ == "__main__":
     main()

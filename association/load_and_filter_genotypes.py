@@ -21,22 +21,25 @@ ukb = os.environ['UKB']
 
 
 def filtered_strs(imputation_run_name,
-                       region):
+                  region):
     """
-    Iterate over a region returning genotypes at STR loci.
+    Iterate over a region of STRs returning genotypes at each locus.
 
 	First value yielded is the array of samples in the VCF
 	Every subsequent value is the tuple
-	(genotypes, chrom, pos, filtered_samples, filtered_rare_alleles)
+	(genotypes, chrom, pos, alleles, locus_info, locus_filtered)
+    currently, locus_filtered is always None
 
-    genotypes have the unit: difference in # repeats from the reference
+    genotypes are pairs of haplotypes
+    measured by difference in # repeats from the reference
 
     Samples with imputed genotypes with too low an expected probability
+    (as measured by product of their allele probabilities)
     have their genotypes set to nan
-    Samples with genotypes that are too rare have their genotypes set to nan
 
-    If after filtering a locus has only one genotype, it is skipped
-    and then next qualifying locus is yielded
+    No filtering for samples with rare genotypes
+    Loci with only single genotypes remaining are returned - it is up to
+    calling code to filter these out
     """
     chrom, _ = region.split(':')
     vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
@@ -80,25 +83,6 @@ def filtered_strs(imputation_run_name,
         len_gts[filtered_samples, :] = np.nan
         n_filtered_samples = np.sum(filtered_samples)
 
-        # filter length alleles with too few occurrences
-        len_alleles, counts = np.unique(
-            len_gts[~np.isnan(len_gts)],
-            return_counts=True
-        )
-        filtered_rare_alleles = 0
-        for len_allele_idx, len_allele in enumerate(len_alleles):
-            if (counts[len_allele_idx] > 0 and
-                    counts[len_allele_idx] < 5):
-                len_gts[len_gts == len_allele] = np.nan
-                filtered_rare_alleles += 1
-
-        # make sure this locus doesn't have only one nonfiltered genotype
-        # (or worse, no nonfiltered genotypes)
-        not_nans = len_gts[~np.isnan(len_gts)]
-        trivial_data = len(not_nans) == 0 or np.all(not_nans == not_nans[0])
-        if trivial_data:
-            continue
-
         # convert from length in bp to length in diff from ref in repeat
         # units
         len_gts -= seq_allele_lens[0]
@@ -108,92 +92,170 @@ def filtered_strs(imputation_run_name,
             len_gts,
             locus.CHROM,
             locus.POS,
-            n_filtered_samples,
-            filtered_rare_alleles
+            ','.join(str(l) for l in np.unique(len_gts[~np.isnan(len_gts)])),
+            f'PERIOD={locus.INFO["PERIOD"]},REF={locus.REF}',
+            None
         )
 
 
-def filtered_snps(region):
+def filtered_microarray_snps(region):
     """
     Iterate over a region returning genotypes at SNP loci.
 
-    Currently returns microarray measured SNPs that have been QCed,
-    not all microarray measured SNPs, and not imputed SNPs
+    Returns microarray measured SNPs that have been QCed and phased
+    (i.e. the ones in the bgen files) which does not include
+    all microarray measured SNPs
 
-	First value yielded is the array of samples in the VCF
-	Every subsequent value is the tuple
-	(genotypes, chrom, pos, filtered_samples, filtered_rare_alleles)
+    Yields tuples
+	(genotypes, chrom, pos, alleles, locus_filtered)
+    currently, locus_filtered is always None
 
-    genotypes have the unit:
-        0 (hom. 1st allele),
-        0.5 (het)
-        1 (hom. 2nd allele)
+    genotypes are pairs of indicators:
+        0: 1st allele
+        1: 2nd allele
     note that bgen files don't distinguish between reference and alt
     alleles. 1st allele may or may not be the reference
 
     Expecting all samples in the input file to have 0 or 1 probs
-    so filtered_samples will always be zero
+    so not filtering any calls
 
-    If either allele is too rare, the locus will be skipped for being
-    too homozygous
-
-    Because of this, any locus that is yielded will ahve filtered_rare_alleles
-    as zero
+    No filtering for samples with rare genotypes
+    Loci with only single genotypes remaining are returned - it is up to
+    calling code to filter these out
     """
     chrom, posses = region.split(':')
     start, end = posses.split('-')
     start = int(start)
     end = int(end)
     bgen_fname = f'{ukb}/microarray/ukb_hap_chr{chrom}_v2.bgen'
-    samples_fname = f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample'
-    bgen = bgen_reader.read_bgen(bgen_fname,
-                                 samples_filepath=samples_fname,
+    bgen = bgen_reader.open_bgen(bgen_fname,
+                                 allow_complex=True,
                                  verbose=False)
-    variants = bgen["variants"].compute()
-    genotypes = bgen["genotype"]
-    samples = bgen["samples"].to_numpy(dtype='U7')
-    samples = np.char.add(np.char.add(samples, '_'), samples)
-    yield samples
 
-    for variant_num, pos in enumerate(variants['pos']):
+    for variant_num, pos in enumerate(bgen.positions):
         if pos < start:
             continue
         if pos > end:
             break
 
-        genotype_info = genotypes[variant_num].compute()
+        probs, missing, ploidy = bgen.read(variant_num,
+                                           return_missings=True,
+                                           return_ploidies=True)
 
         # make sure the record looks as expected
-        assert np.all(np.logical_or(
-            genotype_info['probs'] == 0, genotype_info['probs'] == 1
-        ))
-        assert genotype_info['probs'].shape[1] == 4
-        assert genotype_info['phased']
-        assert np.all(genotype_info['ploidy'] == 2)
-        assert not np.any(genotype_info['missing'])
-
-        # for this dataset, these aren't probs but hardcalls
-        gts = genotype_info['probs']
-
-        n_first_allele = np.sum(gts[:, [0,2]])
-        if n_first_allele <  5:
-            continue
-        n_second_allele = np.sum(gts[:, [1,3]])
-        if n_second_allele <  5:
-            continue
+        assert np.all(np.logical_or(probs == 0, probs == 1))
+        assert probs.shape[2] == 4
+        assert bgen.phased[variant_num]
+        assert np.all(ploidy == 2)
+        assert not np.any(missing)
 
         # Since all alleles are bialleleic, the genotype can
         # be written as the presence or absence of the second allele
         # for each haplotype for each participant
-        reformatted_gts = gts[:, [1,3]]
+        reformatted_gts = probs[:, 0, [1,3]]
 
         yield (
             reformatted_gts,
             chrom,
             pos,
-            0,
-            0
+            bgen.allele_ids[variant_num],
+            None,
+            None
         )
+
+
+def filtered_imputed_snps(region):
+    """
+    Iterate over a region returning genotypes at SNP loci.
+
+    Returns imputed SNPs
+
+    Yields tuples
+	(genotypes, chrom, pos, allele, locus_filtered)
+    Exactly one of genotypes and locus_filtered will be None
+
+    genotypes are pairs of indicators:
+        0: 1st allele
+        1: 2nd allele
+    note that bgen files don't distinguish between reference and alt
+    alleles. 1st allele may or may not be the reference
+    Also note that these genotypes are not phased so the ordering
+    of the genotypes for homozygous samples is arbitrary.
+
+    Samples where the probability of their most probable genotypes is <.9
+    are filtered
+
+    No filtering for samples with rare genotypes
+    Loci with only single genotypes remaining are returned - it is up to
+    calling code to filter these out
+    """
+    chrom, posses = region.split(':')
+    start, end = posses.split('-')
+    start = int(start)
+    end = int(end)
+    bgen_fname = f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen'
+    mfi_fname = f'{ukb}/array_imputed/ukb_mfi_chr{chrom}_v3.txt'
+    bgen = bgen_reader.open_bgen(bgen_fname,
+                                 verbose=False,
+                                 allow_complex=True)
+
+    with open(mfi_fname) as mfi:
+        for variant_num, pos in enumerate(bgen.positions):
+            mfi_line = next(mfi)
+            if pos < start:
+                continue
+            if pos > end:
+                break
+
+            info_str = mfi_line.split()[-1]
+            if info_str == 'NA':
+                yield (
+                    None,
+                    chrom,
+                    pos,
+                    bgen.allele_ids[variant_num],
+                    'info=NA',
+                    'MAF=0'
+                )
+            elif float(info_str) < 0.3:
+                yield (
+                    None,
+                    chrom,
+                    pos,
+                    bgen.allele_ids[variant_num],
+                    f'info={info_str}',
+                    'info<0.3'
+                )
+                continue
+
+            probs, missing, ploidy = bgen.read(variant_num,
+                                           return_missings=True,
+                                           return_ploidies=True)
+            probs = np.squeeze(probs)
+
+            # make sure the record looks as expected
+            assert probs.shape[1] == 3
+            assert not bgen.phased[variant_num]
+            assert np.all(ploidy == 2)
+            assert not np.any(missing)
+
+            best_genotype = probs.argmax(axis=1)
+            highest_prob = probs.max(axis=1)
+            out_gts = np.zeros((probs.shape[0], 2))
+
+            out_gts[best_genotype == 2, 0]  = 1
+            out_gts[best_genotype > 0, 1]  = 1
+            out_gts[highest_prob < .9, :] = np.nan
+
+
+            yield (
+                out_gts,
+                chrom,
+                pos,
+                bgen.allele_ids[variant_num],
+                f'info={info_str}',
+                None
+            )
 
 
 def load_all_haplotypes(variant_generator, samplelist):
