@@ -1,0 +1,8 @@
+Deleting the second CRAM set
+
+Confirming that none of the work removing individual samples from the batch 1 calls
+actually changed what was filtered:
+for id in $(comm <(sort filtered_ids.txt) <(sort /projects/ps-gymreklab/jmargoli/ukbiobank/side_analyses/exome_strs/snpstr_exome_str_cleaned_ids.txt) -13) ; do if (( "$(zcat vcfs/"$id"_batch_1.vcf.gz | tail -n 1 | wc -w)" != 40010 )) ; then echo $id ; fi ; done
+I think the only STR this mattered for based on the script (for vcf in vcfs/*batch_1.* ; do if (( "$(zcat $vcf | tail -n 1 | wc -w)" != 4009 )) ; then echo $vcf ; fi ; done) was
+Expansion_HDL2_JPH3
+which was undecodable in each other batch

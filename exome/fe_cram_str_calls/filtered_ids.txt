@@ -40,10 +40,11 @@ STR_948070
 STR_960148
 # no spanning reads
 # -- this one also leads to failed stutter model training --
-Expansion_SCA2_ATXN2 
+Expansion_SCA2_ATXN2
 # failed stutter model training
 STR_1469614
-
-# Why did I filter this?
-# STR_153403
-# STR_198845
+# STRs only failing a single spot, but only 4 of them, so filter just to be done with it
+STR_153403
+STR_198845
+STR_1209762
+STR_665433

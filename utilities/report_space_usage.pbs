@@ -11,6 +11,7 @@
 
 date
 echo "Starting"
+df -h | grep gymreklab
 echo "Checking /projects/ps-gymreklab"
 cd /projects/ps-gymreklab || { echo "Couldn't move to /projects/ps-gymreklab" ; exit 1 ; }
 for file in * ; do
@@ -37,6 +38,9 @@ echo "Checking /projects/ps-gymreklab/resources/datasets/ukbiobank"
 du -sch ./*
 cd ../../../jmargoli/ukbiobank/ || { echo "couldn't move to jmargoli/ukbiobank" ; exit 1 ; }
 echo "Checking jmargoli/ukbiobank"
+du -sch ./*
+cd exome || { echo "couldn't move to jmargoli/ukbiobank/exome" ; exit 1 ; }
+echo "Checking jmargoli/ukbiobank/exome"
 du -sch ./*
 echo "Done"
 date
