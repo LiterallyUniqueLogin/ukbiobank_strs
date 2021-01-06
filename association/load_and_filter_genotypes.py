@@ -114,7 +114,8 @@ def filtered_microarray_snps(region):
         0: 1st allele
         1: 2nd allele
     note that bgen files don't distinguish between reference and alt
-    alleles. 1st allele may or may not be the reference
+    alleles. 1st allele may or may not be the reference. (This
+    is different than imputed SNPs!)
 
     Expecting all samples in the input file to have 0 or 1 probs
     so not filtering any calls
@@ -177,11 +178,12 @@ def filtered_imputed_snps(region):
     genotypes are pairs of indicators:
         0: 1st allele
         1: 2nd allele
-    note that bgen files don't distinguish between reference and alt
-    alleles. 1st allele may or may not be the reference
+    1st allele is always the reference for imputed SNPs.
+    (This is different than microarray SNPs!)
     Also note that these genotypes are not phased so the ordering
-    of the genotypes for homozygous samples is arbitrary.
+    of the genotypes for heterozygous samples is arbitrary.
 
+    Loci with INFO < 0.3 are filtered
     Samples where the probability of their most probable genotypes is <.9
     are filtered
 

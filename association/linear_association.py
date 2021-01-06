@@ -13,6 +13,7 @@ import datetime
 import functools
 import os
 import os.path
+import subprocess as sp
 import sys
 import time
 import tracemalloc
@@ -203,75 +204,38 @@ def load_bilirubin(df, readme, phenotypes):
        Same as input df, but with four rows appended.
        The first recorded measurement is 'total_bilirubin'.
        The next column is 'total_bilirubin_age' and is the age
-       at which that measurement was taken. The next column is
-       'direct_bilirubin' which is set only for those ppts which
-       had that measurement made at the same assessment as the total_bilirubin
-       measurement. For those ppts, indirect bilirubin is calculated as
-       total_bilirubin - direct_bilirubin.
-
-       NOTE: it seems (table 1 :
-           http://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/serum_biochemistry.pdf
-       ) that direct bilirubin values < 1 were filtered due to lack of
-       precision, meaning that extant direct bilirubin levels are highly
-       subject to bias.
+       at which that measurement was taken.
     """
     print("Loading bilirubin ... ", end="", flush=True)
     phenotypes.write("total_bilirubin:log(umol/L)\n")
-    phenotypes.write("direct_bilirubin:umol/L\n")
-    phenotypes.write("indirect_bilirubin:umol/L\n")
     floc = f'{ukb}/main_dataset/extracted_data/bilirubin.csv'
     readme.write(
-        f"Adding direct, total and indirect_bilirubin phenotypes "
+        f"Adding total_bilirubin phenotype "
         f"and date of measurement, File: {floc}. "
         f"total_bilirubin is taken from the first assessment where it was "
-        f"sampled, if any. direct_bilirubin is taken from that same assessment "
-        f"if taken there. direct will not be taken from the other assessment. "
-        f"direct will not be recorded if total is not."
-        f"There are 70k total_bilirubin measurements with no corresponding "
-        f"direct_bilirubin measurement and I do not know why, concerning."
-        f"Almost all direct_bilirubin measurements have corresponding "
-        f"total_bilirubin measurements, so no issue here."
-        f"The indirect phenotype is simply calculated as total - direct.\n"
+        f"sampled, if any.\n"
     )
     readme.flush()
     bilirubin_df = pd.read_csv(
         floc,
-        names=["id", "dbil0", "dbil1", "tbil0", "tbil1"],
+        names=["id", "tbil0", "tbil1"],
         header=0,
         dtype={"id": int,
-               "dbil0" : float,
-               "dbil1" : float,
                "tbil0" : float,
                "tbil1" : float},
-        quotechar='"'
+        quotechar='"',
+        usecols=[0,3,4]
     )
     has_tbil0 = ~np.isnan(bilirubin_df.loc[:, 'tbil0'])
     bilirubin_df.loc[has_tbil0, 'bilirubin_assessment'] = 0
     bilirubin_df.loc[~has_tbil0, 'bilirubin_assessment'] = 1
     bilirubin_df.loc[has_tbil0, 'total_bilirubin'] = bilirubin_df.loc[has_tbil0, 'tbil0']
-    bilirubin_df.loc[has_tbil0, 'direct_bilirubin'] = bilirubin_df.loc[has_tbil0, 'dbil0']
     bilirubin_df.loc[~has_tbil0, 'total_bilirubin'] = bilirubin_df.loc[~has_tbil0, 'tbil1']
-    bilirubin_df.loc[~has_tbil0, 'direct_bilirubin'] = bilirubin_df.loc[~has_tbil0, 'dbil1']
     has_tbil = ~np.isnan(bilirubin_df.loc[:, 'total_bilirubin'])
-    bilirubin_df.loc[~has_tbil, ['direct_bilirubin', 'bilirubin_assessment']] = np.nan
-    bilirubin_df.drop(['tbil0', 'tbil1', 'dbil0', 'dbil1'], axis=1)
+    bilirubin_df.loc[~has_tbil, ['bilirubin_assessment']] = np.nan
+    bilirubin_df.drop(['tbil0', 'tbil1'], axis=1)
 
-    # Add indirect:
-    bilirubin_df['indirect_bilirubin'] = (
-        bilirubin_df['total_bilirubin'] -
-        bilirubin_df['direct_bilirubin']
-    )
-
-    filter_neg = np.sum(
-        bilirubin_df.loc[:, ['total_bilirubin', 'direct_bilirubin', 'indirect_bilirubin']] < 0,
-        axis=1
-    )
-    readme.write(f'Filtering {np.sum(filter_neg)} bilirubin values where '
-                 'total or direct bilirubin was negative, or direct bilirubin '
-                 'was greater than total bilirubin.')
     readme.flush()
-    bilirubin_df.loc[filter_neg,
-           ['total_bilirubin', 'direct_bilirubin', 'indirect_bilirubin']] = np.nan
     # max bilirubin value right now is 144. I don't know enough to say that
     # this is too high, so no max filter
 
@@ -281,7 +245,7 @@ def load_bilirubin(df, readme, phenotypes):
         how="left",
         on="id"
     )
-    
+
     readme.write("Adding age at bilirubin measurement as a covariate\n")
     readme.flush()
     df.loc[has_tbil0, 'bilirubin_age'] = df.loc[has_tbil0, 'age_assess_init']
@@ -428,7 +392,7 @@ def perform_association_subset(assoc_dir,
     start, end = poses.split('-')
     region_string = f'{chrom}_{start}_{end}'
     with open(f'{assoc_dir}/run_logs/{dep_var}_{region_string}.log', 'w') as log, \
-            open(f'{assoc_dir}/results/batches/{dep_var}_{region_string}.txt', 'w') as results:
+            open(f'{assoc_dir}/results/batches/{dep_var}_{region_string}.tab', 'w') as results:
 
         # if not profiling simply hide the function
         # behind a placeholder that does nothing
@@ -442,9 +406,9 @@ def perform_association_subset(assoc_dir,
         df = df.copy(deep=True)
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_dfcopy', log, 'dfcopy')
 
-        results.write("chrom pos alleles locus_info locus_filtered #unrelated_samples_with_phenotype "
-                      "#samples_GP_filtered allele_distribution monoallelic_skipped"
-                      f" p_{dep_var} coeff_{dep_var} coeff_intercept\n")
+        results.write("chrom\tpos\talleles\tlocus_info\tlocus_filtered\t#unrelated_samples_with_phenotype\t"
+                      "#samples_GP_filtered\tallele_distribution\tmonoallelic_skipped"
+                      f"\tp_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\n")
         results.flush()
 
         n_loci = 0
@@ -484,20 +448,20 @@ def perform_association_subset(assoc_dir,
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
                             log, f'loop_{pos}_start')
             n_loci += 1
-            results.write(f"{chrom} {pos} {allele_names} {locus_info} ")
+            results.write(f"{chrom}\t{pos}\t{allele_names}\t{locus_info}\t")
             if locus_filtered:
-                results.write(f'{locus_filtered} nan nan nan nan 1 nan nan\n')
+                results.write(f'{locus_filtered}\tnan\tnan\tnan\tnan\t1\tnan\tnan\n')
                 results.flush()
                 continue
             else:
-                results.write('False ')
+                results.write('False\t')
 
             avg_len_gt = np.sum(len_gts, axis=1)/2
             df['gt'] = avg_len_gt
 
             unfiltered_samples = np.all(~np.isnan(df[[f'{dep_var}_residual','gt']]), axis=1)
             n_filtered_alleles = n_samples_with_phenotype - np.sum(unfiltered_samples)
-            results.write(f"{n_samples_with_phenotype} {n_filtered_alleles} ")
+            results.write(f"{n_samples_with_phenotype}\t{n_filtered_alleles}\t")
 
             alleles = np.unique(df.loc[unfiltered_samples, 'gt'], return_counts = True)
             any_alleles = False
@@ -508,14 +472,14 @@ def perform_association_subset(assoc_dir,
                 results.write(f"{allele}:{alleles[1][count]}")
             if not any_alleles:
                 results.write("nan")
-            results.write(" ")
+            results.write("\t")
 
             if len(alleles[0]) <= 1:
-                results.write("True 1 nan nan\n")
+                results.write("True\t1\tnan\tnan\n")
                 results.flush()
                 continue
             else:
-                results.write("False ")
+                results.write("False\t")
                 results.flush()
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
                              log, f'loop_{pos}_preOLS')
@@ -532,11 +496,9 @@ def perform_association_subset(assoc_dir,
             pval = reg_result.pvalues['gt']
             coef = reg_result.params['gt']
             intercept_coef = reg_result.params['intercept']
-            results.write(f" {pval:.2e} {coef} {intercept_coef}")
-
-            # output results
-            results.write("\n")
+            results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\n")
             results.flush()
+
             duration = time.time() - start_time
             total_time += duration
             batch_time += duration
@@ -551,18 +513,88 @@ def perform_association_subset(assoc_dir,
             start_time = time.time()
     return region_string
 
-def invoke_plink_on_subset():
-    pass
-    f"""
-    {ukb}/utilities/plink2 \
-            
-    """
+def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):
+    with open(f'{assoc_dir}/run_logs/{dep_var}_{chrom}.log', 'w') as log:
+        command = f"""
+        {ukb}/utilities/plink2 \
+            --pheno {assoc_dir}/covars_and_phenotypes.tab \
+            --no-psam-pheno \
+            --pheno-name {dep_var} \
+            --covar-name {' '.join(indep_vars)} \
+            --pfile {ukb}/array_imputed/pfile_converted/chr{chrom} \
+            --chr {chrom} \
+            --mac 20 \
+            --glm omit-ref pheno-ids intercept \
+            --ci 0.95 \
+            --ci 0.99999995 \
+            --memory 128000 \
+            --threads 28 \
+             > {assoc_dir}/run_logs/{dep_var}_{chrom}.plink.stdout \
+            2> {assoc_dir}/run_logs/{dep_var}_{chrom}.plink.stderr
+        """
+        log.write('Command: ' + command)
+        log.flush()
+    try:
+        sp.run(command, check=True, shell=True)
+    except Exception as e:
+        raise RuntimeError("plink failed!") from e
+
+
+def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, chromosome=None):
+    dask_output_dir = f'{assoc_dir}/dask_output_logs'
+    os.mkdir(dask_output_dir)
+    os.mkdir(f'{assoc_dir}/run_logs')
+    os.mkdir(f'{assoc_dir}/results')
+
+    if chromosome:
+        chroms = {int(chromosome)}
+    else:
+        chroms = range(1, 23)
+    for chrom in chroms:
+        os.mkdir(f'{assoc_dir}/results/chr{chrom}')
+
+    cluster = dask_jobqueue.PBSCluster(
+        queue="hotel",
+        name="linear_associations",
+        walltime="72:00:00",
+        cores=28,
+        memory="128GB",
+        processes=1,
+        log_directory=dask_output_dir
+    )
+    cluster.adapt(maximum_jobs=len(chroms))
+    client = dask.distributed.Client(cluster)
+
+    print("Writing out results for each phenotype, chrom pair. "
+          "see run_logs/<phenotype>_<chrom>.log for commands executed, "
+          "run_logs/<phenotype>_<chrom>.plink.std<err/out> for plink output "
+          "and see results/chr<chrom>/ for results.",
+          flush=True)
+
+    tasks = []
+    for dep_var in dep_vars:
+        curr_indep_vars = indep_vars.copy()
+        curr_indep_vars.extend(pheno_indep_vars[dep_var])
+        for chrom in chroms:
+            tasks.append(dask.delayed(invoke_plink)(
+                assoc_dir,
+                chrom,
+                dep_var,
+                curr_indep_vars
+            ))
+    futures = client.compute(tasks)
+    for future in futures:
+        future.result() #block till all code is done executing
+        # see here
+        # https://distributed.dask.org/en/latest/manage-computation.html
+    # TODO concat results across chroms here?
+
 
 def concat_batches(results_dir, dep_var, region_strings):
-    with open(f'{results_dir}/{dep_var}.txt', 'w') as outfile:
+    with open(f'{results_dir}/{dep_var}.tab', 'w') as outfile:
         first = True
         for string in region_strings:
-            with open(f'{results_dir}/batches/{dep_var}_{string}.txt') as infile:
+            with open(f'{results_dir}/batches/{dep_var}_{string}.tab') as infile:
                 first_line = True
                 for line in infile:
                     if first_line:
@@ -583,7 +615,7 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
    
     print("Writing out results for each phenotype, region pair. "
           "see run_logs/<phenotype>_<region>.log for logs and "
-          "see results/batches/<phenotype>_<region>.txt for results.",
+          "see results/batches/<phenotype>_<region>.tab for results.",
           flush=True)
     for dep_var in dep_vars:
         locus_strings = []
@@ -646,7 +678,7 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
 
     print("Writing out results for each phenotype, region pair. "
           "see run_logs/<phenotype>_<region>.log for logs and "
-          "see results/batches/<phenotype>_<region>.txt for results.",
+          "see results/batches/<phenotype>_<region>.tab for results.",
           flush=True)
 
     # prep the data frame for being distributed across the cluster
@@ -680,7 +712,6 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
         tasks = []
         for chrom in chroms:
             for start_pos in range(1, int(chr_lens[chrom-1]), range_per_task):
-                #10Mbp regions
                 tasks.append(dask.delayed(perform_association_subset)(
                     assoc_dir,
                     imputation_run_name,
@@ -717,27 +748,42 @@ def main():  # noqa: D103
         action='store_true'
     )
     parser.add_argument(
-        '--imputed_snps',
+        '--no-run',
+        help="do everything up to running the association, but don't run it",
+        action='store_true'
+    )
+    parser.add_argument(
+        '--imputed-snps',
         action='store_true',
         help="Use imputed SNP genotypes instead of imputed STR genotypes"
+    )
+    parser.add_argument(
+        '--plink',
+        action="store_true",
+        help=("Use plink for computing SNP associations. Only meaningful "
+              "if --imputed-snps is set")
     )
     parser.add_argument(
         '--chromosome',
         help='run linear associations only for one chrom instead of genome wide'
     )
     parser.add_argument(
-        '--profile-memory-usage'
+        '--profile-memory-usage',
+        action='store_true'
     )
     args = parser.parse_args()
 
     assert not (args.chromosome and args.loci)
 
+    if args.plink:
+        assert args.imputed_snps
+
     if not (
         (args.imputation_run_name and not args.imputed_snps) or
         (not args.imputation_run_name and args.imputed_snps)
     ):
-        print('Error: Expecting exactly one of the arguments --imputation_run_name '
-              'and --imputed_snps')
+        print('Error: Expecting exactly one of the arguments --imputation-run-name '
+              'and --imputed-snps')
         sys.exit()
 
     sample_filtering_run_name = args.sample_filtering_run_name
@@ -771,7 +817,7 @@ def main():  # noqa: D103
 
 
     with open(f"{assoc_dir}/README", 'w') as readme, \
-            open(f"{assoc_dir}/phenotypes.txt", 'w') as phenotypes:
+            open(f"{assoc_dir}/phenotype_units.txt", 'w') as phenotypes:
 
         readme.write(f"Run args: {args}\n")
         today = datetime.datetime.now().strftime("%Y_%m_%d")
@@ -787,9 +833,7 @@ def main():  # noqa: D103
         # covariate columns:
         dep_vars = [
             'height',
-            'total_bilirubin',
-            #'direct_bilirubin',
-            #'indirect_bilirubin'
+            'total_bilirubin'
         ]
         pheno_indep_vars = {
             'height': height_indep_vars,
@@ -896,13 +940,13 @@ def main():  # noqa: D103
                      " to get phenotypes residuals\n")
         readme.flush()
 
-        print("Running associations of phenotypes against covariates to get"
+        print("Running linear associations of phenotypes against covariates to get"
               " residuals ... ", end='', flush=True)
         units = {'height': 'cm', 'total_bilirubin': 'log(umol/L)'}
         for dep_var in dep_vars:
             curr_indep_vars = indep_vars.copy()
             curr_indep_vars.extend(pheno_indep_vars[dep_var])
-            with open(f'{assoc_dir}/{dep_var}_residual_results.txt', 'w') as res_results:
+            with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.txt', 'w') as res_results:
                 model = OLS(
                     df[dep_var],
                     df[curr_indep_vars],
@@ -916,11 +960,16 @@ def main():  # noqa: D103
                 predictions = reg.predict(df[curr_indep_vars])
                 df[f'{dep_var}_residual'] = df[dep_var] - predictions
         #Write out the csv we're going to be running associations on
+        # use plink syntax for ID in case we want to run plink associations
+        df.rename(columns={'id': 'IID'}, inplace=True)
         df.to_csv(
-            f'{assoc_dir}/covars_and_phenotypes.txt',
-            sep=' ',
-            index=False
+            f'{assoc_dir}/covars_and_phenotypes.tab',
+            sep='\t',
+            index=False,
+            na_rep='nan'
         )
+        df.rename(columns={'IID': 'id'}, inplace=True)
+
         print("done", flush=True)
         if not args.debug:
             for dep_var in dep_vars:
@@ -932,6 +981,10 @@ def main():  # noqa: D103
                     f'Residual {dep_var}'
                 )
 
+        if args.no_run:
+            readme.write('--no-run specified. Exiting\n')
+            readme.flush()
+            sys.exit()
         if use_strs:
             readme.write(f"Using str calls from imputed run {imputation_run_name}\n")
             readme.write(
@@ -951,8 +1004,7 @@ def main():  # noqa: D103
             readme.write("Performing linear association of residual phenotypes "
                          "against allele length averaged over both haploid calls."
                          " Coefficients are reported as change in phenotype per "
-                         "difference from reference allele measured in repeat "
-                         "copies.\n")
+                         "increase of 1 repeat in both haplotypes.\n")
             readme.flush()
 
             if loci is not None:
@@ -962,7 +1014,7 @@ def main():  # noqa: D103
                 run_associations(assoc_dir, imputation_run_name, df, dep_vars,
                                 chromosome=args.chromosome,
                                 profile_mem_usage=args.profile_memory_usage)
-        else:
+        elif not args.use_plink:
             readme.write("Using imputed snp calls\n")
             # see here
             # https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf
@@ -975,6 +1027,14 @@ def main():  # noqa: D103
                 "way is the #samples_GP_filtered column in "
                 "filtering/<region>.txt\n"
             )
+            readme.write(
+                "Performing linear association of residual phenotypes "
+                "against averaged genotype (0 homozygous ref, 0.5 "
+                "heterozygous, 1 homozygous alt). "
+                "Coefficients are reported as change in "
+                "phenotype when changing both haplotypes from the 0 "
+                "allele to the 1 allele\n"
+            )
             readme.flush()
             if loci is not None:
                 run_associations_few_loci(assoc_dir, False, df, dep_vars, loci,
@@ -983,6 +1043,20 @@ def main():  # noqa: D103
                 run_associations(assoc_dir, False, df, dep_vars,
                                  chromosome=args.chromosome,
                                  profile_mem_usage=args.profile_memory_usage)
+        else:
+            readme.write(
+                "Using imputed snp calls\n"
+                "Running associations with plink\n"
+                "Filtering loci with <20 nonmajor alleles as recommended by plink docs "
+                "https://www.cog-genomics.org/plink/2.0/assoc\n"
+                "genotypes encoded as 0 - ref, 1 - alt\n"
+                "Running linear assocation with all relevant covariates "
+                "included (no regressing out the covariates first and then "
+                "comparing the genotype to the phenotype)\n"
+            )
+            readme.flush()
+            run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars,
+                                   chromosome=args.chromosome)
 
 if __name__ == "__main__":
     main()
