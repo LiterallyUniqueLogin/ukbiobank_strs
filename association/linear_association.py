@@ -83,7 +83,7 @@ def load_covars(readme):
     floc = f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam'
     cols = (0, 4)
     readme.write(
-        f"Adding participant ID index and sex covariate to df. File: {floc}, cols: {cols}\n"
+        f"Loading participant ID index and sex covariate. File: {floc}, cols: {cols}\n"
     )
     readme.flush()
     ids_and_sex = np.genfromtxt(
@@ -409,7 +409,8 @@ def perform_association_subset(assoc_dir,
                                imputation_run_name,
                                region,
                                dep_var,
-                               df,
+                               data,
+                               col_names,
                                profile_mem_usage):
     # imputation_run_name = False means use imputed SNPs
     if profile_mem_usage:
@@ -432,10 +433,6 @@ def perform_association_subset(assoc_dir,
                 #tracemalloc.take_snapshot().dump(fname)
 
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
-        # make sure to use a local copy of df
-        # so that dask doesn't try to change the copy we were passed
-        df = df.copy(deep=True)
-        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_dfcopy', log, 'dfcopy')
 
         results.write("chrom\tpos\talleles\tlocus_info\tlocus_filtered\t#unrelated_samples_with_phenotype\t"
                       "#samples_GP_filtered\tallele_distribution\tmonoallelic_skipped"
@@ -455,13 +452,8 @@ def perform_association_subset(assoc_dir,
             genotype_iter = load_and_filter_genotypes.filtered_strs(
                 imputation_run_name, region
             )
-            samples = next(genotype_iter)
-            samples = np.char.partition(samples, '_')[:, 0].astype(int)
-
-            # make sure df samples are in the same order as the VCF
-            # they should already be, but just to make certain
-            id_df = pd.DataFrame({'id': samples})
-            df = pd.merge(id_df, df, how='left', on='id')
+            # skip the samples, trust that they are in the same order
+            next(genotype_iter)
         else:
             genotype_iter = load_and_filter_genotypes.filtered_imputed_snps(
                 region
@@ -470,7 +462,7 @@ def perform_association_subset(assoc_dir,
             #as it is prespecified to be that in the .sample file
 
         n_samples_with_phenotype = \
-                np.sum(~np.isnan(df[f'{dep_var}_residual']))
+                np.sum(~np.isnan(data[:, col_names.index(f'{dep_var}_residual')]))
 
         start_time = time.time()
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
@@ -488,13 +480,14 @@ def perform_association_subset(assoc_dir,
                 results.write('False\t')
 
             avg_len_gt = np.sum(len_gts, axis=1)/2
-            df['gt'] = avg_len_gt
+            gt = avg_len_gt
 
-            unfiltered_samples = np.all(~np.isnan(df[[f'{dep_var}_residual','gt']]), axis=1)
+            unfiltered_samples = (~np.isnan(gt) &
+                                  ~np.isnan(data[:, col_names.index(f'{dep_var}_residual')]))
             n_filtered_alleles = n_samples_with_phenotype - np.sum(unfiltered_samples)
             results.write(f"{n_samples_with_phenotype}\t{n_filtered_alleles}\t")
 
-            alleles = np.unique(df.loc[unfiltered_samples, 'gt'], return_counts = True)
+            alleles = np.unique(gt[unfiltered_samples], return_counts = True)
             any_alleles = False
             for count, allele in enumerate(alleles[0]):
                 any_alleles = True
@@ -515,18 +508,23 @@ def perform_association_subset(assoc_dir,
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
                              log, f'loop_{pos}_preOLS')
 
+
+            gt_const = np.concatenate((
+                gt.reshape(-1, 1),  np.ones((np.sum(unfiltered_samples), 1))
+            ), axis = 1)
+
             #do da regression
             model = OLS(
-                df.loc[unfiltered_samples, f'{dep_var}_residual'],
-                df.loc[unfiltered_samples, ['gt', 'intercept']],
+                data[unfiltered_samples, col_names.index(f'{dep_var}_residual')],
+                gt_const,
                 missing='drop'
             )
             reg_result = model.fit()
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_postOLS',
                              log, f'loop_{pos}_postOLS')
-            pval = reg_result.pvalues['gt']
-            coef = reg_result.params['gt']
-            intercept_coef = reg_result.params['intercept']
+            pval = reg_result.pvalues[0]
+            coef = reg_result.params[0]
+            intercept_coef = reg_result.params[1]
             results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\n")
             results.flush()
 
@@ -646,7 +644,7 @@ def concat_batches(results_dir, dep_var, region_strings):
                         continue
                     outfile.write(line)
 
-def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
+def run_associations_few_loci(assoc_dir, imputation_run_name, data, col_names, dep_vars,
                               loci, profile_mem_usage=False):
     os.mkdir(f'{assoc_dir}/run_logs')
     os.mkdir(f'{assoc_dir}/results')
@@ -666,7 +664,8 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars,
                 imputation_run_name,
                 locus,
                 dep_var,
-                df,
+                data,
+                col_names,
                 profile_mem_usage
             )
             locus_strings.append(locus.replace(':', '_').replace('-', '_'))
@@ -684,7 +683,7 @@ def _worker_upload(dask_worker, *, data, fname):
         load=True)
 
 
-def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
+def run_associations(assoc_dir, imputation_run_name, data, col_names, dep_vars,
                      chromosome=None, profile_mem_usage=False):
     dask_output_dir = f'{assoc_dir}/dask_output_logs'
     os.mkdir(dask_output_dir)
@@ -712,10 +711,10 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
     # https://stackoverflow.com/questions/57118226/how-to-properly-use-dasks-upload-file-to-pass-local-code-to-workers
     fname = 'load_and_filter_genotypes.py'
     with open(fname, 'rb') as f:
-        data = f.read()
+        contents = f.read()
     client.register_worker_callbacks(
         setup=functools.partial(
-            _worker_upload, data=data, fname=fname,
+            _worker_upload, data=contents, fname=fname,
         )
     )
 
@@ -728,7 +727,7 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
     # prep the data frame for being distributed across the cluster
     # see
     # https://docs.dask.org/en/latest/delayed-best-practices.html#avoid-repeatedly-putting-large-inputs-into-delayed-calls
-    df = dask.delayed(df)
+    data = dask.delayed(data)
 
     #get chrom lengths
     chr_lens = np.genfromtxt(
@@ -762,7 +761,8 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
                     imputation_run_name,
                     f'{chrom}:{start_pos}-{start_pos + range_per_task - 1}',
                     dep_var,
-                    df,
+                    data,
+                    col_names,
                     profile_mem_usage
                 ))
         overall_dep_tasks.append(dask.delayed(concat_batches)(
@@ -900,7 +900,7 @@ def main():  # noqa: D103
         ).reshape(-1, 1)
         data = merge_arrays(sample_subset, data)
 
-        # order the observations in df
+        # order the observations in data
         # based on the order of samples in chr1 vcf
         if use_strs:
             vcf = cyvcf2.VCF(
@@ -1035,7 +1035,6 @@ def main():  # noqa: D103
                     f'residual {units[dep_var]}',
                     f'Residual {dep_var}'
                 )
-
         if args.no_run:
             readme.write('--no-run specified. Exiting\n')
             readme.flush()
@@ -1063,10 +1062,12 @@ def main():  # noqa: D103
             readme.flush()
 
             if loci is not None:
-                run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars, loci,
+                run_associations_few_loci(assoc_dir, imputation_run_name,
+                                          data, col_names, dep_vars, loci,
                                           profile_mem_usage=args.profile_memory_usage)
             else:
-                run_associations(assoc_dir, imputation_run_name, df, dep_vars,
+                run_associations(assoc_dir, imputation_run_name, data,
+                                 col_names, dep_vars,
                                 chromosome=args.chromosome,
                                 profile_mem_usage=args.profile_memory_usage)
         elif not args.plink:
@@ -1094,10 +1095,10 @@ def main():  # noqa: D103
             )
             readme.flush()
             if loci is not None:
-                run_associations_few_loci(assoc_dir, False, df, dep_vars, loci,
+                run_associations_few_loci(assoc_dir, False, data, col_names, dep_vars, loci,
                                           profile_mem_usage=args.profile_memory_usage)
             else:
-                run_associations(assoc_dir, False, df, dep_vars,
+                run_associations(assoc_dir, False, data, col_names, dep_vars,
                                  chromosome=args.chromosome,
                                  profile_mem_usage=args.profile_memory_usage)
         else:
