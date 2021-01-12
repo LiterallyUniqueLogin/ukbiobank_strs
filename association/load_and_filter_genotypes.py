@@ -183,7 +183,8 @@ def filtered_imputed_snps(region):
     Also note that these genotypes are not phased so the ordering
     of the genotypes for heterozygous samples is arbitrary.
 
-    Loci with INFO < 0.3 are filtered
+    Loci with INFO < 0.3 or so should be filtered
+    But currently are not to allow this to be tuned downstream.
     Samples where the probability of their most probable genotypes is <.9
     are filtered
 
@@ -219,6 +220,7 @@ def filtered_imputed_snps(region):
                     'info=NA',
                     'MAF=0'
                 )
+            '''
             elif float(info_str) < 0.3:
                 yield (
                     None,
@@ -229,6 +231,7 @@ def filtered_imputed_snps(region):
                     'info<0.3'
                 )
                 continue
+            '''
 
             probs, missing, ploidy = bgen.read(variant_num,
                                            return_missings=True,

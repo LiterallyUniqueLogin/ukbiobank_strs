@@ -1,26 +1,24 @@
 #!/bin/bash
-#PBS -q home 
+#PBS -q hotel 
 #PBS -N launch_linear_association
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=200:00:00
+#PBS -l walltime=168:00:00
 #PBS -o /projects/ps-gymreklab/jmargoli/ukbiobank/association/output
 #PBS -e /projects/ps-gymreklab/jmargoli/ukbiobank/association/output
 #PBS -V
 #PBS -M jmargoli@ucsd.edu
 #PBS -m a
 
+if [ -z "$ARGS" ] ; then echo "ARGS variable is unset" ; exit 1 ; fi
+echo "ARGS $ARGS"
+echo "ARGS $ARGS" >&2
+
 source "$HOME"/.bashrc
 cd "$UKB/association" || { echo "Directory $UKB/association doesn't exist" ; exit 1 ; }
 conda activate ukb
-run_name=snp_chr_21
-#run_name=str_full_genome_snp_update
-rm -rf runs/$run_name
-python linear_association.py \
-	height \
-	$run_name \
-	--debug \
-	--imputed_snps \
-	--chromosome 21
-	#--imputation_run_name first_pass
+
+# intentional no quote here
+python linear_association.py $ARGS
+
 conda deactivate
 

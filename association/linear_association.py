@@ -24,7 +24,6 @@ import dask
 import dask.distributed
 import dask_jobqueue
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
 import numpy.random
 import sklearn.model_selection
@@ -35,6 +34,29 @@ import load_and_filter_genotypes
 
 ukb = os.environ['UKB']
 
+def merge_arrays(a, b):
+    # assume first column of each array is id, but not necessarily same order
+    # goal is return do a left outer join b
+
+    assert len(set(a[:, 0]).intersection(b[:,0])) > 1000
+    assert len(set(a[:, 0])) == a.shape[0]
+    assert len(set(b[:, 0])) == b.shape[0]
+
+    b = b[np.isin(b[:, 0], a[:, 0])]
+    matches = np.isin(a[:, 0], b[:, 0])
+
+    a_sort = np.argsort(a[matches, 0])
+    b_match_sorted = np.searchsorted(a[matches, 0], b[:, 0], sorter=a_sort)
+
+    new_data = np.full((a.shape[0], b.shape[1] - 1), np.nan)
+    new_data[matches, :] = b[np.argsort(b_match_sorted), 1:][np.argsort(a_sort), :]
+
+    return np.concatenate((
+        a,
+        new_data
+    ), axis=1)
+    
+
 def load_covars(readme):
     """
     Load the sex and population PC covariates.
@@ -42,11 +64,15 @@ def load_covars(readme):
 
     Returns
     -------
-    pd.DataFrame :
-        A categorical column 'id' which serves as the logical index
-        An integer column 'sex' with M = 1 and F = 2
-        Float columns pc1 ... pc40 for the population structure pcs
-        and an 'intercept' column of ones
+    data : np.ndarray
+        A 2D float array with one row per sample and columns in the following order:
+        id, sex with M = 1 and F = 2, pc1 ... pc40 for the population
+        structure pcs, and an 'intercept' column of ones
+    colnames: List[str]
+        The names of the columns in the returned array
+    indep_cols : List[str]
+        A boolean array denoting which of the returned columsn are independent
+        variables (in this case, all but the id)
 
     Notes
     -----
@@ -60,37 +86,33 @@ def load_covars(readme):
         f"Adding participant ID index and sex covariate to df. File: {floc}, cols: {cols}\n"
     )
     readme.flush()
-    ids_and_sex = pd.read_csv(
+    ids_and_sex = np.genfromtxt(
         floc,
         usecols=cols,
-        header=None,
-        names=['id', 'sex'],
-        dtype=int,
-        sep=" "
+        delimiter=" "
     )
+    col_names = ['id', 'sex']
 
     floc = f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt'
     cols = list(range(25, 65))
-    pc_col_names = list(f"pc{col}" for col in range(1, 41))
+    col_names.extend(list(f"pc{col}" for col in range(1, 41)))
     readme.write(
         f"Adding PC covariates 1-40. File: {floc}, cols: {cols}. Participants in same "
         f"order as previous file.\n"
     )
     readme.flush()
-    pcs = pd.read_csv(
+    pcs = np.genfromtxt(
         floc,
-        sep=" ",
-        header=None,
-        names=pc_col_names,
-        usecols=cols,
-        dtype=float
+        delimiter=" ",
+        usecols=cols
     ) #156MB
+    
 
-    const = np.ones((len(pcs.index), 1))
-    const_df = pd.DataFrame(const, columns=["intercept"], dtype="int16")
-    indep_col_names = ['intercept', 'sex']
-    indep_col_names.extend(pc_col_names)
-    df = pd.concat((ids_and_sex, pcs, const_df), axis=1)
+    const_array = np.ones((pcs.shape[0], 1))
+    col_names.append('intercept')
+
+    # these arrays are all in the same row order, so just concatenate
+    data = np.concatenate((ids_and_sex, pcs, const_array), axis=1)
 
     # Age will be included as a covariate for all dependent variables
     # to prevent confounding.
@@ -108,33 +130,33 @@ def load_covars(readme):
         f"Adding ages at assessments. File: {age_file_name}\n"
     )
     readme.flush()
-    assessment_age = pd.read_csv(
-        age_file_name,
-        names=["id", "age_assess_init", "age_assess_repeat", "age_assess_image"],
-        dtype={"id": int,
-               "age_assess_init": float,
-               "age_assess_repeat": float,
-               "age_assess_iamge": float},
-        skiprows=1
-    )
-    df = pd.merge(df, assessment_age, how="inner", on="id")
-
+    with open(age_file_name) as age_file:
+        assessment_age = np.genfromtxt(
+            (line.replace('"', '') for line in age_file),
+            skip_header=1,
+            delimiter=','
+        )
+    data = merge_arrays(data, assessment_age)
+    col_names.extend(["age_assess_init", "age_assess_repeat",
+                     "age_assess_image"])
+    # don't include id or any of the ages
+    indep_cols = list(range(1, len(col_names)-3))
     print("done")
-    return df, indep_col_names
+
+    return data, col_names, indep_cols
 
 
-def load_height(df, readme, phenotypes):
+def load_height(data, col_names, readme, phenotypes):
     """
-    Append height columns to the df.
+    Append height columns to the array
 
     Height is measured in cm.
 
     Returns
     -------
-    pd.DataFrame :
-       Same as the input, but with three rows appended.
-       The first is 'height' as a float
-       (heights are measured in half cms)
+    data : np.ndarray
+       Same as the input, but with three columns appended.
+       The first is 'height' (heights are measured in half cms)
        The second is 'height_sampling'
        and is categorical 0, 1 or 2
        specifying whether height was measured on the
@@ -144,6 +166,11 @@ def load_height(df, readme, phenotypes):
        recorded.
        The last is 'height_age', namely the age of the ppt
        at the assessment specified by 'height_sampling'
+    col_names : List[str]
+        Same as input, but extended with 'height', 'height_sampling' and
+        'height_age'
+    height_indep_vars : List[str]
+        ['height_age']
     """
     print("Loading height ... ", end="", flush=True)
     phenotypes.write("height:cm\n")
@@ -154,57 +181,64 @@ def load_height(df, readme, phenotypes):
         f"were multiple at different vists\n"
     )
     readme.flush()
-    height_df = pd.read_csv(
+    # cols "id", "height", "height_sampling"
+    height_data = np.genfromtxt(
         floc,
-        names=["id", "height", "height_sampling"],
-        dtype={"id": "int",
-               "height": float,
-               "height_sampling": float},
-        skiprows=4,
-        sep=" "
+        skip_header=4,
+        delimiter=" "
     )
-    height_df.loc[pd.isna(height_df['height']), 'height_sampling'] = np.nan
-    height_df.loc[pd.isna(height_df['height_sampling']), 'height'] = np.nan
 
     # taller than tallest person or shorter than shortest adult
-    filter_extremes = np.logical_or(height_df['height'] > 274,
-                                    height_df['height'] < 54)
+    filter_extremes = np.logical_or(height_data[:, 1] > 274,
+                                    height_data[:, 1] < 54)
     n_filtered = np.sum(filter_extremes)
     readme.write(f"Filtering {n_filtered} height values that are taller than "
                  "the world's tallest person or shorter than the shortest.\n")
     readme.flush()
-    height_df.loc[filter_extremes, ['height', 'height_sampling']] = np.nan
+    height_data[np.ix_(filter_extremes, [1,2])] = np.nan
+    assert not np.any(np.isnan(height_data))
 
-    df = pd.merge(
-        df,
-        height_df,
-        how="left",
-        on="id"
-    )
+    data = merge_arrays(data, height_data)
 
     readme.write("Adding age at height measurement as a covariate\n")
     readme.flush()
-    start_idx = df.columns.get_loc('age_assess_init')
-    has_height = ~np.isnan(df['height'])
-    df.loc[has_height, 'height_age'] = \
-        df.values[has_height.values, start_idx + df.loc[has_height, 'height_sampling'].astype(int)]
+    data = np.concatenate(
+        (data, np.full((data.shape[0], 1), np.nan)),
+        axis=1
+    )
+    col_names.extend(['height', 'height_sampling', 'height_age'])
+
+    start_idx = col_names.index('age_assess_init')
+    has_height = ~np.isnan(data[:, col_names.index('height')])
+    data[has_height, -1] = data[
+        has_height,
+        start_idx + data[has_height, col_names.index('height_sampling')].astype(int)
+    ]
+
     print("done")
-    return df, ['height_age']
+    return data, col_names, ['height_age']
 
 
-def load_bilirubin(df, readme, phenotypes):
+def load_bilirubin(data, col_names, readme, phenotypes):
     """
-    Append bilirubin columns to the df.
+    Append bilirubin columns to the array
 
     Measured in umol/L
 
     Returns
     -------
-    pd.DataFrame :
-       Same as input df, but with four rows appended.
-       The first recorded measurement is 'total_bilirubin'.
-       The next column is 'total_bilirubin_age' and is the age
+    data : np.ndarray
+       Same as input, but with four columns appended.
+       The first two are tbil0 and tbil1 which are just intermediate
+       calculations.
+       The next is 'total_bilirubin'.
+       The last is 'total_bilirubin_age' and is the age
        at which that measurement was taken.
+    col_names : List[str]
+        Same as input, but extended with ['tbil0', 'tbil1', 
+        'total_bilirubin, 'total_bilirubin_age']
+    bilirubin_indep_vars : List[str]
+        ['total_bilirubin_age']
     """
     print("Loading bilirubin ... ", end="", flush=True)
     phenotypes.write("total_bilirubin:log(umol/L)\n")
@@ -216,44 +250,39 @@ def load_bilirubin(df, readme, phenotypes):
         f"sampled, if any.\n"
     )
     readme.flush()
-    bilirubin_df = pd.read_csv(
-        floc,
-        names=["id", "tbil0", "tbil1"],
-        header=0,
-        dtype={"id": int,
-               "tbil0" : float,
-               "tbil1" : float},
-        quotechar='"',
-        usecols=[0,3,4]
-    )
-    has_tbil0 = ~np.isnan(bilirubin_df.loc[:, 'tbil0'])
-    bilirubin_df.loc[has_tbil0, 'bilirubin_assessment'] = 0
-    bilirubin_df.loc[~has_tbil0, 'bilirubin_assessment'] = 1
-    bilirubin_df.loc[has_tbil0, 'total_bilirubin'] = bilirubin_df.loc[has_tbil0, 'tbil0']
-    bilirubin_df.loc[~has_tbil0, 'total_bilirubin'] = bilirubin_df.loc[~has_tbil0, 'tbil1']
-    has_tbil = ~np.isnan(bilirubin_df.loc[:, 'total_bilirubin'])
-    bilirubin_df.loc[~has_tbil, ['bilirubin_assessment']] = np.nan
-    bilirubin_df.drop(['tbil0', 'tbil1'], axis=1)
+    # cols id", "tbil0", "tbil1"
+    with open(floc) as bilirubin_csv:
+        bilirubin_data = np.genfromtxt(
+            (line.replace('"', '') for line in bilirubin_csv),
+            skip_header=1,
+            usecols=[0,3,4],
+            delimiter=","
+        )
 
-    readme.flush()
+    data = merge_arrays(data, bilirubin_data)
+
+    data = np.concatenate(
+        (data, np.full((data.shape[0], 2), np.nan)),
+        axis=1
+    )
+    col_names.extend(['tbil0', 'tbil1', 'total_bilirubin', 'bilirubin_age'])
+
+    use_tbil0 = ~np.isnan(data[:, -4])
+    use_tbil1 = ~use_tbil0 & ~np.isnan(data[:, -3])
+    data[use_tbil0, -2] = data[use_tbil0, -4]
+    data[use_tbil1, -2] = data[use_tbil1, -3]
+
     # max bilirubin value right now is 144. I don't know enough to say that
     # this is too high, so no max filter
-
-    df = pd.merge(
-        df,
-        bilirubin_df,
-        how="left",
-        on="id"
-    )
+    # I've checked, none are negative
 
     readme.write("Adding age at bilirubin measurement as a covariate\n")
     readme.flush()
-    df.loc[has_tbil0, 'bilirubin_age'] = df.loc[has_tbil0, 'age_assess_init']
-    df.loc[~has_tbil0, 'bilirubin_age'] = df.loc[~has_tbil0, 'age_assess_repeat']
-    df.loc[~has_tbil, 'bilirubin_age'] = np.nan
+    data[use_tbil0, -1] = data[use_tbil0, col_names.index('age_assess_init')]
+    data[use_tbil1, -1] = data[use_tbil1, col_names.index('age_assess_repeat')]
 
     print("done")
-    return df, ['bilirubin_age']
+    return data, col_names, ['bilirubin_age']
 
 
 # copied from plot_stats branch of trtools
@@ -356,6 +385,8 @@ def PlotKDE(data: np.ndarray,
     plt.savefig(fname)
 
 
+# TODO fix this for no df
+'''
 def plot_phenotype_by_sex(df, phenotype, fname, unit, title):
     print(f"Plotting {title} ... ", flush=True, end="")
     plot_df = df.loc[:, [phenotype, 'sex']].copy()
@@ -371,12 +402,7 @@ def plot_phenotype_by_sex(df, phenotype, fname, unit, title):
         ['male', 'female']
     )
     print("done", flush=True)
-
-
-def tracemalloc_dump_snapshot(fname, log, name):
-    log.write(f'Memory usage at {name}: {tracemalloc.get_traced_memory()}\n')
-    log.flush()
-    tracemalloc.take_snapshot().dump(fname)
+'''
 
 
 def perform_association_subset(assoc_dir,
@@ -399,6 +425,11 @@ def perform_association_subset(assoc_dir,
         if not profile_mem_usage:
             def tracemalloc_dump_snapshot(*args, **kwargs):
                 pass
+        else:
+            def tracemalloc_dump_snapshot(fname, log, name):
+                log.write(f'Memory usage at {name}: {tracemalloc.get_traced_memory()}\n')
+                log.flush()
+                #tracemalloc.take_snapshot().dump(fname)
 
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
         # make sure to use a local copy of df
@@ -511,11 +542,20 @@ def perform_association_subset(assoc_dir,
                 log.flush()
                 batch_time = 0
             start_time = time.time()
+        log.write(
+            f"Done.\nTotal loci: {n_loci}\nTotal time: {total_time}s\ntime/locus: {total_time/n_loci}s\n"
+        )
+        log.flush()
     return region_string
+
 
 def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):
     with open(f'{assoc_dir}/run_logs/{dep_var}_{chrom}.log', 'w') as log:
+        plink_run_dir = f'{assoc_dir}/results/chr{chrom}'
         command = f"""
+        {{
+        cd {plink_run_dir}  || {{ echo "Failed to move to \
+        {plink_run_dir}" ; exit 1 ; }} ; 
         {ukb}/utilities/plink2 \
             --pheno {assoc_dir}/covars_and_phenotypes.tab \
             --no-psam-pheno \
@@ -525,10 +565,11 @@ def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):
             --chr {chrom} \
             --mac 20 \
             --glm omit-ref pheno-ids intercept \
-            --ci 0.95 \
             --ci 0.99999995 \
             --memory 128000 \
-            --threads 28 \
+            --extract {ukb}association/temp/varnames.txt \
+            --threads 28
+        }} \
              > {assoc_dir}/run_logs/{dep_var}_{chrom}.plink.stdout \
             2> {assoc_dir}/run_logs/{dep_var}_{chrom}.plink.stderr
         """
@@ -562,7 +603,7 @@ def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, ch
         processes=1,
         log_directory=dask_output_dir
     )
-    cluster.adapt(maximum_jobs=len(chroms))
+    cluster.adapt(maximum_jobs=len(chroms)*len(dep_vars))
     client = dask.distributed.Client(cluster)
 
     print("Writing out results for each phenotype, chrom pair. "
@@ -656,9 +697,12 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
         queue="hotel",
         name="linear_associations",
         walltime="4:00:00",
-        log_directory=dask_output_dir
+        log_directory=dask_output_dir,
+        processes=1,
+        cores=2
     )
-    cluster.adapt(maximum_jobs=300)
+    #cluster.adapt(maximum_jobs=300)
+    cluster.adapt(maximum_jobs=2)
     client = dask.distributed.Client(cluster)
     # currently dask cannot handle python files that are imported
     # locally. Have to upload it to all workers on the cluster,
@@ -687,10 +731,11 @@ def run_associations(assoc_dir, imputation_run_name, df, dep_vars,
     df = dask.delayed(df)
 
     #get chrom lengths
-    chr_lens = np.loadtxt(
+    chr_lens = np.genfromtxt(
         f'{ukb}/misc_data/genome/chr_lens.txt',
         usecols=[1],
-        skiprows=1
+        skip_header=1,
+        dtype=int
     )
     if chromosome:
         chroms = {int(chromosome)}
@@ -826,9 +871,9 @@ def main():  # noqa: D103
         phenotypes.write("phenotype:unit\n")
         phenotypes.flush()
 
-        df, indep_vars = load_covars(readme)
-        df, height_indep_vars = load_height(df, readme, phenotypes)
-        df, bilirubin_indep_vars = load_bilirubin(df, readme, phenotypes)
+        data, col_names, indep_vars = load_covars(readme)
+        data, col_names, height_indep_vars = load_height(data, col_names, readme, phenotypes)
+        data, col_names, bilirubin_indep_vars = load_bilirubin(data, col_names, readme, phenotypes)
 
         # covariate columns:
         dep_vars = [
@@ -840,36 +885,30 @@ def main():  # noqa: D103
             'total_bilirubin': bilirubin_indep_vars
         }
 
+        print("Setting up samples ... ", end="", flush=True)
         # Already calculated the largest unrelated subset of a filtering list
         # based on height. Will need to do this more intelligently when we
         # don't use the same samples for bilirubin and height
         floc = f'{ukb}/sample_qc/runs/{sample_filtering_run_name}/combined_unrelated.sample'
         readme.write(f"Subsetting to samples from file {floc}.\n")
         readme.flush()
-        sample_subset = pd.read_csv(
+        sample_subset = np.genfromtxt(
             floc,
             usecols=[0],
-            names=['id'],
-            dtype=int,
-            skiprows=1,
-            sep=" "
-        )
-        df = pd.merge(df, sample_subset, how='inner', on='id')
+            skip_header=1,
+            delimiter=" "
+        ).reshape(-1, 1)
+        data = merge_arrays(sample_subset, data)
 
         # order the observations in df
         # based on the order of samples in chr1 vcf
-        print("Setting up samples ... ", end="", flush=True)
         if use_strs:
             vcf = cyvcf2.VCF(
                 f'{ukb}/str_imputed/runs/{imputation_run_name}/'
-                f'vcfs/strs_only/chr1.vcf.gz'
+                f'vcfs/annotated_strs/chr1.vcf.gz'
             )
-            vcf_samples = list(sample.split("_")[0] for sample in
-                               vcf.samples)
-            samples_df = pd.DataFrame(
-                vcf_samples,
-                columns=['id'],
-                dtype='int'
+            samples_array = np.array(
+                list(int(sample.split("_")[0]) for sample in vcf.samples)
             )
         else:
             bgen_samples = []
@@ -880,30 +919,27 @@ def main():  # noqa: D103
                         continue
                     bgen_samples.append(line.split()[0])
             assert len(bgen_samples) == 487409
-            samples_df = pd.DataFrame(
-                bgen_samples,
-                columns=['id'],
-                dtype='int'
-            )
-        df = pd.merge(samples_df, df, how='left', on='id')
-        df = df.astype({"id": "category"})
+            samples_array = np.array(bgen_samples)
+        samples_array = samples_array.reshape(-1, 1)
+        data = merge_arrays(samples_array, data)
         print("done")
 
         # Calculate the number of samples used for each phenotype
-        for phen in ('height', 'total_bilirubin'):
+        for phen in dep_vars:
             readme.write(f'Number of samples for phenotype {phen}: ')
-            readme.write(
-                str(np.sum(np.all(
-                    ~np.isnan(df.loc[:, [*indep_vars, phen]]),
-                    axis=1)))
-            )
+            nonnans = np.all(~np.isnan(data[:, indep_vars]), axis=1)
+            nonnans &= ~np.isnan(data[:, col_names.index(phen)])
+            for covar in pheno_indep_vars[phen]:
+                nonnans &= ~np.isnan(data[:, col_names.index(covar)])
+            readme.write(str(np.sum(nonnans)))
             readme.write('\n')
             readme.flush()
 
-        plot_dirs = {}
-        for dep_var in dep_vars:
-            plot_dirs[dep_var] = f'{assoc_dir}/{dep_var}_summary_plots'
-            os.mkdir(plot_dirs[dep_var])
+        if not args.debug:
+            plot_dirs = {}
+            for dep_var in dep_vars:
+                plot_dirs[dep_var] = f'{assoc_dir}/{dep_var}_summary_plots'
+                os.mkdir(plot_dirs[dep_var])
 
         if not args.debug:
             plot_phenotype_by_sex(
@@ -917,11 +953,12 @@ def main():  # noqa: D103
         readme.write("Log transforming total_bilirubin\n")
         readme.flush()
         # figure out how to tie this to the unit it the units file above
-        df.loc[:, 'total_bilirubin'] = np.log(df.loc[:, 'total_bilirubin'])
+        data[:, col_names.index('total_bilirubin')] = \
+                np.log(data[:, col_names.index('total_bilirubin')])
 
         if not args.debug:
             plot_phenotype_by_sex(
-                df,
+                data,
                 'total_bilirubin',
                 f'{plot_dirs["total_bilirubin"]}/log_transform.png',
                 'log(umol/L)',
@@ -929,52 +966,70 @@ def main():  # noqa: D103
             )
 
             plot_phenotype_by_sex(
-                df,
+                data,
                 'height',
                 f'{plot_dirs["height"]}/measured.png',
                 'cm',
                 'Measured height'
             )
 
-        readme.write("Performing linear association against listed covariates"
-                     " to get phenotypes residuals\n")
-        readme.flush()
+        if not args.plink:
+            readme.write("Performing linear association against listed covariates"
+                         " to get phenotypes residuals\n")
+            readme.flush()
 
-        print("Running linear associations of phenotypes against covariates to get"
-              " residuals ... ", end='', flush=True)
-        units = {'height': 'cm', 'total_bilirubin': 'log(umol/L)'}
-        for dep_var in dep_vars:
-            curr_indep_vars = indep_vars.copy()
-            curr_indep_vars.extend(pheno_indep_vars[dep_var])
-            with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.txt', 'w') as res_results:
-                model = OLS(
-                    df[dep_var],
-                    df[curr_indep_vars],
-                    missing='drop'
-                )
-                reg = model.fit()
-                res_results.write("indep_var p coeff\n")
-                for var in curr_indep_vars:
-                    res_results.write(f'{var} {reg.pvalues[var]:.2e} '
-                                      f'{reg.params[var]}\n')
-                predictions = reg.predict(df[curr_indep_vars])
-                df[f'{dep_var}_residual'] = df[dep_var] - predictions
+            print("Running linear associations of phenotypes against covariates to get"
+                  " residuals ... ", end='', flush=True)
+            units = {'height': 'cm', 'total_bilirubin': 'log(umol/L)'}
+            for dep_var in dep_vars:
+                curr_indep_vars = indep_vars.copy()
+                curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
+                with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.txt', 'w') as res_results:
+                    model = OLS(
+                        data[:, col_names.index(dep_var)],
+                        data[:, curr_indep_vars],
+                        missing='drop'
+                    )
+                    reg = model.fit()
+                    res_results.write("indep_var p coeff\n")
+                    for idx, var in enumerate(curr_indep_vars):
+                        res_results.write(f'{var} {reg.pvalues[idx]:.2e} '
+                                          f'{reg.params[idx]}\n')
+                    predictions = reg.predict(data[:, curr_indep_vars])
+                    
+                    data = np.concatenate((
+                        data,
+                        np.full((data.shape[0], 1), np.nan)
+                    ), axis=1)
+                    col_names.append(f'{dep_var}_residual')
+                    data[:, -1] = data[:, col_names.index(dep_var)] - predictions
+            print("done", flush=True)
+
+        assert len(col_names) == data.shape[1]
+
+        print("Writing out sample x {phenotypes, covaraites} tab file ... ",
+              end="", flush=True)
         #Write out the csv we're going to be running associations on
-        # use plink syntax for ID in case we want to run plink associations
-        df.rename(columns={'id': 'IID'}, inplace=True)
-        df.to_csv(
+        # use plink syntax for ID and FID in case we want to run plink associations
+        dcopy = np.concatenate((data[:, 0:1], data), axis=1)
+        cols_copy = col_names.copy()
+        cols_copy.insert(0, 'FID')
+        cols_copy[1] = 'IID'
+        np.savetxt(
             f'{assoc_dir}/covars_and_phenotypes.tab',
-            sep='\t',
-            index=False,
-            na_rep='nan'
+            dcopy,
+            delimiter='\t',
+            header='\t'.join(cols_copy),
+            fmt='%.16g',
+            comments='#'
         )
-        df.rename(columns={'IID': 'id'}, inplace=True)
-
+        del dcopy
         print("done", flush=True)
+
         if not args.debug:
             for dep_var in dep_vars:
                 plot_phenotype_by_sex(
-                    df,
+                    data,
                     f'{dep_var}_residual',
                     f'{plot_dirs[dep_var]}/residual.png',
                     f'residual {units[dep_var]}',
@@ -1009,17 +1064,19 @@ def main():  # noqa: D103
 
             if loci is not None:
                 run_associations_few_loci(assoc_dir, imputation_run_name, df, dep_vars, loci,
-                                          profile_mem_usage=args.profile_memory_usage) 
+                                          profile_mem_usage=args.profile_memory_usage)
             else:
                 run_associations(assoc_dir, imputation_run_name, df, dep_vars,
                                 chromosome=args.chromosome,
                                 profile_mem_usage=args.profile_memory_usage)
-        elif not args.use_plink:
+        elif not args.plink:
             readme.write("Using imputed snp calls\n")
-            # see here
-            # https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf
             readme.write(
-                "Filtering loci whose INFO scores are <0.3.\n"
+                "Should filter loci whose INFO scores are <0.3 "
+                "https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf"
+                " (or <0.8 "
+                "http://www.nealelab.is/blog/2017/9/11/details-and-considerations-of-the-uk-biobank-gwas"
+                " ?). Not doing this yet to let it be tunable downstream.\n"
             )
             readme.write(
                 "Filtering calls whose probability as estimated by the UKB "
@@ -1047,14 +1104,18 @@ def main():  # noqa: D103
             readme.write(
                 "Using imputed snp calls\n"
                 "Running associations with plink\n"
-                "Filtering loci with <20 nonmajor alleles as recommended by plink docs "
-                "https://www.cog-genomics.org/plink/2.0/assoc\n"
-                "genotypes encoded as 0 - ref, 1 - alt\n"
+                "Need to filter loci with e.g. <20 nonmajor alleles. Recommended by plink docs "
+                "https://www.cog-genomics.org/plink/2.0/assoc and by ukb "
+                "GWAS summary "
+                "http://www.nealelab.is/blog/2017/9/11/details-and-considerations-of-the-uk-biobank-gwas"
+                " but have not done so yet so this choice can be tuned downstream.\n"
+                "Genotypes are encoded as 0 - ref, 1 - alt\n"
                 "Running linear assocation with all relevant covariates "
                 "included (no regressing out the covariates first and then "
                 "comparing the genotype to the phenotype)\n"
             )
             readme.flush()
+            indep_vars.remove('intercept')
             run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars,
                                    chromosome=args.chromosome)
 
