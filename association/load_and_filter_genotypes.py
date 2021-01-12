@@ -40,6 +40,9 @@ def filtered_strs(imputation_run_name,
     No filtering for samples with rare genotypes
     Loci with only single genotypes remaining are returned - it is up to
     calling code to filter these out
+
+    TODO what metrics do I want in locus info?
+    what filtering should be done here, and what in the calling code?
     """
     chrom, _ = region.split(':')
     vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
@@ -61,7 +64,7 @@ def filtered_strs(imputation_run_name,
         seq_allele_lens.insert(0, len(locus.REF))
 
         # modify gt entries to be length alleles
-        len_gts = np.zeros(idx_gts.shape, dtype=float)
+        len_gts = np.full(idx_gts.shape, np.nan, dtype=float)
         for seq_allele_idx, seq_allele_len in enumerate(seq_allele_lens):
             len_gts[idx_gts == seq_allele_idx] = seq_allele_len
 
@@ -201,7 +204,6 @@ def filtered_imputed_snps(region):
     bgen = bgen_reader.open_bgen(bgen_fname,
                                  verbose=False,
                                  allow_complex=True)
-
     with open(mfi_fname) as mfi:
         for variant_num, pos in enumerate(bgen.positions):
             mfi_line = next(mfi)

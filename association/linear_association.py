@@ -510,7 +510,7 @@ def perform_association_subset(assoc_dir,
 
 
             gt_const = np.concatenate((
-                gt.reshape(-1, 1),  np.ones((np.sum(unfiltered_samples), 1))
+                gt[unfiltered_samples].reshape(-1, 1),  np.ones((np.sum(unfiltered_samples), 1))
             ), axis = 1)
 
             #do da regression
@@ -540,9 +540,12 @@ def perform_association_subset(assoc_dir,
                 log.flush()
                 batch_time = 0
             start_time = time.time()
-        log.write(
-            f"Done.\nTotal loci: {n_loci}\nTotal time: {total_time}s\ntime/locus: {total_time/n_loci}s\n"
-        )
+        if n_loci > 0:
+            log.write(
+                f"Done.\nTotal loci: {n_loci}\nTotal time: {total_time}s\ntime/locus: {total_time/n_loci}s\n"
+            )
+        else:
+            log.write(f"No variants found in the region {region}\n")
         log.flush()
     return region_string
 
@@ -700,8 +703,7 @@ def run_associations(assoc_dir, imputation_run_name, data, col_names, dep_vars,
         processes=1,
         cores=2
     )
-    #cluster.adapt(maximum_jobs=300)
-    cluster.adapt(maximum_jobs=2)
+    cluster.adapt(maximum_jobs=300)
     client = dask.distributed.Client(cluster)
     # currently dask cannot handle python files that are imported
     # locally. Have to upload it to all workers on the cluster,
