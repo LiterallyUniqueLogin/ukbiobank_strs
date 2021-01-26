@@ -32,7 +32,8 @@ extensions = [
     # pip install sphinxcontrib-details-directive
     # need to manually edit the file to also
     # include the singlehtml builder
-    'sphinxcontrib.details.directive'
+    'sphinxcontrib.details.directive',
+    'sphinxcontrib.programoutput'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
