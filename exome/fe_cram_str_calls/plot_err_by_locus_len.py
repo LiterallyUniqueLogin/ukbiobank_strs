@@ -2,7 +2,6 @@ import argparse
 import os
 import os.path
 import re
-import subprocess as sp
 import sys
 
 import matplotlib.pyplot as plt

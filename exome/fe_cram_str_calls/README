@@ -6,3 +6,7 @@ for id in $(comm <(sort filtered_ids.txt) <(sort /projects/ps-gymreklab/jmargoli
 I think the only STR this mattered for based on the script (for vcf in vcfs/*batch_1.* ; do if (( "$(zcat $vcf | tail -n 1 | wc -w)" != 4009 )) ; then echo $vcf ; fi ; done) was
 Expansion_HDL2_JPH3
 which was undecodable in each other batch
+
+Confirmed that all the merged VCFs have the same samples in the same order:
+from merged_vcfs
+grep -hP '^#[^#]' * | sort | uniq -c  | sort | vim -

@@ -163,6 +163,16 @@ Calling STRs with HipSTR
 
        * Batching was done in order of increasing sample number,
          as sample numbering is random.
+    
+   .. details:: Sanity checks
+
+       * Confirmed that all merged VCFs have the same samples in the same
+         order:
+
+         .. code:: bash
+
+             cd $UKB/exome/fe_cram_str_calls/merged_vcfs
+             grep -hP '^#[^#]' * | sort | uniq -c  | sort | vim -
 
    .. details:: TODO Implementation Details
 
