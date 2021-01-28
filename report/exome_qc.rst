@@ -5,7 +5,15 @@ QC imputation vs exome-called STRs
 Calling STRs with HipSTR
 ========================
 
-#. Downloaded CRAMs for 40k samples (field IDs 23163 and 23164)
+#. Downloaded CRAMs for 40k samples
+
+   .. details:: Text
+
+       Individual-level CRAM files and indicies produced from the UKB Whole Exome
+       Sequencing data by the Functionally Equivalent pipeline were downloaded
+       from the showcase fields 23163 and 23164. Due to UKB throttling of download
+       speeds only 40k of 50k available CRMAs were downloaded
+       (the selection of samples to download was random).   
 
    .. details:: Details
 
@@ -47,22 +55,23 @@ Calling STRs with HipSTR
 
 #. Build hg38 exome STR locus BED
 
-   .. details:: BED contents
-
-      .. csv-table:: SNPSTR Exome STRS hg38 BED
-             :file: ../side_analyses/exome_strs/snpstr_exome_strs_38.bed
-             :delim: tab
-
-   .. details:: Methodology
-
-       * Cull the STRs from the SNPSTR reference VCFs and make an hg19 BED file
-       * LiftOver the BED to hg38 - nothing fails to lift over
-       * Intersect the new hg38 BED with UKB's target capture region
-         ( https://biobank.ctsu.ox.ac.uk/showcase/refer.cgi?id=3801 )
+   .. details:: Text
+           
+       Start and end coorindates and repeat periods for STRs in the SNPSTR reference
+       panel [SNPSTR]_ were acquired through personal communication with Mr. Saini.
+       These fields were arranged into a BED file meeting HipSTR's specification
+       [Hipstr_BED_specification]_. :code:`LiftOver` [LiftOver]_ was used to convert
+       this BED from hg19 to hg38 coordinates; no STRs were lost during conversion.
+       The UKB exome capture region was downloaded from
+       `<https://biobank.ctsu.ox.ac.uk/crystal/crystal/auxdata/xgen_plus_spikein.b38.bed>`_ .
+       :code:`BEDTools intersect` [BEDTools]_ with the flag :code:`-f 1` was used
+       to intersect the hg38 SNPSTR BED file and the exome capture BED file,
+       producing a BED file of STRs from the SNPSTR reference panel which were
+       completely contained in the exome capture region. This contained 630
+       out of 445720 STRs
 
    .. details:: Details
 
-       * 630 exome STRs
        * Per discussion with Melissa: Exome sequencing generally covers
          the boundaries of the target file and a bit more. If there are
          massive expansions in the target region then this boundary guarantee
@@ -71,6 +80,11 @@ Calling STRs with HipSTR
          the boundaries of the capture region. Just subject any use of the STRs
          to standard filtering.
 
+   .. details:: BED contents
+
+      .. csv-table:: SNPSTR Exome STRS hg38 BED
+             :file: ../side_analyses/exome_strs/snpstr_exome_strs_38.bed
+             :delim: tab
 
    .. details:: Implementation details
 
@@ -126,16 +140,142 @@ Calling STRs with HipSTR
                          > snpstr_panel_exome_calls_hg19_chr${chr}.txt &
                  done 
 
-             
 #. Ran HipSTR
 
-   .. details:: Details
+   .. details:: Text TODO
+       
+       :code:`HipSTR` [HipSTR]_ was invoked 
+       to call individual loci in batches of 4k individuals at a time, this being
+       close to the maximum number of open files permitted per process in the computational
+       environment. Batching of individuals was random. In addition to the 
+       standard flags, ``HipSTR`` was run with the flags ``--bam-libs CRAM_FILES --bam-samps CRAM_FIELS
+       --regions BED --max-reads 10000000`` where ``CRAM_FILES`` is a comma separated list
+       of paths to the CRAM files included in the batch and BED is a path to
+       the hg38 BED of exome STRs produced above. ``--max-reads`` was set to this limit
+       to effectively remote the arbitrary depth cap that HipSTR imposes. HipSTR successfully
+       called 587 of the 630 loci. MergeSTR from
+       TRTools [TRTools]_ was
+       used with the ``--trim`` flag to combine the VCFs for each batch at each locus
+       into a single VCF for each locus, and BCFtools [BCFtools]_ was used to concatenate
+       the loci VCFs into a single exome VCF.
 
-   .. details:: Implementation Details
+   .. details:: TODO Details
+
+       * Batching was done in order of increasing sample number,
+         as sample numbering is random.
+
+   .. details:: TODO Implementation Details
+
+       * Filtered IDs: ``$UKB/exome/fe_cram_str_calls/filtered_ids.txt``
+
+         .. details:: Contents
+
+             .. literalinclude:: ../exome/fe_cram_str_calls/filtered_ids.txt
+
+       * Calling mergeSTR ``$UKB/exome/fe_cram_str_calls/call_mergeSTR.py``
+        
+         .. details:: Code 
+
+             .. literalinclude:: ../exome/fe_cram_str_calls/call_mergeSTR.py
+                 :language: python
+
+       * Concatenating with bcftools
+
+         .. details:: Code
+
+             .. code:: bash
+
+                 cd $UKB/exome/fe_cram_str_calls
+                 awk '{ print "merged_vcfs/" $1 ".merged.vcf" }' unfiltered_ids.txt > merged_filenames.txt
+                 bcftools concat -f merged_filenames.txt -o exome_calls -O z --threads 1
 
 
 Filtering HipSTR calls
 ======================
 
+#. Pre filtering figures
+
+   .. details:: Figures
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-chrom-callnum.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-sample-callrate.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-diffref-histogram.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-diffref-bias.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-quality-per-call.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-quality-per-locus.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/pre_filtering_q-quality-per-sample.png
+
+   .. details:: TODO Thoughts
+
+   .. details:: Code
+
+       .. code:: bash
+
+           cd $UKB/exome/fe_cram_str_calls/filtering
+           ./call_qcSTR.sh \
+               $(pwd)/../exome_calls.vcf.gz \
+               $(pwd)/../pre_filtering_q
+
+       .. literalinclude:: ../exome/fe_cram_str_calls/filtering/call_qcSTR.sh
+           :language: bash
+
+#. Running DumpSTR
+
+   .. details:: Filtering Reports
+
+       Per locus ``$UKB/exome/fe_cram_str_calls/filtering/filtered_exome_calls.loclog.tab``
+       
+       .. literalinclude:: ../exome/fe_cram_str_calls/filtering/filtered_exome_calls.loclog.tab
+
+       Per sample (head) ``$UKB/exome/fe_cram_str_calls/filtering/filtered_exome_calls.samplog.tab``
+
+       .. literalinclude:: ../exome/fe_cram_str_calls/filtering/filtered_exome_calls.samplog.tab
+           :lines: 1-3
+
+   .. details:: Code
+
+       ``$UKB/exome/fe_cram_str_calls/filtering/call_dumpSTR.sh`` 
+
+       .. literalinclude:: ../exome/fe_cram_str_calls/filtering/call_dumpSTR.sh
+           :language: bash
+
+#. Post filtering figures
+
+   .. details:: Figures
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-chrom-callnum.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-sample-callrate.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-diffref-histogram.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-diffref-bias.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-quality-per-call.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-quality-per-locus.png
+
+       .. image:: ../exome/fe_cram_str_calls/filtering/post_filtering_q-quality-per-sample.png
+
+   .. details:: TODO Thoughts
+
+   .. details:: Code 
+
+       .. code:: bash
+
+           cd $UKB/exome/fe_cram_str_calls/filtering
+           ./call_qcSTR.sh \
+               $(pwd)/../exome_calls.vcf.gz \
+               $(pwd)/../pre_filtering_q
+
+
 Comparing HipSTR calls to Imputed Calls
 =======================================
+
+

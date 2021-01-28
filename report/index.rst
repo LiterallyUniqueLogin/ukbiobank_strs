@@ -11,5 +11,5 @@ UKB STR GWAS documentation
 
    exome_qc
    environment
-
+   citations
 
