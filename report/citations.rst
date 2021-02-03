@@ -5,6 +5,8 @@ Citations
 
    .. [BCFtools] Li, Heng, et al. "The sequence alignment/map format and SAMtools." Bioinformatics 25.16 (2009): 2078-2079.
    .. [BEDTools] Quinlan AR and Hall IM, 2010. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics. 26, 6, pp. 841–842.
+   .. [CSAPS] E. Prilepin, CSAPS, (2020), GitHub repository, https://github.com/espdev/csaps
+   .. [CSAPS_algorithm] C. de Boor, A Practical Guide to Splines, Springer-Verlag, 1978.
    .. [HipSTR] Willems, Thomas, et al. "Genome-wide profiling of heritable and de novo STR variations." Nature methods 14.6 (2017): 590-592.
    .. [Hipstr_BED_specification] https://github.com/tfwillems/HipSTR#str-region-bed-file
    .. [LiftOver]  Kent WJ, Sugnet CW, Furey TS, Roskin KM, Pringle TH, Zahler AM, Haussler D. The human genome browser at UCSC. Genome Res. 2002 Jun;12(6):996-1006.
