@@ -17,6 +17,8 @@ while n < 5e5:
         #xs = np.sort(rng.choice(100, size=n))
         start = time.time()
         yi = csaps.csaps(xs, ys, range(100), smooth=0.8)
+        yi2 = csaps.csaps(xs, ys, range(100), smooth=0.8)
+        assert np.all(yi==yi2)
         total += time.time() - start
     print(f"Avg time for n={n}: {total/n_iters}")
 

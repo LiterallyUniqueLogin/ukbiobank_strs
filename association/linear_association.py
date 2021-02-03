@@ -19,6 +19,7 @@ import time
 import tracemalloc
 from typing import List, Optional
 
+import csaps
 import cyvcf2
 import dask
 import dask.distributed
@@ -777,6 +778,204 @@ def run_associations(assoc_dir, imputation_run_name, data, col_names, dep_vars,
         # https://distributed.dask.org/en/latest/manage-computation.html
 
 
+def get_residuals_linear(readme,
+                         assoc_dir,
+                         data,
+                         col_names,
+                         dep_vars,
+                         indep_vars,
+                         pheno_indep_vars):
+    """
+    Linearlly regress out covariates
+
+    col_names will be modified
+
+    Returns
+    -------
+    data :
+        To be used instead of the input data object
+    """
+    readme.write("Performing linear association against listed covariates"
+                 " to get phenotypes residuals\n")
+    readme.flush()
+
+    print("Running linear associations of phenotypes against covariates to get"
+          " residuals ... ", end='', flush=True)
+    for dep_var in dep_vars:
+        curr_indep_vars = indep_vars.copy()
+        curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
+        y = data[:, col_names.index(dep_var)]
+        X = data[:, curr_indep_vars]
+        with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.tab', 'w') as res_results:
+            model = OLS(y, X, missing='drop')
+            reg = model.fit()
+            res_results.write("indep_var\tp\tcoeff\n")
+            for idx, var in enumerate(curr_indep_vars):
+                res_results.write(f'{var}\t{reg.pvalues[idx]:.2e}\t'
+                                  f'{reg.params[idx]}\n')
+        predictions = reg.predict(data[:, curr_indep_vars])
+        readme.write("Training root mean square error for linear regression "
+                     f"of phenotype {dep_var} against covariates: ")
+        not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
+        readme.write(str(
+            np.std(data[not_nan, col_names.index(dep_var)] - predictions[not_nan])
+        ))
+        readme.write("\n")
+        readme.flush()
+        
+        data = np.concatenate((
+            data,
+            np.full((data.shape[0], 1), np.nan)
+        ), axis=1)
+        col_names.append(f'{dep_var}_residual')
+        data[:, -1] = y - predictions
+    print("done", flush=True)
+    return data
+
+
+def get_residuals_csaps(readme,
+                        assoc_dir,
+                        data,
+                        col_names,
+                        dep_vars,
+                        indep_vars,
+                        pheno_indep_vars):
+    """
+    Regress out covariates with csaps
+
+    col_names will be modified
+
+    Returns
+    -------
+    data :
+        To be used instead of the input data object
+    """
+    kfold = sklearn.model_selection.KFold(
+        n_splits=10,
+        shuffle=True,
+        random_state=(hash('csaps') % 2**32)
+    )
+    rng = numpy.random.default_rng(np.abs(hash('csaps')))
+
+    smooth_choices = np.array(
+        [0, 1e-10, 3e-10, 1e-9, 3e-9,
+            1e-8,  3e-8,  1e-7, 3e-7,
+            1e-6,  3e-6,  1e-5, 3e-5,
+            1e-4,  3e-4,  1e-3, 3e-3,
+            1e-2,  3e-2,  1e-1, 3e-1])
+    """
+    smooth_choices = np.array([0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 3e-1])
+    """
+    smooth_choices = list(smooth_choices) + [0.5] + list(1 - smooth_choices)
+
+    readme.write("Performing cubic smoothing spline associations against listed"
+                 " covariates to get phenotypes residuals\n")
+    readme.write("Starting with residuals as phenotype values centered, per sex, with mean zero. "
+                 "Sequentially taking each covariate in turn, tuning its smoothing parameter "
+                 "using 5-fold cross validation, and upon choosing the parameter value recalculating "
+                 "the residuals by regressing out that covariate. (Parameter ranges from 0 (least square lines) "
+                 "to 1 (perfect fit), where "
+                 "increasing values allow for cubics with greater curavture). This model assumes that "
+                 "contributions from each covariate are additive. This model requires that covariate values be "
+                 "unique, so a small jitter (magnitude <= 5e-4) is added to each covaraite value during model fitting. "
+                 "Smoothing parameters are being chosen from: ")
+    readme.write(str(smooth_choices))
+    readme.write('\n')
+    readme.flush()
+
+    print("Running CSAP associations of phenotypes against covariates to get"
+          " residuals ... ", end='', flush=True)
+    for dep_var in dep_vars:
+        curr_indep_vars = indep_vars.copy()
+        curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
+        curr_indep_vars.remove(col_names.index('intercept'))
+        curr_indep_vars.remove(col_names.index("sex"))
+        smooth_param = [None]*len(curr_indep_vars)
+
+        readme.write(f"Covariates in order for dep var {dep_var}: ")
+        readme.write(str([col_names[idx] for idx in curr_indep_vars]))
+        readme.write('\n')
+        readme.flush()
+
+        y = data[:, col_names.index(dep_var)]
+        X = data[:, curr_indep_vars]
+        not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
+        y = y[not_nan]
+        X = X[not_nan, :]
+        # jitter any lower than this causes some values to end up being
+        # duplicates due to loss of precision in 64bit floats which causes
+        # CSAP to crash
+        jitter = 5e-4*(rng.random(X.shape) - 0.5)
+        jittered_X = X + jitter
+        curr_residuals = y.copy()
+
+        # starting residuals
+        sex_idx = col_names.index("sex")
+        sex_is_1 = data[not_nan, sex_idx] == 1
+        curr_residuals[sex_is_1] -= np.mean(curr_residuals[sex_is_1])
+        curr_residuals[~sex_is_1] -= np.mean(curr_residuals[~sex_is_1])
+        curr_rmse = np.std(curr_residuals)
+        print("Starting residual rmse: ", curr_rmse)
+
+        with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.txt', 'w') as res_results:
+            res_results.write("Covariate\tSmoothing Parameter\n")
+            for idx in range(len(curr_indep_vars)):
+                best_rmse = curr_rmse
+                best_smooth_choice = None
+                for smooth_choice in smooth_choices:
+                    rmse = 0
+                    for train, test in kfold.split(jittered_X):
+                        sort = np.argsort(jittered_X[train, idx])
+                        spline = csaps.csaps(jittered_X[train, idx][sort],
+                                             curr_residuals[train][sort],
+                                             smooth=smooth_choice)
+                        print(np.std(curr_residuals[test] - spline(X[test, idx])))
+                        rmse += np.std(curr_residuals[test] - spline(X[test, idx]))
+                    rmse /= kfold.get_n_splits()
+                    print(f"Avg rmse for smoothing param {smooth_choice}: {rmse}")
+                    if rmse <= best_rmse:
+                        best_rmse = rmse
+                        best_smooth_choice = smooth_choice
+                smooth_param[idx] = best_smooth_choice
+                print(f"Best avg. test rmse for idx {idx}: {best_rmse}")
+                print(f"Smoothing param: {best_smooth_choice}")
+                # update current residuals by fitting to the entire dataset
+                if best_smooth_choice:
+                    sort = np.argsort(jittered_X[:, idx])
+                    spline = csaps.csaps(jittered_X[sort, idx],
+                                         curr_residuals[sort],
+                                         smooth=best_smooth_choice)
+                    predictions = spline(X[:, idx])
+                    curr_residuals = curr_residuals - predictions
+                    curr_rmse = np.std(curr_residuals)
+                    print(f"Current RMSE after regression on idx {idx}: ", curr_rmse)
+                else:
+                    print(f"Not regression on idx {idx}")
+        # now curr_residuals are the final residuals and curr_rmse
+        # is the final rmse
+        readme.write(f"Last validation root mean square error for phenotype {dep_var} "
+                     "smoothing spline regression against covariates: ")
+        readme.write(str(best_rmse))
+        readme.write("\n")
+        readme.write(f"Smoothing parameters for {dep_var}: ")
+        readme.write(str(smooth_param))
+        readme.write("\n")
+        readme.write("(Smoothing parameters with value None indicate that the covariate was not used during prediction)\n")
+        readme.write(f"Training root mean square error for phenotype {dep_var} "
+                     "smoothing spline regression against covariates: ")
+        readme.write(str(curr_rmse))
+        readme.write('\n')
+        readme.flush()
+
+        data = np.concatenate((
+            data,
+            np.full((data.shape[0], 1), np.nan)
+        ), axis=1)
+        col_names.append(f'{dep_var}_residual')
+        data[not_nan, -1] = curr_residuals
+    print("done", flush=True)
+    return data
+
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
     parser.add_argument('sample_filtering_run_name')
@@ -816,6 +1015,11 @@ def main():  # noqa: D103
     )
     parser.add_argument(
         '--profile-memory-usage',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--csaps',
+        help='use csaps for covariate regression instead of linear regression',
         action='store_true'
     )
     args = parser.parse_args()
@@ -921,7 +1125,7 @@ def main():  # noqa: D103
                         continue
                     bgen_samples.append(line.split()[0])
             assert len(bgen_samples) == 487409
-            samples_array = np.array(bgen_samples)
+            samples_array = np.array(bgen_samples, dtype=float)
         samples_array = samples_array.reshape(-1, 1)
         data = merge_arrays(samples_array, data)
         print("done")
@@ -975,37 +1179,40 @@ def main():  # noqa: D103
                 'Measured height'
             )
 
-        if not args.plink:
-            readme.write("Performing linear association against listed covariates"
-                         " to get phenotypes residuals\n")
-            readme.flush()
+        units = {'height': 'cm', 'total_bilirubin': 'log(umol/L)'}
 
-            print("Running linear associations of phenotypes against covariates to get"
-                  " residuals ... ", end='', flush=True)
-            units = {'height': 'cm', 'total_bilirubin': 'log(umol/L)'}
-            for dep_var in dep_vars:
-                curr_indep_vars = indep_vars.copy()
-                curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
-                with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.txt', 'w') as res_results:
-                    model = OLS(
-                        data[:, col_names.index(dep_var)],
-                        data[:, curr_indep_vars],
-                        missing='drop'
-                    )
-                    reg = model.fit()
-                    res_results.write("indep_var p coeff\n")
-                    for idx, var in enumerate(curr_indep_vars):
-                        res_results.write(f'{var} {reg.pvalues[idx]:.2e} '
-                                          f'{reg.params[idx]}\n')
-                    predictions = reg.predict(data[:, curr_indep_vars])
-                    
-                    data = np.concatenate((
-                        data,
-                        np.full((data.shape[0], 1), np.nan)
-                    ), axis=1)
-                    col_names.append(f'{dep_var}_residual')
-                    data[:, -1] = data[:, col_names.index(dep_var)] - predictions
-            print("done", flush=True)
+        for dep_var in dep_vars:
+            readme.write(f"Standard deviation of {dep_var}: " )
+            idx = col_names.index(dep_var)
+            not_nan = ~np.isnan(data[:, idx])
+            for cov_idx in indep_vars:
+                not_nan &= ~np.isnan(data[:, cov_idx])
+            for cov in pheno_indep_vars[dep_var]:
+                not_nan &= ~np.isnan(data[:, col_names.index(cov)])
+            readme.write(str(np.std(data[not_nan, idx])))
+            readme.write("\n")
+
+        if not args.plink:
+            if not args.csaps:
+                data = get_residuals_linear(
+                    readme,
+                    assoc_dir,
+                    data,
+                    col_names,
+                    dep_vars,
+                    indep_vars,
+                    pheno_indep_vars
+                )
+            else:
+                data = get_residuals_csaps(
+                    readme,
+                    assoc_dir,
+                    data,
+                    col_names,
+                    dep_vars,
+                    indep_vars,
+                    pheno_indep_vars
+                )
 
         assert len(col_names) == data.shape[1]
 
