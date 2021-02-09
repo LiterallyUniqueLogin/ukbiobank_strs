@@ -852,6 +852,86 @@ def get_residuals_linear(readme,
     return data
 
 
+def get_residuals_adaboost(
+        readme,
+        assoc_dir,
+        data,
+        col_names,
+        dep_vars,
+        indep_vars,
+        pheno_indep_vars):
+    """
+    Regress out covariates with random forests
+    https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html#sklearn.ensemble.RandomForestRegressor
+
+    col_names will be modified
+
+    Returns
+    -------
+    data :
+        To be used instead of the input data object
+    """
+    train_size = 0.9
+    splitter = sklearn.model_selection.ShuffleSplit(
+        n_splits=5,
+        train_size=train_size,
+        random_state=(hash('adaboost') % 2**32)
+    )
+
+    print("Running AdaBoost regression on phenotypes against covariates to get"
+          " residuals ... ", flush=True)
+    for dep_var in dep_vars:
+        curr_indep_vars = indep_vars.copy()
+        curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
+        curr_indep_vars.remove(col_names.index('intercept'))
+
+        y = data[:, col_names.index(dep_var)]
+        X = data[:, curr_indep_vars]
+        not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
+        y = y[not_nan]
+        X = X[not_nan, :].copy()
+        n_samples = y.shape[0]
+
+        print('Starting')
+        n_stumps = 25
+        count = 0
+        while True:
+            n_stumps *= 2
+
+            rmse = 0
+            start_time = time.time()
+            for train, test in splitter.split(X):
+                count += 1
+                model = sklearn.ensemble.AdaBoostRegressor(
+                    random_state = (hash('adaboost model')*count % 2**32),
+                    n_estimators = n_stumps
+                )
+                model.fit(X[train, :], y[train])
+                predictions = model.predict(X[test, :])
+                rmse += np.sqrt(np.mean((y[test] - predictions)**2))
+            rmse /= splitter.get_n_splits()
+            readme.write(f"Validation root mean square error for phenotype {dep_var} "
+                         f"AdaBoost regression using {n_stumps} stumps (n_estimators), "
+                         f"{train_size*n_samples:.0f} training samples and "
+                         f"{(1-train_size)*n_samples:.0f} validation samples: {rmse:.4f}\n")
+            readme.flush()
+            print(f"Time for building random forest model for {n_stumps} stumps: "
+                  f"{time.time()-start_time:.0f}", flush=True)
+
+        predictions = model.predict(X)
+        residuals = y - predictions
+
+        data = np.concatenate((
+            data,
+            np.full((data.shape[0], 1), np.nan)
+        ), axis=1)
+        col_names.append(f'{dep_var}_residual')
+        data[not_nan, -1] = residuals
+    print("done", flush=True)
+    return data
+
+
+
 def get_residuals_random_forest(
         readme,
         assoc_dir,
@@ -879,7 +959,7 @@ def get_residuals_random_forest(
     )
 
     print("Running random forest regression on phenotypes against covariates to get"
-          " residuals ... ", end='', flush=True)
+          " residuals ... ", flush=True)
     for dep_var in dep_vars:
         readme.write("Using random forest regression model with 10 min_samples_leaf\n")
         curr_indep_vars = indep_vars.copy()
@@ -894,16 +974,17 @@ def get_residuals_random_forest(
         n_samples = y.shape[0]
 
         start_time = time.time()
-        print('Starting', end='\r')
         n_trees = 50
+        count = 0
         while True:
             n_trees *= 2
 
             rmse = 0
             for train, test in splitter.split(X):
+                count += 1
                 model = sklearn.ensemble.RandomForestRegressor(
                     min_samples_leaf = 10,
-                    random_state = (hash('random_forest model') % 2**32),
+                    random_state = (hash('random_forest model')*count % 2**32),
                     n_jobs = 20,
                     n_estimators = n_trees
                 )
@@ -1097,7 +1178,7 @@ def main():  # noqa: D103
         '--residual-model',
         help='which model to use for calculating residuals when regressing out covaraites',
         type=str,
-        choices=['linear', 'krr', 'random-forest'],
+        choices=['linear', 'krr', 'random-forest', 'adaboost'],
         default='linear'
     )
     args = parser.parse_args()
@@ -1293,6 +1374,16 @@ def main():  # noqa: D103
                 )
             elif args.residual_model == 'random-forest':
                 data = get_residuals_random_forest(
+                    readme,
+                    assoc_dir,
+                    data,
+                    col_names,
+                    dep_vars,
+                    indep_vars,
+                    pheno_indep_vars
+                )
+            elif args.residual_model == 'adaboost':
+                data = get_residuals_adaboost(
                     readme,
                     assoc_dir,
                     data,
