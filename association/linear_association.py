@@ -19,7 +19,6 @@ import time
 import tracemalloc
 from typing import List, Optional
 
-import csaps
 import cyvcf2
 import dask
 import dask.distributed
@@ -27,6 +26,8 @@ import dask_jobqueue
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.random
+import sklearn.ensemble
+import sklearn.kernel_ridge
 import sklearn.model_selection
 import sklearn.neighbors
 from statsmodels.regression.linear_model import OLS
@@ -799,6 +800,13 @@ def get_residuals_linear(readme,
                  " to get phenotypes residuals\n")
     readme.flush()
 
+    train_size = 0.9
+    splitter = sklearn.model_selection.ShuffleSplit(
+        n_splits = 5,
+        train_size = train_size,
+        random_state = hash('linear') % 2**32,
+    )
+
     print("Running linear associations of phenotypes against covariates to get"
           " residuals ... ", end='', flush=True)
     for dep_var in dep_vars:
@@ -806,42 +814,136 @@ def get_residuals_linear(readme,
         curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
         y = data[:, col_names.index(dep_var)]
         X = data[:, curr_indep_vars]
+        not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
+        y = y[not_nan]
+        X = X[not_nan, :].copy()
+
+        # estimate RMSE from linear model
+        rmse = 0
+        for train, test in splitter.split(X):
+            model = OLS(y[train], X[train, :])
+            reg = model.fit()
+            rmse += np.sqrt(np.mean((y[test] - reg.predict(X[test]))**2))
+        rmse /= splitter.get_n_splits()
+        n_samples = y.shape[0]
+        readme.write(f"Validation root mean square error for linear regression "
+                     f"of phenotype {dep_var} "
+                     f"using {train_size*n_samples:.0f} training samples and "
+                     f"{(1-train_size)*n_samples:.0f} validation samples: {rmse:.4f}\n")
+
         with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.tab', 'w') as res_results:
-            model = OLS(y, X, missing='drop')
+            model = OLS(y, X)
             reg = model.fit()
             res_results.write("indep_var\tp\tcoeff\n")
             for idx, var in enumerate(curr_indep_vars):
                 res_results.write(f'{var}\t{reg.pvalues[idx]:.2e}\t'
                                   f'{reg.params[idx]}\n')
-        predictions = reg.predict(data[:, curr_indep_vars])
-        readme.write("Training root mean square error for linear regression "
-                     f"of phenotype {dep_var} against covariates: ")
-        not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
-        readme.write(str(
-            np.std(data[not_nan, col_names.index(dep_var)] - predictions[not_nan])
-        ))
-        readme.write("\n")
-        readme.flush()
-        
+        predictions = reg.predict(data[np.ix_(not_nan, curr_indep_vars)])
+
         data = np.concatenate((
             data,
             np.full((data.shape[0], 1), np.nan)
         ), axis=1)
         col_names.append(f'{dep_var}_residual')
-        data[:, -1] = y - predictions
+        data[not_nan, -1] = y - predictions
+        readme.flush()
+
     print("done", flush=True)
     return data
 
 
-def get_residuals_csaps(readme,
-                        assoc_dir,
-                        data,
-                        col_names,
-                        dep_vars,
-                        indep_vars,
-                        pheno_indep_vars):
+def get_residuals_random_forest(
+        readme,
+        assoc_dir,
+        data,
+        col_names,
+        dep_vars,
+        indep_vars,
+        pheno_indep_vars):
     """
-    Regress out covariates with csaps
+    Regress out covariates with random forests
+    https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html#sklearn.ensemble.RandomForestRegressor
+
+    col_names will be modified
+
+    Returns
+    -------
+    data :
+        To be used instead of the input data object
+    """
+    train_size = 0.9
+    splitter = sklearn.model_selection.ShuffleSplit(
+        n_splits=5,
+        train_size=train_size,
+        random_state=(hash('random_forest') % 2**32)
+    )
+
+    print("Running random forest regression on phenotypes against covariates to get"
+          " residuals ... ", end='', flush=True)
+    for dep_var in dep_vars:
+        readme.write("Using random forest regression model with 10 min_samples_leaf\n")
+        curr_indep_vars = indep_vars.copy()
+        curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
+        curr_indep_vars.remove(col_names.index('intercept'))
+
+        y = data[:, col_names.index(dep_var)]
+        X = data[:, curr_indep_vars]
+        not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
+        y = y[not_nan]
+        X = X[not_nan, :].copy()
+        n_samples = y.shape[0]
+
+        start_time = time.time()
+        print('Starting', end='\r')
+        n_trees = 50
+        while True:
+            n_trees *= 2
+
+            rmse = 0
+            for train, test in splitter.split(X):
+                model = sklearn.ensemble.RandomForestRegressor(
+                    min_samples_leaf = 10,
+                    random_state = (hash('random_forest model') % 2**32),
+                    n_jobs = 20,
+                    n_estimators = n_trees
+                )
+                model.fit(X[train, :], y[train])
+                predictions = model.predict(X[test, :])
+                rmse += np.sqrt(np.mean((y[test] - predictions)**2))
+            rmse /= splitter.get_n_splits()
+            readme.write(f"Validation root mean square error for phenotype {dep_var} "
+                         f"random forest regression using {n_trees} trees (n_estimators), "
+                         f"{train_size*n_samples:.0f} training samples and "
+                         f"{(1-train_size)*n_samples:.0f} validation samples: {rmse:.4f}\n")
+            readme.flush()
+            print(f"Time for building random forest model for {n_trees} trees: "
+                  f"{time.time()-start_time:.0f}", flush=True)
+
+        predictions = model.predict(X)
+        residuals = y - predictions
+
+        data = np.concatenate((
+            data,
+            np.full((data.shape[0], 1), np.nan)
+        ), axis=1)
+        col_names.append(f'{dep_var}_residual')
+        data[not_nan, -1] = residuals
+    print("done", flush=True)
+    return data
+
+
+def get_residuals_kernel_ridge(
+        readme,
+        assoc_dir,
+        data,
+        col_names,
+        dep_vars,
+        indep_vars,
+        pheno_indep_vars):
+    """
+    Regress out covariates with Kernel Ridge Regression
+    https://scikit-learn.org/stable/modules/generated/sklearn.kernel_ridge.KernelRidge.html#sklearn.kernel_ridge.KernelRidge
+    (a slightly modified version of Support Vector Machine regression)
 
     col_names will be modified
 
@@ -851,23 +953,17 @@ def get_residuals_csaps(readme,
         To be used instead of the input data object
     """
     kfold = sklearn.model_selection.KFold(
-        n_splits=10,
         shuffle=True,
-        random_state=(hash('csaps') % 2**32)
+        random_state=(hash('krr') % 2**32)
     )
-    rng = numpy.random.default_rng(np.abs(hash('csaps')))
+    rng = numpy.random.default_rng(np.abs(hash('krr')))
+    subset_size = 50000 #data is too large to use all at once in training, so subset
 
-    smooth_choices = np.array(
-        [0, 1e-10, 3e-10, 1e-9, 3e-9,
-            1e-8,  3e-8,  1e-7, 3e-7,
-            1e-6,  3e-6,  1e-5, 3e-5,
-            1e-4,  3e-4,  1e-3, 3e-3,
-            1e-2,  3e-2,  1e-1, 3e-1])
-    """
-    smooth_choices = np.array([0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 3e-1])
-    """
-    smooth_choices = list(smooth_choices) + [0.5] + list(1 - smooth_choices)
+    param_choices = [10**(i/8) for i in range(-80, -40)]
 
+    readme.write(f"Training sample size for kernel ridge regression: {subset_size}\n")
+
+    """
     readme.write("Performing cubic smoothing spline associations against listed"
                  " covariates to get phenotypes residuals\n")
     readme.write("Starting with residuals as phenotype values centered, per sex, with mean zero. "
@@ -882,88 +978,68 @@ def get_residuals_csaps(readme,
     readme.write(str(smooth_choices))
     readme.write('\n')
     readme.flush()
+    """
 
-    print("Running CSAP associations of phenotypes against covariates to get"
+    print("Running KRR on phenotypes against covariates to get"
           " residuals ... ", end='', flush=True)
     for dep_var in dep_vars:
         curr_indep_vars = indep_vars.copy()
         curr_indep_vars.extend(col_names.index(covar) for covar in pheno_indep_vars[dep_var])
         curr_indep_vars.remove(col_names.index('intercept'))
-        curr_indep_vars.remove(col_names.index("sex"))
-        smooth_param = [None]*len(curr_indep_vars)
-
-        readme.write(f"Covariates in order for dep var {dep_var}: ")
-        readme.write(str([col_names[idx] for idx in curr_indep_vars]))
-        readme.write('\n')
-        readme.flush()
+        print([col_names[idx] for idx in curr_indep_vars])
 
         y = data[:, col_names.index(dep_var)]
         X = data[:, curr_indep_vars]
         not_nan = ~np.isnan(y) & np.all(~np.isnan(X), axis=1)
         y = y[not_nan]
-        X = X[not_nan, :]
-        # jitter any lower than this causes some values to end up being
-        # duplicates due to loss of precision in 64bit floats which causes
-        # CSAP to crash
-        jitter = 5e-4*(rng.random(X.shape) - 0.5)
-        jittered_X = X + jitter
-        curr_residuals = y.copy()
+        X = X[not_nan, :].copy()
+        # standard normalize the covariates
+        X = (X - np.mean(X, axis=0))/np.std(X, axis=0)
 
-        # starting residuals
-        sex_idx = col_names.index("sex")
-        sex_is_1 = data[not_nan, sex_idx] == 1
-        curr_residuals[sex_is_1] -= np.mean(curr_residuals[sex_is_1])
-        curr_residuals[~sex_is_1] -= np.mean(curr_residuals[~sex_is_1])
-        curr_rmse = np.std(curr_residuals)
-        print("Starting residual rmse: ", curr_rmse)
+        subset_idx = rng.choice(X.shape[0], size=subset_size, replace=False)
+        y_subset = y[subset_idx]
+        X_subset = X[subset_idx, :]
 
-        with open(f'{assoc_dir}/{dep_var}_residual_assoc_summary.txt', 'w') as res_results:
-            res_results.write("Covariate\tSmoothing Parameter\n")
-            for idx in range(len(curr_indep_vars)):
-                best_rmse = curr_rmse
-                best_smooth_choice = None
-                for smooth_choice in smooth_choices:
-                    rmse = 0
-                    for train, test in kfold.split(jittered_X):
-                        sort = np.argsort(jittered_X[train, idx])
-                        spline = csaps.csaps(jittered_X[train, idx][sort],
-                                             curr_residuals[train][sort],
-                                             smooth=smooth_choice)
-                        print(np.std(curr_residuals[test] - spline(X[test, idx])))
-                        rmse += np.std(curr_residuals[test] - spline(X[test, idx]))
-                    rmse /= kfold.get_n_splits()
-                    print(f"Avg rmse for smoothing param {smooth_choice}: {rmse}")
-                    if rmse <= best_rmse:
-                        best_rmse = rmse
-                        best_smooth_choice = smooth_choice
-                smooth_param[idx] = best_smooth_choice
-                print(f"Best avg. test rmse for idx {idx}: {best_rmse}")
-                print(f"Smoothing param: {best_smooth_choice}")
-                # update current residuals by fitting to the entire dataset
-                if best_smooth_choice:
-                    sort = np.argsort(jittered_X[:, idx])
-                    spline = csaps.csaps(jittered_X[sort, idx],
-                                         curr_residuals[sort],
-                                         smooth=best_smooth_choice)
-                    predictions = spline(X[:, idx])
-                    curr_residuals = curr_residuals - predictions
-                    curr_rmse = np.std(curr_residuals)
-                    print(f"Current RMSE after regression on idx {idx}: ", curr_rmse)
-                else:
-                    print(f"Not regression on idx {idx}")
-        # now curr_residuals are the final residuals and curr_rmse
-        # is the final rmse
+        best_rmse = np.inf
+        best_params = (None, None)
+        n_rounds = 0
+        start_time = time.time()
+        print('Starting', end='\r')
+        for alpha in param_choices:
+            for gamma in param_choices:
+                rmse = 0
+                for train, test in kfold.split(X_subset):
+                    n_rounds += 1
+                    model = sklearn.kernel_ridge.KernelRidge(alpha=alpha, kernel='rbf', gamma=gamma)
+                    model.fit(X_subset[train, :], y_subset[train])
+                    predictions = model.predict(X_subset[test, :])
+                    rmse += np.sqrt(np.mean((y_subset[test] - predictions)**2))
+                    curr_time = time.time()
+                    print(f"\033[2K\033[1GModel fits so far: {n_rounds}. Avg time per fit: {(curr_time - start_time)/n_rounds}sec", end='\r', flush=True)
+                rmse /= kfold.get_n_splits()
+                print(f"\033[2K\033[1GAvg validation rmse for params (alpha, gamma) ({alpha:>7.4g}, {gamma:>7.4g}): {rmse:>7.4g}", flush=True)
+                if rmse <= best_rmse:
+                    best_rmse = rmse
+                    best_params = (alpha, gamma)
+
         readme.write(f"Last validation root mean square error for phenotype {dep_var} "
-                     "smoothing spline regression against covariates: ")
+                     "kernel ridge regression against covariates: ")
         readme.write(str(best_rmse))
         readme.write("\n")
-        readme.write(f"Smoothing parameters for {dep_var}: ")
-        readme.write(str(smooth_param))
+        readme.write(f"Best KRR metaparameters for {dep_var}: ")
+        readme.write(str(best_params))
         readme.write("\n")
-        readme.write("(Smoothing parameters with value None indicate that the covariate was not used during prediction)\n")
+
+        model = sklearn.kernel_ridge.KernelRidge(alpha=best_params[0],
+                                                 kernel='rbf',
+                                                 gamma=best_params[1])
+        model.fit(X_subset, y_subset)
+        predictions = model.predict(X)
+        residuals = y - predictions
+        rmse = np.sqrt(np.mean((residuals)**2))
         readme.write(f"Training root mean square error for phenotype {dep_var} "
-                     "smoothing spline regression against covariates: ")
-        readme.write(str(curr_rmse))
+                     "kernel ridge regression against covariates: ")
+        readme.write(str(rmse))
         readme.write('\n')
         readme.flush()
 
@@ -972,7 +1048,7 @@ def get_residuals_csaps(readme,
             np.full((data.shape[0], 1), np.nan)
         ), axis=1)
         col_names.append(f'{dep_var}_residual')
-        data[not_nan, -1] = curr_residuals
+        data[not_nan, -1] = residuals
     print("done", flush=True)
     return data
 
@@ -1018,9 +1094,11 @@ def main():  # noqa: D103
         action='store_true'
     )
     parser.add_argument(
-        '--csaps',
-        help='use csaps for covariate regression instead of linear regression',
-        action='store_true'
+        '--residual-model',
+        help='which model to use for calculating residuals when regressing out covaraites',
+        type=str,
+        choices=['linear', 'krr', 'random-forest'],
+        default='linear'
     )
     args = parser.parse_args()
 
@@ -1193,7 +1271,7 @@ def main():  # noqa: D103
             readme.write("\n")
 
         if not args.plink:
-            if not args.csaps:
+            if args.residual_model == 'linear':
                 data = get_residuals_linear(
                     readme,
                     assoc_dir,
@@ -1203,8 +1281,18 @@ def main():  # noqa: D103
                     indep_vars,
                     pheno_indep_vars
                 )
-            else:
-                data = get_residuals_csaps(
+            elif args.residual_model == 'krr':
+                data = get_residuals_kernel_ridge(
+                    readme,
+                    assoc_dir,
+                    data,
+                    col_names,
+                    dep_vars,
+                    indep_vars,
+                    pheno_indep_vars
+                )
+            elif args.residual_model == 'random-forest':
+                data = get_residuals_random_forest(
                     readme,
                     assoc_dir,
                     data,
