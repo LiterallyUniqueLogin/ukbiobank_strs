@@ -138,4 +138,52 @@ Preparing Phenotypes
        method that the covariates are being properly loaded by comparing to the
        input files.
 
+       2021/02/11 - checked that ranking is working correctly. Checked that inverse
+       normalization corresponds to correct samples' ranks. Checked that inverse
+       normalization are correct calculations: compared to normal distribution
+       quantile function here: https://planetcalc.com/4986/
+
+       .. code:: bash
+
+           # pull out ranks first, residuals second
+           paste <(cut -f57 covars_and_phenotypes.tab  | tail -n+2 | grep -v nan ) \
+               <(cut -f55 covars_and_phenotypes.tab | tail -n +2 | grep -v nan) \
+               | sort | head -n 10
+
+           # matches sort with just residuals
+
+           cut -f55 covars_and_phenotypes.tab | tail -n +2 | grep -v nan | sort -n | head -n 10
+
+        .. code:: bash
+
+            # pull out inverse normalization first, ranks second
+            # show that smallest inverse normalization has rank 0
+            paste <(cut -f59 covars_and_phenotypes.tab  | tail -n+2 | grep -v nan ) \
+                <(cut -f57 covars_and_phenotypes.tab | tail -n +2 | grep -v nan) \
+                | sort -n | head -n 10
+
+
+Loading And Filtering Genotypes
+===============================
+
+STRs
+----
+
+Microarray SNPs
+---------------
+
+Imputed SNPs
+------------
+
+.. details:: Sanity checks
+
+   2021/02/11 - manually confirmed dosage loading in load_imputed_snps is correct. Still need
+   to check dosages=False, info_thresh and call_thresh
+
+.. details:: Thoughts on INFO threshold
+   
+    UKB paper suggests 0.3 :
+    https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf
+    Neale lab suggests 0.8:
+    http://www.nealelab.is/blog/2017/9/11/details-and-considerations-of-the-uk-biobank-gwas
 

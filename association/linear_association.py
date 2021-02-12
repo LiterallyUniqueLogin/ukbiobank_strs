@@ -1,3 +1,4 @@
+
 #!/bin/env python3
 
 """
@@ -26,6 +27,7 @@ import dask_jobqueue
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.random
+import scipy.stats
 import sklearn.ensemble
 import sklearn.kernel_ridge
 import sklearn.model_selection
@@ -411,6 +413,7 @@ def perform_association_subset(assoc_dir,
                                imputation_run_name,
                                region,
                                dep_var,
+                               dep_var_suffix,
                                data,
                                col_names,
                                profile_mem_usage):
@@ -437,7 +440,7 @@ def perform_association_subset(assoc_dir,
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
 
         results.write("chrom\tpos\talleles\tlocus_info\tlocus_filtered\t#unrelated_samples_with_phenotype\t"
-                      "#samples_GP_filtered\tallele_distribution\tmonoallelic_skipped"
+                      "#filtered_calls\tmac<=20"
                       f"\tp_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\n")
         results.flush()
 
@@ -457,21 +460,22 @@ def perform_association_subset(assoc_dir,
             # skip the samples, trust that they are in the same order
             next(genotype_iter)
         else:
-            genotype_iter = load_and_filter_genotypes.filtered_imputed_snps(
+            genotype_iter = load_and_filter_genotypes.load_imputed_snps(
                 region
             )
             #samples should already be in the correct order
             #as it is prespecified to be that in the .sample file
 
         n_samples_with_phenotype = \
-                np.sum(~np.isnan(data[:, col_names.index(f'{dep_var}_residual')]))
+                np.sum(~np.isnan(data[:, col_names.index(f'{dep_var}_{dep_var_suffix}')]))
 
         start_time = time.time()
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
                          log, 'pre_loop')
-        for len_gts, chrom, pos, allele_names, locus_info, locus_filtered in genotype_iter:
+        for gt, chrom, pos, allele_names, locus_info, locus_filtered in genotype_iter:
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
                             log, f'loop_{pos}_start')
+            # assume gt is 1D
             n_loci += 1
             results.write(f"{chrom}\t{pos}\t{allele_names}\t{locus_info}\t")
             if locus_filtered:
@@ -481,26 +485,15 @@ def perform_association_subset(assoc_dir,
             else:
                 results.write('False\t')
 
-            avg_len_gt = np.sum(len_gts, axis=1)/2
-            gt = avg_len_gt
 
             unfiltered_samples = (~np.isnan(gt) &
-                                  ~np.isnan(data[:, col_names.index(f'{dep_var}_residual')]))
-            n_filtered_alleles = n_samples_with_phenotype - np.sum(unfiltered_samples)
-            results.write(f"{n_samples_with_phenotype}\t{n_filtered_alleles}\t")
+                                  ~np.isnan(data[:, col_names.index(f'{dep_var}_{dep_var_suffix}')]))
+            n_unfiltered_samples = np.sum(unfiltered_samples)
+            n_filtered_samples = n_samples_with_phenotype - n_unfiltered_samples
+            results.write(f"{n_samples_with_phenotype}\t{n_filtered_samples}\t")
 
-            alleles = np.unique(gt[unfiltered_samples], return_counts = True)
-            any_alleles = False
-            for count, allele in enumerate(alleles[0]):
-                any_alleles = True
-                if count>0:
-                    results.write(",")
-                results.write(f"{allele}:{alleles[1][count]}")
-            if not any_alleles:
-                results.write("nan")
-            results.write("\t")
-
-            if len(alleles[0]) <= 1:
+            n_alt_alleles = np.sum((gt > 0.5) & (gt < 1.5)) + 2 * np.sum(gt > 1.5)
+            if n_alt_alleles < 20 or n_alt_alleles > n_unfiltered_samples - 20:
                 results.write("True\t1\tnan\tnan\n")
                 results.flush()
                 continue
@@ -517,7 +510,7 @@ def perform_association_subset(assoc_dir,
 
             #do da regression
             model = OLS(
-                data[unfiltered_samples, col_names.index(f'{dep_var}_residual')],
+                data[unfiltered_samples, col_names.index(f'{dep_var}_{dep_var_suffix}')],
                 gt_const,
                 missing='drop'
             )
@@ -562,7 +555,7 @@ def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):
         {ukb}/utilities/plink2 \
             --pheno {assoc_dir}/covars_and_phenotypes.tab \
             --no-psam-pheno \
-            --pheno-name {dep_var} \
+            --pheno-name {dep_var}_inv_norm_rank \
             --covar-name {' '.join(indep_vars)} \
             --pfile {ukb}/array_imputed/pfile_converted/chr{chrom} \
             --chr {chrom} \
@@ -623,8 +616,7 @@ def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, ch
             tasks.append(dask.delayed(invoke_plink)(
                 assoc_dir,
                 chrom,
-                dep_var,
-                curr_indep_vars
+                dep_var
             ))
     futures = client.compute(tasks)
     for future in futures:
@@ -669,6 +661,7 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, data, col_names, d
                 imputation_run_name,
                 locus,
                 dep_var,
+                'inv_norm_rank_residual',
                 data,
                 col_names,
                 profile_mem_usage
@@ -765,6 +758,7 @@ def run_associations(assoc_dir, imputation_run_name, data, col_names, dep_vars,
                     imputation_run_name,
                     f'{chrom}:{start_pos}-{start_pos + range_per_task - 1}',
                     dep_var,
+                    'inv_norm_rank_residual',
                     data,
                     col_names,
                     profile_mem_usage
@@ -1133,6 +1127,68 @@ def get_residuals_kernel_ridge(
     print("done", flush=True)
     return data
 
+
+def rank_phenotypes(
+        readme,
+        data,
+        col_names,
+        dep_vars,
+        residuals=True):
+    """
+    col_names will be modified
+
+    Ranks begin with 0
+    """
+    readme.write("Ranking phenotype residuals. Tie breaks for equal ranks are arbitrary and stable.\n")
+    for dep_var in dep_vars:
+        data = np.concatenate((
+            data,
+            np.full((data.shape[0], 1), np.nan)
+        ), axis=1)
+
+        if residuals:
+            col_names.append(f'{dep_var}_residual_rank')
+            phenotypes = data[:, col_names.index(f'{dep_var}_residual')]
+        else:
+            col_names.append(f'{dep_var}_rank')
+            phenotypes = data[:, col_names.index(dep_var)]
+        not_nan = ~np.isnan(residuals)
+        phenotypes = phenotypes[not_nan]
+        sort = np.argsort(phenotypes)
+        ranks = np.empty_like(sort)
+        ranks[sort] = np.arange(phenotypes.shape[0])
+        data[not_nan, -1] = ranks
+    return data
+
+
+def inverse_normalize_ranks(
+        readme,
+        data,
+        col_names,
+        dep_vars,
+        residuals=True):
+    """
+    col_names will be modified
+    """
+    readme.write("Inverse normalizing phenotype residuals ranks to the standard normal distribution "
+                 "via the transformation rank -> normal_quantile((rank + 0.5)/nsamples).\n")
+    for dep_var in dep_vars:
+        data = np.concatenate((
+            data,
+            np.full((data.shape[0], 1), np.nan)
+        ), axis=1)
+        if residuals:
+            col_names.append(f'{dep_var}_inv_norm_rank_residual')
+            ranks = data[:, col_names.index(f'{dep_var}_residual_rank')]
+        else:
+            col_names.append(f'{dep_var}_inv_norm_rank')
+            ranks = data[:, col_names.index(f'{dep_var}_rank')]
+        not_nan = ~np.isnan(ranks)
+        ranks = ranks[not_nan]
+        data[not_nan, -1] = scipy.stats.norm.ppf((ranks + 0.5)/ranks.shape[0])
+    return data
+
+
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
     parser.add_argument('sample_filtering_run_name')
@@ -1393,6 +1449,9 @@ def main():  # noqa: D103
                     pheno_indep_vars
                 )
 
+        data = rank_phenotypes(readme, data, col_names, dep_vars, residuals=not args.plink)
+        data = inverse_normalize_ranks(readme, data, col_names, dep_vars, residuals=not args.plink)
+
         assert len(col_names) == data.shape[1]
 
         print("Writing out sample x {phenotypes, covaraites} tab file ... ",
@@ -1461,25 +1520,15 @@ def main():  # noqa: D103
         elif not args.plink:
             readme.write("Using imputed snp calls\n")
             readme.write(
-                "Should filter loci whose INFO scores are <0.3 "
-                "https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf"
-                " (or <0.8 "
-                "http://www.nealelab.is/blog/2017/9/11/details-and-considerations-of-the-uk-biobank-gwas"
-                " ?). Not doing this yet to let it be tunable downstream.\n"
+                "Performing linear association of inverse normal transformed ranks of residual phenotypes "
+                "against 0 to 2 genotype dosage of alt (== non-ref) allele\n"
             )
             readme.write(
-                "Filtering calls whose probability as estimated by the UKB "
-                "imputation algorithm is less than 0.9. Number filtered this "
-                "way is the #samples_GP_filtered column in "
-                "filtering/<region>.txt\n"
-            )
-            readme.write(
-                "Performing linear association of residual phenotypes "
-                "against averaged genotype (0 homozygous ref, 0.5 "
-                "heterozygous, 1 homozygous alt). "
-                "Coefficients are reported as change in "
-                "phenotype when changing both haplotypes from the 0 "
-                "allele to the 1 allele\n"
+                "Not filtering loci for INFO or calls for prob.\n"
+                "Filtering loci roughly equivalent to minor allele count < 20. "
+                "Specifically, treating 0.5 < alt dosage 1.5 as 1 alt allele and "
+                "alt dosage > 1.5 as 2 alt alleles and calculating minor allele "
+                "count that way\n."
             )
             readme.flush()
             if loci is not None:
@@ -1492,16 +1541,11 @@ def main():  # noqa: D103
         else:
             readme.write(
                 "Using imputed snp calls\n"
-                "Running associations with plink\n"
-                "Need to filter loci with e.g. <20 nonmajor alleles. Recommended by plink docs "
-                "https://www.cog-genomics.org/plink/2.0/assoc and by ukb "
-                "GWAS summary "
-                "http://www.nealelab.is/blog/2017/9/11/details-and-considerations-of-the-uk-biobank-gwas"
-                " but have not done so yet so this choice can be tuned downstream.\n"
-                "Genotypes are encoded as 0 - ref, 1 - alt\n"
-                "Running linear assocation with all relevant covariates "
-                "included (no regressing out the covariates first and then "
-                "comparing the genotype to the phenotype)\n"
+                "Running linear associations of dosage vs inverse normal transformed phenotypes "
+                "with plink.\n"
+                "Handing to plink all relevant covariates.\n"
+                "Filtering loci with <20 nonmajor alleles as recommended by plink docs: "
+                "https://www.cog-genomics.org/plink/2.0/assoc\n"
             )
             readme.flush()
             indep_vars.remove('intercept')

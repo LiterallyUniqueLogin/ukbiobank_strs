@@ -9,7 +9,7 @@ and then return yield them
 import os
 import os.path
 import time
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import sys
 
 import bgen_reader
@@ -168,37 +168,68 @@ def filtered_microarray_snps(region):
         )
 
 
-def filtered_imputed_snps(region):
+def load_imputed_snps(region: str,
+                      dosages: bool = True,
+                      info_thresh: Optional[float] = None,
+                      call_thresh: Optional[float] = None):
     """
     Iterate over a region returning genotypes at SNP loci.
 
-    Returns imputed SNPs
+    Parameters
+    ----------
+    region:
+        chr:start-end
+    dosages:
+        Otherwise hardcalls
+    info_thresh:
+        Loci must have INFO scores of at least this thresh or will be filtered
+    call_thresh:
+        Must be None if dosages == True. Filter all hardcalls with probability
+        less than call_thresh
 
-    Yields tuples
-	(genotypes, chrom, pos, allele, locus_filtered)
-    Exactly one of genotypes and locus_filtered will be None
+    Yields
+    ------
+    genotypes:
+        A 1D array of length n-samples
+        If dosages, each value is the dosage of the alternate allele:
+            prob(AB) + 2*prob(BB)
+        Otherwise it is 0,1,2, corresponding to the whichever of AA,AB or BB
+        has max likelihood.
+        Entries filtered by call_thresh are np.nan
+        None if locus_filtered is not None
+    chrom: str
+        e.g. '13'
+    pos: int
+    alleles: str
+        e.g. 'A,G'
+    locus_details: str
+        Details about the locus in an arbitrary format
+    locus_filtered:
+        None if the locus is not filtered, otherwise
+        a string explaining why.
+        'MAF=0' if there is only one allele present
+        in the calls at this locus.
+        'INFO<{thresh}' if an info thresh
+        is set and this locus is under that
 
     genotypes are pairs of indicators:
         0: 1st allele
         1: 2nd allele
-    1st allele is always the reference for imputed SNPs.
+
+    Notes
+    -----
+    1st allele is always the reference for imputed SNPs, alt allele
+    is always nonreference.
     (This is different than microarray SNPs!)
+
     Also note that these genotypes are not phased so the ordering
     of the genotypes for heterozygous samples is arbitrary.
-
-    Loci with INFO < 0.3 or so should be filtered
-    But currently are not to allow this to be tuned downstream.
-    Samples where the probability of their most probable genotypes is <.9
-    are filtered
-
-    No filtering for samples with rare genotypes
-    Loci with only single genotypes remaining are returned - it is up to
-    calling code to filter these out
     """
+    if dosages and call_thresh:
+        raise RuntimeError("Can't have dosages and call_thresh")
+
     chrom, posses = region.split(':')
-    start, end = posses.split('-')
-    start = int(start)
-    end = int(end)
+    start, end = tuple(int(val) for val in posses.split('-'))
     bgen_fname = f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen'
     mfi_fname = f'{ukb}/array_imputed/ukb_mfi_chr{chrom}_v3.txt'
     bgen = bgen_reader.open_bgen(bgen_fname,
@@ -206,7 +237,11 @@ def filtered_imputed_snps(region):
                                  allow_complex=True)
     with open(mfi_fname) as mfi:
         for variant_num, pos in enumerate(bgen.positions):
-            mfi_line = next(mfi)
+            try:
+                mfi_line = next(mfi)
+            except StopIteration:
+                return
+
             if pos < start:
                 continue
             if pos > end:
@@ -222,18 +257,16 @@ def filtered_imputed_snps(region):
                     'info=NA',
                     'MAF=0'
                 )
-            '''
-            elif float(info_str) < 0.3:
+            elif info_thresh is not None and float(info_str) < info_thresh:
                 yield (
                     None,
                     chrom,
                     pos,
                     bgen.allele_ids[variant_num],
                     f'info={info_str}',
-                    'info<0.3'
+                    'info<{info_thresh}'
                 )
                 continue
-            '''
 
             probs, missing, ploidy = bgen.read(variant_num,
                                            return_missings=True,
@@ -241,26 +274,38 @@ def filtered_imputed_snps(region):
             probs = np.squeeze(probs)
 
             # make sure the record looks as expected
+            assert len(probs.shape) == 2
             assert probs.shape[1] == 3
             assert not bgen.phased[variant_num]
             assert np.all(ploidy == 2)
             assert not np.any(missing)
 
-            best_genotype = probs.argmax(axis=1)
-            highest_prob = probs.max(axis=1)
-            out_gts = np.zeros((probs.shape[0], 2))
+            dosage_gts = probs[:,1] + 2*probs[:,2]
+            total_alt_dosage = np.sum(dosage_gts)
+            total_ref_dosage = 2*dosage_gts.shape[0] - total_alt_dosage
 
-            out_gts[best_genotype == 2, 0]  = 1
-            out_gts[best_genotype > 0, 1]  = 1
-            out_gts[highest_prob < .9, :] = np.nan
+            if dosages:
+                out_gts = dosage_gts
+                hardcalls = probs.argmax(axis=1)
+            else:
+                out_gts = probs.argmax(axis=1)
+                if call_thresh is not None:
+                    highest_prob = probs.max(axis=1)
+                    out_gts[highest_prob < call_thresh] = np.nan
+                hardcalls = out_gts
 
-
+            n_hom_ref = np.sum(hardcalls == 0)
+            n_het = np.sum(hardcalls == 1)
+            n_hom_alt = np.sum(hardcalls == 2)
             yield (
                 out_gts,
                 chrom,
                 pos,
                 bgen.allele_ids[variant_num],
-                f'info={info_str}',
+                (
+                    f'info={info_str};total_dosages=(ref:{total_ref_dosage}, alt:{total_alt_dosage});'
+                    f'total_unfiltered_hardcalls=(hom_ref:{n_hom_ref}, het:{n_het}, hom_alt:{n_hom_alt})'
+                ),
                 None
             )
 
