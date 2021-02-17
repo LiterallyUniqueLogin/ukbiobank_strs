@@ -16,90 +16,173 @@ import bgen_reader
 import cyvcf2
 import numpy as np
 import numpy.ma
+import scipy
 
 ukb = os.environ['UKB']
 
+sys.path.insert(0, f'{ukb}/../trtools/repo')
 
-def filtered_strs(imputation_run_name,
-                  region):
+import trtools.utils.tr_harmonizer as trh
+import trtools.utils.utils as utils
+
+def load_strs(imputation_run_name: str,
+              region: str,
+              samples: np.ndarray):
+    # dr2_thresh?
     """
-    Iterate over a region of STRs returning genotypes at each locus.
+    Iterate over a region returning genotypes at SNP loci.
 
-	First value yielded is the array of samples in the VCF
-	Every subsequent value is the tuple
-	(genotypes, chrom, pos, alleles, locus_info, locus_filtered)
-    currently, locus_filtered is always None
+    Parameters
+    ----------
+    imputation_run_name:
+        which imputation run to load genotypes from?
+    region:
+        chr:start-end
+    samples:
+        A boolean array of length nsamples determining which samples are included
+        (True) and which are not
 
-    genotypes are pairs of haplotypes
-    measured by difference in # repeats from the reference
+    Yields
+    ------
+    gt:
+        A 1D array of length n-samples
+        Each value is the length dosage measured in number of repeats
+        different from the reference.
 
-    Samples with imputed genotypes with too low an expected probability
-    (as measured by product of their allele probabilities)
-    have their genotypes set to nan
-
-    No filtering for samples with rare genotypes
-    Loci with only single genotypes remaining are returned - it is up to
-    calling code to filter these out
-
-    TODO what metrics do I want in locus info?
-    what filtering should be done here, and what in the calling code?
+        None if locus_filtered is not None
+    chrom: str
+        e.g. '13'
+    pos: int
+    alleles: str
+        e.g. 'ACAC,ACACAC'
+    locus_details: str
+        Details about the locus in an arbitrary format
+    locus_filtered:
+        None if the locus is not filtered, otherwise
+        a string explaining why.
+        'MAC<20' if there are fewer than 20 minor allele hardcalls
+        after sample subsetting, per plink's standard
     """
+
     chrom, _ = region.split(':')
     vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
-    yield np.array(vcf.samples)
+    harmonizer = trh.TRRecordHarmonizer(vcf, vcftype='beagle-hipstr', region=region)
 
-    vcf_region = vcf(region)
-    for locus in vcf_region:
-        if 'PERIOD' not in dict(locus.INFO):
+    for trrecord in harmonizer:
+        if 'PERIOD' not in trrecord.info:
             # there are a few duplicate loci which I didn't handle
             # properly, this identifies and removes them
             continue
-        # setup for this locus
 
-        # gt entries are sequence allele indexes
-        idx_gts = locus.genotype.array()[:, :2]
-        seq_allele_lens = [len(allele) for allele in locus.ALT]
-        seq_allele_lens.insert(0, len(locus.REF))
+        len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
 
-        # modify gt entries to be length alleles
-        len_gts = np.full(idx_gts.shape, np.nan, dtype=float)
-        for seq_allele_idx, seq_allele_len in enumerate(seq_allele_lens):
-            len_gts[idx_gts == seq_allele_idx] = seq_allele_len
+        total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
+        for p in (1, 2):
+            ap = trrecord.format[f'AP{p}']
+            total_dosages[len_alleles[0]] += np.sum(np.maximum(0, 1 - np.sum(ap, axis=1)))
+            for i in range(ap.shape[1]):
+                total_dosages[len_alleles[i+1]] = np.sum(ap[:, i])
 
-        # get Beagle genotype probability
-        aps = []
-        for copy in 1, 2:
-            ap = locus.format(f'AP{copy}')
-            ref_prob = np.maximum(0, 1 - np.sum(ap, axis=1))
-            ref_prob = ref_prob.reshape(-1, 1)
-            ap = np.concatenate((ref_prob, ap), axis=1)
-            ap = ap[np.arange(ap.shape[0]), idx_gts[:, (copy - 1)]]
-            aps.append(ap)
-        gp = np.multiply(aps[0], aps[1])
+        total_hardcall_alleles = trrecord.GetAlleleCounts()
+        total_hardcall_genotypes = trrecord.GetGenotypeCounts()
 
-        # filter calls whose phased genotype probability
-        # as estimated by Beagle is below .9
-        # convert to float so we can use np.nan
-        filtered_samples = gp < .9
-        len_gts[filtered_samples, :] = np.nan
-        n_filtered_samples = np.sum(filtered_samples)
+        subset_total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
+        for p in (1, 2):
+            ap = trrecord.format[f'AP{p}']
+            subset_total_dosages[len_alleles[0]] += np.sum(np.maximum(0, 1 - np.sum(ap[samples, :], axis=1)))
+            for i in range(ap.shape[1]):
+                subset_total_dosages[len_alleles[i+1]] = np.sum(ap[samples, i])
 
-        # convert from length in bp to length in diff from ref in repeat
-        # units
-        len_gts -= seq_allele_lens[0]
-        len_gts /= locus.INFO['PERIOD']
+        subset_total_hardcall_alleles = trrecord.GetAlleleCounts(samples)
+        subset_total_hardcall_genotypes = trrecord.GetGenotypeCounts(samples)
+        subset_hardcall_allele_freqs = trrecord.GetAlleleFreqs(samples)
 
-        yield (
-            len_gts,
-            locus.CHROM,
-            locus.POS,
-            ','.join(str(l) for l in np.unique(len_gts[~np.isnan(len_gts)])),
-            f'PERIOD={locus.INFO["PERIOD"]},REF={locus.REF}',
-            None
+        subset_het = utils.GetHeterozygosity(subset_hardcall_allele_freqs)
+        subset_entropy = utils.GetEntropy(subset_hardcall_allele_freqs)
+        subset_hwep = utils.GetHardyWeinbergBinomialTest(
+            subset_hardcall_allele_freqs,
+            subset_total_hardcall_genotypes
         )
 
+        subset_dosages = trrecord.GetDosages()[samples]
+
+        # https://www.cell.com/ajhg/fulltext/S0002-9297(09)00012-3#app1
+        # Browning, Brian L., and Sharon R. Browning. "A unified approach to genotype imputation and haplotype-phase inference for large data sets of trios and unrelated individuals." The American Journal of Human Genetics 84.2 (2009): 210-223.
+        # appendix 1
+        subset_allele_dosage_r2 = {}
+
+        allele_lens = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
+        subset_hardcall_indicies = trrecord.GetGenotypeIndicies()[samples, :-1]
+        aps = []
+        for p in 1, 2:
+            ap = trrecord.format[f'AP{p}'][samples, :]
+            ref_ap = np.maximum(0, np.sum(ap, axis=1))
+            aps.append(np.concatenate((ref_ap.reshape(-1, 1), ap), axis=1))
+        stacked_aps = np.stack(aps, axis=1)
+        assert stacked_aps.shape[0] == subset_dosages.shape[0]
+        assert stacked_aps.shape[1] == 2
+        for length in allele_lens:
+            # calculate allele dosage r**2 for this length
+            for other_length in subset_allele_dosage_r2:
+                if np.isclose(length, other_length):
+                    continue
+
+            calls = np.zeros(subset_hardcall_indicies.shape, dtype=bool)
+            for idx, inner_length in enumerate(allele_lens):
+                if not np.isclose(inner_length, length):
+                    continue
+                calls = calls | (subset_hardcall_indicies == idx)
+
+            same_len_alleles = [np.isclose(allele_len, length) for allele_len in allele_lens]
+            probs = np.sum(stacked_aps[:, :, same_len_alleles], axis=2)
+
+            assert probs.shape == calls.shape
+
+            subset_allele_dosage_r2[length] = \
+                    np.corrcoef(calls.reshape(-1), probs.reshape(-1))[0,1]**2
+
+        locus_details = (
+            f'motif={trrecord.motif};'
+            f'period={len(trrecord.motif)};'
+            f'ref_len={trrecord.ref_allele_length};'
+            f'dr2={trrecord.info["DR2"]};'
+            'total_per_allele_dosages=' + str(total_dosages) + ';'
+            'total_hardcall_alleles=' + str(total_hardcall_alleles) + ';'
+            'total_hardcall_genotypes=' + str(total_hardcall_genotypes) + ';'
+            'subset_total_per_allele_dosages=' + str(subset_total_dosages) + ';'
+            'subset_total_hardcall_alleles=' + str(subset_total_hardcall_alleles) + ';'
+            'subset_total_hardcall_genotypes=' + str(subset_total_hardcall_genotypes) + ';'
+            f'subset_het={subset_het};'
+            f'subset_entropy={subset_entropy};'
+            f'subset_HWEP={subset_hwep};'
+            'subset_allele_dosage_r2=' + str(subset_allele_dosage_r2)
+        )
+
+        mac = list(subset_total_hardcall_alleles)
+        mac.pop(np.argmax(mac))
+        mac_lt_20 = np.sum(mac) < 20
+
+        if mac_lt_20:
+            yield (
+                None,
+                trrecord.chrom,
+                trrecord.pos,
+                ','.join(str(_len) for _len in np.unique(len_alleles)),
+                locus_details,
+                'MAC<20'
+            )
+            continue
+
+        yield (
+            subset_dosages,
+            trrecord.chrom,
+            trrecord.pos,
+            ','.join(str(_len) for _len in np.unique(len_alleles)),
+            locus_details,
+            None
+        )
 
 def filtered_microarray_snps(region):
     """
@@ -169,9 +252,9 @@ def filtered_microarray_snps(region):
 
 
 def load_imputed_snps(region: str,
-                      dosages: bool = True,
-                      info_thresh: Optional[float] = None,
-                      call_thresh: Optional[float] = None):
+                      samples: np.ndarray,
+                      return_dosages: bool = True,
+                      info_thresh: Optional[float] = None):
     """
     Iterate over a region returning genotypes at SNP loci.
 
@@ -179,23 +262,28 @@ def load_imputed_snps(region: str,
     ----------
     region:
         chr:start-end
-    dosages:
-        Otherwise hardcalls
+    samples:
+        A boolean array of length nsamples determining which samples are included
+        (True) and which are not
+    return_dosages:
+        whether or not to return dosages or hardcalls
     info_thresh:
         Loci must have INFO scores of at least this thresh or will be filtered
-    call_thresh:
-        Must be None if dosages == True. Filter all hardcalls with probability
-        less than call_thresh
 
     Yields
     ------
-    genotypes:
+    gt:
+        Either dosages or hardcalls. If dosages:
         A 1D array of length n-samples
-        If dosages, each value is the dosage of the alternate allele:
+        Each value is the dosage of the alternate allele:
             prob(AB) + 2*prob(BB)
-        Otherwise it is 0,1,2, corresponding to the whichever of AA,AB or BB
+
+        If hardcalls:
+        A 1D array of length n-samples
+        0,1,2, corresponding to the whichever of AA,AB or BB
         has max likelihood.
         Entries filtered by call_thresh are np.nan
+
         None if locus_filtered is not None
     chrom: str
         e.g. '13'
@@ -209,12 +297,10 @@ def load_imputed_snps(region: str,
         a string explaining why.
         'MAF=0' if there is only one allele present
         in the calls at this locus.
-        'INFO<{thresh}' if an info thresh
+        'MAC<20' if there are fewer than 20 minor allele hardcalls
+        after sample subsetting, per plink's standard
+        'info<{thresh}' if an info thresh
         is set and this locus is under that
-
-    genotypes are pairs of indicators:
-        0: 1st allele
-        1: 2nd allele
 
     Notes
     -----
@@ -222,12 +308,10 @@ def load_imputed_snps(region: str,
     is always nonreference.
     (This is different than microarray SNPs!)
 
-    Also note that these genotypes are not phased so the ordering
-    of the genotypes for heterozygous samples is arbitrary.
+    (Also note that these genotypes are not phased so the ordering
+    of the genotypes for heterozygous samples is arbitrary. This
+    currently doesn't matter as hard calls are)
     """
-    if dosages and call_thresh:
-        raise RuntimeError("Can't have dosages and call_thresh")
-
     chrom, posses = region.split(':')
     start, end = tuple(int(val) for val in posses.split('-'))
     bgen_fname = f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen'
@@ -257,20 +341,13 @@ def load_imputed_snps(region: str,
                     'info=NA',
                     'MAF=0'
                 )
-            elif info_thresh is not None and float(info_str) < info_thresh:
-                yield (
-                    None,
-                    chrom,
-                    pos,
-                    bgen.allele_ids[variant_num],
-                    f'info={info_str}',
-                    'info<{info_thresh}'
-                )
                 continue
 
-            probs, missing, ploidy = bgen.read(variant_num,
-                                           return_missings=True,
-                                           return_ploidies=True)
+            probs, missing, ploidy = bgen.read(
+                variant_num,
+                return_missings=True,
+                return_ploidies=True
+            )
             probs = np.squeeze(probs)
 
             # make sure the record looks as expected
@@ -280,36 +357,79 @@ def load_imputed_snps(region: str,
             assert np.all(ploidy == 2)
             assert not np.any(missing)
 
-            dosage_gts = probs[:,1] + 2*probs[:,2]
-            total_alt_dosage = np.sum(dosage_gts)
-            total_ref_dosage = 2*dosage_gts.shape[0] - total_alt_dosage
+            dosages = probs[:, 1] + 2*probs[:, 2]
+            total_alt_dosage = np.sum(dosages)
+            total_ref_dosage = 2*dosages.shape[0] - total_alt_dosage
 
-            if dosages:
-                out_gts = dosage_gts
-                hardcalls = probs.argmax(axis=1)
-            else:
-                out_gts = probs.argmax(axis=1)
-                if call_thresh is not None:
-                    highest_prob = probs.max(axis=1)
-                    out_gts[highest_prob < call_thresh] = np.nan
-                hardcalls = out_gts
+            subset_dosages = dosages[samples]
+            subset_total_alt_dosage = np.sum(subset_dosages)
+            subset_total_ref_dosage = \
+                    2*subset_dosages.shape[0] - subset_total_alt_dosage
 
+            hardcalls = probs.argmax(axis=1)
             n_hom_ref = np.sum(hardcalls == 0)
             n_het = np.sum(hardcalls == 1)
             n_hom_alt = np.sum(hardcalls == 2)
+
+            subset_hardcalls = hardcalls[samples]
+            subset_n_hom_ref = np.sum(subset_hardcalls == 0)
+            subset_n_het = np.sum(subset_hardcalls == 1)
+            subset_n_hom_alt = np.sum(subset_hardcalls == 2)
+
+            subset_n_ref_alleles = 2*subset_n_hom_ref + subset_n_het
+            subset_frac_ref_alleles = (subset_n_ref_alleles)/(2*subset_hardcalls.shape[0])
+            subset_exp_hom_frac = subset_frac_ref_alleles**2 + (1-subset_frac_ref_alleles)**2
+            subset_hwep = scipy.stats.binom_test(subset_n_hom_ref + subset_n_hom_alt,
+                                                 n=subset_hardcalls.shape[0],
+                                                 p=subset_exp_hom_frac)
+
+            locus_details = (
+                f'info={info_str};'
+                "total_per_allele_dosages={" f"'ref': {total_ref_dosage}, 'alt': {total_alt_dosage}" "};"
+                'total_hardcalls={' f"'hom_ref': {n_hom_ref}, 'het': {n_het}, 'hom_alt': {n_hom_alt}" '};'
+                'subset_total_per_allele_dosages={' f"'ref': {subset_total_ref_dosage}, 'alt': {subset_total_alt_dosage}" '};'
+                'subset_total_hardcalls={' f"'hom_ref': {subset_n_hom_ref}, 'het': {subset_n_het}, 'hom_alt': {subset_n_hom_alt}" '};'
+                f'subset_HWEP={subset_hwep}'
+            )
+
+            if (subset_n_ref_alleles < 20 or
+                    subset_n_ref_alleles > subset_hardcalls.shape[0]*2 - 20):
+                yield (
+                    None,
+                    chrom,
+                    pos,
+                    bgen.allele_ids[variant_num],
+                    locus_details,
+                    'MAC<20'
+                )
+                continue
+
+            if info_thresh is not None and float(info_str) < info_thresh:
+                yield (
+                    None,
+                    chrom,
+                    pos,
+                    bgen.allele_ids[variant_num],
+                    locus_details,
+                    'info<{info_thresh}'
+                )
+                continue
+
+            if return_dosages:
+                out_gts = subset_dosages
+            else:
+                out_gts = subset_hardcalls
             yield (
                 out_gts,
                 chrom,
                 pos,
                 bgen.allele_ids[variant_num],
-                (
-                    f'info={info_str};total_dosages=(ref:{total_ref_dosage}, alt:{total_alt_dosage});'
-                    f'total_unfiltered_hardcalls=(hom_ref:{n_hom_ref}, het:{n_het}, hom_alt:{n_hom_alt})'
-                ),
+                locus_details,
                 None
             )
 
 
+"""
 def load_all_haplotypes(variant_generator, samplelist):
     '''
     Load all the haplotypes in an interator.
@@ -376,4 +496,4 @@ def load_all_haplotypes(variant_generator, samplelist):
     gts_per_locus = numpy.ma.masked_invalid(gts_per_locus)
     return gts_per_locus, np.array(poses), samples[samples_to_use]
 
-
+"""

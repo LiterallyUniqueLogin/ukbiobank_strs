@@ -95,6 +95,7 @@ def load_covars(readme):
         usecols=cols,
         delimiter=" "
     )
+    readme.write(f"{ids_and_sex.shape[0]} total participants")
     col_names = ['id', 'sex']
 
     floc = f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt'
@@ -439,9 +440,8 @@ def perform_association_subset(assoc_dir,
 
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
 
-        results.write("chrom\tpos\talleles\tlocus_info\tlocus_filtered\t#unrelated_samples_with_phenotype\t"
-                      "#filtered_calls\tmac<=20"
-                      f"\tp_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\n")
+        results.write("chrom\tpos\talleles\tlocus_details\tlocus_filtered\t"
+                      f"p_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\n")
         results.flush()
 
         n_loci = 0
@@ -453,21 +453,16 @@ def perform_association_subset(assoc_dir,
         if not imputation_run_name:
             use_strs = False
 
+        unfiltered_samples = ~np.isnan(data[:, col_names.index(f'{dep_var}_{dep_var_suffix}')])
+
         if use_strs:
-            genotype_iter = load_and_filter_genotypes.filtered_strs(
-                imputation_run_name, region
+            genotype_iter = load_and_filter_genotypes.load_strs(
+                imputation_run_name, region, unfiltered_samples
             )
-            # skip the samples, trust that they are in the same order
-            next(genotype_iter)
         else:
             genotype_iter = load_and_filter_genotypes.load_imputed_snps(
-                region
+                region, unfiltered_samples
             )
-            #samples should already be in the correct order
-            #as it is prespecified to be that in the .sample file
-
-        n_samples_with_phenotype = \
-                np.sum(~np.isnan(data[:, col_names.index(f'{dep_var}_{dep_var_suffix}')]))
 
         start_time = time.time()
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
@@ -475,37 +470,21 @@ def perform_association_subset(assoc_dir,
         for gt, chrom, pos, allele_names, locus_info, locus_filtered in genotype_iter:
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
                             log, f'loop_{pos}_start')
-            # assume gt is 1D
+
             n_loci += 1
             results.write(f"{chrom}\t{pos}\t{allele_names}\t{locus_info}\t")
             if locus_filtered:
-                results.write(f'{locus_filtered}\tnan\tnan\tnan\tnan\t1\tnan\tnan\n')
+                results.write(f'{locus_filtered}\t1\tnan\tnan\n')
                 results.flush()
                 continue
             else:
                 results.write('False\t')
 
-
-            unfiltered_samples = (~np.isnan(gt) &
-                                  ~np.isnan(data[:, col_names.index(f'{dep_var}_{dep_var_suffix}')]))
-            n_unfiltered_samples = np.sum(unfiltered_samples)
-            n_filtered_samples = n_samples_with_phenotype - n_unfiltered_samples
-            results.write(f"{n_samples_with_phenotype}\t{n_filtered_samples}\t")
-
-            n_alt_alleles = np.sum((gt > 0.5) & (gt < 1.5)) + 2 * np.sum(gt > 1.5)
-            if n_alt_alleles < 20 or n_alt_alleles > n_unfiltered_samples - 20:
-                results.write("True\t1\tnan\tnan\n")
-                results.flush()
-                continue
-            else:
-                results.write("False\t")
-                results.flush()
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
                              log, f'loop_{pos}_preOLS')
 
-
             gt_const = np.concatenate((
-                gt[unfiltered_samples].reshape(-1, 1),  np.ones((np.sum(unfiltered_samples), 1))
+                gt.reshape(-1, 1),  np.ones((gt.shape[0], 1))
             ), axis = 1)
 
             #do da regression
@@ -563,7 +542,6 @@ def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):
             --glm omit-ref pheno-ids intercept \
             --ci 0.99999995 \
             --memory 128000 \
-            --extract {ukb}association/temp/varnames.txt \
             --threads 28
         }} \
              > {assoc_dir}/run_logs/{dep_var}_{chrom}.plink.stdout \
@@ -577,7 +555,7 @@ def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):
         raise RuntimeError("plink failed!") from e
 
 
-def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, chromosome=None):
+def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, col_names, chromosome=None):
     dask_output_dir = f'{assoc_dir}/dask_output_logs'
     os.mkdir(dask_output_dir)
     os.mkdir(f'{assoc_dir}/run_logs')
@@ -610,13 +588,14 @@ def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, ch
 
     tasks = []
     for dep_var in dep_vars:
-        curr_indep_vars = indep_vars.copy()
-        curr_indep_vars.extend(pheno_indep_vars[dep_var])
+        curr_indep_vars = pheno_indep_vars[dep_var].copy()
+        curr_indep_vars.extend([col_names[idx] for idx in indep_vars])
         for chrom in chroms:
             tasks.append(dask.delayed(invoke_plink)(
                 assoc_dir,
                 chrom,
-                dep_var
+                dep_var,
+                curr_indep_vars
             ))
     futures = client.compute(tasks)
     for future in futures:
@@ -1152,7 +1131,7 @@ def rank_phenotypes(
         else:
             col_names.append(f'{dep_var}_rank')
             phenotypes = data[:, col_names.index(dep_var)]
-        not_nan = ~np.isnan(residuals)
+        not_nan = ~np.isnan(phenotypes)
         phenotypes = phenotypes[not_nan]
         sort = np.argsort(phenotypes)
         ranks = np.empty_like(sort)
@@ -1311,8 +1290,7 @@ def main():  # noqa: D103
         # based on height. Will need to do this more intelligently when we
         # don't use the same samples for bilirubin and height
         floc = f'{ukb}/sample_qc/runs/{sample_filtering_run_name}/combined_unrelated.sample'
-        readme.write(f"Subsetting to samples from file {floc}.\n")
-        readme.flush()
+        readme.write(f"Subsetting to samples from file {floc}. ")
         sample_subset = np.genfromtxt(
             floc,
             usecols=[0],
@@ -1320,6 +1298,8 @@ def main():  # noqa: D103
             delimiter=" "
         ).reshape(-1, 1)
         data = merge_arrays(sample_subset, data)
+        readme.write(f"{data.shape[0]} remaining samples\n")
+        readme.flush()
 
         # order the observations in data
         # based on the order of samples in chr1 vcf
@@ -1548,9 +1528,10 @@ def main():  # noqa: D103
                 "https://www.cog-genomics.org/plink/2.0/assoc\n"
             )
             readme.flush()
-            indep_vars.remove('intercept')
-            run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars,
+            indep_vars.remove(col_names.index('intercept'))
+            run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, col_names,
                                    chromosome=args.chromosome)
+        print("Association run complete.")
 
 if __name__ == "__main__":
     main()

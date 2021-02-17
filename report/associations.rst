@@ -169,6 +169,27 @@ Loading And Filtering Genotypes
 STRs
 ----
 
+.. details:: Sanity checks
+
+   2021/02/17 - manually confirmed that the length allel dosage r2 is correct for (chr1,
+   pos 1048570, STR_384) for the first 8 samples
+
+   .. code:: python
+       
+       hard16 = np.array([0,0,0,1,1,1,1,1,0,1,0,0,0,0,0,0])
+       hard15 = 1 - hard16
+       prob16 = np.array([.04,0,.01,1,1,1,1,.97,.01,.99,0,0,0.2,0.06,0,0])
+       prob15 = 1 - prob15
+       prob15[7] = 0
+       np.corrcoef(hard16,prob16)[0,1]**2
+    
+       > 0.989749155123994
+
+       np.corrcoef(hard15,prob15)[0,1]**2
+
+       > 0.9900357942862258
+
+
 Microarray SNPs
 ---------------
 
