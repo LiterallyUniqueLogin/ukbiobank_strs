@@ -28,9 +28,11 @@ import trtools.utils.utils as utils
 def load_strs(imputation_run_name: str,
               region: str,
               samples: np.ndarray):
-    # dr2_thresh?
     """
     Iterate over a region returning genotypes at SNP loci.
+
+    First yield is a tuple of names of the fields in details.
+    Every subsequent yield is described in the yields section below.
 
     Parameters
     ----------
@@ -60,8 +62,9 @@ def load_strs(imputation_run_name: str,
         a string explaining why.
         'MAC<20' if there are fewer than 20 minor allele hardcalls
         after sample subsetting, per plink's standard
-    locus_details: str
-        Details about the locus in an arbitrary format
+    locus_details:
+        tuple of strings with the same length as the first yield
+        with the corresponding order.
     """
 
     chrom, _ = region.split(':')
@@ -160,19 +163,19 @@ def load_strs(imputation_run_name: str,
                     np.corrcoef(calls.reshape(-1), probs.reshape(-1))[0,1]**2
 
         locus_details = (
-            f'motif={trrecord.motif};'
-            f'period={len(trrecord.motif)};'
-            f'ref_len={trrecord.ref_allele_length};'
-            'total_per_allele_dosages=' + str(total_dosages) + ';'
-            'total_hardcall_alleles=' + str(total_hardcall_alleles) + ';'
-            'total_hardcall_genotypes=' + str(total_hardcall_genotypes) + ';'
-            'subset_total_per_allele_dosages=' + str(subset_total_dosages) + ';'
-            'subset_total_hardcall_alleles=' + str(subset_total_hardcall_alleles) + ';'
-            'subset_total_hardcall_genotypes=' + str(subset_total_hardcall_genotypes) + ';'
-            f'subset_het={subset_het};'
-            f'subset_entropy={subset_entropy};'
-            f'subset_HWEP={subset_hwep};'
-            'subset_allele_dosage_r2=' + str(subset_allele_dosage_r2)
+            trrecord.motif,
+            str(len(trrecord.motif)),
+            str(trrecord.ref_allele_length),
+            str(total_dosages),
+            str(total_hardcall_alleles),
+            str(total_hardcall_genotypes),
+            str(subset_total_dosages),
+            str(subset_total_hardcall_alleles),
+            str(subset_total_hardcall_genotypes),
+            str(subset_het),
+            str(subset_entropy),
+            str(subset_hwep),
+            str(subset_allele_dosage_r2)
         )
 
         mac = list(subset_total_hardcall_alleles)
@@ -185,8 +188,8 @@ def load_strs(imputation_run_name: str,
                 trrecord.chrom,
                 trrecord.pos,
                 ','.join(str(_len) for _len in np.unique(len_alleles)),
-                locus_details,
-                'MAC<20'
+                'MAC<20',
+                locus_details
             )
             continue
 
@@ -195,8 +198,8 @@ def load_strs(imputation_run_name: str,
             trrecord.chrom,
             trrecord.pos,
             ','.join(str(_len) for _len in np.unique(len_alleles)),
-            locus_details,
-            None
+            None,
+            locus_details
         )
 
 def filtered_microarray_snps(region):
@@ -273,6 +276,9 @@ def load_imputed_snps(region: str,
     """
     Iterate over a region returning genotypes at SNP loci.
 
+    First yield is a tuple of names of the fields in details.
+    Every subsequent yield is described in the yields section below.
+
     Parameters
     ----------
     region:
@@ -305,8 +311,6 @@ def load_imputed_snps(region: str,
     pos: int
     alleles: str
         e.g. 'A,G'
-    locus_details: str
-        Details about the locus in an arbitrary format
     locus_filtered:
         None if the locus is not filtered, otherwise
         a string explaining why.
@@ -316,6 +320,9 @@ def load_imputed_snps(region: str,
         after sample subsetting, per plink's standard
         'info<{thresh}' if an info thresh
         is set and this locus is under that
+    locus_details:
+        tuple of strings with the same length as the first yield
+        with the corresponding order.
 
     Notes
     -----
@@ -334,6 +341,17 @@ def load_imputed_snps(region: str,
     bgen = bgen_reader.open_bgen(bgen_fname,
                                  verbose=False,
                                  allow_complex=True)
+
+    yield (
+        'info',
+        "total_per_allele_dosages",
+        'total_hardcalls',
+        'subset_total_per_allele_dosages',
+        'subset_total_hardcalls',
+        'subset_HWEP'
+    )
+
+
     with open(mfi_fname) as mfi:
         for variant_num, pos in enumerate(bgen.positions):
             try:
@@ -353,8 +371,8 @@ def load_imputed_snps(region: str,
                     chrom,
                     pos,
                     bgen.allele_ids[variant_num],
-                    'info=NA',
-                    'MAF=0'
+                    'MAF=0',
+                    ('NA', '', '', '', '', '')
                 )
                 continue
 
@@ -399,12 +417,12 @@ def load_imputed_snps(region: str,
                                                  p=subset_exp_hom_frac)
 
             locus_details = (
-                f'info={info_str};'
-                "total_per_allele_dosages={" f"'ref': {total_ref_dosage}, 'alt': {total_alt_dosage}" "};"
-                'total_hardcalls={' f"'hom_ref': {n_hom_ref}, 'het': {n_het}, 'hom_alt': {n_hom_alt}" '};'
-                'subset_total_per_allele_dosages={' f"'ref': {subset_total_ref_dosage}, 'alt': {subset_total_alt_dosage}" '};'
-                'subset_total_hardcalls={' f"'hom_ref': {subset_n_hom_ref}, 'het': {subset_n_het}, 'hom_alt': {subset_n_hom_alt}" '};'
-                f'subset_HWEP={subset_hwep}'
+                info_str,
+                "{" f"'ref': {total_ref_dosage}, 'alt': {total_alt_dosage}" "}",
+                '{' f"'hom_ref': {n_hom_ref}, 'het': {n_het}, 'hom_alt': {n_hom_alt}" '}',
+                '{' f"'ref': {subset_total_ref_dosage}, 'alt': {subset_total_alt_dosage}" '}',
+                '{' f"'hom_ref': {subset_n_hom_ref}, 'het': {subset_n_het}, 'hom_alt': {subset_n_hom_alt}" '}',
+                f'{subset_hwep}'
             )
 
             if (subset_n_ref_alleles < 20 or
@@ -414,8 +432,8 @@ def load_imputed_snps(region: str,
                     chrom,
                     pos,
                     bgen.allele_ids[variant_num],
-                    locus_details,
-                    'MAC<20'
+                    'MAC<20',
+                    locus_details
                 )
                 continue
 
@@ -425,8 +443,8 @@ def load_imputed_snps(region: str,
                     chrom,
                     pos,
                     bgen.allele_ids[variant_num],
-                    locus_details,
-                    'info<{info_thresh}'
+                    'info<{info_thresh}',
+                    locus_details
                 )
                 continue
 
@@ -439,8 +457,8 @@ def load_imputed_snps(region: str,
                 chrom,
                 pos,
                 bgen.allele_ids[variant_num],
-                locus_details,
-                None
+                None,
+                locus_details
             )
 
 

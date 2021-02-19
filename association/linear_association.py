@@ -440,8 +440,8 @@ def perform_association_subset(assoc_dir,
 
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
 
-        results.write("chrom\tpos\talleles\tlocus_details\tlocus_filtered\t"
-                      f"p_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\n")
+        results.write("chrom\tpos\talleles\tlocus_filtered\t"
+                      f"p_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\t")
         results.flush()
 
         n_loci = 0
@@ -464,17 +464,24 @@ def perform_association_subset(assoc_dir,
                 region, unfiltered_samples
             )
 
+        # first yield is special
+        extra_detail_fields = next(genotype_iter)
+        results.write('\t'.join(extra_detail_fields) + '\n')
+        results.flush()
+
         start_time = time.time()
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
                          log, 'pre_loop')
-        for gt, chrom, pos, allele_names, locus_info, locus_filtered in genotype_iter:
+        for gt, chrom, pos, allele_names, locus_filtered, locus_details in genotype_iter:
+            assert len(locus_details) == len(extra_detail_fields)
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
                             log, f'loop_{pos}_start')
 
             n_loci += 1
-            results.write(f"{chrom}\t{pos}\t{allele_names}\t{locus_info}\t")
+            results.write(f"{chrom}\t{pos}\t{allele_names}\t")
             if locus_filtered:
-                results.write(f'{locus_filtered}\t1\tnan\tnan\n')
+                results.write(f'{locus_filtered}\t1\tnan\tnan\t')
+                results.write('\t'.join(locus_details) + '\n')
                 results.flush()
                 continue
             else:
@@ -499,7 +506,8 @@ def perform_association_subset(assoc_dir,
             pval = reg_result.pvalues[0]
             coef = reg_result.params[0]
             intercept_coef = reg_result.params[1]
-            results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\n")
+            results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\t")
+            results.write('\t'.join(locus_details) + '\n')
             results.flush()
 
             duration = time.time() - start_time

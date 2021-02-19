@@ -107,37 +107,13 @@ def plot_manhattan(plot, source, label, chr_lens):
         legend_label=label,
         source=source
     )
-    
-    return
-    if chrom is None:
-        for chrom in range(1, 23):
-            if not first:
-                label = None
-            chrom_data = data[data[:, 0] == chrom, :]
-            xs = chrom_data[:, 1]
-            xs += np.sum(chr_lens[0:(chrom-1)])
-            ax.scatter(
-                xs,
-                chrom_data[:, 2],
-                color=colors[color_pair[chrom % 2]],
-                label=label,
-                marker='.'
-            )
-            ax.margins(0, 0.05)
-            first = False
-    else:
-        chrom_data = data[data[:, 0] == chrom, :]
-        ax.scatter(
-            chrom_data[:, 1],
-            chrom_data[:, 2],
-            color=colors[color_pair[0]],
-            label=label,
-            marker='.',
-        )
-        ax.margins(0, 0.05)
 
-
-def make_manhattan_plots(phenotypes, me_results, me_run_name, me_run_date):
+def make_manhattan_plots(phenotypes,
+                         my_snp_results,
+                         my_snp_run_name,
+                         my_snp_run_date,
+                         gwas_catalog,
+                         gwas_catalog_ids):
     # plot Manhattan plots
     chr_lens = np.genfromtxt(
         f'{ukb}/misc_data/genome/chr_lens.txt',
@@ -148,38 +124,30 @@ def make_manhattan_plots(phenotypes, me_results, me_run_name, me_run_date):
 
     for phenotype in phenotypes:
         print(f"Plotting phenotype {phenotype} ... ")
+        my_snp_data = my_snp_results[phenotype]
         # reformat data for plotting
         start_p_val_cap = 30
-        source = bokeh.models.ColumnDataSource(dict(
-            chr=me_results[phenotype]['chr'],
-            pos=me_results[phenotype]['pos'],
-            p_val=me_results[phenotype]['p_val'],
-            display_p_val=np.minimum(me_results[phenotype]['p_val'], start_p_val_cap),
-            alleles=me_results[phenotype]['alleles']
+        my_snp_source = bokeh.models.ColumnDataSource(dict(
+            chr=my_snp_data['chr'],
+            pos=my_snp_data['pos'],
+            p_val=my_snp_data['p_val'],
+            display_p_val=np.minimum(my_snp_data['p_val'], start_p_val_cap),
+            alleles=my_snp_data['alleles']
         ))
-        remaining = me_results[phenotype]['details']
-        details = {}
-        print('partitioning strings', flush=True)
-        while True:
-            partition1 = np.char.partition(remaining, '=')
-            partition2 = np.char.partition(partition1[:, 2], ';')
-            for detail_name in np.unique(partition1[:, 0]):
-                if detail_name not in details:
-                    details[detail_name] = np.empty(me_results[phenotype].shape[0], dtype=str)
-                    idxs = partition1[:, 0] == detail_name
-                    these_details = partition2.copy()[:, 0]
-                    these_details[~idxs] = ''
-                    details[detail_name] = np.char.add(
-                        details[detail_name], these_details
-                    )
-            if np.all(partition2[:, 2] == ''):
-                break
-        for detail_name, detail_vals in details.items():
-            source.data[detail_name] = detail_vals
-        print('done partitioning strings', flush=True)
+        snp_detail_names = my_snp_data.dtype.names[7:]
+        for detail_name in snp_detail_names:
+            my_snp_source.data[detail_name] = my_snp_data[detail_name]
 
-        min_x = min(me_results[phenotype]['pos'])
-        max_x = max(me_results[phenotype]['pos'])
+        catalog_source = bokeh.models.ColumnDataSource(dict(
+            chr=gwas_catalog[phenotype][:, 0],
+            pos=gwas_catalog[phenotype][:, 1],
+            p_val=gwas_catalog[phenotype][:, 2],
+            rsids=gwas_catalog_ids[phenotype]
+        ))
+
+        min_x = min(my_snp_data['pos'])
+        max_x = max(my_snp_data['pos'])
+
         x_diff = max_x - min_x
         margin = 0.15
 
@@ -219,8 +187,8 @@ def make_manhattan_plots(phenotypes, me_results, me_run_name, me_run_date):
             ('pos', '@pos'),
             ('p_val my code', '@p_val')
         ]
-        for detail_name in details:
-            hover.tooltips.append(detail_name, f'@{detail_name}')
+        for detail_name in snp_detail_names:
+            hover.tooltips.append((detail_name, f'@{detail_name}'))
 
         plot.add_tools(hover)
         plot.toolbar.active_inspect = [hover]
@@ -258,23 +226,33 @@ def make_manhattan_plots(phenotypes, me_results, me_run_name, me_run_date):
             legend_label='GWAS p-value threshold'
         )
         plot_manhattan(
-            plot, source, 'SNPs my code', chr_lens
+            plot, my_snp_source, 'SNPs my code', chr_lens
         )
+        plot_manhattan(
+
 
         height_slider = bokeh.models.Slider(
             start = 8, end=350, value=start_p_val_cap, step=1, title="p-value cap"
         )
+        for source in [my_snp_source]:
+            height_callback = bokeh.models.CustomJS(
+                args=dict(source=source, height_slider=height_slider),
+                code="""
+                    const data = source.data;
+                    const display_p_val = data['display_p_val'];
+                    const p_val= data['p_val'];
+                    const new_max = height_slider.value;
+                    for (var i = 0; i < display_p_val.length; i++) {
+                        display_p_val[i] = Math.min(p_val[i], new_max);
+                    }
+                    source.change.emit();
+                """
+            )
+            height_slider.js_on_change('value', height_callback)
         height_callback = bokeh.models.CustomJS(
-            args=dict(source=source, height_slider=height_slider, y_range=plot.y_range),
+            args=dict(height_slider=height_slider, y_range=plot.y_range),
             code="""
-                const data = source.data;
-                const display_p_val = data['display_p_val'];
-                const p_val= data['p_val'];
                 const new_max = height_slider.value;
-                for (var i = 0; i < display_p_val.length; i++) {
-                    display_p_val[i] = Math.min(p_val[i], new_max);
-                }
-                source.change.emit();
                 y_range.end = new_max + 1;
                 y_range.change.emit();
             """
@@ -286,11 +264,11 @@ def make_manhattan_plots(phenotypes, me_results, me_run_name, me_run_date):
         )
 
         plot.add_layout(bokeh.models.Title(
-            text=f"My code run name: {me_run_name}",
+            text=f"My code run name: {my_snp_run_name}",
             align='right'
         ), 'below')
         plot.add_layout(bokeh.models.Title(
-            text=f"My code run date: {me_run_date}",
+            text=f"My code run date: {my_snp_run_date}",
             align='right'
         ), 'below')
 
@@ -300,34 +278,31 @@ def make_manhattan_plots(phenotypes, me_results, me_run_name, me_run_date):
 
     return
 
-def load_data(phenotypes, me_run_name):
-    me_results = {}
+def load_data(phenotypes, my_snp_run_name):
+    my_snp_results = {}
     for phenotype in phenotypes:
         print(f"Loading results for {phenotype} ... ", end='', flush=True)
         start_time = time.time()
-        me_results[phenotype] = np.genfromtxt(
-            f'{ukb}/association/runs/{me_run_name}/results/{phenotype}.tab',
-            usecols=[0, 1, 2, 3, 4, 5],
-            skip_header=1,
+        my_snp_results[phenotype] = np.genfromtxt(
+            f'{ukb}/association/runs/{my_snp_run_name}/results/{phenotype}.tab',
+            names=True,
             delimiter='\t',
             dtype=None,
-            names=('chr', 'pos', 'alleles', 'details', 'filtered', 'p_val'),
             encoding='UTF-8'
         )
-        me_results[phenotype]['p_val'] = -np.log10(me_results[phenotype]['p_val'])
-        me_results[phenotype] = me_results[phenotype][
-            me_results[phenotype]['p_val'] >= 3
+        names = list(my_snp_results[phenotype].dtype.names)
+        new_names = ('chr', 'pos', 'alleles', 'filtered', 'p_val',
+                     'coeff_height', 'coeff_intercept')
+        for idx, new_name in enumerate(new_names):
+            names[idx] = new_name
+        my_snp_results[phenotype].dtype.names = names
+        my_snp_results[phenotype]['p_val'] = -np.log10(my_snp_results[phenotype]['p_val'])
+        my_snp_results[phenotype] = my_snp_results[phenotype][
+            my_snp_results[phenotype]['p_val'] >= 3
         ]
         print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-    return me_results
-
     '''
-
-    #TODO fix nan alleles!
-    for phenotype in phenotypes:
-        results[phenotype] = prep_data(results[phenotype])
-
     snp_summary_stats = {}
     snp_ss_description = {}
 
@@ -356,6 +331,7 @@ def load_data(phenotypes, me_run_name):
 
     for phenotype in snp_summary_stats:
         snp_summary_stats[phenotype] = prep_data(snp_summary_stats[phenotype])
+    '''
     
     # Load the NHGRI-EBI GWAS catalog
     print(f"Loading GWAS catalog results ... ", end='', flush=True)
@@ -366,15 +342,15 @@ def load_data(phenotypes, me_run_name):
         delimiter='\t',
         skiprows=1,
         dtype=object
-    )
+    ) # chrom, pos, pvalue
     # omit results that are not mapped to a recognizable chromosome
     catalog_names = np.loadtxt(
         f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
-        usecols=[7, 34],
+        usecols=[7, 21, 34],
         delimiter='\t',
         skiprows=1,
         dtype=object
-    ).astype('U')
+    ).astype('U') # cols 7, 34 describe the phenotype, 21 is the snp rsid
     catalog_names = np.char.lower(catalog_names)
     filter_weird_chroms = np.isin(catalog[:, 0],
                                   list(str(chrom) for chrom in range(1, 23)))
@@ -383,40 +359,49 @@ def load_data(phenotypes, me_run_name):
     catalog = catalog.astype(float)
 
     known_assocs = {}
+    known_assoc_ids = {}
     height_rows = np.logical_and(
-        catalog_names[:, 1] == 'body height',
+        catalog_names[:, 2] == 'body height',
         catalog_names[:, 0] != "pericardial adipose tissue adjusted for height and weight"
     )
     known_assocs['height'] = catalog[height_rows, :]
+    known_assoc_ids['height'] = catalog_names[height_rows, 1]
     known_assocs['total_bilirubin'] = \
             catalog[catalog_names[:, 1] == 'bilirubin measurement', :]
+    known_assoc_ids['total_bilirubin'] = \
+            catalog_names[catalog_names[:, 1] == 'bilirubin measurement', 1]
 
     for phenotype in known_assocs:
-        known_assocs[phenotype] = prep_data(known_assocs[phenotype])
+        known_assocs[phenotype][:, 2] = -np.log10(known_assocs[phenotype][:, 2])
+        known_assocs[phenotype] = known_assocs[phenotype][
+            known_assocs[phenotype][:, 0] == '21',
+            :
+        ]
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-    return results, snp_summary_stats, snp_ss_description, known_assocs
-    '''
+    return my_snp_results, known_assocs, known_assoc_ids
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("me_run_name")
+    parser.add_argument("my_snp_run_name")
     args = parser.parse_args()
     phenotypes = ['height', 'total_bilirubin']
 
-    me_results = load_data(phenotypes, args.me_run_name)
+    my_snp_results, gwas_catalog, gwas_catalog_ids = load_data(phenotypes, args.my_snp_run_name)
 
-    with open(f'{ukb}/association/runs/{args.me_run_name}/README') as README:
+    with open(f'{ukb}/association/runs/{args.my_snp_run_name}/README') as README:
         next(README)
         date_line = next(README)
-        me_run_date = date_line.split(' ')[2]
+        my_snp_run_date = date_line.split(' ')[2]
 
     make_manhattan_plots(
         phenotypes,
-        me_results,
-        args.me_run_name,
-        me_run_date
+        my_snp_results,
+        args.my_snp_run_name,
+        my_snp_run_date,
+        gwas_catalog,
+        gwas_catalog_ids
     )
 
 if __name__ == "__main__":
