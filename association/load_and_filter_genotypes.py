@@ -55,26 +55,42 @@ def load_strs(imputation_run_name: str,
     pos: int
     alleles: str
         e.g. 'ACAC,ACACAC'
-    locus_details: str
-        Details about the locus in an arbitrary format
     locus_filtered:
         None if the locus is not filtered, otherwise
         a string explaining why.
         'MAC<20' if there are fewer than 20 minor allele hardcalls
         after sample subsetting, per plink's standard
+    locus_details: str
+        Details about the locus in an arbitrary format
     """
 
     chrom, _ = region.split(':')
     vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
-    harmonizer = trh.TRRecordHarmonizer(vcf, vcftype='beagle-hipstr', region=region)
-
-    for trrecord in harmonizer:
-        if 'PERIOD' not in trrecord.info:
+   
+    yield (
+        'motif',
+        'period',
+        'ref_len',
+        'total_per_allele_dosages',
+        'total_hardcall_alleles',
+        'total_hardcall_genotypes',
+        'subset_total_per_allele_dosages',
+        'subset_total_hardcall_alleles',
+        'subset_total_hardcall_genotypes',
+        'subset_het',
+        'subset_entropy',
+        'subset_HWEP',
+        'subset_allele_dosage_r2'
+    )
+    for record in vcf(region):
+        if record.INFO.get('PERIOD') is None:
             # there are a few duplicate loci which I didn't handle
             # properly, this identifies and removes them
             continue
+
+        trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
 
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
 
@@ -147,7 +163,6 @@ def load_strs(imputation_run_name: str,
             f'motif={trrecord.motif};'
             f'period={len(trrecord.motif)};'
             f'ref_len={trrecord.ref_allele_length};'
-            f'dr2={trrecord.info["DR2"]};'
             'total_per_allele_dosages=' + str(total_dosages) + ';'
             'total_hardcall_alleles=' + str(total_hardcall_alleles) + ';'
             'total_hardcall_genotypes=' + str(total_hardcall_genotypes) + ';'

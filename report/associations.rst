@@ -5,6 +5,8 @@ Association Testing
 Preparing Phenotypes
 ====================
 
+.. details:: Files
+
 #. Regressing out covariates
 
    For the phenotype height and total bilirubin I have included three categories of covariates:
