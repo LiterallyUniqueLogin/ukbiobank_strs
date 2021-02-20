@@ -6,6 +6,7 @@ Preparing Phenotypes
 ====================
 
 .. details:: Files
+   
 
 #. Regressing out covariates
 
@@ -191,12 +192,52 @@ STRs
 
        > 0.9900357942862258
 
+.. details:: Allelic Dosage R2
+
+   Based on Beagle's R2 score
+   Appendix 1 here
+   https://www.cell.com/ajhg/fulltext/S0002-9297(09)00012-3#app1
+   Browning, Brian L., and Sharon R. Browning. "A unified approach to genotype imputation and haplotype-phase inference for large data sets of trios and unrelated individuals." The American Journal of Human Genetics 84.2 (2009): 210-223.
+
+   PerasonCorr(length allelic dosage, hardcall) within subset samples
+
+   Beagle's article talks about PearsonCorr(True genotypes, Hardcalls)
+   and then looks at TrueGenotypes|Dosages (assuming dosages are accurate). I'm not sure
+   if that's exactly equivalent to this metric. Need to check.
+
 
 Microarray SNPs
 ---------------
 
 Imputed SNPs
 ------------
+
+.. details:: sizing
+
+    Total variants: 93095623
+    Number variants per chrom:
+    1 7402791
+    2 8129063
+    3 6696680
+    4 6555871
+    5 6070641
+    6 5751712
+    7 5405524
+    8 5282223
+    9 4066774
+    10 4562904
+    11 4628348
+    12 4431052
+    13 3270217
+    14 3037521
+    15 2767971
+    16 3089612
+    17 2660711
+    18 2599579
+    19 2087017
+    20 2082571
+    21 1261158
+    22 1255683
 
 .. details:: Sanity checks
 
@@ -209,4 +250,11 @@ Imputed SNPs
     https://www.ukbiobank.ac.uk/wp-content/uploads/2014/04/imputation_documentation_May2015.pdf
     Neale lab suggests 0.8:
     http://www.nealelab.is/blog/2017/9/11/details-and-considerations-of-the-uk-biobank-gwas
+
+.. details:: full plink output
+
+   4.4GB for chr21 for one phenotype. ``93095623/1261158 * 4.4GB = 324.8GB`` for an entire phenotype.
+   Workable for a few phenotypes, not many, need to work on scaling down. Either filter the files
+   and throw away the originals or don't request as much information from plink.
+
 

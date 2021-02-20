@@ -178,7 +178,7 @@ def load_strs(imputation_run_name: str,
             str(subset_allele_dosage_r2)
         )
 
-        mac = list(subset_total_hardcall_alleles)
+        mac = list(subset_total_hardcall_alleles.values())
         mac.pop(np.argmax(mac))
         mac_lt_20 = np.sum(mac) < 20
 
