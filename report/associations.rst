@@ -258,3 +258,62 @@ Imputed SNPs
    and throw away the originals or don't request as much information from plink.
 
 
+
+Post association QC
+=========================
+
+.. details:: First round chr21 plot
+
+   Ways of interacting:
+
+   * Scroll wheel: zoom in/out
+   * Click and drag: scroll across the chromosome left/right
+   * Use the p-value cap slider above the plot: change the height
+     cap of the plot
+   * Mouse over: see details about individual loci (if overlapping
+     tooltips appear, zoom in enough that the points
+     are separated underneath your mouse)
+   * Click on a legend: hide that data source
+   * Click on the save icon in the toolbar on the right: snap a picture of the plot
+   * Click on the +/- zoom icons in the toolbar on the right: also zoom in/out
+
+   Plot details:
+
+   * All STRs are plotted, SNPs are only plotted if they have p values <= 10^-3
+   * The 'my code' and 'Plink' SNP runs were both done by me on the same loci and
+     same data - they should be close to equivalent
+   * In the tooltips for the my code runs, total_hardcall_alleles refers to the
+     allele distribution across the entire UKB population, whileas
+     subset_total_hardcall_alleles refers to the distribution across only the samples
+     on which the regression was run (e.g. qc'ed, unrelated, white, and with 
+     a measurement of the phenotype of interest)
+   * per_allele_dosage means the sum of the dosages of that allele across all samples
+   * allele_dosage_r2 is the squared pearson correlation coefficient between the dosages
+     and the hardcalls - numbers closer to 1 indicate that we were more confident in
+     calling haplotypes with this length
+
+   Thoughts:
+
+   * The interactivity of the plots seems very useful for exploring the data, and
+     now that I know what I'm doing making this again wouldn't be too much work. What
+     do you think? Is it useful to you?
+   * There's a bug with at least some of the STR tooltip data: locus 3009776 in the
+     height plot (the dosage for allele len 14 is zero but there are ~800k hardcalls
+     with that allele)
+   * Assuming the plots are roughly accurate despite that bug, there don't seem to be
+     many obviously spurious STR loci - they follow the trend of the SNP signals and
+     published GWAS signals closely. Are there any spots that stand out to you as
+     worrisome?
+   * There are a few STR loci in the height plot which are significant and have many
+     alleles - next step will be to plot them and see if any of them are 
+     highly convincing.
+   * Other next steps: Extend these plots to the entire genome. Write code to 
+     automatically detect STR association signal regions. Read up on Bolt LMM
+     and use it for both SNP and STR associations. Do this on more quantitative traits.
+
+   .. raw:: html
+      :file: ../association/plots/me_manhattan_height.html
+
+   .. raw:: html
+      :file: ../association/plots/me_manhattan_total_bilirubin.html
+

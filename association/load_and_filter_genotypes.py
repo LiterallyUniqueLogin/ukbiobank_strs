@@ -25,11 +25,22 @@ sys.path.insert(0, f'{ukb}/../trtools/repo')
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
 
+def _dict_str(d):
+    out = '{'
+    first = True
+    for key in sorted(d.keys()):
+        if not first:
+            out +=', '
+        first = False
+        out += f'{repr(key)}: {repr(d[key])}'
+    out += '}'
+    return out
+
 def load_strs(imputation_run_name: str,
               region: str,
               samples: np.ndarray):
     """
-    Iterate over a region returning genotypes at SNP loci.
+    Iterate over a region returning genotypes at STR loci.
 
     First yield is a tuple of names of the fields in details.
     Every subsequent yield is described in the yields section below.
@@ -46,17 +57,20 @@ def load_strs(imputation_run_name: str,
 
     Yields
     ------
-    gt:
-        A 1D array of length n-samples
-        Each value is the length dosage measured in number of repeats
-        different from the reference.
+    dosages: Dict[float, np.ndarray]
+        A dictionary from unique length alleles to 2D arrays of size (n_samples, 2)
+        which contain the dosages of those alleles for each haplotype
+        Length dosage are measured in number of repeats.
 
         None if locus_filtered is not None
+    allele_probs: bool
+        Always true indicating the above array contains allele probabilities
+        and not genotype probabilities
+    unique_alleles: np.ndarray
+        Array of unique length alleles, same length as the dosages dict
     chrom: str
         e.g. '13'
     pos: int
-    alleles: str
-        e.g. 'ACAC,ACACAC'
     locus_filtered:
         None if the locus is not filtered, otherwise
         a string explaining why.
@@ -65,13 +79,18 @@ def load_strs(imputation_run_name: str,
     locus_details:
         tuple of strings with the same length as the first yield
         with the corresponding order.
+
+    Notes
+    -----
+    Hardcalls mentioned in the locus details are phased hardcalls, and in some
+    corner cases will not correspond to the maximum likelihood unphased allele.
     """
 
     chrom, _ = region.split(':')
     vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
-   
+
     yield (
         'motif',
         'period',
@@ -102,17 +121,30 @@ def load_strs(imputation_run_name: str,
             ap = trrecord.format[f'AP{p}']
             total_dosages[len_alleles[0]] += np.sum(np.maximum(0, 1 - np.sum(ap, axis=1)))
             for i in range(ap.shape[1]):
-                total_dosages[len_alleles[i+1]] = np.sum(ap[:, i])
+                total_dosages[len_alleles[i+1]] += np.sum(ap[:, i])
 
         total_hardcall_alleles = trrecord.GetAlleleCounts()
         total_hardcall_genotypes = trrecord.GetGenotypeCounts()
 
-        subset_total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
+        if isinstance(samples, slice):
+            assert samples == slice(None)
+            n_subset_samples = trrecord.GetNumSamples()
+        else:
+            n_subset_samples = int(np.sum(samples))
+
+        subset_dosage_gts = {
+            _len: np.zeros((n_subset_samples, 2)) for _len in np.unique(len_alleles)
+        }
         for p in (1, 2):
             ap = trrecord.format[f'AP{p}']
-            subset_total_dosages[len_alleles[0]] += np.sum(np.maximum(0, 1 - np.sum(ap[samples, :], axis=1)))
+            subset_dosage_gts[len_alleles[0]][:, (p-1)] += \
+                    np.maximum(0, 1 - np.sum(ap[samples, :], axis=1))
             for i in range(ap.shape[1]):
-                subset_total_dosages[len_alleles[i+1]] = np.sum(ap[samples, i])
+                subset_dosage_gts[len_alleles[i+1]][:, (p-1)] += ap[samples, i]
+
+        subset_total_dosages = {
+            _len: np.sum(subset_dosage_gts[_len]) for _len in subset_dosage_gts
+        }
 
         subset_total_hardcall_alleles = trrecord.GetAlleleCounts(samples)
         subset_total_hardcall_genotypes = trrecord.GetGenotypeCounts(samples)
@@ -125,57 +157,38 @@ def load_strs(imputation_run_name: str,
             subset_total_hardcall_genotypes
         )
 
-        subset_dosages = trrecord.GetDosages()[samples]
-
         # https://www.cell.com/ajhg/fulltext/S0002-9297(09)00012-3#app1
         # Browning, Brian L., and Sharon R. Browning. "A unified approach to genotype imputation and haplotype-phase inference for large data sets of trios and unrelated individuals." The American Journal of Human Genetics 84.2 (2009): 210-223.
         # appendix 1
         subset_allele_dosage_r2 = {}
 
         allele_lens = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
-        subset_hardcall_indicies = trrecord.GetGenotypeIndicies()[samples, :-1]
-        aps = []
-        for p in 1, 2:
-            ap = trrecord.format[f'AP{p}'][samples, :]
-            ref_ap = np.maximum(0, np.sum(ap, axis=1))
-            aps.append(np.concatenate((ref_ap.reshape(-1, 1), ap), axis=1))
-        stacked_aps = np.stack(aps, axis=1)
-        assert stacked_aps.shape[0] == subset_dosages.shape[0]
-        assert stacked_aps.shape[1] == 2
+        subset_hardcalls = trrecord.GetLengthGenotypes()[samples, :-1]
         for length in allele_lens:
             # calculate allele dosage r**2 for this length
-            for other_length in subset_allele_dosage_r2:
-                if np.isclose(length, other_length):
-                    continue
+            if length in subset_allele_dosage_r2:
+                continue
 
-            calls = np.zeros(subset_hardcall_indicies.shape, dtype=bool)
-            for idx, inner_length in enumerate(allele_lens):
-                if not np.isclose(inner_length, length):
-                    continue
-                calls = calls | (subset_hardcall_indicies == idx)
+            calls = subset_hardcalls == length
 
-            same_len_alleles = [np.isclose(allele_len, length) for allele_len in allele_lens]
-            probs = np.sum(stacked_aps[:, :, same_len_alleles], axis=2)
-
-            assert probs.shape == calls.shape
-
-            subset_allele_dosage_r2[length] = \
-                    np.corrcoef(calls.reshape(-1), probs.reshape(-1))[0,1]**2
+            subset_allele_dosage_r2[length] = np.corrcoef(
+                calls.reshape(-1), subset_dosage_gts[length].reshape(-1)
+            )[0,1]**2
 
         locus_details = (
             trrecord.motif,
             str(len(trrecord.motif)),
             str(trrecord.ref_allele_length),
-            str(total_dosages),
-            str(total_hardcall_alleles),
-            str(total_hardcall_genotypes),
-            str(subset_total_dosages),
-            str(subset_total_hardcall_alleles),
-            str(subset_total_hardcall_genotypes),
+            _dict_str(total_dosages),
+            _dict_str(total_hardcall_alleles),
+            _dict_str(total_hardcall_genotypes),
+            _dict_str(subset_total_dosages),
+            _dict_str(subset_total_hardcall_alleles),
+            _dict_str(subset_total_hardcall_genotypes),
             str(subset_het),
             str(subset_entropy),
             str(subset_hwep),
-            str(subset_allele_dosage_r2)
+            _dict_str(subset_allele_dosage_r2)
         )
 
         mac = list(subset_total_hardcall_alleles.values())
@@ -185,19 +198,21 @@ def load_strs(imputation_run_name: str,
         if mac_lt_20:
             yield (
                 None,
+                True,
+                np.unique(len_alleles),
                 trrecord.chrom,
                 trrecord.pos,
-                ','.join(str(_len) for _len in np.unique(len_alleles)),
                 'MAC<20',
                 locus_details
             )
             continue
 
         yield (
-            subset_dosages,
+            subset_dosage_gts,
+            True,
+            np.unique(len_alleles),
             trrecord.chrom,
             trrecord.pos,
-            ','.join(str(_len) for _len in np.unique(len_alleles)),
             None,
             locus_details
         )
