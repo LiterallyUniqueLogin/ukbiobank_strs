@@ -25,7 +25,7 @@ sys.path.insert(0, f'{ukb}/../trtools/repo')
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
 
-def _dict_str(d):
+def dict_str(d):
     out = '{'
     first = True
     for key in sorted(d.keys()):
@@ -63,9 +63,6 @@ def load_strs(imputation_run_name: str,
         Length dosage are measured in number of repeats.
 
         None if locus_filtered is not None
-    allele_probs: bool
-        Always true indicating the above array contains allele probabilities
-        and not genotype probabilities
     unique_alleles: np.ndarray
         Array of unique length alleles, same length as the dosages dict
     chrom: str
@@ -179,16 +176,16 @@ def load_strs(imputation_run_name: str,
             trrecord.motif,
             str(len(trrecord.motif)),
             str(trrecord.ref_allele_length),
-            _dict_str(total_dosages),
-            _dict_str(total_hardcall_alleles),
-            _dict_str(total_hardcall_genotypes),
-            _dict_str(subset_total_dosages),
-            _dict_str(subset_total_hardcall_alleles),
-            _dict_str(subset_total_hardcall_genotypes),
+            dict_str(total_dosages),
+            dict_str(total_hardcall_alleles),
+            dict_str(total_hardcall_genotypes),
+            dict_str(subset_total_dosages),
+            dict_str(subset_total_hardcall_alleles),
+            dict_str(subset_total_hardcall_genotypes),
             str(subset_het),
             str(subset_entropy),
             str(subset_hwep),
-            _dict_str(subset_allele_dosage_r2)
+            dict_str(subset_allele_dosage_r2)
         )
 
         mac = list(subset_total_hardcall_alleles.values())
@@ -198,7 +195,6 @@ def load_strs(imputation_run_name: str,
         if mac_lt_20:
             yield (
                 None,
-                True,
                 np.unique(len_alleles),
                 trrecord.chrom,
                 trrecord.pos,
@@ -209,7 +205,6 @@ def load_strs(imputation_run_name: str,
 
         yield (
             subset_dosage_gts,
-            True,
             np.unique(len_alleles),
             trrecord.chrom,
             trrecord.pos,
@@ -286,7 +281,6 @@ def filtered_microarray_snps(region):
 
 def load_imputed_snps(region: str,
                       samples: np.ndarray,
-                      return_dosages: bool = True,
                       info_thresh: Optional[float] = None):
     """
     Iterate over a region returning genotypes at SNP loci.
@@ -301,31 +295,21 @@ def load_imputed_snps(region: str,
     samples:
         A boolean array of length nsamples determining which samples are included
         (True) and which are not
-    return_dosages:
-        whether or not to return dosages or hardcalls
     info_thresh:
         Loci must have INFO scores of at least this thresh or will be filtered
 
     Yields
     ------
-    gt:
-        Either dosages or hardcalls. If dosages:
-        A 1D array of length n-samples
-        Each value is the dosage of the alternate allele:
-            prob(AB) + 2*prob(BB)
-
-        If hardcalls:
-        A 1D array of length n-samples
-        0,1,2, corresponding to the whichever of AA,AB or BB
-        has max likelihood.
-        Entries filtered by call_thresh are np.nan
+    dosages: np.ndarray
+        A 2D array of size (n_samples, 3)
+        which contain the probabilites of each genotype.
 
         None if locus_filtered is not None
+    unique_alleles: np.ndarray
+        Array of unique length alleles, same length as the dosages dict
     chrom: str
         e.g. '13'
     pos: int
-    alleles: str
-        e.g. 'A,G'
     locus_filtered:
         None if the locus is not filtered, otherwise
         a string explaining why.
@@ -380,12 +364,13 @@ def load_imputed_snps(region: str,
                 break
 
             info_str = mfi_line.split()[-1]
+            alleles = bgen.allele_ids[variant_num].split(',')
             if info_str == 'NA':
                 yield (
                     None,
+                    alleles,
                     chrom,
                     pos,
-                    bgen.allele_ids[variant_num],
                     'MAF=0',
                     ('NA', '', '', '', '', '')
                 )
@@ -444,9 +429,9 @@ def load_imputed_snps(region: str,
                     subset_n_ref_alleles > subset_hardcalls.shape[0]*2 - 20):
                 yield (
                     None,
+                    alleles,
                     chrom,
                     pos,
-                    bgen.allele_ids[variant_num],
                     'MAC<20',
                     locus_details
                 )
@@ -455,20 +440,16 @@ def load_imputed_snps(region: str,
             if info_thresh is not None and float(info_str) < info_thresh:
                 yield (
                     None,
+                    alleles,
                     chrom,
                     pos,
-                    bgen.allele_ids[variant_num],
                     'info<{info_thresh}',
                     locus_details
                 )
                 continue
 
-            if return_dosages:
-                out_gts = subset_dosages
-            else:
-                out_gts = subset_hardcalls
             yield (
-                out_gts,
+                probs,
                 chrom,
                 pos,
                 bgen.allele_ids[variant_num],

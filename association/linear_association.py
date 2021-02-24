@@ -33,6 +33,7 @@ import sklearn.kernel_ridge
 import sklearn.model_selection
 import sklearn.neighbors
 from statsmodels.regression.linear_model import OLS
+import statsmodels.stats.weightstats
 
 import load_and_filter_genotypes
 
@@ -414,7 +415,6 @@ def perform_association_subset(assoc_dir,
                                imputation_run_name,
                                region,
                                dep_var,
-                               dep_var_suffix,
                                data,
                                col_names,
                                profile_mem_usage):
@@ -453,7 +453,7 @@ def perform_association_subset(assoc_dir,
         if not imputation_run_name:
             use_strs = False
 
-        unfiltered_samples = ~np.isnan(data[:, col_names.index(f'{dep_var}_{dep_var_suffix}')])
+        unfiltered_samples = ~np.isnan(data[:, col_names.index(f'{dep_var}_inv_norm_rank_residual')])
 
         if use_strs:
             genotype_iter = load_and_filter_genotypes.load_strs(
@@ -466,22 +466,36 @@ def perform_association_subset(assoc_dir,
 
         # first yield is special
         extra_detail_fields = next(genotype_iter)
-        results.write('\t'.join(extra_detail_fields) + '\n')
+        results.write('\t'.join(extra_detail_fields) + '\t')
+        results.write(f'mean_residual_{dep_var}_per_single_dosage\t'
+                      '0.05_significance_CI\t'
+                      '5e-8_significance_CI')
+
+        if use_strs:
+            results.write(f'\tmean_residual_{dep_var}_per_paired_dosage\t'
+                          '0.05_significance_CI\t'
+                          '5e-8_significance_CI')
+        results.write('\n')
         results.flush()
 
         start_time = time.time()
         tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
                          log, 'pre_loop')
-        for gt, chrom, pos, allele_names, locus_filtered, locus_details in genotype_iter:
+        for dosage_gts, unique_alleles, chrom, pos, locus_filtered, locus_details in genotype_iter:
             assert len(locus_details) == len(extra_detail_fields)
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
                             log, f'loop_{pos}_start')
 
             n_loci += 1
+            allele_names = ','.join(list(unique_alleles.astype(str)))
             results.write(f"{chrom}\t{pos}\t{allele_names}\t")
             if locus_filtered:
                 results.write(f'{locus_filtered}\t1\tnan\tnan\t')
-                results.write('\t'.join(locus_details) + '\n')
+                results.write('\t'.join(locus_details))
+                if use_strs:
+                    results.write('\tnan'*8 + '\n')
+                else:
+                    results.write('\tnan'*4 + '\n')
                 results.flush()
                 continue
             else:
@@ -490,13 +504,18 @@ def perform_association_subset(assoc_dir,
             tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
                              log, f'loop_{pos}_preOLS')
 
+            if use_strs:
+                gts = np.sum([_len*np.sum(dosages, axis=1) for
+                              _len, dosages in dosage_gts.items()])
+            else:
+                gts = np.sum(dosage_gts[:, 1] + 2*dosage_gts[:, 2])
             gt_const = np.concatenate((
-                gt.reshape(-1, 1),  np.ones((gt.shape[0], 1))
+                gts.reshape(-1, 1),  np.ones((gts.shape[0], 1))
             ), axis = 1)
 
             #do da regression
             model = OLS(
-                data[unfiltered_samples, col_names.index(f'{dep_var}_{dep_var_suffix}')],
+                data[unfiltered_samples, col_names.index(f'{dep_var}_inv_norm_rank_residual')],
                 gt_const,
                 missing='drop'
             )
@@ -507,7 +526,68 @@ def perform_association_subset(assoc_dir,
             coef = reg_result.params[0]
             intercept_coef = reg_result.params[1]
             results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\t")
-            results.write('\t'.join(locus_details) + '\n')
+            results.write('\t'.join(locus_details) + '\t')
+            if use_strs:
+                single_dosages = {}
+                paired_dosages = {}
+                for len1 in unique_alleles:
+                    for len2 in unique_alleles:
+                        if len1 != len2:
+                            dosages = (dosage_gts[len1][:, 0]*dosage_gts[len2][:, 1] +
+                                       dosage_gts[len1][:, 1]*dosage_gts[len2][:, 0])
+                        else:
+                            dosages = dosage_gts[len1][:, 0]*dosage_gts[len1][:, 1]
+                        if len1 + len2 not in single_dosages:
+                            single_dosages[len1 + len2] = dosages
+                        else:
+                            single_dosages[len1 + len2] += dosages
+                        minlen = min(len1, len2)
+                        maxlen = max(len1, len2)
+                        paired_dosages[(minlen, maxlen)] = dosages
+                single_dosage_means = {}
+                single_dosage_95_CI = {}
+                single_dosage_GWAS_CI= {}
+                for _len, dosages in single_dosages.items():
+                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                        data[unfiltered_samples, f'{dep_var}_residual'],
+                        weights = dosages
+                    )
+                    single_dosage_means[_len] = mean_stats.mean
+                    single_dosage_95_CI[_len] = mean_stats.tconfint_mean()
+                    single_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
+                paired_dosage_means = {}
+                paired_dosage_95_CI = {}
+                paired_dosage_GWAS_CI= {}
+                for _len, dosages in paired_dosages.items():
+                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                        data[unfiltered_samples, f'{dep_var}_residual'],
+                        weights = dosages
+                    )
+                    paired_dosage_means[_len] = mean_stats.mean
+                    paired_dosage_95_CI[_len] = mean_stats.tconfint_mean()
+                    paired_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
+                results.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(paired_dosage_means) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(paired_dosage_95_CI) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(paired_dosage_GWAS_CI) + '\n')
+            else:
+                single_dosage_means = {}
+                single_dosage_95_CI = {}
+                single_dosage_GWAS_CI= {}
+                for alt_count in range(3):
+                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                        data[unfiltered_samples, f'{dep_var}_residual'],
+                        weights = dosage_gts[:, alt_count]
+                    )
+                    single_dosage_means[alt_count] = mean_stats.mean
+                    single_dosage_95_CI[alt_count] = mean_stats.tconfint_mean()
+                    single_dosage_GWAS_CI[alt_count] = mean_stats.tconfint_mean(5e-8)
+                results.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
+                results.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\n')
+
             results.flush()
 
             duration = time.time() - start_time
@@ -648,7 +728,6 @@ def run_associations_few_loci(assoc_dir, imputation_run_name, data, col_names, d
                 imputation_run_name,
                 locus,
                 dep_var,
-                'inv_norm_rank_residual',
                 data,
                 col_names,
                 profile_mem_usage
@@ -745,7 +824,6 @@ def run_associations(assoc_dir, imputation_run_name, data, col_names, dep_vars,
                     imputation_run_name,
                     f'{chrom}:{start_pos}-{start_pos + range_per_task - 1}',
                     dep_var,
-                    'inv_norm_rank_residual',
                     data,
                     col_names,
                     profile_mem_usage
