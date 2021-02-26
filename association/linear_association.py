@@ -577,9 +577,12 @@ def perform_association_subset_helper(
             single_dosage_means = {}
             single_dosage_95_CI = {}
             single_dosage_GWAS_CI= {}
+            residuals = data[unfiltered_samples, col_names.index(f'{dep_var}_residual')]
             for _len, dosages in single_dosages.items():
+                if len(np.unique(residuals[dosages != 0])) <= 1:
+                    continue
                 mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                    data[unfiltered_samples, col_names.index(f'{dep_var}_residual')],
+                    residuals,
                     weights = dosages
                 )
                 single_dosage_means[_len] = mean_stats.mean
@@ -589,8 +592,10 @@ def perform_association_subset_helper(
             paired_dosage_95_CI = {}
             paired_dosage_GWAS_CI= {}
             for _len, dosages in paired_dosages.items():
+                if len(np.unique(residuals[dosages != 0])) <= 1:
+                    continue
                 mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                    data[unfiltered_samples, col_names.index(f'{dep_var}_residual')],
+                    residuals,
                     weights = dosages
                 )
                 paired_dosage_means[_len] = mean_stats.mean
@@ -685,14 +690,14 @@ def run_plink_associations(assoc_dir, dep_vars, indep_vars, pheno_indep_vars, co
     for chrom in chroms:
         os.mkdir(f'{assoc_dir}/results/chr{chrom}')
 
-    cluster = dask_jobqueue.PBSCluster(
-        queue="hotel",
+    cluster = dask_jobqueue.SLURMCluster(
+        queue="shared",
         name="linear_associations",
-        walltime="72:00:00",
-        cores=28,
-        memory="128GB",
+        walltime="47:30:00",
+        log_directory=dask_output_dir,
         processes=1,
-        log_directory=dask_output_dir
+        cores=28,
+        memory="128GB"
     )
     cluster.adapt(maximum_jobs=len(chroms)*len(dep_vars))
     client = dask.distributed.Client(cluster)
@@ -785,15 +790,17 @@ def run_associations(assoc_dir, imputation_run_name, data, col_names, dep_vars,
     os.mkdir(f'{assoc_dir}/results/batches')
     if profile_mem_usage:
         os.mkdir(f'{assoc_dir}/profiling')
-    cluster = dask_jobqueue.PBSCluster(
-        queue="hotel",
+    cluster = dask_jobqueue.SLURMCluster(
+        queue="shared",
         name="linear_associations",
         walltime="4:00:00",
         log_directory=dask_output_dir,
         processes=1,
-        cores=2
+        cores=1,
+        memory="9 GB",
+        job_extra={'--nodes=1'}
     )
-    cluster.adapt(maximum_jobs=300)
+    cluster.adapt(maximum_jobs=4000)
     client = dask.distributed.Client(cluster)
     # currently dask cannot handle python files that are imported
     # locally. Have to upload it to all workers on the cluster,
