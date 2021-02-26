@@ -32,9 +32,12 @@ def dict_str(d):
         if not first:
             out +=', '
         first = False
-        out += f'{repr(key)}: {repr(d[key])}'
+        # make sure keys are quoted so that the resulting string
+        # is valid JSON and can be parsed as a dictionary in javascript
+        # using JSON.parse
+        out += f'{repr(str(key))}: {repr(d[key])}'
     out += '}'
-    return out
+    return out.replace("'", '"')
 
 def load_strs(imputation_run_name: str,
               region: str,
@@ -364,7 +367,7 @@ def load_imputed_snps(region: str,
                 break
 
             info_str = mfi_line.split()[-1]
-            alleles = bgen.allele_ids[variant_num].split(',')
+            alleles = np.array(bgen.allele_ids[variant_num].split(','))
             if info_str == 'NA':
                 yield (
                     None,
@@ -449,10 +452,10 @@ def load_imputed_snps(region: str,
                 continue
 
             yield (
-                probs,
+                probs[samples, :],
+                alleles,
                 chrom,
                 pos,
-                bgen.allele_ids[variant_num],
                 None,
                 locus_details
             )

@@ -17,6 +17,7 @@ import os.path
 import subprocess as sp
 import sys
 import time
+import traceback
 import tracemalloc
 from typing import List, Optional
 
@@ -426,190 +427,218 @@ def perform_association_subset(assoc_dir,
     region_string = f'{chrom}_{start}_{end}'
     with open(f'{assoc_dir}/run_logs/{dep_var}_{region_string}.log', 'w') as log, \
             open(f'{assoc_dir}/results/batches/{dep_var}_{region_string}.tab', 'w') as results:
-
-        # if not profiling simply hide the function
-        # behind a placeholder that does nothing
-        if not profile_mem_usage:
-            def tracemalloc_dump_snapshot(*args, **kwargs):
-                pass
-        else:
-            def tracemalloc_dump_snapshot(fname, log, name):
-                log.write(f'Memory usage at {name}: {tracemalloc.get_traced_memory()}\n')
-                log.flush()
-                #tracemalloc.take_snapshot().dump(fname)
-
-        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
-
-        results.write("chrom\tpos\talleles\tlocus_filtered\t"
-                      f"p_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\t")
-        results.flush()
-
-        n_loci = 0
-        batch_time = 0
-        batch_size = 50
-        total_time = 0
-
-        use_strs = True
-        if not imputation_run_name:
-            use_strs = False
-
-        unfiltered_samples = ~np.isnan(data[:, col_names.index(f'{dep_var}_inv_norm_rank_residual')])
-
-        if use_strs:
-            genotype_iter = load_and_filter_genotypes.load_strs(
-                imputation_run_name, region, unfiltered_samples
+        try:
+            perform_association_subset_helper(
+                assoc_dir,
+                imputation_run_name,
+                region,
+                dep_var,
+                data,
+                col_names,
+                profile_mem_usage,
+                log,
+                results
             )
-        else:
-            genotype_iter = load_and_filter_genotypes.load_imputed_snps(
-                region, unfiltered_samples
-            )
+        except Exception as e:
+            log.write(traceback.format_exc())
+            log.flush()
+            raise e
+    return region_string
 
-        # first yield is special
-        extra_detail_fields = next(genotype_iter)
-        results.write('\t'.join(extra_detail_fields) + '\t')
-        results.write(f'mean_residual_{dep_var}_per_single_dosage\t'
+
+def perform_association_subset_helper(
+        assoc_dir,
+        imputation_run_name,
+        region,
+        dep_var,
+        data,
+        col_names,
+        profile_mem_usage,
+        log,
+        results):
+    # if not profiling simply hide the function
+    # behind a placeholder that does nothing
+    if not profile_mem_usage:
+        def tracemalloc_dump_snapshot(*args, **kwargs):
+            pass
+    else:
+        def tracemalloc_dump_snapshot(fname, log, name):
+            log.write(f'Memory usage at {name}: {tracemalloc.get_traced_memory()}\n')
+            log.flush()
+            #tracemalloc.take_snapshot().dump(fname)
+
+    tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_start', log, 'start')
+
+    results.write("chrom\tpos\talleles\tlocus_filtered\t"
+                  f"p_{dep_var}\tcoeff_{dep_var}\tcoeff_intercept\t")
+    results.flush()
+
+    n_loci = 0
+    batch_time = 0
+    batch_size = 50
+    total_time = 0
+
+    use_strs = True
+    if not imputation_run_name:
+        use_strs = False
+
+    unfiltered_samples = ~np.isnan(data[:, col_names.index(f'{dep_var}_inv_norm_rank_residual')])
+
+    if use_strs:
+        genotype_iter = load_and_filter_genotypes.load_strs(
+            imputation_run_name, region, unfiltered_samples
+        )
+    else:
+        genotype_iter = load_and_filter_genotypes.load_imputed_snps(
+            region, unfiltered_samples
+        )
+
+    # first yield is special
+    extra_detail_fields = next(genotype_iter)
+    results.write('\t'.join(extra_detail_fields) + '\t')
+    results.write(f'mean_residual_{dep_var}_per_single_dosage\t'
+                  '0.05_significance_CI\t'
+                  '5e-8_significance_CI')
+
+    if use_strs:
+        results.write(f'\tmean_residual_{dep_var}_per_paired_dosage\t'
                       '0.05_significance_CI\t'
                       '5e-8_significance_CI')
+    results.write('\n')
+    results.flush()
+
+    start_time = time.time()
+    tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
+                     log, 'pre_loop')
+    for dosage_gts, unique_alleles, chrom, pos, locus_filtered, locus_details in genotype_iter:
+        assert len(locus_details) == len(extra_detail_fields)
+        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
+                        log, f'loop_{pos}_start')
+
+        n_loci += 1
+        allele_names = ','.join(list(unique_alleles.astype(str)))
+        results.write(f"{chrom}\t{pos}\t{allele_names}\t")
+        if locus_filtered:
+            results.write(f'{locus_filtered}\t1\tnan\tnan\t')
+            results.write('\t'.join(locus_details))
+            if use_strs:
+                results.write('\tnan'*6 + '\n')
+            else:
+                results.write('\tnan'*3 + '\n')
+            results.flush()
+            continue
+        else:
+            results.write('False\t')
+
+        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
+                         log, f'loop_{pos}_preOLS')
 
         if use_strs:
-            results.write(f'\tmean_residual_{dep_var}_per_paired_dosage\t'
-                          '0.05_significance_CI\t'
-                          '5e-8_significance_CI')
-        results.write('\n')
+            gts = np.sum([_len*np.sum(dosages, axis=1) for
+                          _len, dosages in dosage_gts.items()], axis=0)
+        else:
+            gts = dosage_gts[:, 1] + 2*dosage_gts[:, 2]
+        gt_const = np.concatenate((
+            gts.reshape(-1, 1),  np.ones((gts.shape[0], 1))
+        ), axis = 1)
+
+        #do da regression
+        model = OLS(
+            data[unfiltered_samples, col_names.index(f'{dep_var}_inv_norm_rank_residual')],
+            gt_const,
+            missing='drop'
+        )
+        reg_result = model.fit()
+        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_postOLS',
+                         log, f'loop_{pos}_postOLS')
+        pval = reg_result.pvalues[0]
+        coef = reg_result.params[0]
+        intercept_coef = reg_result.params[1]
+        results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\t")
+        results.write('\t'.join(locus_details) + '\t')
+
+        if use_strs:
+            single_dosages = {}
+            paired_dosages = {}
+            for len1 in unique_alleles:
+                for len2 in unique_alleles:
+                    if len1 != len2:
+                        dosages = (dosage_gts[len1][:, 0]*dosage_gts[len2][:, 1] +
+                                   dosage_gts[len1][:, 1]*dosage_gts[len2][:, 0])
+                    else:
+                        dosages = dosage_gts[len1][:, 0]*dosage_gts[len1][:, 1]
+                    if len1 + len2 not in single_dosages:
+                        single_dosages[len1 + len2] = dosages
+                    else:
+                        single_dosages[len1 + len2] += dosages
+                    minlen = min(len1, len2)
+                    maxlen = max(len1, len2)
+                    paired_dosages[(minlen, maxlen)] = dosages
+            single_dosage_means = {}
+            single_dosage_95_CI = {}
+            single_dosage_GWAS_CI= {}
+            for _len, dosages in single_dosages.items():
+                mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                    data[unfiltered_samples, col_names.index(f'{dep_var}_residual')],
+                    weights = dosages
+                )
+                single_dosage_means[_len] = mean_stats.mean
+                single_dosage_95_CI[_len] = mean_stats.tconfint_mean()
+                single_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
+            paired_dosage_means = {}
+            paired_dosage_95_CI = {}
+            paired_dosage_GWAS_CI= {}
+            for _len, dosages in paired_dosages.items():
+                mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                    data[unfiltered_samples, col_names.index(f'{dep_var}_residual')],
+                    weights = dosages
+                )
+                paired_dosage_means[_len] = mean_stats.mean
+                paired_dosage_95_CI[_len] = mean_stats.tconfint_mean()
+                paired_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
+            results.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(paired_dosage_means) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(paired_dosage_95_CI) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(paired_dosage_GWAS_CI) + '\n')
+        else:
+            single_dosage_means = {}
+            single_dosage_95_CI = {}
+            single_dosage_GWAS_CI= {}
+            for alt_count in range(3):
+                mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                    data[unfiltered_samples, f'{dep_var}_residual'],
+                    weights = dosage_gts[:, alt_count]
+                )
+                single_dosage_means[alt_count] = mean_stats.mean
+                single_dosage_95_CI[alt_count] = mean_stats.tconfint_mean()
+                single_dosage_GWAS_CI[alt_count] = mean_stats.tconfint_mean(5e-8)
+            results.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
+            results.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\n')
+
         results.flush()
 
-        start_time = time.time()
-        tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_pre_loop',
-                         log, 'pre_loop')
-        for dosage_gts, unique_alleles, chrom, pos, locus_filtered, locus_details in genotype_iter:
-            assert len(locus_details) == len(extra_detail_fields)
-            tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_start',
-                            log, f'loop_{pos}_start')
-
-            n_loci += 1
-            allele_names = ','.join(list(unique_alleles.astype(str)))
-            results.write(f"{chrom}\t{pos}\t{allele_names}\t")
-            if locus_filtered:
-                results.write(f'{locus_filtered}\t1\tnan\tnan\t')
-                results.write('\t'.join(locus_details))
-                if use_strs:
-                    results.write('\tnan'*8 + '\n')
-                else:
-                    results.write('\tnan'*4 + '\n')
-                results.flush()
-                continue
-            else:
-                results.write('False\t')
-
-            tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_preOLS',
-                             log, f'loop_{pos}_preOLS')
-
-            if use_strs:
-                gts = np.sum([_len*np.sum(dosages, axis=1) for
-                              _len, dosages in dosage_gts.items()])
-            else:
-                gts = np.sum(dosage_gts[:, 1] + 2*dosage_gts[:, 2])
-            gt_const = np.concatenate((
-                gts.reshape(-1, 1),  np.ones((gts.shape[0], 1))
-            ), axis = 1)
-
-            #do da regression
-            model = OLS(
-                data[unfiltered_samples, col_names.index(f'{dep_var}_inv_norm_rank_residual')],
-                gt_const,
-                missing='drop'
-            )
-            reg_result = model.fit()
-            tracemalloc_dump_snapshot(f'{assoc_dir}/profiling/{region}_loop_{pos}_postOLS',
-                             log, f'loop_{pos}_postOLS')
-            pval = reg_result.pvalues[0]
-            coef = reg_result.params[0]
-            intercept_coef = reg_result.params[1]
-            results.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\t")
-            results.write('\t'.join(locus_details) + '\t')
-            if use_strs:
-                single_dosages = {}
-                paired_dosages = {}
-                for len1 in unique_alleles:
-                    for len2 in unique_alleles:
-                        if len1 != len2:
-                            dosages = (dosage_gts[len1][:, 0]*dosage_gts[len2][:, 1] +
-                                       dosage_gts[len1][:, 1]*dosage_gts[len2][:, 0])
-                        else:
-                            dosages = dosage_gts[len1][:, 0]*dosage_gts[len1][:, 1]
-                        if len1 + len2 not in single_dosages:
-                            single_dosages[len1 + len2] = dosages
-                        else:
-                            single_dosages[len1 + len2] += dosages
-                        minlen = min(len1, len2)
-                        maxlen = max(len1, len2)
-                        paired_dosages[(minlen, maxlen)] = dosages
-                single_dosage_means = {}
-                single_dosage_95_CI = {}
-                single_dosage_GWAS_CI= {}
-                for _len, dosages in single_dosages.items():
-                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                        data[unfiltered_samples, f'{dep_var}_residual'],
-                        weights = dosages
-                    )
-                    single_dosage_means[_len] = mean_stats.mean
-                    single_dosage_95_CI[_len] = mean_stats.tconfint_mean()
-                    single_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
-                paired_dosage_means = {}
-                paired_dosage_95_CI = {}
-                paired_dosage_GWAS_CI= {}
-                for _len, dosages in paired_dosages.items():
-                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                        data[unfiltered_samples, f'{dep_var}_residual'],
-                        weights = dosages
-                    )
-                    paired_dosage_means[_len] = mean_stats.mean
-                    paired_dosage_95_CI[_len] = mean_stats.tconfint_mean()
-                    paired_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
-                results.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(paired_dosage_means) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(paired_dosage_95_CI) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(paired_dosage_GWAS_CI) + '\n')
-            else:
-                single_dosage_means = {}
-                single_dosage_95_CI = {}
-                single_dosage_GWAS_CI= {}
-                for alt_count in range(3):
-                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                        data[unfiltered_samples, f'{dep_var}_residual'],
-                        weights = dosage_gts[:, alt_count]
-                    )
-                    single_dosage_means[alt_count] = mean_stats.mean
-                    single_dosage_95_CI[alt_count] = mean_stats.tconfint_mean()
-                    single_dosage_GWAS_CI[alt_count] = mean_stats.tconfint_mean(5e-8)
-                results.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
-                results.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\n')
-
-            results.flush()
-
-            duration = time.time() - start_time
-            total_time += duration
-            batch_time += duration
-            if n_loci % batch_size == 0:
-                log.write(
-                    f"time/locus (last {batch_size}): "
-                    f"{batch_time/batch_size}s\n"
-                    f"time/locus ({n_loci} total loci): {total_time/n_loci}s\n"
-                )
-                log.flush()
-                batch_time = 0
-            start_time = time.time()
-        if n_loci > 0:
+        duration = time.time() - start_time
+        total_time += duration
+        batch_time += duration
+        if n_loci % batch_size == 0:
             log.write(
-                f"Done.\nTotal loci: {n_loci}\nTotal time: {total_time}s\ntime/locus: {total_time/n_loci}s\n"
+                f"time/locus (last {batch_size}): "
+                f"{batch_time/batch_size}s\n"
+                f"time/locus ({n_loci} total loci): {total_time/n_loci}s\n"
             )
-        else:
-            log.write(f"No variants found in the region {region}\n")
-        log.flush()
-    return region_string
+            log.flush()
+            batch_time = 0
+        start_time = time.time()
+    if n_loci > 0:
+        log.write(
+            f"Done.\nTotal loci: {n_loci}\nTotal time: {total_time}s\ntime/locus: {total_time/n_loci}s\n"
+        )
+    else:
+        log.write(f"No variants found in the region {region}\n")
+    log.flush()
 
 
 def invoke_plink(assoc_dir, chrom, dep_var, indep_vars):

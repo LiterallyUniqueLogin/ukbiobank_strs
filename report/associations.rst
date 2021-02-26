@@ -257,10 +257,31 @@ Imputed SNPs
    Workable for a few phenotypes, not many, need to work on scaling down. Either filter the files
    and throw away the originals or don't request as much information from plink.
 
+Association and stats
+=====================
+
+.. details:: sanity checks
+
+   2021/02/25 - confirmed that the single dosage means being calculated post linear regression are correct
+
+   .. code:: python
+
+       test_samples = np.isin(data[:, 0], [2497795, 2143467, 1288463, 2632032, 3667876, 3154457, 5713647, 2548437,                                
+                 1218644, 3505384,])
+
+       for _len in dosage_gts:
+           dosage_gts[_len] = dosage_gts[_len][:10, :]
+
+       mean_stats = statsmodels.stats.weightstats.DescrStatsW(    
+           data[test_samples, col_names.index(f'{dep_var}_residual')],
+           weights = dosages
+       )
+
+
 
 
 Post association QC
-=========================
+===================
 
 .. details:: First round chr21 plot
 

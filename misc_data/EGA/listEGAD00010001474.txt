@@ -1,1 +1,1 @@
-/projects/ps-gymreklab/resources/datasets/ukbiobank/misc_data/EGA/listEGAD00010001474.txt
+../../../../resources/datasets/ukbiobank/misc_data/EGA/listEGAD00010001474.txt
