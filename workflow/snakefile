@@ -1,0 +1,52 @@
+
+rule load_shared_covars:
+    output:
+        "traits/shared_covars/shared_covars.npy",
+        "traits/shared_covars/README.txt"
+    shell:
+        "traits/load_shared_covars.py"
+
+rule load_phenotype:
+    input:
+        "traits/shared_covars/shared_covars.npy"
+    output:
+        "traits/phenotypes/{phenotype}.npy",
+        "traits/phenotypes/{phenotype}_README.txt",
+        "traits/phenotypes/{phenotype}_unit.txt"
+    shell:
+        "traits/load_{wildcards.phenotype}.py"
+
+rule plot_phenotype_by_sex:
+    input:
+        "traits/shared_covars/shared_covars.npy",
+        "traits/phenotypes/{phenotype}.npy",
+        "traits/phenotypes/{phenotype}_unit.txt"
+    output:
+        "traits/phenotypes/{phenotype}_distribution_by_sex.png"
+    shell:
+        'traits/plot_phenotype.py {wildcards.phenotype} sex'
+
+rule plot_phenotype_by_age:
+    input:
+        "traits/phenotypes/{phenotype}.npy",
+        "traits/phenotypes/{phenotype}_unit.txt"
+    output:
+        "traits/phenotypes/{phenotype}_distribution_by_age.png"
+    shell:
+        'traits/plot_phenotype.py {wildcards.phenotype} age'
+
+'''
+rule subset_samples_for_phenotype:
+
+rule produce_phenotype_residuals:
+
+rule run_my_STR_GWAS_region:
+
+rule run_my_SNP_GWAS_region:
+
+rule combine_my_GWAS_output:
+
+rule run_plink_SNP_GWAS_chrom:
+
+rule combine_plink_GWAS_output:
+'''

@@ -1,0 +1,20 @@
+restart-times: 3
+cluster: 'sbatch
+  --account {cluster.account}
+  --partition {cluster.partition}
+  --nodes {cluster.nodes}
+  --job-name {rule}
+  --tasks-per-node {cluster.tasks-per-node}
+  --mem {cluster.mem}
+  --time {cluster.time}
+  --output {cluster.output}
+  --mail-type {cluster.mail-type}
+  --mail-user {cluster.mail-user}
+  --export {cluster.export}
+  '
+max-jobs-per-second: 1
+max-status-checks-per-second: 10
+local-cores: 1
+latency-wait: 60
+use-conda: True
+jobs: 4000

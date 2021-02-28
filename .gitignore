@@ -37,3 +37,5 @@ fields.ukb
 *lmdb*
 dask-worker-space/
 twistd.pid
+.snakemake
+*.npy

@@ -9,6 +9,7 @@ UKB STR GWAS documentation
 .. toctree::
    :maxdepth: 2
 
+   workflow 
    associations
    exome_qc
    environment

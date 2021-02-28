@@ -1,0 +1,32 @@
+__default__:
+  # don't expect to modify
+  account: ddp268
+  partition: shared
+  nodes: 1
+  export: ALL
+  mail-user: jbmargoliash@usd.edu
+  # will modify for some tasks
+  mem: 5G
+  mail-type: FAIL
+  # must set tasks-per-node, time and output for each task
+
+load_shared_covars:
+  tasks-per-node: 1
+  time: '00:05:00'
+  output: 'traits/shared_covars/output/%x_%j.out'
+
+load_phenotype:
+  tasks-per-node: 1
+  time: '00:05:00'
+  output: 'traits/phenotypes/output/%x_%j.out'
+
+plot_phenotype_by_sex:
+  tasks-per-node: 5
+  time: '24:00:00'
+  output: 'traits/phenotypes/output/%x_%j.out'
+
+plot_phenotype_by_age:
+  tasks-per-node: 5
+  time: '24:00:00'
+  output: 'traits/phenotypes/output/%x_%j.out'
+
