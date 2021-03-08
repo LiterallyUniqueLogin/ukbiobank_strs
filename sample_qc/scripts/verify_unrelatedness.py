@@ -1,4 +1,4 @@
-# pylint: disable=C0103
+#!/usr/bin/env python3
 import argparse
 import os
 import sys
@@ -14,27 +14,21 @@ args = parser.parse_args()
 run_name = args.run_name
 ukb = os.environ['UKB']
 
-
 def error(msg):
     print(msg, file=sys.stderr)
     sys.exit(-1)
 
-
-def load_samples(floc):
-    samples = {}
-    with open(floc) as sample_file:
+def load_samples(fname):
+    samples = set()
+    with open(fname) as sample_file:
         header = True
         for line in sample_file:
-            sample_id = line.split()[0]
             if header:
-                if sample_id != "ID_1":
-                    error(f"Expected first line to be a header line in "
-                          "combined_unrelated.sample instead see {sample_id}")
                 header = False
                 continue
-            samples[sample_id] = line
+            sample = line.split()[0]
+            samples.add(sample)
     return samples
-
 
 unfiltered_samples = \
     load_samples(f'{ukb}/sample_qc/runs/{run_name}/combined.sample')
@@ -48,8 +42,8 @@ for sample in unfiltered_samples:
     neighbors[sample] = set()
 
 # Check if there is any relatedness
-relatedness_floc = f'{ukb}/misc_data/ukbgene/ukb46122_rel_s488282.dat'
-with open(relatedness_floc) as kinship_file:
+relatedness_fname = f'{ukb}/misc_data/ukbgene/ukb46122_rel_s488282.dat'
+with open(relatedness_fname) as kinship_file:
     first = True
     for line in kinship_file:
         if first:

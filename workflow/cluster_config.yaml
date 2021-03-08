@@ -4,7 +4,7 @@ __default__:
   partition: shared
   nodes: 1
   export: ALL
-  mail-user: jbmargoliash@usd.edu
+  mail-user: jbmargoliash@ucsd.edu
   # will modify for some tasks
   mem: 5G
   mail-type: FAIL
@@ -29,4 +29,19 @@ plot_phenotype_by_age:
   tasks-per-node: 5
   time: '24:00:00'
   output: 'traits/phenotypes/output/%x_%j.out'
+  mem: 30G
 
+subset_samples_for_phenotype:
+  tasks-per-node: 1
+  time: '24:00:00'
+  output: 'sample_qc/output/%x_%j.out'
+
+rank_inverse_normalize_phenotype_subset:
+  tasks-per-node: 1
+  time: '00:05:00'
+  output: 'traits/subset_rin_phenotypes/output/%x_%j.out'
+
+test:
+  tasks-per-node: 1
+  time: '00:00:30'
+  output: 'temp/%x_%j.out'

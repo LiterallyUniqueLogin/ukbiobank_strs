@@ -1,8 +1,8 @@
 
 rule load_shared_covars:
     output:
-        "traits/shared_covars/shared_covars.npy",
-        "traits/shared_covars/README.txt"
+        protected("traits/shared_covars/shared_covars.npy"),
+        protected("traits/shared_covars/README.txt")
     shell:
         "traits/load_shared_covars.py"
 
@@ -10,9 +10,9 @@ rule load_phenotype:
     input:
         "traits/shared_covars/shared_covars.npy"
     output:
-        "traits/phenotypes/{phenotype}.npy",
-        "traits/phenotypes/{phenotype}_README.txt",
-        "traits/phenotypes/{phenotype}_unit.txt"
+        protected("traits/phenotypes/{phenotype}.npy"),
+        protected("traits/phenotypes/{phenotype}_README.txt"),
+        protected("traits/phenotypes/{phenotype}_unit.txt")
     shell:
         "traits/load_{wildcards.phenotype}.py"
 
@@ -35,10 +35,40 @@ rule plot_phenotype_by_age:
     shell:
         'traits/plot_phenotype.py {wildcards.phenotype} age'
 
-'''
 rule subset_samples_for_phenotype:
+    input:
+        "traits/phenotypes/{phenotype}.npy",
+        expand("sample_qc/common_filters/keep"),
+        expand("sample_qc/common_filters/remove"),
+        "misc_data/ukbgene/ukb46122_rel_s488282.dat"
+    output:
+        protected("sample_qc/runs/{phenotype}/README.txt"),
+        protected("sample_qc/runs/{phenotype}/combined_unrelated.sample")
+    shadow: 'minimal'
+    shell:
+        'shadow_dir=$(pwd) ; cd $UKB ; export UKB=${{shadow_dir}} ; '
+        'sample_qc/scripts/combine.py {wildcards.phenotype} && '
+        'PHEN={wildcards.phenotype} sample_qc/scripts/test_combine.sh && '
+        'sample_qc/scripts/unrelated_individuals.py {wildcards.phenotype} && '
+        'sample_qc/scripts/verify_unrelatedness.py {wildcards.phenotype}'
 
-rule produce_phenotype_residuals:
+rule rank_inverse_normalize_phenotype_subset:
+    input:
+        "traits/phenotypes/{phenotype}.npy",
+        "sample_qc/runs/{phenotype}/combined_unrelated.sample"
+    output:
+        protected("traits/subset_rin_phenotypes/{phenotype}_README.txt"),
+        "traits/subset_rin_phenotypes/{phenotype}.npy"
+    shell:
+        'traits/rank_inverse_normalize.py {wildcards.phenotype}'
+
+'''
+rule test:
+    output:
+        "shallow_test1.txt",
+        "shallow/test1.txt"
+    shadow: 'minimal'
+    shell: 'temp/test_script.sh'
 
 rule run_my_STR_GWAS_region:
 

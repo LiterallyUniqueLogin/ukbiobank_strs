@@ -1,4 +1,4 @@
-restart-times: 3
+restart-times: 2
 cluster: 'sbatch
   --account {cluster.account}
   --partition {cluster.partition}

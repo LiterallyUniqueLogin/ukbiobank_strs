@@ -14,7 +14,8 @@ import python_array_utils as utils
 ukb = os.environ['UKB']
 
 def fit_kde(data: np.ndarray,
-            random_state: int = 13) -> sklearn.neighbors.KernelDensity:
+            random_state: int = 13,
+            max_train = int(1e4)) -> sklearn.neighbors.KernelDensity:
     """
     Parameters
     ----------
@@ -27,7 +28,6 @@ def fit_kde(data: np.ndarray,
     # others
     assert data.shape[0] > 1000
     assert not np.any(np.isnan(data))
-    max_loci = int(1e4)
 
     # code from
     # https://jakevdp.github.io/PythonDataScienceHandbook/05.13-kernel-density-estimation.html
@@ -35,7 +35,7 @@ def fit_kde(data: np.ndarray,
     # Use gridsearch to choose the bandwidth
     kfold = sklearn.model_selection.ShuffleSplit(
         n_splits=5,
-        train_size=min(max_loci, int(np.floor(data.shape[0]*.85))),
+        train_size=min(max_train, int(np.floor(data.shape[0]*.85))),
         random_state=random_state
     )
     bandwidths = 10 ** np.linspace(-1.8, 1.8, 40)
@@ -124,10 +124,7 @@ def plot_1D_kde(
         curve = np.exp(kde.score_samples(xs.reshape(-1, 1)))
 
         # plot
-        if stratum_value is None:
-            ax.fill_between(xs, curve)
-        else:
-            ax.plot(xs, curve, label=strata_labels[stratum_value])
+        ax.fill_between(xs, curve, alpha=0.5)
 
     if data.shape[1] > 1:
         ax.legend()
@@ -173,7 +170,7 @@ def plot_2D_kde(
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
 
-    kde = fit_kde(data)
+    kde = fit_kde(data, max_train = 50)
 
     min_xval = np.min(data[:, 0])
     max_xval = np.max(data[:, 0])
@@ -189,10 +186,51 @@ def plot_2D_kde(
     xy = np.vstack([ys.ravel(), xs.ravel()]).T
 
     probs = np.exp(kde.score_samples(xy))
+    probs = probs.reshape(xy.shape)
 
     cs = ax.contourf(xs, ys, probs, colors=plt.cm.Blues)
     cb = fig.colorbar(cs)
-    cb.ax.set_title("Distribution density")
+    cb.ax.set_title("Probability density")
+
+    plt.savefig(fname)
+
+
+def plot_histogram(
+        data: np.ndarray,
+        xlabel: str,
+        title: str,
+        fname: str,
+        strata_labels: Dict[float, str]):
+    assert not np.any(np.isnan(data))
+
+    min_val = np.min(data[:, 0])
+    max_val = np.max(data[:, 0])
+    unique_points = np.unique(data[:, 0])
+    print(unique_points)
+    nbins = len(unique_points)
+    while True:
+        if len(np.unique(np.floor(
+            (unique_points - min_val)*nbins/(max_val - min_val)
+        ))) == len(unique_points):
+            break
+        nbins += 1
+
+    fig, ax = plt.subplots()
+
+    for stratum_value, stratum_label in strata_labels.items():
+        ax.hist(
+            data[data[:, 1] == stratum_value, 0],
+            nbins,
+            range = (min_val, max_val),
+            density = True,
+            label = stratum_label,
+            alpha=0.5
+        )
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Probability density")
+    ax.legend()
 
     plt.savefig(fname)
 
@@ -204,14 +242,26 @@ def plot_phenotype_by_sex(phenotype):
         unit = next(unit_file).strip()
 
     data = utils.merge_arrays(shared_covars, pheno_data)
+    data = data[:, [shared_covars.shape[1], 1]]
+    data = data[~np.any(np.isnan(data), axis=1), :]
 
-    plot_1D_kde(
-        data[:, [shared_covars.shape[1] + 1, 1]],
-        f'{phenotype} ({unit})',
-        f'{phenotype} x sex distribution',
-        f'{ukb}/traits/phenotypes/{phenotype}_distribution_by_sex.png',
-        {1: 'female', 2: 'male'}
-    )
+    if len(np.unique(data[:, 0])) < 2000:
+        plot_histogram(
+            data,
+            f'{phenotype} ({unit})',
+            phenotype.capitalize() + ' x Sex distribution',
+            f'{ukb}/traits/phenotypes/{phenotype}_distribution_by_sex.png',
+            {1: 'male', 2: 'female'}
+        )
+    else:
+        plot_1D_kde(
+            data,
+            f'{phenotype} ({unit})',
+            phenotype.capitalize() + ' x Sex distribution',
+            f'{ukb}/traits/phenotypes/{phenotype}_distribution_by_sex.png',
+            {1: 'male', 2: 'female'}
+        )
+
 
 def plot_phenotype_by_age(phenotype):
     pheno_data = np.load(f'{ukb}/traits/phenotypes/{phenotype}.npy')
@@ -223,7 +273,7 @@ def plot_phenotype_by_age(phenotype):
         pheno_data,
         f'{phenotype} ({unit})',
         'age (years)',
-        f'{phenotype} x age distribution',
+        phenotype.capitalize() + ' x Age distribution',
         f'{ukb}/traits/phenotypes/{phenotype}_distribution_by_age.png'
     )
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import os
 
 import numpy as np
@@ -22,6 +23,8 @@ def load_height():
 
     with open(f'{ukb}/traits/phenotypes/height_README.txt', 'w') as readme:
         floc = f'{ukb}/main_dataset/extracted_data/height.txt'
+        today = datetime.datetime.now().strftime("%Y_%m_%d")
+        readme.write(f"Run date: {today}\n")
         readme.write(
             f"Loading height phenotype and age at measurement. File: {floc}.\n"
             f"Only reporting first height measurement taken even if there "
@@ -44,8 +47,8 @@ def load_height():
                      "the world's tallest person or shorter than the shortest.\n")
         readme.flush()
         height_data[np.ix_(filter_extremes, [1,2])] = np.nan
-        assert not np.any(np.isnan(height_data))
 
+        # append visit ages
         shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
 
         height_data = utils.merge_arrays(shared_covars[:, [0, -3, -2, -1]], height_data)
@@ -56,14 +59,18 @@ def load_height():
         )
         assert height_data.shape[1] == 7
 
+        # select measurement age for each participant
         start_idx = 1
         has_height = ~np.isnan(height_data[:, 4])
         height_data[has_height, 6] = height_data[
             has_height,
             start_idx + height_data[has_height, 5].astype(int)
         ]
+        # subset to just height and measurement age, and only participants with both of those
+        height_data = height_data[:, [0,4,6]]
+        height_data = height_data[~np.any(np.isnan(height_data), axis=1), :]
 
-        np.save(f'{ukb}/traits/phenotypes/height.npy', height_data[:, [0,4,6]])
+        np.save(f'{ukb}/traits/phenotypes/height.npy', height_data)
 
 if __name__ == "__main__":
     load_height()

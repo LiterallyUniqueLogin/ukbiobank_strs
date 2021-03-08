@@ -1382,9 +1382,9 @@ def main():  # noqa: D103
 
     with open(f"{assoc_dir}/README", 'w') as readme, \
             open(f"{assoc_dir}/phenotype_units.txt", 'w') as phenotypes:
-
         readme.write(f"Run args: {args}\n")
         today = datetime.datetime.now().strftime("%Y_%m_%d")
+
         readme.write(f"Run date: {today}\n")
         readme.flush()
         phenotypes.write("phenotype:unit\n")

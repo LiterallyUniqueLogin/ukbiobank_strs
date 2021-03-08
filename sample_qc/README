@@ -1,5 +1,6 @@
-primus_test - some tests I wrote to verify primus ran correctly
+common_filters - lists of participants I do/don't expect to include in analyses
+scripts - all the code. Generates the common filters, and the runs
 runs - output of different batches of sample qc (with different criteria,
 	and so different end sample lists)
-scripts - all the code to generate the files in runs
-common_filters - lists of participants commonly not including
+primus_test - some tests I wrote to verify primus ran correctly
+

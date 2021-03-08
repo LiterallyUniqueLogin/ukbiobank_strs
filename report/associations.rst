@@ -5,8 +5,15 @@ Association Testing
 Preparing Phenotypes
 ====================
 
-.. details:: Files
-   
+#. Loading shared covariates
+
+   .. details:: sanity checks
+
+       Confirmed that the sex encoding is male == 1 and female == 2 by comparing
+       ``$UKB/microarray/ukb46122_cal_chr1_v2_s488282.fam`` to 
+       ``$UKB/main_dataset/extracted_data/sex.tab`` and noting that
+       `this <https://biobank.ndph.ox.ac.uk/showcase/coding.cgi?id=9>`_ is the
+       encoding for sex in that file.
 
 #. Regressing out covariates
 

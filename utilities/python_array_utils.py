@@ -14,6 +14,7 @@ def merge_arrays(a, b):
         2D arrays
     '''
 
+    assert len(a.shape) == 2 and len(b.shape) == 2
     assert len(set(a[:, 0]).intersection(b[:,0])) > 1000
     assert len(set(a[:, 0])) == a.shape[0]
     assert len(set(b[:, 0])) == b.shape[0]

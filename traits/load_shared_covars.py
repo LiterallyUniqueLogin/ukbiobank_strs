@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import os
 import os.path
 
@@ -21,6 +22,7 @@ def load_covars():
         age_assess_init (age at initial assessment),
         age_assess_repeat,
         age_assess_image
+    Only columns that may be nan are the assessment ages 
 
     Notes
     -----
@@ -28,10 +30,14 @@ def load_covars():
     directories of the loaded files.
     """
     with open(f'{ukb}/traits/shared_covars/README.txt', 'w') as readme:
+        today = datetime.datetime.now().strftime("%Y_%m_%d")
+        readme.write(f"Run date: {today}\n")
+
         floc = f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam'
         cols = (0, 4)
         readme.write(
             f"Loading participant ID index and sex covariate. File: {floc}, cols: {cols}\n"
+            "Sex is encoded as 1 (male) or 2 (female)\n"
         )
         readme.flush()
         ids_and_sex = np.genfromtxt(
@@ -58,11 +64,12 @@ def load_covars():
 
         # these arrays are in the same row order, so just concatenate
         data = np.concatenate((ids_and_sex, pcs), axis=1)
+        assert not np.any(np.isnan(data))
 
         # remove redacted samples which are denoted by negative id s
         readme.write("Removing redacted samples as indicated by negative id numbers.\n")
         data = data[data[:, 0] >= 0, :]
-        # assert sex is either 1 (female) or 2 (male)
+        # assert sex is either 1 (male) or 2 (female)
         assert np.all((data[:, 1] == 1) | (data[:, 1] == 2))
 
         # Age will be included as a covariate for all dependent variables

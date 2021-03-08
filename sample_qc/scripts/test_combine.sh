@@ -1,15 +1,19 @@
 #!/bin/bash
 
+if [ -z "$PHEN" ] ; then echo "PHEN is unset" ; exit 1 ; fi
+echo "PHEN $PHEN"
+echo "PHEN $PHEN" >&2
+
 TMPDIR=$UKB/temp
-RUNDIR=$UKB/sample_qc/runs/height
+RUNDIR=$UKB/sample_qc/runs/"$PHEN"
 COMMONDIR=$UKB/sample_qc/common_filters
 
 sorted_samples="$TMPDIR/combined.sample"
 sort "$RUNDIR"/combined.sample > "$sorted_samples"
 
-for fullfile in "$COMMONDIR"/remove/* "$RUNDIR"/remove/*; do
+for fullfile in "$COMMONDIR"/remove/*sample ; do
 	file=$(basename "$fullfile")
-	sort "$fullfile" > "$TMPDIR/$file"
+	awk '{print $1}' "$fullfile" | sort > "$TMPDIR/$file"
 	count=$(comm -12 "$sorted_samples" "$TMPDIR/$file" | grep -cv '^ID')
 	if (( count != 0 )) ; then
 		echo "Not all IDs from file $file were removed" >&2
@@ -18,9 +22,9 @@ for fullfile in "$COMMONDIR"/remove/* "$RUNDIR"/remove/*; do
 	fi
 done
 
-for fullfile in "$COMMONDIR"/keep/* ; do
+for fullfile in "$COMMONDIR"/keep/*sample ; do
 	file=$(basename "$fullfile")
-	sort "$fullfile" > "$TMPDIR/$file"
+	awk '{print $1}' "$fullfile" | sort > "$TMPDIR/$file"
 	count=$(comm -23 "$sorted_samples" "$TMPDIR/$file" | grep -cv '^ID')
 	if (( count != 0 )) ; then
 		echo "Not all IDs were contained in file $file" >&2
@@ -29,4 +33,4 @@ for fullfile in "$COMMONDIR"/keep/* ; do
 	fi
 done
 
-echo "Success"
+echo "Combine was successful"
