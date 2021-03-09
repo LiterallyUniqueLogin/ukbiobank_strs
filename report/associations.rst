@@ -15,6 +15,14 @@ Preparing Phenotypes
        `this <https://biobank.ndph.ox.ac.uk/showcase/coding.cgi?id=9>`_ is the
        encoding for sex in that file.
 
+#. Loading specific phenotypes
+   
+   TODO - bilirubin combined_unrelated.sample is wrong and should be deleted!
+
+   .. details:: sanity checks
+
+       2021/03/09 - confirmed that load_total_bilirubin works by manually checking output
+
 #. Regressing out covariates
 
    For the phenotype height and total bilirubin I have included three categories of covariates:

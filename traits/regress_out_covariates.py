@@ -21,7 +21,7 @@ def get_linear_residuals(readme, data, covar_names):
     )
     n_samples = data.shape[0]
     readme.write(
-        f"Using 5 splits with 90%  of the data ({0.9*n_samples:.0f} samples) "
+        f"Using 5 splits with 90% of the data ({0.9*n_samples:.0f} samples) "
         f"as training and 10% of the data ({0.1*n_samples:.0f} samples) as validation "
         "in order to calculate average validation RMSE for the regression.\n"
     )
@@ -34,7 +34,7 @@ def get_linear_residuals(readme, data, covar_names):
         reg = model.fit()
         total_rmse += np.sqrt(np.mean((y[test] - reg.predict(X[test]))**2))
     avg_rmse = total_rmse/splitter.get_n_splits()
-    readme.write("Average RMSE: {avg_rmse:.4f}")
+    readme.write(f"Average RMSE: {avg_rmse:.4f}\n")
     readme.flush()
 
     model = statsmodels.regression.linear_model.OLS(y, X)
