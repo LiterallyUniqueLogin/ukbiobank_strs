@@ -29,7 +29,8 @@ def load_covars():
     If interested in the source of this data, read the READMEs in the
     directories of the loaded files.
     """
-    with open(f'{ukb}/traits/shared_covars/README.txt', 'w') as readme:
+    with open(f'{ukb}/traits/shared_covars/README.txt', 'w') as readme, \
+            open(f'{ukb}/traits/shared_covars/covar_names.txt', 'w') as covar_names:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
 
@@ -46,11 +47,12 @@ def load_covars():
             delimiter=" "
         )
         readme.write(f"{ids_and_sex.shape[0]} total participants\n")
-        col_names = ['id', 'sex']
+        covar_names.write('sex\n')
 
         floc = f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt'
         cols = list(range(25, 65))
-        col_names.extend(list(f"pc{col}" for col in range(1, 41)))
+
+        [covar_names.write(f"pc{col}\n") for col in range(1, 41)]
         readme.write(
             f"Adding PC covariates 1-40. File: {floc}, cols: {cols}. Participants in same "
             f"order as previous file.\n"

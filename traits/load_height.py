@@ -21,7 +21,8 @@ def load_height():
     with open(f'{ukb}/traits/phenotypes/height_unit.txt', 'w') as units:
         units.write('cm')
 
-    with open(f'{ukb}/traits/phenotypes/height_README.txt', 'w') as readme:
+    with open(f'{ukb}/traits/phenotypes/height_README.txt', 'w') as readme, \
+            open(f'{ukb}/traits/phenotypes/height_covar_names.txt', 'w') as covar_names:
         floc = f'{ukb}/main_dataset/extracted_data/height.txt'
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
@@ -69,6 +70,7 @@ def load_height():
         # subset to just height and measurement age, and only participants with both of those
         height_data = height_data[:, [0,4,6]]
         height_data = height_data[~np.any(np.isnan(height_data), axis=1), :]
+        covar_names.write('age\n')
 
         np.save(f'{ukb}/traits/phenotypes/height.npy', height_data)
 

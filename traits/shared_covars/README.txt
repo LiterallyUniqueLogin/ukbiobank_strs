@@ -1,4 +1,4 @@
-Run date: 2021_03_01
+Run date: 2021_03_09
 Loading participant ID index and sex covariate. File: /expanse/projects/gymreklab/jmargoli/ukbiobank/microarray/ukb46122_cal_chr1_v2_s488282.fam, cols: (0, 4)
 Sex is encoded as 1 (male) or 2 (female)
 488377 total participants

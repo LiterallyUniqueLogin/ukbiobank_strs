@@ -1,8 +1,17 @@
+import numpy as np
+
+chr_lens = np.genfromtxt(
+    f'misc_data/genome/chr_lens.txt',
+    usecols=[1],
+    skip_header=1,
+    dtype=int
+)
 
 rule load_shared_covars:
     output:
         protected("traits/shared_covars/shared_covars.npy"),
-        protected("traits/shared_covars/README.txt")
+        protected("traits/shared_covars/README.txt"),
+        protected("traits/shared_covars/covar_names.txt")
     shell:
         "traits/load_shared_covars.py"
 
@@ -12,7 +21,8 @@ rule load_phenotype:
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
         protected("traits/phenotypes/{phenotype}_README.txt"),
-        protected("traits/phenotypes/{phenotype}_unit.txt")
+        protected("traits/phenotypes/{phenotype}_unit.txt"),
+        protected("traits/phenotypes/{phenotype}_covar_names.txt")
     shell:
         "traits/load_{wildcards.phenotype}.py"
 
@@ -62,6 +72,113 @@ rule rank_inverse_normalize_phenotype_subset:
     shell:
         'traits/rank_inverse_normalize.py {wildcards.phenotype}'
 
+rule regress_out_covariates_linearly:
+    input:
+        "traits/shared_covars/shared_covars.npy",
+        "traits/shared_covars/covar_names.txt",
+        "traits/subset_rin_phenotypes/{phenotype}.npy",
+        "traits/phenotypes/{phenotype}_covar_names.txt"
+    output:
+        protected("traits/adjusted_srin_phenotypes/{phenotype}_linear_README.txt"),
+        protected("traits/adjusted_srin_phenotypes/{phenotype}_linear.npy"),
+    shell:
+        'traits/regress_out_covariates.py linear {wildcards.phenotype}'
+
+def concatenate_my_regression(output_file, input_files):
+    with open(output_file, 'w') as outfile:
+        first = True
+        for f in input_files:
+            with open(f) as infile:
+                first_line = True
+                for line in infile:
+                    if first_line and first:
+                        first = False
+                        first_line = False
+                        outfile.write(line)
+                        continue
+                    elif first_line and not first:
+                        first_line = False
+                        continue
+                    outfile.write(line)
+
+def my_regions(region_len):
+    my_regions = []
+    for chrom in range(1, 23):
+        chr_len = chr_lens[chrom-1]
+        for start in range(1, chr_len, my_region_len):
+            if start + my_region_len - 1 > chr_len:
+                end = chr_len
+            else:
+                end = start + my_region_len - 1
+            my_regions.append(f'{chrom}_{start}_{end}')
+    return my_regions
+
+rule write_my_snp_gwas_readme:
+    output:
+        protected('association/results/{phenotype}/my_imputed_snp/README.txt'),
+        protected('association/results/{phenotype}/my_imputed_snp/time.stamp')
+    shell:
+        'touch association/results/{wildcards.phenotype}/my_str/time.stamp && '
+        'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} --readme'
+
+
+rule run_regional_my_snp_gwas:
+    input:
+        "traits/phenotypes/{phenotype}.npy",
+        'association/results/{phenotype}/my_imputed_snp/time.stamp',
+        "traits/adjusted_srin_phenotypes/{phenotype}_linear.npy"
+    output:
+        temp("association/results/{phenotype}/my_imputed_snp/batches/chr{chr}_{start}_{end}.tab")
+    shell:
+        'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
+        '--region {wildcards.chr}:{wildcards.start}-{wildcards.end}'
+
+rule concatenate_my_snp_gwas:
+    input:
+        lambda wildcards:
+            [f'association/results/{wildcards.phenotype}/my_snp/batches/{region}.tab' for
+             region in my_regions(int(1e6))]
+    output:
+        protected('association/results/{phenotype}/my_imputed_snp/results.tab')
+    run:
+        concatenate_my_regression(output[0], input)
+
+str_imputation_run_name = 'first_pass'
+
+rule write_my_str_gwas_readme:
+    output:
+        protected('association/results/{phenotype}/my_str/README.txt'),
+        protected('association/results/{phenotype}/my_str/time.stamp')
+    shell:
+        'touch association/results/{wildcards.phenotype}/my_str/time.stamp && '
+        'association/my_regional_gwas.py strs {wildcards.phenotype} --readme'
+
+
+rule run_regional_my_str_gwas:
+    input:
+        "traits/phenotypes/{phenotype}.npy",
+        'association/results/{phenotype}/my_str/time.stamp',
+        "traits/adjusted_srin_phenotypes/{phenotype}_linear.npy",
+        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
+        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi"
+    output:
+        temp("association/results/{phenotype}/my_str/batches/chr{chr}_{start}_{end}.tab")
+    shell:
+        'association/my_regional_gwas.py strs {wildcards.phenotype} '
+        '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
+        f'--imputation-run-name {str_imputation_run_name} '
+
+rule concatenate_my_str_gwas:
+    input:
+        lambda wildcards:
+            [f'association/results/{wildcards.phenotype}/my_str/batches/{region}.tab' for
+             region in my_regions(int(1e7))]
+    output:
+        protected('association/results/{phenotype}/my_str/results.tab')
+    run:
+        concatenate_my_regression(output[0], input)
+
+
 '''
 rule test:
     output:
@@ -72,11 +189,11 @@ rule test:
 
 rule run_my_STR_GWAS_region:
 
-rule run_my_SNP_GWAS_region:
+rule run_my_snp_GWAS_region:
 
 rule combine_my_GWAS_output:
 
-rule run_plink_SNP_GWAS_chrom:
+rule run_plink_snp_GWAS_chrom:
 
 rule combine_plink_GWAS_output:
 '''

@@ -5,6 +5,11 @@ __default__:
   nodes: 1
   export: ALL
   mail-user: jbmargoliash@ucsd.edu
+  # snakemake replaces {rule} and {wildcards}
+  # https://snakemake.readthedocs.io/en/stable/snakefiles/configuration.html#cluster-configuration-deprecated
+  # this is then passed to slurm, which replaces %j with jobid
+  # https://support.pawsey.org.au/documentation/display/US/Customize+the+SLURM+output+file+name
+  output: 'output/{rule}.{wildcards}.%j.out'
   # will modify for some tasks
   mem: 5G
   mail-type: FAIL
@@ -13,33 +18,58 @@ __default__:
 load_shared_covars:
   tasks-per-node: 1
   time: '00:05:00'
-  output: 'traits/shared_covars/output/%x_%j.out'
 
 load_phenotype:
   tasks-per-node: 1
   time: '00:05:00'
-  output: 'traits/phenotypes/output/%x_%j.out'
 
 plot_phenotype_by_sex:
   tasks-per-node: 5
   time: '24:00:00'
-  output: 'traits/phenotypes/output/%x_%j.out'
 
 plot_phenotype_by_age:
   tasks-per-node: 5
   time: '24:00:00'
-  output: 'traits/phenotypes/output/%x_%j.out'
   mem: 30G
 
 subset_samples_for_phenotype:
   tasks-per-node: 1
   time: '24:00:00'
-  output: 'sample_qc/output/%x_%j.out'
 
 rank_inverse_normalize_phenotype_subset:
   tasks-per-node: 1
   time: '00:05:00'
-  output: 'traits/subset_rin_phenotypes/output/%x_%j.out'
+
+regress_out_covariates_linearly:
+  tasks-per-node: 1
+  time: '00:30:00'
+  mem: 10G
+
+write_my_snp_gwas_readme:
+  tasks-per-node: 1
+  time: '00:05:00'
+
+run_reginoal_my_snp_gwas:
+  tasks-per-node: 1
+  time: '04:00:00'
+  mem: 9G
+
+concatenate_my_snp_gwas:
+  tasks-per-node: 1
+  time: '04:00:00'
+
+write_my_str_gwas_readme:
+  tasks-per-node: 1
+  time: '00:05:00'
+
+run_regional_my_str_gwas:
+  tasks-per-node: 1
+  time: '04:00:00'
+  mem: 9G
+
+concatenate_my_str_gwas:
+  tasks-per-node: 1
+  time: '04:00:00'
 
 test:
   tasks-per-node: 1

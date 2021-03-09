@@ -4,7 +4,7 @@
 #SBATCH --job-name=launch_snakemake
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
-#SBATCH --time=47:59:00
+#SBATCH --time=47:30:00
 #SBATCH --output=/expanse/projects/gymreklab/jmargoli/ukbiobank/workflow/output/%x_%j.out
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=jbmargoliash@ucsd.edu

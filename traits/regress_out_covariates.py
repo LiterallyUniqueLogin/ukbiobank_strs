@@ -6,52 +6,91 @@ import os
 import os.path
 
 import numpy as np
-import scipy.stats
+import sklearn.model_selection
+import statsmodels.regression.linear_model
 
 import python_array_utils as utils
 
 ukb = os.environ['UKB']
 
-def rank_phenotypes(readme, data):
-    """
-    Ranks begin with 0
-    """
-    readme.write("Ranking phenotype. Tie breaks for equal ranks are arbitrary and stable.\n")
-    sort = np.argsort(data[:, 1])
-    ranks = np.empty_like(sort)
-    ranks[sort] = np.arange(data.shape[0])
-    return ranks
+def get_linear_residuals(readme, data, covar_names):
+    splitter = sklearn.model_selection.ShuffleSplit(
+        n_splits = 5,
+        train_size = 0.9,
+        random_state = hash('linear') % 2**32
+    )
+    n_samples = data.shape[0]
+    readme.write(
+        f"Using 5 splits with 90%  of the data ({0.9*n_samples:.0f} samples) "
+        f"as training and 10% of the data ({0.1*n_samples:.0f} samples) as validation "
+        "in order to calculate average validation RMSE for the regression.\n"
+    )
+    readme.flush()
+    y = data[:, 1]
+    X = data[:, 2:]
+    total_rmse = 0
+    for train, test in splitter.split(X):
+        model = statsmodels.regression.linear_model.OLS(y[train], X[train, :])
+        reg = model.fit()
+        total_rmse += np.sqrt(np.mean((y[test] - reg.predict(X[test]))**2))
+    avg_rmse = total_rmse/splitter.get_n_splits()
+    readme.write("Average RMSE: {avg_rmse:.4f}")
+    readme.flush()
 
-
-def inverse_normalize_ranks(readme, ranks):
-    readme.write("Inverse normalizing phenotype ranks to the standard normal distribution "
-                 "via the transformation rank -> normal_quantile((rank + 0.5)/nsamples).\n")
-    return scipy.stats.norm.ppf((ranks + 0.5)/ranks.shape[0])
+    model = statsmodels.regression.linear_model.OLS(y, X)
+    reg = model.fit()
+    readme.write("Per covaraite results:\n")
+    readme.write("indep_var\tp\tcoeff\n")
+    for idx, var in enumerate(covar_names):
+        readme.write(f'{var}\t{reg.pvalues[idx]:.2e}\t'
+                     f'{reg.params[idx]}\n')
+    readme.flush()
+    return reg.predict(X)
 
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'regression_model',
+        type=str,
+        choices=['linear']
+    )
     parser.add_argument('phenotype')
     args = parser.parse_args()
+    print(args)
 
-    with open(f'{ukb}/traits/subset_rin_phenotypes/{args.phenotype}_README.txt') as readme:
+    model = args.regression_model
+    phenotype = args.phenotype
+
+    with open(f'{ukb}/traits/adjusted_srin_phenotypes/{phenotype}_{model}_README.txt', 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
-        sample_fname = f'{ukb}/sample_qc/runs/{args.phenotype}/combine_unrelated.sample'
-        readme.write("Subsetting to samples with phenotype that passed sample_qc, "
-                     f"as denoted by the file: {sample_fname}\n")
+        readme.flush()
 
-        data = np.load(f'{ukb}/traits/phenotypes/{args.phenotype}.npy')
-        with open(sample_fname) as sample_file:
-            next(sample_file)
-            samples = np.array([int(sample.strip()) for sample in sample_file])
-        samples = samples.reshape(-1, 1)
-        data = utils.merge_arrays(samples, data)
+        data = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')
+        with open(f'{ukb}/traits/phenotypes/{phenotype}_covar_names.txt') as pheno_covar_file:
+            covar_names = [line.strip() for line in pheno_covar_file if line.strip() != '']
+        # the last three columns are assessment dates which aren't in and of themselves covariates
+        covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')[:, :-3]
+        with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_file:
+            covar_names.extend([line.strip() for line in covar_file if line.strip() != ''])
 
-        ranks = rank_phenotypes(readme, data)
-        rin_ranks = inverse_normalize_ranks(readme, ranks)
+        data = utils.merge_arrays(data, covars)
+        assert not np.any(np.isnan(data))
+        # now first col is IDs, second col is phenotype, all other cols are covars
+        assert data.shape[1] == len(covar_names) + 2
+        # data should be standard normally distributed
+        assert np.isclose(np.mean(data[:, 1]), 0)
+        assert np.isclose(np.std(data[:, 1]), 1)
+
+        if model == 'linear':
+            residuals = get_linear_residuals(readme, data, covar_names)
+        else:
+            raise ValueError('Unimplemented model type')
+
+        assert not np.any(np.isnan(residuals))
         np.save(
-            f'{ukb}/traits/subset_rin_phenotypes/{args.phenotype}.npy',
-            np.concatenate((samples, rin_ranks, data[:, 2:]), axis=1)
+            f'{ukb}/traits/adjusted_srin_phenotypes/{phenotype}_{model}.npy',
+            np.concatenate((data[:, 0:1], residuals.reshape(-1, 1)), axis=1)
         )
 
 if __name__ == "__main__":

@@ -176,6 +176,16 @@ Preparing Phenotypes
 Loading And Filtering Genotypes
 ===============================
 
+.. details:: Sanity checks
+
+   Confirmed that bgen sample order is same as STR VCFs. (TODO double
+   check against this file: ``./ukbgene imp -m -c1 -a../main_dataset/raw_data/k29170.key``)
+
+   File ``$UKB/side_analyses/confirm_sample_lists_same.py``. Contents:
+
+   .. literalinclude:: ../side_analyses/confirm_sample_lists_same.py
+       :language: python
+
 STRs
 ----
 
