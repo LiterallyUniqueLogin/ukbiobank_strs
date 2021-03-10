@@ -303,7 +303,9 @@ Association and stats
        )
 
 
+.. details:: cost
 
+   Before an str run: 3001
 
 Post association QC
 ===================

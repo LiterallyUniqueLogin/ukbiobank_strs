@@ -73,7 +73,7 @@ def main():
         source ~/.bashrc ;
         conda activate ukb ;
         Rscript {ukb}/association/plot_loci_helper.R \
-                {plot_dir} {chrom} {pos} {args.phenotype} {args.transform_step} {unit} {period} {record.REF}
+                {plot_dir} {chrom} {pos} {args.phenotype} {args.transform_step} '{unit}' {period} {record.REF}
         """
         sp.run(command, check=True, shell=True)
 

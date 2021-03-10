@@ -27,12 +27,14 @@ def get_linear_residuals(readme, data, covar_names):
     )
     readme.flush()
     y = data[:, 1]
-    X = data[:, 2:]
+    temp_covars = [covar_names.index('age') + 2, covar_names.index('sex') + 2]
+    X = data[:, temp_covars]
+    #X = data[:, 2:]
     total_rmse = 0
     for train, test in splitter.split(X):
         model = statsmodels.regression.linear_model.OLS(y[train], X[train, :])
         reg = model.fit()
-        total_rmse += np.sqrt(np.mean((y[test] - reg.predict(X[test]))**2))
+        total_rmse += np.sqrt(np.mean((y[test] - reg.predict(X[test, :]))**2))
     avg_rmse = total_rmse/splitter.get_n_splits()
     readme.write(f"Average RMSE: {avg_rmse:.4f}\n")
     readme.flush()
@@ -41,11 +43,12 @@ def get_linear_residuals(readme, data, covar_names):
     reg = model.fit()
     readme.write("Per covaraite results:\n")
     readme.write("indep_var\tp\tcoeff\n")
-    for idx, var in enumerate(covar_names):
+    #for idx, var in enumerate(covar_names):
+    for idx, var in enumerate(['age', 'sex']):
         readme.write(f'{var}\t{reg.pvalues[idx]:.2e}\t'
                      f'{reg.params[idx]}\n')
     readme.flush()
-    return reg.predict(X)
+    return y - reg.predict(X)
 
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
@@ -56,7 +59,6 @@ def main():  # noqa: D103
     )
     parser.add_argument('phenotype')
     args = parser.parse_args()
-    print(args)
 
     model = args.regression_model
     phenotype = args.phenotype

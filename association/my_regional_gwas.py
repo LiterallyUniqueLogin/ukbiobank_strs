@@ -46,7 +46,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
 
     ori_phenotypes = np.load(f'{ukb}/traits/phenotypes/{phenotype}.npy')
     ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
-    ori_phenotypes = ori_phenotypes[~np.isnan(ori_phenotypes)]
+    ori_phenotypes = ori_phenotypes[unfiltered_samples]
 
     if runtype == 'strs':
         genotype_iter = load_and_filter_genotypes.load_strs(
