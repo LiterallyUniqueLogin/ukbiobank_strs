@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
+import copy
 import os
 import os.path
 import time
+from typing import Optional, Set
 
 import bokeh.embed
 import bokeh.events
@@ -15,6 +17,7 @@ import bokeh.models.tools
 import bokeh.plotting
 import bokeh.resources
 import numpy as np
+import numpy.lib.recfunctions
 import numpy.ma
 import numpy.random
 import pandas as pd
@@ -48,17 +51,38 @@ def df_to_recarray(df):
 
     return rec_array
 
-def calc_plot_pos(cds: bokeh.models.ColumnDataSource):
-    poses = cds.data['pos']
-    chroms = cds.data['chr']
-    plot_poses = poses.copy()
+start_p_val_cap = 30
+max_p_val = 350
+
+def create_source_dict(data: np.recarray, cols_to_skip: Set[str] = set(), cols_to_include: Set[str] = set()):
+    sources = {}
+    assert len(cols_to_skip) == 0 or len(cols_to_include) == 0
+    for field in 'chr', 'pos', 'p_val':
+        if field not in data.dtype.names:
+            print(field, flush=True)
+            1/0
     for chrom in range(1, 23):
-        plot_poses[chroms > chrom] += chr_lens[chrom - 1]
-    cds.data['plot_pos'] = plot_poses
+        chrom_dict = {}
+        idx = data['chr'] == chrom
+        for name in data.dtype.names:
+            if len(cols_to_skip) > 0:
+                if name in cols_to_skip:
+                    continue
+            elif len(cols_to_include) > 0:
+                if name not in cols_to_include:
+                    continue
+            chrom_dict[name] = data[name][idx]
+        sources[chrom] = bokeh.models.ColumnDataSource(chrom_dict)
+        sources[chrom].data['display_p_val'] = np.minimum(
+            sources[chrom].data['p_val'], start_p_val_cap
+        )
+    copy_source_1 = bokeh.models.ColumnDataSource(copy.deepcopy(sources[1].data))
+
+    return copy_source_1, sources
 
 def plot_manhattan(plot, source, label, color, size=4):
     return plot.circle(
-        'plot_pos',
+        'pos',
         'display_p_val',
         legend_label=label,
         source=source,
@@ -67,8 +91,6 @@ def plot_manhattan(plot, source, label, color, size=4):
         muted_alpha=0.1
     )
 
-start_p_val_cap = 30
-max_p_val = 350
 
 def make_manhattan_plots(
         phenotype,
@@ -95,46 +117,34 @@ def make_manhattan_plots(
     }
 
     my_str_data = my_str_results[phenotype]
-    my_str_source = bokeh.models.ColumnDataSource(dict())
-    my_str_source.data['display_p_val'] = np.minimum(
-        my_str_data['p_val'], start_p_val_cap
-    )
-    for detail_name in my_str_data.dtype.names:
-        if detail_name in cols_to_skip:
-            continue
-        my_str_source.data[detail_name] = my_str_data[detail_name]
-    calc_plot_pos(my_str_source)
+    my_str_source, my_str_sources = create_source_dict(my_str_data, cols_to_skip=cols_to_skip)
 
     my_snp_data = my_snp_results[phenotype]
-    my_snp_source = bokeh.models.ColumnDataSource(dict())
-    my_snp_source.data['display_p_val'] = np.minimum(
-        my_snp_data['p_val'], start_p_val_cap
+    my_snp_source, my_snp_sources = create_source_dict(
+        my_snp_data,
+        cols_to_include={'chr', 'pos', 'alleles', 'p_val'}
     )
-    for detail_name in ('chr', 'pos', 'alleles', 'p_val'):
-        my_snp_source.data[detail_name] = my_snp_data[detail_name]
-    calc_plot_pos(my_snp_source)
 
     plink_snp_data = plink_snp_results[phenotype]
-    plink_snp_source = bokeh.models.ColumnDataSource(dict(
-        chr=plink_snp_data['chr'],
-        pos=plink_snp_data['pos'],
-        p_val=plink_snp_data['p_val'],
-        display_p_val=np.minimum(plink_snp_data['p_val'], start_p_val_cap),
-        alleles=np.char.add(np.char.add(
-            plink_snp_data['ref'], ','), plink_snp_data['alt']
-        ),
-        id=plink_snp_data['id']
-    ))
-    calc_plot_pos(plink_snp_source)
+    plink_snp_data = numpy.lib.recfunctions.merge_arrays(
+        (
+            plink_snp_data,
+            np.char.add(np.char.add(
+                plink_snp_data['ref'], ','), plink_snp_data['alt']
+            )
+        ), flatten=True
+    )
+    plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data)
 
-    catalog_source = bokeh.models.ColumnDataSource(dict(
-        chr=gwas_catalog[phenotype][:, 0],
-        pos=gwas_catalog[phenotype][:, 1],
-        p_val=gwas_catalog[phenotype][:, 2],
-        display_p_val=np.minimum(gwas_catalog[phenotype][:, 2], start_p_val_cap),
-        rsids=gwas_catalog_ids[phenotype]
-    ))
-    calc_plot_pos(catalog_source)
+    catalog_source, catalog_sources = create_source_dict(np.rec.fromarrays((
+        gwas_catalog[phenotype][:, 0],
+        gwas_catalog[phenotype][:, 1],
+        gwas_catalog[phenotype][:, 2],
+        gwas_catalog_ids[phenotype]
+    ), names=['chr', 'pos', 'p_val', 'rsids']))
+
+    sources = [my_str_source, my_snp_source, plink_snp_source, catalog_source]
+    source_dicts = [my_str_sources, my_snp_sources, plink_snp_sources, catalog_sources]
 
     # set up drawing canvas
     plot = bokeh.plotting.figure(
@@ -181,26 +191,15 @@ def make_manhattan_plots(
     """)
     plot.js_on_event(bokeh.events.MouseEnter, one_tooltip_callback)
 
-    # plot grey backgrounds for even chroms so chroms can be distinguished
-    plot.quad(
-        top=[max_p_val]*11,
-        bottom=[0]*11,
-        left=cum_lens[::2],
-        right=cum_lens[1::2],
-        alpha=0.3,
-        color=(220,220,220)
-    )
-
-    '''
     line_source = bokeh.models.ColumnDataSource(dict(
         x=[0, chr_lens[1]],
         y=[-np.log10(5e-8)]*2,
-    '''
+    ))
     plot.line(
-        x=[0, cum_lens[21]],
-        y=[-np.log10(5e-8)]*2,
+        x='x',
+        y='y',
+        source=line_source,
         line_width=3,
-        #line_dash='dashed',
         color='red',
         legend_label='GWAS p-value threshold'
     )
@@ -233,19 +232,6 @@ def make_manhattan_plots(
     setup_cum_len_js = "var cum_lens = [];"
     for cum_len in cum_lens:
         setup_cum_len_js += f"cum_lens.push({cum_len - chr_lens[0]});"
-
-    plot.xaxis[0].formatter = bokeh.models.formatters.FuncTickFormatter(
-        code = setup_cum_len_js + """
-        var shift = 0;
-        for(var i=0; i<22; i++) {
-            if (i > 0) {
-                shift = cum_lens[i-1];
-            }
-            if (tick < cum_lens[i]) {
-                return `chr${i}:` + Math.floor((tick - shift)/1000000).toString() + ',' + Math.floor(((tick - shift) % 1000000)/1000).toString() + 'kb';
-            }
-        }
-    """)
 
     # add hover tooltips for each manhattan plot
     # see https://stackoverflow.com/questions/49282078/multiple-hovertools-for-different-lines-bokeh
@@ -296,7 +282,7 @@ def make_manhattan_plots(
     height_slider = bokeh.models.Slider(
         start = 8, end=max_p_val, value=start_p_val_cap, step=1, title="p-value cap"
     )
-    for source in [my_str_source, my_snp_source, plink_snp_source, catalog_source]:
+    for source in sources:
         height_callback = bokeh.models.CustomJS(
             args=dict(source=source, height_slider=height_slider),
             code="""
@@ -321,8 +307,35 @@ def make_manhattan_plots(
         """
     )
     height_slider.js_on_change('value', height_callback)
+
+    chrom_select = bokeh.models.Select(title="Chromosome:", options=[str(num) for num in range(1, 23)])
+    for source, source_dict in zip(sources, source_dicts):
+        chrom_callback = bokeh.models.CustomJS(
+            args=dict(
+                source=source,
+                source_dict=source_dict,
+                height_slider = height_slider,
+                line_source = line_source,
+                chr_lens = chr_lens
+            ),
+            code = """
+                source.data = source_dict[this.value].data;
+                const data = source.data;
+                const display_p_val = data['display_p_val'];
+                const p_val= data['p_val'];
+                const new_max = height_slider.value;
+                for (var i = 0; i < display_p_val.length; i++) {
+                    display_p_val[i] = Math.min(p_val[i], new_max);
+                }
+                source.change.emit();
+                line_source.data['x'] = [0, chr_lens[this.value-1]];
+                line_source.change.emit();
+            """
+        )
+        chrom_select.js_on_change('value', chrom_callback)
+
     layout = bokeh.layouts.column(
-        height_slider,
+        bokeh.layouts.row(height_slider, chrom_select),
         plot
     )
 
@@ -511,8 +524,6 @@ def main():
     my_str_results, my_snp_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
         args.plink_snp_run_name
     )
-    print(my_str_results['height'].shape,
-          my_snp_results['height'].shape, plink_snp_results['height'].shape, gwas_catalog['height'].shape)
 
     with open(f'{ukb}/association/results/height/my_str/README.txt') as README:
         next(README)
