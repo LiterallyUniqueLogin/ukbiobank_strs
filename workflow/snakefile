@@ -207,7 +207,7 @@ rule interactive_manhattan:
         expand('association/plots/input/{phenotypes}/my_str_results.tab', phenotypes=phenotypes),
         'association/plots/input/height/my_imputed_snp_results.tab'
     output:
-        'association/plots/interactive_manhattan.html'
+        'association/plots/height_interactive_manhattan.html'
     shell:
         'association/interactive_manhattan_plots.py dosages_snps_21_plink'
 

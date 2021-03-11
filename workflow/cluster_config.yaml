@@ -75,6 +75,11 @@ subset_my_gwas_results:
   tasks-per-node: 1
   time: '01:00:00'
 
+interactive_manhattan:
+  tasks-per-node: 1
+  time: '00:30:00'
+  mem: 50G
+
 test:
   tasks-per-node: 1
   time: '00:00:30'

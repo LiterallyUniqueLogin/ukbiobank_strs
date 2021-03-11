@@ -129,9 +129,9 @@ def make_manhattan_plots(
     plink_snp_data = numpy.lib.recfunctions.merge_arrays(
         (
             plink_snp_data,
-            np.char.add(np.char.add(
+            np.rec.fromarrays((np.char.add(np.char.add(
                 plink_snp_data['ref'], ','), plink_snp_data['alt']
-            )
+            ),), names=['alleles'])
         ), flatten=True
     )
     plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data)
@@ -280,7 +280,12 @@ def make_manhattan_plots(
     plot.toolbar.active_inspect = [my_str_hover, my_snp_hover, plink_snp_hover, catalog_hover]
 
     height_slider = bokeh.models.Slider(
-        start = 8, end=max_p_val, value=start_p_val_cap, step=1, title="p-value cap"
+        start = 8,
+        end=max_p_val,
+        value=start_p_val_cap,
+        step=1,
+        title="p-value cap",
+        sizing_mode = 'stretch_width'
     )
     for source in sources:
         height_callback = bokeh.models.CustomJS(
@@ -308,7 +313,10 @@ def make_manhattan_plots(
     )
     height_slider.js_on_change('value', height_callback)
 
-    chrom_select = bokeh.models.Select(title="Chromosome:", options=[str(num) for num in range(1, 23)])
+    chrom_select = bokeh.models.Select(
+        title="Chromosome:",
+        options=[str(num) for num in range(1, 23)]
+    )
     for source, source_dict in zip(sources, source_dicts):
         chrom_callback = bokeh.models.CustomJS(
             args=dict(
@@ -316,7 +324,8 @@ def make_manhattan_plots(
                 source_dict=source_dict,
                 height_slider = height_slider,
                 line_source = line_source,
-                chr_lens = chr_lens
+                chr_lens = chr_lens,
+                range=plot.x_range
             ),
             code = """
                 source.data = source_dict[this.value].data;
@@ -330,6 +339,8 @@ def make_manhattan_plots(
                 source.change.emit();
                 line_source.data['x'] = [0, chr_lens[this.value-1]];
                 line_source.change.emit();
+                range.start = 0;
+                range.end = chr_lens[this.value-1];
             """
         )
         chrom_select.js_on_change('value', chrom_callback)
@@ -355,7 +366,7 @@ def make_manhattan_plots(
     plot.legend.click_policy="mute"
 
     html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'Manhattan plot test')
-    with open(f'{ukb}/association/plots/interactive_manhattan.html', 'w') as out_file:
+    with open(f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html', 'w') as out_file:
         out_file.write(html)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
@@ -526,17 +537,14 @@ def main():
     )
 
     with open(f'{ukb}/association/results/height/my_str/README.txt') as README:
-        next(README)
         date_line = next(README)
         my_str_run_date = date_line.split(' ')[2]
 
     with open(f'{ukb}/association/results/height/my_imputed_snp/README.txt') as README:
-        next(README)
         date_line = next(README)
         my_snp_run_date = date_line.split(' ')[2]
 
     with open(f'{ukb}/association/runs/{args.plink_snp_run_name}/README') as README:
-        next(README)
         date_line = next(README)
         plink_snp_run_date = date_line.split(' ')[2]
 
