@@ -80,6 +80,15 @@ interactive_manhattan:
   time: '00:30:00'
   mem: 50G
 
+prep_plink_input:
+  tasks-per-node: 1
+  time: '00:30:00'
+
+run_plink_gwas:
+  tasks-per-node: 28
+  time: '47:30:00'
+  mem: 110G
+
 test:
   tasks-per-node: 1
   time: '00:00:30'

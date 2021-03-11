@@ -180,10 +180,26 @@ rule concatenate_my_str_gwas:
     run:
         concatenate_my_regression(output[0], input)
 
-rule my_gwases:
+rule prep_plink_input:
     input:
-        'association/results/height/my_str/results.tab',
-        'association/results/height/my_imputed_snp/results.tab',
+        'traits/shared_covars/shared_covars.npy',
+        'traits/shared_covars/covar_names.txt',
+        'traits/subset_rin_phenotypes/{phenotype}.npy',
+        'traits/phenotypes/{phenotype}_covar_names.txt'
+    output:
+        'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab'
+    shell:
+        'association/prep_plink_input.py {wildcards.phenotype}'
+
+rule run_plink_gwas:
+    input:
+        'traits/shared_covars/covar_names.txt',
+        'traits/phenotypes/{phenotype}_covar_names.txt',
+        'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab'
+    output:
+        'association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done'
+    shell:
+        'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
 
 rule subset_my_gwas_results:
     input:
@@ -211,24 +227,3 @@ rule interactive_manhattan:
     shell:
         'association/interactive_manhattan_plots.py dosages_snps_21_plink'
 
-
-
-
-'''
-rule test:
-    output:
-        "shallow_test1.txt",
-        "shallow/test1.txt"
-    shadow: 'minimal'
-    shell: 'temp/test_script.sh'
-
-rule run_my_STR_GWAS_region:
-
-rule run_my_snp_GWAS_region:
-
-rule combine_my_GWAS_output:
-
-rule run_plink_snp_GWAS_chrom:
-
-rule combine_plink_GWAS_output:
-'''
