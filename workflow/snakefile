@@ -210,7 +210,7 @@ rule subset_my_gwas_results:
         "head -n 1 "
         "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab "
         "> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp && "
-        "awk '{{ if ($5 < 0.00005) {{ print }} }}' "
+        "awk '{{ if ($5 < 0.000005) {{ print }} }}' "
         "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab "
         ">> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp && "
         "mv association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp "
@@ -220,10 +220,11 @@ phenotypes = ['height']
 
 rule interactive_manhattan:
     input:
+        expand("traits/phenotypes/{phenotypes}_unit.txt", phenotypes=phenotypes),
         expand('association/plots/input/{phenotypes}/my_str_results.tab', phenotypes=phenotypes),
         'association/plots/input/height/my_imputed_snp_results.tab'
     output:
-        'association/plots/height_interactive_manhattan.html'
+        expand('association/plots/{phenotypes}_interactive_manhattan.html', phenotypes=phenotypes)
     shell:
         'association/interactive_manhattan_plots.py dosages_snps_21_plink'
 

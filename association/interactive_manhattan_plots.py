@@ -22,7 +22,6 @@ import numpy.ma
 import numpy.random
 import pandas as pd
 
-
 import load_and_filter_genotypes
 
 ukb = os.environ['UKB']
@@ -94,6 +93,7 @@ def plot_manhattan(plot, source, label, color, size=4):
 
 def make_manhattan_plots(
         phenotype,
+        unit,
         my_str_results,
         my_str_run_date,
         my_snp_results,
@@ -146,8 +146,33 @@ def make_manhattan_plots(
     sources = [my_str_source, my_snp_source, plink_snp_source, catalog_source]
     source_dicts = [my_str_sources, my_snp_sources, plink_snp_sources, catalog_sources]
 
+    locus_plot = bokeh.plotting.figure(
+        width=400,
+        height=400,
+        title='Click on an STR in the Manhattan plot!',
+        x_axis_label='Sum of allele lengths (repeat copies)',
+        y_axis_label=f'Mean {phenotype} ({unit})',
+        tools='save'
+    )
+
+    locus_source = bokeh.models.ColumnDataSource({
+        'x': [],
+        'y': [],
+        '5e-2CI': [],
+        '5e-8CI': []
+    })
+
+    phenotype_means = locus_plot.circle('x', 'y', source=locus_source)
+
+    means_hover = bokeh.models.tools.HoverTool(renderers=[phenotype_means])
+    means_hover.tooltips = [
+        ('5e-2 CI', '@5e_2CI'),
+        ('5e-8 CI', '@5e_8CI')
+    ]
+    locus_plot.add_tools(means_hover)
+
     # set up drawing canvas
-    plot = bokeh.plotting.figure(
+    manhattan_plot = bokeh.plotting.figure(
         width=1200,
         height=900,
         title=(phenotype.capitalize() + ' Manhattan Plot'),
@@ -160,12 +185,12 @@ def make_manhattan_plots(
 
     # add custom tools
     wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")
-    plot.add_tools(wheel_zoom)
-    plot.toolbar.active_scroll = wheel_zoom
+    manhattan_plot.add_tools(wheel_zoom)
+    manhattan_plot.toolbar.active_scroll = wheel_zoom
 
     pan = bokeh.models.tools.PanTool(dimensions="width")
-    plot.add_tools(pan)
-    plot.toolbar.active_drag = pan
+    manhattan_plot.add_tools(pan)
+    manhattan_plot.toolbar.active_drag = pan
 
     # make sure only one tooltip displays, not all moused over tooltips
     # from https://stackoverflow.com/a/64544102/2966505
@@ -189,13 +214,13 @@ def make_manhattan_plots(
         styleSheet.innerText = styles
         document.head.appendChild(styleSheet)
     """)
-    plot.js_on_event(bokeh.events.MouseEnter, one_tooltip_callback)
+    manhattan_plot.js_on_event(bokeh.events.MouseEnter, one_tooltip_callback)
 
     line_source = bokeh.models.ColumnDataSource(dict(
         x=[0, chr_lens[1]],
         y=[-np.log10(5e-8)]*2,
     ))
-    plot.line(
+    manhattan_plot.line(
         x='x',
         y='y',
         source=line_source,
@@ -215,16 +240,16 @@ def make_manhattan_plots(
     # 213, 94, 0
     # 204, 121, 167
     my_snp_manhattan = plot_manhattan(
-        plot, my_snp_source, 'SNPs my code', color=(230, 159, 0)
+        manhattan_plot, my_snp_source, 'SNPs my code', color=(230, 159, 0)
     )
     plink_snp_manhattan = plot_manhattan(
-        plot, plink_snp_source, 'SNPs Plink', color=(86, 180, 233)
+        manhattan_plot, plink_snp_source, 'SNPs Plink', color=(86, 180, 233)
     )
     my_str_manhattan = plot_manhattan(
-        plot, my_str_source, 'STRs my code', color=(204, 121, 167), size=6
+        manhattan_plot, my_str_source, 'STRs my code', color=(204, 121, 167), size=6
     )
     catalog_manhattan = plot_manhattan(
-        plot, catalog_source, 'GWAS Catalog Hits', color=(213, 94, 0), size=7
+        manhattan_plot, catalog_source, 'GWAS Catalog Hits', color=(213, 94, 0), size=7
     )
 
     # add custom tick formatter. See FuncTickFormatter
@@ -249,7 +274,7 @@ def make_manhattan_plots(
         if detail_name in cols_to_skip:
             continue
         my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
-    plot.add_tools(my_str_hover)
+    manhattan_plot.add_tools(my_str_hover)
 
     my_snp_hover = bokeh.models.tools.HoverTool(renderers=[my_snp_manhattan])
     my_snp_hover.tooltips = [
@@ -266,7 +291,7 @@ def make_manhattan_plots(
         ('ID', '@id'),
         ('-log10(p_val) Plink', '@p_val')
     ]
-    plot.add_tools(plink_snp_hover)
+    manhattan_plot.add_tools(plink_snp_hover)
 
     catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
     catalog_hover.tooltips = [
@@ -275,9 +300,64 @@ def make_manhattan_plots(
         ('rsid:', '@rsids'),
         ('-log10(p_val)', '@p_val')
     ]
-    plot.add_tools(catalog_hover)
+    manhattan_plot.add_tools(catalog_hover)
 
-    plot.toolbar.active_inspect = [my_str_hover, my_snp_hover, plink_snp_hover, catalog_hover]
+    manhattan_plot.toolbar.active_inspect = [my_str_hover, my_snp_hover, plink_snp_hover, catalog_hover]
+
+    tap = bokeh.models.tools.TapTool()
+    manhattan_plot.add_tools(tap)
+    manhattan_plot.toolbar.active_tap = tap
+
+    plot_tap_callback = bokeh.models.CustomJS(
+        #args=dict(locus_plot=locus_plot, my_str_source=my_str_source, locus_source=locus_source),
+        #args=dict(my_str_source=my_str_source, locus_source=locus_source),
+        code = f"""
+            /*
+            if (my_str_source.selected.indices.length == 0) {{
+                return;
+            }}
+            var idx = my_str_source.selected.indices[0];
+            var data = my_str_source.data;
+            var locus_dict = JSON.parse(data['mean_residual_{phenotype}_per_single_dosage'][idx]);
+            var 5e_2CI_dict = JSON.parse(data['5e_2CISingleDosagePhenotype'][idx]);
+            var 5e_8CI_dict = JSON.parse(data['5e_8CISingleDosagePhenotype'][idx]);
+            gts = [];
+            phenotypes = [];
+            5e_2CI = [];
+            5e_8CI = []; 
+            Object.entries(locus_dict).forEach(([key, value]) => {{
+                gts.push(parseFloat(key));
+                phenotypes.push(parseFloat(value));
+            }});
+            for (idx=0; idx<gts.length; idx++) {{
+                5e_2CI.push(5e_2CI_dict[gts[idx]); 
+                5e_8CI.push(5e_8CI_dict[gts[idx]); 
+            }}
+            
+            var new_dict = {{'x': gts, 'y': phenotypes, '5e_2CI': 5e_2CI, '5e_8CI': 5e_8CI}};
+            locus_source.data = new_dict; 
+            locus_source.change.emit();
+
+            locus_plot.title = 'STR ' + data['chr'][idx].toString() + ':' + data['pos'][idx].toString() + ' Repeat Unit: ' + data['motif'][idx];
+            locus_plot.title.change.emit();
+
+            min_gt = Math.min(...gts);
+            max_gt = Math.max(...gts);
+            gt_diff = max_gt - min_gt;
+            locus_plot.x_range.start = min_gt - gt_diff*0.05;
+            locus_plot.x_range.end = max_gt + gt_diff*0.05;
+            locus_plot.x_range.change.emit();
+
+            min_phenotypes = Math.min(...phenotypess);
+            max_phenotypes = Math.max(...phenotypess);
+            phenotypes_diff = max_phenotypes - min_phenotypes;
+            locus_plot.y_range.start = min_phenotypes - phenotypes_diff*0.05;
+            locus_plot.y_range.end = max_phenotypes + phenotypes_diff*0.05;
+            locus_plot.y_range.change.emit();
+            */
+        """
+    )
+    my_str_source.js_on_change('indices', plot_tap_callback)
 
     height_slider = bokeh.models.Slider(
         start = 8,
@@ -303,7 +383,7 @@ def make_manhattan_plots(
         )
         height_slider.js_on_change('value', height_callback)
     height_callback = bokeh.models.CustomJS(
-        args=dict(height_slider=height_slider, y_range=plot.y_range),
+        args=dict(height_slider=height_slider, y_range=manhattan_plot.y_range),
         code="""
             const new_max = height_slider.value;
             y_range.start = -.25
@@ -325,7 +405,7 @@ def make_manhattan_plots(
                 height_slider = height_slider,
                 line_source = line_source,
                 chr_lens = chr_lens,
-                range=plot.x_range
+                range=manhattan_plot.x_range
             ),
             code = """
                 source.data = source_dict[this.value].data;
@@ -346,24 +426,25 @@ def make_manhattan_plots(
         chrom_select.js_on_change('value', chrom_callback)
 
     layout = bokeh.layouts.column(
+        locus_plot,
         bokeh.layouts.row(height_slider, chrom_select),
-        plot
+        manhattan_plot
     )
 
-    plot.add_layout(bokeh.models.Title(
+    manhattan_plot.add_layout(bokeh.models.Title(
         text=f"My STR code run date: {my_str_run_date}",
         align='right'
     ), 'below')
-    plot.add_layout(bokeh.models.Title(
+    manhattan_plot.add_layout(bokeh.models.Title(
         text=f"My SNP code run date: {my_snp_run_date}",
         align='right'
     ), 'below')
-    plot.add_layout(bokeh.models.Title(
+    manhattan_plot.add_layout(bokeh.models.Title(
         text=f"Plink SNP run name, date: {plink_snp_run_name}, {plink_snp_run_date}",
         align='right'
     ), 'below')
 
-    plot.legend.click_policy="mute"
+    manhattan_plot.legend.click_policy="mute"
 
     html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'Manhattan plot test')
     with open(f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html', 'w') as out_file:
@@ -389,6 +470,12 @@ def load_data(plink_snp_run_name):
         4: 'p_val',
         5: 'coeff_phenotype'
     }
+    my_str_results_rename = {
+        -5: '5e_2CISingleDosagePhenotype',
+        -4: '5e_8CISingleDosagePhenotype',
+        -2: '5e_2CISairedDosagePhenotype',
+        -1: '5e_8CISairedDosagePhenotype'
+    }
 
     my_str_results = {}
     print(f"Loading my STR results for {'height'} ... ", end='', flush=True)
@@ -403,6 +490,8 @@ def load_data(plink_snp_run_name):
     ))
     names = list(my_str_results['height'].dtype.names)
     for idx, name in my_results_rename.items():
+        names[idx] = name
+    for idx, name in my_str_results_rename.items():
         names[idx] = name
     my_str_results['height'].dtype.names = names
     my_str_results['height']['p_val'] = -np.log10(my_str_results['height']['p_val'])
@@ -548,8 +637,12 @@ def main():
         date_line = next(README)
         plink_snp_run_date = date_line.split(' ')[2]
 
+    with open(f'{ukb}/traits/phenotypes/height_unit.txt') as unit_file:
+        unit = next(unit_file).strip()
+
     make_manhattan_plots(
         'height',
+        unit,
         my_str_results,
         my_str_run_date,
         my_snp_results,
