@@ -213,7 +213,7 @@ rule run_plink_gwas:
 rule concatenate_plink_gwas:
     input:
         lambda wildcards:
-            ['association/results/{wildcards.phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{wildcards.phenotype}.glm.linear.done' for
+            [f'association/results/{wildcards.phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{wildcards.phenotype}.glm.linear.done' for
              chrom in range(1, 23)]
     output:
         protected('association/results/{phenotype}/plink_snp/results.tab')

@@ -71,7 +71,28 @@ concatenate_my_str_gwas:
   tasks-per-node: 1
   time: '04:00:00'
 
+prep_plink_input:
+  tasks-per-node: 1
+  time: '00:30:00'
+
+timestamp_plink_run:
+  tasks-per-node: 1
+  time: '00:05:00'
+
+run_plink_gwas:
+  tasks-per-node: 28
+  time: '47:30:00'
+  mem: 110G
+
+concatenate_plink_gwas:
+  tasks-per-node: 1
+  time: '04:00:00'
+
 subset_my_gwas_results:
+  tasks-per-node: 1
+  time: '01:00:00'
+
+subset_plink_gwas_results:
   tasks-per-node: 1
   time: '01:00:00'
 
@@ -80,16 +101,3 @@ interactive_manhattan:
   time: '00:30:00'
   mem: 50G
 
-prep_plink_input:
-  tasks-per-node: 1
-  time: '00:30:00'
-
-run_plink_gwas:
-  tasks-per-node: 28
-  time: '47:30:00'
-  mem: 110G
-
-test:
-  tasks-per-node: 1
-  time: '00:00:30'
-  output: 'temp/%x_%j.out'
