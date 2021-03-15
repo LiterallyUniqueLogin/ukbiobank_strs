@@ -37,7 +37,7 @@ def dict_str(d):
         # using JSON.parse
         out += f'{repr(str(key))}: {repr(d[key])}'
     out += '}'
-    return out.replace("'", '"')
+    return out.replace("'", '"').replace('(', '[').replace(')', ']').replace('nan', '"NaN"')
 
 def load_strs(imputation_run_name: str,
               region: str,

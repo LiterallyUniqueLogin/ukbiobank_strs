@@ -85,7 +85,7 @@ rule regress_out_covariates_linearly:
     shell:
         'traits/regress_out_covariates.py linear {wildcards.phenotype}'
 
-def concatenate_my_regression(output_file, input_files):
+def concatenate_csvs(output_file, input_files):
     with open(output_file + '.temp', 'w') as outfile:
         first = True
         for f in input_files:
@@ -143,7 +143,7 @@ rule concatenate_my_snp_gwas:
     output:
         protected('association/results/{phenotype}/my_imputed_snp/results.tab')
     run:
-        concatenate_my_regression(output[0], input)
+        concatenate_csvs(output[0], input)
 
 str_imputation_run_name = 'first_pass'
 
@@ -178,7 +178,7 @@ rule concatenate_my_str_gwas:
     output:
         protected('association/results/{phenotype}/my_str/results.tab')
     run:
-        concatenate_my_regression(output[0], input)
+        concatenate_csvs(output[0], input)
 
 rule prep_plink_input:
     input:
@@ -191,11 +191,18 @@ rule prep_plink_input:
     shell:
         'association/prep_plink_input.py {wildcards.phenotype}'
 
+rule timestamp_plink_run:
+    output:
+        'association/results/{phenotype}/plink_snp/time.stamp'
+    shell:
+        'touch association/results/{wildcards.phenotype}/plink_snp/time.stamp'
+
 rule run_plink_gwas:
     input:
         'traits/shared_covars/covar_names.txt',
         'traits/phenotypes/{phenotype}_covar_names.txt',
-        'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab'
+        'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab',
+        'association/results/{phenotype}/plink_snp/time.stamp'
     output:
         'association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done'
     shell:
@@ -210,7 +217,7 @@ rule subset_my_gwas_results:
         "head -n 1 "
         "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab "
         "> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp && "
-        "awk '{{ if ($5 < 0.000005) {{ print }} }}' "
+        "awk '{{ if ($5 < 0.00005) {{ print }} }}' "
         "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab "
         ">> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp && "
         "mv association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp "

@@ -5,7 +5,7 @@ import copy
 import os
 import os.path
 import time
-from typing import Optional, Set
+from typing import Dict, Tuple, Optional, Set
 
 import bokeh.embed
 import bokeh.events
@@ -53,7 +53,11 @@ def df_to_recarray(df):
 start_p_val_cap = 30
 max_p_val = 350
 
-def create_source_dict(data: np.recarray, cols_to_skip: Set[str] = set(), cols_to_include: Set[str] = set()):
+def create_source_dict(
+        data: np.recarray,
+        cols_to_skip: Set[str] = set(),
+        cols_to_include: Set[str] = set()
+    ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
     sources = {}
     assert len(cols_to_skip) == 0 or len(cols_to_include) == 0
     for field in 'chr', 'pos', 'p_val':
@@ -98,9 +102,10 @@ def make_manhattan_plots(
         my_str_run_date,
         my_snp_results,
         my_snp_run_date,
-        plink_snp_results,
-        plink_snp_run_name,
-        plink_snp_run_date,
+        old_plink_snp_results,
+        old_plink_snp_run_name,
+        new_plink_snp_results,
+        new_plink_snp_run_date,
         gwas_catalog,
         gwas_catalog_ids):
 
@@ -125,16 +130,27 @@ def make_manhattan_plots(
         cols_to_include={'chr', 'pos', 'alleles', 'p_val'}
     )
 
-    plink_snp_data = plink_snp_results[phenotype]
-    plink_snp_data = numpy.lib.recfunctions.merge_arrays(
+    old_plink_snp_data = old_plink_snp_results[phenotype]
+    old_plink_snp_data = numpy.lib.recfunctions.merge_arrays(
         (
-            plink_snp_data,
+            old_plink_snp_data,
             np.rec.fromarrays((np.char.add(np.char.add(
-                plink_snp_data['ref'], ','), plink_snp_data['alt']
+                old_plink_snp_data['ref'], ','), old_plink_snp_data['alt']
             ),), names=['alleles'])
         ), flatten=True
     )
-    plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data)
+    old_plink_snp_source, old_plink_snp_sources = create_source_dict(old_plink_snp_data)
+
+    new_plink_snp_data = new_plink_snp_results[phenotype]
+    new_plink_snp_data = numpy.lib.recfunctions.merge_arrays(
+        (
+            new_plink_snp_data,
+            np.rec.fromarrays((np.char.add(np.char.add(
+                new_plink_snp_data['ref'], ','), new_plink_snp_data['alt']
+            ),), names=['alleles'])
+        ), flatten=True
+    )
+    new_plink_snp_source, new_plink_snp_sources = create_source_dict(new_plink_snp_data)
 
     catalog_source, catalog_sources = create_source_dict(np.rec.fromarrays((
         gwas_catalog[phenotype][:, 0],
@@ -143,31 +159,31 @@ def make_manhattan_plots(
         gwas_catalog_ids[phenotype]
     ), names=['chr', 'pos', 'p_val', 'rsids']))
 
-    sources = [my_str_source, my_snp_source, plink_snp_source, catalog_source]
-    source_dicts = [my_str_sources, my_snp_sources, plink_snp_sources, catalog_sources]
+    sources = [my_str_source, my_snp_source, old_plink_snp_source, new_plink_snp_source, catalog_source]
+    source_dicts = [my_str_sources, my_snp_sources, old_plink_snp_sources, new_plink_snp_sources, catalog_sources]
 
     locus_plot = bokeh.plotting.figure(
         width=400,
         height=400,
-        title='Click on an STR in the Manhattan plot!',
+        title='Click on an STR in the Manhattan plot!                                      ',
         x_axis_label='Sum of allele lengths (repeat copies)',
         y_axis_label=f'Mean {phenotype} ({unit})',
         tools='save'
     )
 
     locus_source = bokeh.models.ColumnDataSource({
-        'x': [],
-        'y': [],
-        '5e-2CI': [],
-        '5e-8CI': []
+        'x': [1, 2],
+        'y': [1, 2],
+        'CI5e_2': ['nan', 'nan'],
+        'CI5e_8': ['nan', 'nan']
     })
 
     phenotype_means = locus_plot.circle('x', 'y', source=locus_source)
 
     means_hover = bokeh.models.tools.HoverTool(renderers=[phenotype_means])
     means_hover.tooltips = [
-        ('5e-2 CI', '@5e_2CI'),
-        ('5e-8 CI', '@5e_8CI')
+        ('5e-2 CI', '@CInorm'),
+        ('5e-8 CI', '@CIgwas')
     ]
     locus_plot.add_tools(means_hover)
 
@@ -242,8 +258,11 @@ def make_manhattan_plots(
     my_snp_manhattan = plot_manhattan(
         manhattan_plot, my_snp_source, 'SNPs my code', color=(230, 159, 0)
     )
-    plink_snp_manhattan = plot_manhattan(
-        manhattan_plot, plink_snp_source, 'SNPs Plink', color=(86, 180, 233)
+    old_plink_snp_manhattan = plot_manhattan(
+        manhattan_plot, old_plink_snp_source, 'Old SNPs Plink', color=(86, 180, 233)
+    )
+    new_plink_snp_manhattan = plot_manhattan(
+        manhattan_plot, new_plink_snp_source, 'New SNPs Plink', color=(0, 114, 178)
     )
     my_str_manhattan = plot_manhattan(
         manhattan_plot, my_str_source, 'STRs my code', color=(204, 121, 167), size=6
@@ -283,15 +302,25 @@ def make_manhattan_plots(
         ('pos', '@pos'),
         ('-log10(p_val) my code', '@p_val')
     ]
-    plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[plink_snp_manhattan])
-    plink_snp_hover.tooltips = [
+    old_plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[old_plink_snp_manhattan])
+    old_plink_snp_hover.tooltips = [
         ('var type', 'SNP'),
         ('alleles:', '@alleles'),
         ('pos', '@pos'),
         ('ID', '@id'),
         ('-log10(p_val) Plink', '@p_val')
     ]
-    manhattan_plot.add_tools(plink_snp_hover)
+    manhattan_plot.add_tools(old_plink_snp_hover)
+
+    new_plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[new_plink_snp_manhattan])
+    new_plink_snp_hover.tooltips = [
+        ('var type', 'SNP'),
+        ('alleles:', '@alleles'),
+        ('pos', '@pos'),
+        ('ID', '@id'),
+        ('-log10(p_val) Plink', '@p_val')
+    ]
+    manhattan_plot.add_tools(new_plink_snp_hover)
 
     catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
     catalog_hover.tooltips = [
@@ -302,62 +331,54 @@ def make_manhattan_plots(
     ]
     manhattan_plot.add_tools(catalog_hover)
 
-    manhattan_plot.toolbar.active_inspect = [my_str_hover, my_snp_hover, plink_snp_hover, catalog_hover]
+    manhattan_plot.toolbar.active_inspect = [my_str_hover, my_snp_hover, old_plink_snp_hover, new_plink_snp_hover, catalog_hover]
 
     tap = bokeh.models.tools.TapTool()
     manhattan_plot.add_tools(tap)
     manhattan_plot.toolbar.active_tap = tap
 
     plot_tap_callback = bokeh.models.CustomJS(
-        #args=dict(locus_plot=locus_plot, my_str_source=my_str_source, locus_source=locus_source),
+        args=dict(locus_plot=locus_plot, my_str_source=my_str_source, locus_source=locus_source),
         #args=dict(my_str_source=my_str_source, locus_source=locus_source),
         code = f"""
-            /*
             if (my_str_source.selected.indices.length == 0) {{
                 return;
             }}
             var idx = my_str_source.selected.indices[0];
             var data = my_str_source.data;
             var locus_dict = JSON.parse(data['mean_residual_{phenotype}_per_single_dosage'][idx]);
-            var 5e_2CI_dict = JSON.parse(data['5e_2CISingleDosagePhenotype'][idx]);
-            var 5e_8CI_dict = JSON.parse(data['5e_8CISingleDosagePhenotype'][idx]);
-            gts = [];
-            phenotypes = [];
-            5e_2CI = [];
-            5e_8CI = []; 
+            var CI5e_2_str = data['CI5e_2SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
+            var CI5e_2_dict = JSON.parse(CI5e_2_str);
+            var CI5e_8_str = data['CI5e_8SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
+            var CI5e_8_dict = JSON.parse(CI5e_8_str);
+            console.log(data['mean_residual_{phenotype}_per_single_dosage'][idx]);
+            console.log(CI5e_2_str);
+            console.log(CI5e_8_str);
+            var gts = [];
+            var str_gts = [];
+            var phenotypes = [];
+            var CI5e_2 = [];
+            var CI5e_8 = []; 
             Object.entries(locus_dict).forEach(([key, value]) => {{
+                str_gts.push(key);
                 gts.push(parseFloat(key));
                 phenotypes.push(parseFloat(value));
             }});
+            console.log(gts);
             for (idx=0; idx<gts.length; idx++) {{
-                5e_2CI.push(5e_2CI_dict[gts[idx]); 
-                5e_8CI.push(5e_8CI_dict[gts[idx]); 
+                console.log(idx, gts[idx], str_gts[idx]);
+                CI5e_2.push(CI5e_2_dict[str_gts[idx]].toString()); 
+                CI5e_8.push(CI5e_8_dict[str_gts[idx]].toString()); 
             }}
             
-            var new_dict = {{'x': gts, 'y': phenotypes, '5e_2CI': 5e_2CI, '5e_8CI': 5e_8CI}};
+            var new_dict = {{'x': gts, 'y': phenotypes, 'CInorm': CI5e_2, 'CIgwas': CI5e_8}};
             locus_source.data = new_dict; 
             locus_source.change.emit();
 
-            locus_plot.title = 'STR ' + data['chr'][idx].toString() + ':' + data['pos'][idx].toString() + ' Repeat Unit: ' + data['motif'][idx];
-            locus_plot.title.change.emit();
-
-            min_gt = Math.min(...gts);
-            max_gt = Math.max(...gts);
-            gt_diff = max_gt - min_gt;
-            locus_plot.x_range.start = min_gt - gt_diff*0.05;
-            locus_plot.x_range.end = max_gt + gt_diff*0.05;
-            locus_plot.x_range.change.emit();
-
-            min_phenotypes = Math.min(...phenotypess);
-            max_phenotypes = Math.max(...phenotypess);
-            phenotypes_diff = max_phenotypes - min_phenotypes;
-            locus_plot.y_range.start = min_phenotypes - phenotypes_diff*0.05;
-            locus_plot.y_range.end = max_phenotypes + phenotypes_diff*0.05;
-            locus_plot.y_range.change.emit();
-            */
+            locus_plot.title.text = 'STR ' + data['chr'][idx].toString() + ':' + data['pos'][idx].toString() + ' Repeat Unit: ' + data['motif'][idx] + ' -log10(Association p-val): ' + data['p_val'][idx].toFixed(2);
         """
     )
-    my_str_source.js_on_change('indices', plot_tap_callback)
+    my_str_source.selected.js_on_change('indices', plot_tap_callback)
 
     height_slider = bokeh.models.Slider(
         start = 8,
@@ -425,11 +446,11 @@ def make_manhattan_plots(
         )
         chrom_select.js_on_change('value', chrom_callback)
 
-    layout = bokeh.layouts.column(
-        locus_plot,
-        bokeh.layouts.row(height_slider, chrom_select),
+    layout = bokeh.layouts.grid([
+        [None, locus_plot],
+        [height_slider, chrom_select],
         manhattan_plot
-    )
+    ])
 
     manhattan_plot.add_layout(bokeh.models.Title(
         text=f"My STR code run date: {my_str_run_date}",
@@ -440,7 +461,11 @@ def make_manhattan_plots(
         align='right'
     ), 'below')
     manhattan_plot.add_layout(bokeh.models.Title(
-        text=f"Plink SNP run name, date: {plink_snp_run_name}, {plink_snp_run_date}",
+        text=f"New plink SNP run dat: {new_plink_snp_run_date}",
+        align='right'
+    ), 'below')
+    manhattan_plot.add_layout(bokeh.models.Title(
+        text=f"Old plink SNP run name: {old_plink_snp_run_name}",
         align='right'
     ), 'below')
 
@@ -471,10 +496,10 @@ def load_data(plink_snp_run_name):
         5: 'coeff_phenotype'
     }
     my_str_results_rename = {
-        -5: '5e_2CISingleDosagePhenotype',
-        -4: '5e_8CISingleDosagePhenotype',
-        -2: '5e_2CISairedDosagePhenotype',
-        -1: '5e_8CISairedDosagePhenotype'
+        -5: 'CI5e_2SingleDosagePhenotype',
+        -4: 'CI5e_8SingleDosagePhenotype',
+        -2: 'CI5e_2PairedDosagePhenotype',
+        -1: 'CI5e_8PairedDosagePhenotype'
     }
 
     my_str_results = {}
@@ -547,10 +572,10 @@ def load_data(plink_snp_run_name):
     '''
 
     # Load plink SNP results
-    plink_results = {}
-    print(f"Loading plink SNP results for {'height'} ... ", end='', flush=True)
+    old_plink_results = {}
+    print(f"Loading old plink SNP results for {'height'} ... ", end='', flush=True)
     start_time = time.time()
-    plink_results['height'] = df_to_recarray(pd.read_csv(
+    old_plink_results['height'] = df_to_recarray(pd.read_csv(
         f'{ukb}/association/runs/{plink_snp_run_name}/results/chr21/plink2.{"height"}_inv_norm_rank.glm.linear.summary',
         sep='\t',
         usecols=(0,1,2,3,4,13,14),
@@ -559,12 +584,32 @@ def load_data(plink_snp_run_name):
         names=('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
     ))
 
-    plink_results['height']['p_val'] = -np.log10(plink_results['height']['p_val'])
-    plink_results['height'] = plink_results['height'][
-        plink_results['height']['p_val'] >= 3
+    old_plink_results['height']['p_val'] = -np.log10(old_plink_results['height']['p_val'])
+    old_plink_results['height'] = old_plink_results['height'][
+        old_plink_results['height']['p_val'] >= 3
     ]
 
-    assert np.all(plink_results['height']['error'] == '.')
+    assert np.all(old_plink_results['height']['error'] == '.')
+
+    # Load plink SNP results
+    new_plink_results = {}
+    print(f"Loading new plink SNP results for {'height'} ... ", end='', flush=True)
+    start_time = time.time()
+    new_plink_results['height'] = df_to_recarray(pd.read_csv(
+        f'{ukb}/association/results/height/plink_snp/chrs/chr21/plink2.rin_{"height"}.glm.linear.done',
+        sep='\t',
+        usecols=(0,1,2,3,4,13,14),
+        encoding='UTF-8',
+        header=0,
+        names=('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
+    ))
+
+    new_plink_results['height']['p_val'] = -np.log10(new_plink_results['height']['p_val'])
+    new_plink_results['height'] = new_plink_results['height'][
+        new_plink_results['height']['p_val'] >= 3
+    ]
+
+    assert np.all(new_plink_results['height']['error'] == '.')
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
@@ -613,7 +658,7 @@ def load_data(plink_snp_run_name):
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-    return my_str_results, my_snp_results, plink_results, known_assocs, known_assoc_ids
+    return my_str_results, my_snp_results, old_plink_results, new_plink_results, known_assocs, known_assoc_ids
 
 
 def main():
@@ -621,7 +666,7 @@ def main():
     parser.add_argument("plink_snp_run_name")
     args = parser.parse_args()
 
-    my_str_results, my_snp_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
+    my_str_results, my_snp_results, old_plink_snp_results, new_plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
         args.plink_snp_run_name
     )
 
@@ -633,9 +678,8 @@ def main():
         date_line = next(README)
         my_snp_run_date = date_line.split(' ')[2]
 
-    with open(f'{ukb}/association/runs/{args.plink_snp_run_name}/README') as README:
-        date_line = next(README)
-        plink_snp_run_date = date_line.split(' ')[2]
+    with open(f'{ukb}/association/results/height/plink_snp/logs/chr21.plink.stdout') as README:
+        new_plink_snp_run_date = ' '.join(README.readlines()[-1].split(' ')[2:])
 
     with open(f'{ukb}/traits/phenotypes/height_unit.txt') as unit_file:
         unit = next(unit_file).strip()
@@ -647,9 +691,10 @@ def main():
         my_str_run_date,
         my_snp_results,
         my_snp_run_date,
-        plink_snp_results,
+        old_plink_snp_results,
         args.plink_snp_run_name,
-        plink_snp_run_date,
+        new_plink_snp_results,
+        new_plink_snp_run_date,
         gwas_catalog,
         gwas_catalog_ids
     )
