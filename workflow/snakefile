@@ -115,6 +115,7 @@ def regions(region_len):
             regions.append(f'{chrom}_{start}_{end}')
     return regions
 
+'''
 rule write_my_snp_gwas_readme:
     output:
         protected('association/results/{phenotype}/my_imputed_snp/README.txt'),
@@ -144,6 +145,7 @@ rule concatenate_my_snp_gwas:
         protected('association/results/{phenotype}/my_imputed_snp/results.tab')
     run:
         concatenate_csvs(output[0], input)
+'''
 
 str_imputation_run_name = 'first_pass'
 
@@ -208,6 +210,16 @@ rule run_plink_gwas:
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
 
+rule concatenate_plink_gwas:
+    input:
+        lambda wildcards:
+            ['association/results/{wildcards.phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{wildcards.phenotype}.glm.linear.done' for
+             chrom in range(1, 23)]
+    output:
+        protected('association/results/{phenotype}/plink_snp/results.tab')
+    run:
+        concatenate_csvs(output[0], input)
+
 rule subset_my_gwas_results:
     input:
         'association/results/{phenotype}/my_{gwas_type}/results.tab'
@@ -223,15 +235,30 @@ rule subset_my_gwas_results:
         "mv association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp "
         "association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab "
 
-phenotypes = ['height']
+rule subset_plink_gwas_results:
+    input:
+        'association/results/{phenotype}/plink_snp/results.tab'
+    output:
+        'association/plots/input/{phenotype}/plink_snp_results.tab'
+    shell:
+        "head -n 1 "
+        "association/results/{wildcards.phenotype}/plink_snp/results.tab "
+        "> association/plots/input/{wildcards.phenotype}/plink_snp_results.tab.temp && "
+        "awk '{{ if ($14 < 0.00005) {{ print }} }}' "
+        "association/results/{wildcards.phenotype}/plink_snp/results.tab "
+        ">> association/plots/input/{wildcards.phenotype}/plink_snp_results.tab.temp && "
+        "mv association/plots/input/{wildcards.phenotype}/plink_snp_results.tab.temp "
+        "association/plots/input/{wildcards.phenotype}/plink_snp_results.tab "
+
 
 rule interactive_manhattan:
     input:
-        expand("traits/phenotypes/{phenotypes}_unit.txt", phenotypes=phenotypes),
-        expand('association/plots/input/{phenotypes}/my_str_results.tab', phenotypes=phenotypes),
-        'association/plots/input/height/my_imputed_snp_results.tab'
+        "traits/phenotypes/{phenotype}_unit.txt",
+        'association/plots/input/{phenotype}/my_str_results.tab',
+        'association/plots/input/{phenotype}/plink_snp_results.tab'
     output:
-        expand('association/plots/{phenotypes}_interactive_manhattan.html', phenotypes=phenotypes)
+        'association/plots/{phenotype}_interactive_manhattan.html'
     shell:
-        'association/interactive_manhattan_plots.py dosages_snps_21_plink'
+        'association/interactive_manhattan_plots.py {wildcards.phenotype}'
 
+phenotypes = ['height', 'total_bilirubin']

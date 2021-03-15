@@ -22,8 +22,6 @@ import numpy.ma
 import numpy.random
 import pandas as pd
 
-import load_and_filter_genotypes
-
 ukb = os.environ['UKB']
 
 chr_lens = np.genfromtxt(
@@ -98,14 +96,10 @@ def plot_manhattan(plot, source, label, color, size=4):
 def make_manhattan_plots(
         phenotype,
         unit,
-        my_str_results,
+        my_str_data,
         my_str_run_date,
-        my_snp_results,
-        my_snp_run_date,
-        old_plink_snp_results,
-        old_plink_snp_run_name,
-        new_plink_snp_results,
-        new_plink_snp_run_date,
+        plink_snp_data,
+        plink_snp_run_date,
         gwas_catalog,
         gwas_catalog_ids):
 
@@ -121,36 +115,17 @@ def make_manhattan_plots(
         'subset_total_hardcall_genotypes',
     }
 
-    my_str_data = my_str_results[phenotype]
     my_str_source, my_str_sources = create_source_dict(my_str_data, cols_to_skip=cols_to_skip)
 
-    my_snp_data = my_snp_results[phenotype]
-    my_snp_source, my_snp_sources = create_source_dict(
-        my_snp_data,
-        cols_to_include={'chr', 'pos', 'alleles', 'p_val'}
-    )
-
-    old_plink_snp_data = old_plink_snp_results[phenotype]
-    old_plink_snp_data = numpy.lib.recfunctions.merge_arrays(
+    plink_snp_data = numpy.lib.recfunctions.merge_arrays(
         (
-            old_plink_snp_data,
+            plink_snp_data,
             np.rec.fromarrays((np.char.add(np.char.add(
-                old_plink_snp_data['ref'], ','), old_plink_snp_data['alt']
+                plink_snp_data['ref'], ','), plink_snp_data['alt']
             ),), names=['alleles'])
         ), flatten=True
     )
-    old_plink_snp_source, old_plink_snp_sources = create_source_dict(old_plink_snp_data)
-
-    new_plink_snp_data = new_plink_snp_results[phenotype]
-    new_plink_snp_data = numpy.lib.recfunctions.merge_arrays(
-        (
-            new_plink_snp_data,
-            np.rec.fromarrays((np.char.add(np.char.add(
-                new_plink_snp_data['ref'], ','), new_plink_snp_data['alt']
-            ),), names=['alleles'])
-        ), flatten=True
-    )
-    new_plink_snp_source, new_plink_snp_sources = create_source_dict(new_plink_snp_data)
+    plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data)
 
     catalog_source, catalog_sources = create_source_dict(np.rec.fromarrays((
         gwas_catalog[phenotype][:, 0],
@@ -159,8 +134,8 @@ def make_manhattan_plots(
         gwas_catalog_ids[phenotype]
     ), names=['chr', 'pos', 'p_val', 'rsids']))
 
-    sources = [my_str_source, my_snp_source, old_plink_snp_source, new_plink_snp_source, catalog_source]
-    source_dicts = [my_str_sources, my_snp_sources, old_plink_snp_sources, new_plink_snp_sources, catalog_sources]
+    sources = [my_str_source, plink_snp_source, catalog_source]
+    source_dicts = [my_str_sources, plink_snp_sources, catalog_sources]
 
     locus_plot = bokeh.plotting.figure(
         width=400,
@@ -255,14 +230,8 @@ def make_manhattan_plots(
     # 0, 114, 178
     # 213, 94, 0
     # 204, 121, 167
-    my_snp_manhattan = plot_manhattan(
-        manhattan_plot, my_snp_source, 'SNPs my code', color=(230, 159, 0)
-    )
-    old_plink_snp_manhattan = plot_manhattan(
-        manhattan_plot, old_plink_snp_source, 'Old SNPs Plink', color=(86, 180, 233)
-    )
-    new_plink_snp_manhattan = plot_manhattan(
-        manhattan_plot, new_plink_snp_source, 'New SNPs Plink', color=(0, 114, 178)
+    plink_snp_manhattan = plot_manhattan(
+        manhattan_plot, plink_snp_source, 'New SNPs Plink', color=(0, 114, 178)
     )
     my_str_manhattan = plot_manhattan(
         manhattan_plot, my_str_source, 'STRs my code', color=(204, 121, 167), size=6
@@ -295,32 +264,15 @@ def make_manhattan_plots(
         my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
     manhattan_plot.add_tools(my_str_hover)
 
-    my_snp_hover = bokeh.models.tools.HoverTool(renderers=[my_snp_manhattan])
-    my_snp_hover.tooltips = [
-        ('var type', 'SNP'),
-        ('alleles:', '@alleles'),
-        ('pos', '@pos'),
-        ('-log10(p_val) my code', '@p_val')
-    ]
-    old_plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[old_plink_snp_manhattan])
-    old_plink_snp_hover.tooltips = [
+    plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[plink_snp_manhattan])
+    plink_snp_hover.tooltips = [
         ('var type', 'SNP'),
         ('alleles:', '@alleles'),
         ('pos', '@pos'),
         ('ID', '@id'),
         ('-log10(p_val) Plink', '@p_val')
     ]
-    manhattan_plot.add_tools(old_plink_snp_hover)
-
-    new_plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[new_plink_snp_manhattan])
-    new_plink_snp_hover.tooltips = [
-        ('var type', 'SNP'),
-        ('alleles:', '@alleles'),
-        ('pos', '@pos'),
-        ('ID', '@id'),
-        ('-log10(p_val) Plink', '@p_val')
-    ]
-    manhattan_plot.add_tools(new_plink_snp_hover)
+    manhattan_plot.add_tools(plink_snp_hover)
 
     catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
     catalog_hover.tooltips = [
@@ -331,7 +283,7 @@ def make_manhattan_plots(
     ]
     manhattan_plot.add_tools(catalog_hover)
 
-    manhattan_plot.toolbar.active_inspect = [my_str_hover, my_snp_hover, old_plink_snp_hover, new_plink_snp_hover, catalog_hover]
+    manhattan_plot.toolbar.active_inspect = [my_str_hover, plink_snp_hover, catalog_hover]
 
     tap = bokeh.models.tools.TapTool()
     manhattan_plot.add_tools(tap)
@@ -457,15 +409,7 @@ def make_manhattan_plots(
         align='right'
     ), 'below')
     manhattan_plot.add_layout(bokeh.models.Title(
-        text=f"My SNP code run date: {my_snp_run_date}",
-        align='right'
-    ), 'below')
-    manhattan_plot.add_layout(bokeh.models.Title(
-        text=f"New plink SNP run dat: {new_plink_snp_run_date}",
-        align='right'
-    ), 'below')
-    manhattan_plot.add_layout(bokeh.models.Title(
-        text=f"Old plink SNP run name: {old_plink_snp_run_name}",
+        text=f"New plink SNP run dat: {plink_snp_run_date}",
         align='right'
     ), 'below')
 
@@ -488,7 +432,7 @@ def get_dtypes(fname):
     dtypes['locus_filtered'] = str
     return dtypes
 
-def load_data(plink_snp_run_name):
+def load_data(phenotype):
     my_results_rename = {
         0: 'chr',
         3: 'filtered',
@@ -502,81 +446,30 @@ def load_data(plink_snp_run_name):
         -1: 'CI5e_8PairedDosagePhenotype'
     }
 
-    my_str_results = {}
-    print(f"Loading my STR results for {'height'} ... ", end='', flush=True)
+    print(f"Loading my STR results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
-    str_results_fname = f'{ukb}/association/plots/input/{"height"}/my_str_results.tab'
-    my_str_results['height'] = df_to_recarray(pd.read_csv(
+    str_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_str_results.tab'
+    my_str_results = df_to_recarray(pd.read_csv(
         str_results_fname,
         header=0,
         delimiter='\t',
         encoding='UTF-8',
         dtype=get_dtypes(str_results_fname)
     ))
-    names = list(my_str_results['height'].dtype.names)
+    names = list(my_str_results.dtype.names)
     for idx, name in my_results_rename.items():
         names[idx] = name
     for idx, name in my_str_results_rename.items():
         names[idx] = name
-    my_str_results['height'].dtype.names = names
-    my_str_results['height']['p_val'] = -np.log10(my_str_results['height']['p_val'])
+    my_str_results.dtype.names = names
+    my_str_results['p_val'] = -np.log10(my_str_results['p_val'])
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-
-    my_snp_results = {}
-    print(f"Loading my SNP results for {'height'} ... ", end='', flush=True)
-    start_time = time.time()
-    snp_results_fname=f'{ukb}/association/plots/input/{"height"}/my_imputed_snp_results.tab'
-    my_snp_results['height'] = df_to_recarray(pd.read_csv(
-        snp_results_fname,
-        header=0,
-        delimiter='\t',
-        encoding='UTF-8',
-        dtype=get_dtypes(snp_results_fname)
-    ))
-    names = list(my_snp_results['height'].dtype.names)
-    for idx, name in my_results_rename.items():
-        names[idx] = name
-    my_snp_results['height'].dtype.names = names
-    my_snp_results['height']['p_val'] = -np.log10(my_snp_results['height']['p_val'])
-    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-
-    '''
-    snp_summary_stats = {}
-    snp_ss_description = {}
-
-    print(f"Loading SNP summary stats for height  ... ", end='', flush=True)
-    start_time = time.time()
-    snp_summary_stats['height'] = np.loadtxt(
-        (f"{ukb}/misc_data/snp_summary_stats/height/"
-         "Meta-analysis_Locke_et_al+UKBiobank_2018_UPDATED.txt"),
-        usecols=(0, 1, 8),
-        skiprows=1
-    )
-    snp_ss_description['height'] = 'Ancestry: European, n=700,000'
-    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-
-    print(f"Loading SNP summary stats for total bilirubin ... ", end='', flush=True)
-    start_time = time.time()
-    snp_summary_stats['total_bilirubin'] = np.loadtxt(
-        (f"{ukb}/misc_data/snp_summary_stats/bilirubin/"
-         "phenocode-TBil_GWAS_in_BBJ_autosome.tsv"),
-        usecols=(0, 1, 6),
-        skiprows=1,
-        delimiter='\t'
-    )
-    snp_ss_description['total_bilirubin'] = 'Ancestry: Japanese, n=110,000'
-    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-
-    for 'height' in snp_summary_stats:
-        snp_summary_stats['height'] = prep_data(snp_summary_stats['height'])
-    '''
 
     # Load plink SNP results
-    old_plink_results = {}
-    print(f"Loading old plink SNP results for {'height'} ... ", end='', flush=True)
+    print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
-    old_plink_results['height'] = df_to_recarray(pd.read_csv(
-        f'{ukb}/association/runs/{plink_snp_run_name}/results/chr21/plink2.{"height"}_inv_norm_rank.glm.linear.summary',
+    plink_results = df_to_recarray(pd.read_csv(
+        f'{ukb}/association/plots/input/{phenotype}/plink_snp_results.tab',
         sep='\t',
         usecols=(0,1,2,3,4,13,14),
         encoding='UTF-8',
@@ -584,32 +477,10 @@ def load_data(plink_snp_run_name):
         names=('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
     ))
 
-    old_plink_results['height']['p_val'] = -np.log10(old_plink_results['height']['p_val'])
-    old_plink_results['height'] = old_plink_results['height'][
-        old_plink_results['height']['p_val'] >= 3
-    ]
+    plink_results['p_val'] = -np.log10(plink_results['p_val'])
+    plink_results = plink_results[plink_results['p_val'] >= 3]
 
-    assert np.all(old_plink_results['height']['error'] == '.')
-
-    # Load plink SNP results
-    new_plink_results = {}
-    print(f"Loading new plink SNP results for {'height'} ... ", end='', flush=True)
-    start_time = time.time()
-    new_plink_results['height'] = df_to_recarray(pd.read_csv(
-        f'{ukb}/association/results/height/plink_snp/chrs/chr21/plink2.rin_{"height"}.glm.linear.done',
-        sep='\t',
-        usecols=(0,1,2,3,4,13,14),
-        encoding='UTF-8',
-        header=0,
-        names=('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
-    ))
-
-    new_plink_results['height']['p_val'] = -np.log10(new_plink_results['height']['p_val'])
-    new_plink_results['height'] = new_plink_results['height'][
-        new_plink_results['height']['p_val'] >= 3
-    ]
-
-    assert np.all(new_plink_results['height']['error'] == '.')
+    assert np.all(plink_results['error'] == '.')
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
@@ -651,50 +522,43 @@ def load_data(plink_snp_run_name):
     known_assoc_ids['total_bilirubin'] = \
             catalog_names[catalog_names[:, 2] == 'bilirubin measurement', 1]
 
-    for phenotype in known_assocs:
-        zero_idx = known_assocs[phenotype][:, 2] == 0
-        known_assocs[phenotype][~zero_idx, 2] = -np.log10(known_assocs[phenotype][~zero_idx, 2])
-        known_assocs[phenotype][zero_idx, 2] = 50.12345 #choose an arbitrary number
+    for assoc_phen in known_assocs:
+        zero_idx = known_assocs[assoc_phen][:, 2] == 0
+        known_assocs[assoc_phen][~zero_idx, 2] = -np.log10(known_assocs[assoc_phen][~zero_idx, 2])
+        known_assocs[assoc_phen][zero_idx, 2] = 50.12345 #choose an arbitrary number
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-    return my_str_results, my_snp_results, old_plink_results, new_plink_results, known_assocs, known_assoc_ids
+    return my_str_results, plink_results, known_assocs[phenotype], known_assoc_ids[phenotype]
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("plink_snp_run_name")
+    parser.add_argument("phenotype")
     args = parser.parse_args()
+    phenotype = args.phentoype
 
-    my_str_results, my_snp_results, old_plink_snp_results, new_plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
-        args.plink_snp_run_name
+    my_str_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
+        phenotype
     )
 
-    with open(f'{ukb}/association/results/height/my_str/README.txt') as README:
+    with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
         date_line = next(README)
         my_str_run_date = date_line.split(' ')[2]
 
-    with open(f'{ukb}/association/results/height/my_imputed_snp/README.txt') as README:
-        date_line = next(README)
-        my_snp_run_date = date_line.split(' ')[2]
+    with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as README:
+        plink_snp_run_date = ' '.join(README.readlines()[-1].split(' ')[2:])
 
-    with open(f'{ukb}/association/results/height/plink_snp/logs/chr21.plink.stdout') as README:
-        new_plink_snp_run_date = ' '.join(README.readlines()[-1].split(' ')[2:])
-
-    with open(f'{ukb}/traits/phenotypes/height_unit.txt') as unit_file:
+    with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unit_file:
         unit = next(unit_file).strip()
 
     make_manhattan_plots(
-        'height',
+        phenotype,
         unit,
         my_str_results,
         my_str_run_date,
-        my_snp_results,
-        my_snp_run_date,
-        old_plink_snp_results,
-        args.plink_snp_run_name,
-        new_plink_snp_results,
-        new_plink_snp_run_date,
+        plink_snp_results,
+        plink_snp_run_date,
         gwas_catalog,
         gwas_catalog_ids
     )
