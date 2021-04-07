@@ -1,3 +1,12 @@
+List of phenotypes that might make sense for a GWAS in the UK Biobank
+Sections begin with '##', subsections begin with '###'
+Read the section names before reading the individual phenotypes
+Phenotype lines look like 'XXXXName' where 'XXXX' is the data field ID
+and name is the name of the phenotype.
+They can be looked up by ID here: https://biobank.ctsu.ox.ac.uk/crystal/search.cgi
+(Note: binary phenotypes have not yet been subsetted to phenotypes
+with enough samples for plausible association testing)
+
 General overview:
 Past data release timeline: https://biobank.ctsu.ox.ac.uk/crystal/exinfo.cgi?src=timelines
 Health outcomes overview: https://biobank.ndph.ox.ac.uk/ukb/refer.cgi?id=596
