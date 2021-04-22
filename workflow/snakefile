@@ -73,18 +73,6 @@ rule rank_inverse_normalize_phenotype_subset:
     shell:
         'traits/rank_inverse_normalize.py {wildcards.phenotype}'
 
-rule regress_out_covariates_linearly:
-    input:
-        "traits/shared_covars/shared_covars.npy",
-        "traits/shared_covars/covar_names.txt",
-        "traits/subset_rin_phenotypes/{phenotype}.npy",
-        "traits/phenotypes/{phenotype}_covar_names.txt"
-    output:
-        protected("traits/adjusted_srin_phenotypes/{phenotype}_linear_README.txt"),
-        protected("traits/adjusted_srin_phenotypes/{phenotype}_linear.npy"),
-    shell:
-        'traits/regress_out_covariates.py linear {wildcards.phenotype}'
-
 def concatenate_csvs(output_file, input_files):
     with open(output_file + '.temp', 'w') as outfile:
         first = True
@@ -115,7 +103,6 @@ def regions(region_len):
             regions.append(f'{chrom}_{start}_{end}')
     return regions
 
-'''
 rule write_my_snp_gwas_readme:
     output:
         protected('association/results/{phenotype}/my_imputed_snp/README.txt'),
@@ -124,28 +111,26 @@ rule write_my_snp_gwas_readme:
         'touch association/results/{wildcards.phenotype}/my_imputed_snp/time.stamp && '
         'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} --readme'
 
-
 rule run_regional_my_snp_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_imputed_snp/time.stamp',
-        "traits/adjusted_srin_phenotypes/{phenotype}_linear.npy"
+        "traits/subset_rin_phenotypes/{phenotype}.npy"
     output:
         "association/results/{phenotype}/my_imputed_snp/batches/chr{chr}_{start}_{end}.tab"
     shell:
         'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
         '--region {wildcards.chr}:{wildcards.start}-{wildcards.end}'
 
-rule concatenate_my_snp_gwas:
+rule concatenate_my_snp_gwas_chr21:
     input:
         lambda wildcards:
-            [f'association/results/{wildcards.phenotype}/my_imputed_snp/batches/chr{region}.tab' for
-             region in regions(int(1e6))]
+            [f'association/results/{wildcards.phenotype}/my_str/batches/chr{region}.tab' for
+             region in regions(int(1e6)) if region[:3] == '21_']
     output:
-        protected('association/results/{phenotype}/my_imputed_snp/results.tab')
+        protected('association/results/{phenotype}/my_imputed_snp/chr21_results.tab')
     run:
         concatenate_csvs(output[0], input)
-'''
 
 str_imputation_run_name = 'first_pass'
 
@@ -162,7 +147,7 @@ rule run_regional_my_str_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_str/time.stamp',
-        "traits/adjusted_srin_phenotypes/{phenotype}_linear.npy",
+        "traits/subset_rin_phenotypes/{phenotype}.npy",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi"
     output:
@@ -222,18 +207,18 @@ rule concatenate_plink_gwas:
 
 rule subset_my_gwas_results:
     input:
-        'association/results/{phenotype}/my_{gwas_type}/results.tab'
+        'association/results/{phenotype}/my_{gwas_type}/{chr_prefix}results.tab'
     output:
-        'association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
+        'association/plots/input/{phenotype}/my_{gwas_type}_{chr_prefix}results.tab'
     shell:
         "head -n 1 "
-        "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab "
-        "> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp && "
+        "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/{wildcards.chr_prefix}results.tab "
+        "> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab.temp && "
         "awk '{{ if ($5 < 0.00005) {{ print }} }}' "
-        "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab "
-        ">> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp && "
-        "mv association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab.temp "
-        "association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab "
+        "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/{wildcards.chr_prefix}results.tab "
+        ">> association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab.temp && "
+        "mv association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab.temp "
+        "association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab "
 
 rule subset_plink_gwas_results:
     input:
@@ -250,6 +235,15 @@ rule subset_plink_gwas_results:
         "mv association/plots/input/{wildcards.phenotype}/plink_snp_results.tab.temp "
         "association/plots/input/{wildcards.phenotype}/plink_snp_results.tab "
 
+rule compare_my_to_plink_gwas:
+    input:
+        "traits/phenotypes/height_unit.txt",
+        'association/plots/input/height/my_snp_results_chr21.tab',
+        'association/plots/input/height/plink_snp_results.tab'
+    output:
+        'association/plots/{phenotype}_interactive_manhattan.html'
+    shell:
+        'association/interactive_manhattan_plots.py --my-plink-comparison'
 
 rule interactive_manhattan:
     input:
@@ -259,6 +253,6 @@ rule interactive_manhattan:
     output:
         'association/plots/{phenotype}_interactive_manhattan.html'
     shell:
-        'association/interactive_manhattan_plots.py {wildcards.phenotype}'
+        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype}'
 
 phenotypes = ['height', 'total_bilirubin']
