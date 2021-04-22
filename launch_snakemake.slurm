@@ -14,6 +14,8 @@ if [ -z "$TARGET" ] ; then echo "TARGET variable is unset" ; exit 1 ; fi
 echo "TARGET $TARGET"
 echo "TARGET $TARGET" >&2
 
+# I've installed snakemake with conda, so I need to start
+# anaconda before calling snakemake
 source "$HOME"/.bashrc
 conda activate ukb
 cd "$UKB" || { echo "Directory $UKB doesn't exist" ; exit 1 ; }

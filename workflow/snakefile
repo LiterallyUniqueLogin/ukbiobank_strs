@@ -101,7 +101,7 @@ def concatenate_csvs(output_file, input_files):
                         first_line = False
                         continue
                     outfile.write(line)
-    shutil.rename(output_file + '.temp', output_file)
+    shutil.move(output_file + '.temp', output_file)
 
 def regions(region_len):
     regions = []

@@ -27,5 +27,8 @@ mkdir -p ../../logs
     > "$UKB"/association/results/"$PHENOTYPE"/plink_snp/logs/chr"$CHROM".plink.stdout \
     2> "$UKB"/association/results/"$PHENOTYPE"/plink_snp/logs/chr"$CHROM".plink.stderr
 
+# give filesystem time to register the file plink has written
+sleep 60 
+
 mv "$UKB"/association/results/"$PHENOTYPE"/plink_snp/chrs/chr"$CHROM"/plink2.rin_"$PHENOTYPE".glm.linear \
    "$UKB"/association/results/"$PHENOTYPE"/plink_snp/chrs/chr"$CHROM"/plink2.rin_"$PHENOTYPE".glm.linear.done
