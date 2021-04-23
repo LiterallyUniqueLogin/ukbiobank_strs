@@ -27,7 +27,9 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     batch_size = 50
     total_time = 0
 
-    residuals = np.load(f'{ukb}/traits/adjusted_srin_phenotypes/{phenotype}_linear.npy')
+    pheno_specific_covars = np.load(f'{ukb}/traits/adjusted_srin_phenotypes/{phenotype}_linear.npy')
+    shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')[:, :-3]
+    covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
 
     # order samples according to order in genetics files
     bgen_samples = []
@@ -39,10 +41,12 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
             bgen_samples.append(line.split()[0])
     assert len(bgen_samples) == 487409
     samples_array = np.array(bgen_samples, dtype=float).reshape(-1, 1)
-    merge = utils.merge_arrays(samples_array, residuals)
+    merge = utils.merge_arrays(samples_array, covars)
     unfiltered_samples = ~np.isnan(merge[:, 1])
 
-    residuals = merge[unfiltered_samples, 1]
+    outcome = merge[unfiltered_samples, 1].copy()
+    covars = merge[unfiltered_samples, :]
+    covars[:, 1] = 1
 
     ori_phenotypes = np.load(f'{ukb}/traits/phenotypes/{phenotype}.npy')
     ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
@@ -77,6 +81,8 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     for dosage_gts, unique_alleles, chrom, pos, locus_filtered, locus_details in genotype_iter:
         assert len(locus_details) == len(extra_detail_fields)
 
+        covars[:, 0] = np.nan
+
         n_loci += 1
         allele_names = ','.join(list(unique_alleles.astype(str)))
         outfile.write(f"{chrom}\t{pos}\t{allele_names}\t")
@@ -97,14 +103,12 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
                           _len, dosages in dosage_gts.items()], axis=0)
         else:
             gts = dosage_gts[:, 1] + 2*dosage_gts[:, 2]
-        gt_const = np.concatenate((
-            gts.reshape(-1, 1),  np.ones((gts.shape[0], 1))
-        ), axis = 1)
+        covars[:, 0] = gts
 
         #do da regression
         model = OLS(
-            residuals,
-            gt_const,
+            outcome,
+            covars,
             missing='drop'
         )
         reg_result = model.fit()
