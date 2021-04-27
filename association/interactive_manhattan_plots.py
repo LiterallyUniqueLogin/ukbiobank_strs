@@ -105,6 +105,10 @@ def make_manhattan_plots(
         my_snp_data,
         my_snp_run_date):
 
+    plot_my_str_data = my_str_data is not None
+    plot_my_snp_data = my_snp_data is not None
+    plot_gwas_catalog = gwas_catalog is not None
+
     print(f"Plotting phenotype {phenotype} ... ", end='', flush=True)
     start_time = time.time()
     # reformat data for plotting
@@ -120,12 +124,12 @@ def make_manhattan_plots(
     sources = []
     source_dicts = []
 
-    if my_str_data:
+    if plot_my_str_data:
         my_str_source, my_str_sources = create_source_dict(my_str_data, cols_to_skip=cols_to_skip)
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
 
-    if my_snp_data:
+    if plot_my_snp_data:
         my_snp_source, my_snp_sources = create_source_dict(my_snp_data, cols_to_skip=cols_to_skip)
         sources.append(my_snp_source)
         source_dicts.append(my_snp_sources)
@@ -142,7 +146,7 @@ def make_manhattan_plots(
     sources.append(plink_snp_source)
     source_dicts.append(plink_snp_sources)
 
-    if gwas_catalog:
+    if plot_gwas_catalog:
         catalog_source, catalog_sources = create_source_dict(np.rec.fromarrays((
             gwas_catalog[phenotype][:, 0],
             gwas_catalog[phenotype][:, 1],
@@ -152,7 +156,7 @@ def make_manhattan_plots(
         sources.append(catalog_source)
         source_dicts.append(catalog_sources)
 
-    if my_str_data:
+    if plot_my_str_data:
         locus_plot = bokeh.plotting.figure(
             width=400,
             height=400,
@@ -247,17 +251,17 @@ def make_manhattan_plots(
     # 213, 94, 0
     # 204, 121, 167
     plink_snp_manhattan = plot_manhattan(
-        manhattan_plot, plink_snp_source, 'New SNPs Plink', color=(0, 114, 178)
+        manhattan_plot, plink_snp_source, 'SNPs Plink', color=(0, 114, 178)
     )
-    if my_str_data:
+    if plot_my_str_data:
         my_str_manhattan = plot_manhattan(
             manhattan_plot, my_str_source, 'STRs my code', color=(204, 121, 167), size=6
         )
-    if my_snp_data:
+    if plot_my_snp_data:
         my_snp_manhattan = plot_manhattan(
             manhattan_plot, my_snp_source, 'SNPs my code', color=(204, 121, 167)
         )
-    if gwas_catalog:
+    if plot_gwas_catalog:
         catalog_manhattan = plot_manhattan(
             manhattan_plot, catalog_source, 'GWAS Catalog Hits', color=(213, 94, 0), size=7
         )
@@ -270,7 +274,7 @@ def make_manhattan_plots(
 
     # add hover tooltips for each manhattan plot
     # see https://stackoverflow.com/questions/49282078/multiple-hovertools-for-different-lines-bokeh
-    if my_str_data:
+    if plot_my_str_data:
         my_str_hover = bokeh.models.tools.HoverTool(renderers=[my_str_manhattan])
         my_str_hover.tooltips = [
             ('var type', 'STR'),
@@ -297,7 +301,7 @@ def make_manhattan_plots(
     ]
     manhattan_plot.add_tools(plink_snp_hover)
 
-    if gwas_catalog:
+    if plot_gwas_catalog:
         catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
         catalog_hover.tooltips = [
             ('var type', 'GWAS Catalog SNP'),
@@ -307,12 +311,12 @@ def make_manhattan_plots(
         ]
         manhattan_plot.add_tools(catalog_hover)
 
-    if my_str_data:
+    if plot_my_str_data:
         manhattan_plot.toolbar.active_inspect = [my_str_hover, plink_snp_hover, catalog_hover]
     else:
         manhattan_plot.toolbar.active_inspect = [plink_snp_hover]
 
-    if my_str_data:
+    if plot_my_str_data:
         tap = bokeh.models.tools.TapTool()
         manhattan_plot.add_tools(tap)
         manhattan_plot.toolbar.active_tap = tap
@@ -426,7 +430,7 @@ def make_manhattan_plots(
         )
         chrom_select.js_on_change('value', chrom_callback)
 
-    if my_str_data:
+    if plot_my_str_data:
         layout = bokeh.layouts.grid([
             [None, locus_plot],
             [height_slider, chrom_select],
@@ -438,12 +442,12 @@ def make_manhattan_plots(
             manhattan_plot
         ])
 
-    if my_str_data:
+    if plot_my_str_data:
         manhattan_plot.add_layout(bokeh.models.Title(
             text=f"My STR code run date: {my_str_run_date}",
             align='right'
         ), 'below')
-    if my_snp_data:
+    if plot_my_snp_data:
         manhattan_plot.add_layout(bokeh.models.Title(
             text=f"My SNP code run date: {my_snp_run_date}",
             align='right'
@@ -456,8 +460,12 @@ def make_manhattan_plots(
     manhattan_plot.legend.click_policy="mute"
 
     html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'Manhattan plot test')
-    with open(f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html', 'w') as out_file:
-        out_file.write(html)
+    if plot_my_snp_data:
+        with open(f'{ukb}/association/plots/height_my_imputed_snp_vs_plink.html', 'w') as out_file:
+            out_file.write(html)
+    else:
+        with open(f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html', 'w') as out_file:
+            out_file.write(html)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
 def get_dtypes(fname):
@@ -516,7 +524,7 @@ def load_my_str_results(phenotype):
 def load_my_chr21_height_snp_results():
     print("Loading my chr21 height results ... ", end='', flush=True)
     start_time = time.time()
-    snp_results_fname = f'{ukb}/association/plots/input/height/my_snp_chr21_results.tab'
+    snp_results_fname = f'{ukb}/association/plots/input/height/my_imputed_snp_chr21_results.tab'
     my_snp_results = df_to_recarray(pd.read_csv(
         snp_results_fname,
         header=0,

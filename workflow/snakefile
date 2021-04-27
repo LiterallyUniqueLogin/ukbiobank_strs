@@ -103,7 +103,7 @@ def regions(region_len):
             regions.append(f'{chrom}_{start}_{end}')
     return regions
 
-rule write_my_snp_gwas_readme:
+rule write_my_imputed_snp_gwas_readme:
     output:
         protected('association/results/{phenotype}/my_imputed_snp/README.txt'),
         protected('association/results/{phenotype}/my_imputed_snp/time.stamp')
@@ -111,7 +111,7 @@ rule write_my_snp_gwas_readme:
         'touch association/results/{wildcards.phenotype}/my_imputed_snp/time.stamp && '
         'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} --readme'
 
-rule run_regional_my_snp_gwas:
+rule run_regional_my_imputed_snp_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_imputed_snp/time.stamp',
@@ -122,10 +122,10 @@ rule run_regional_my_snp_gwas:
         'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
         '--region {wildcards.chr}:{wildcards.start}-{wildcards.end}'
 
-rule concatenate_my_snp_gwas_chr21:
+rule concatenate_my_imputed_snp_gwas_chr21:
     input:
         lambda wildcards:
-            [f'association/results/{wildcards.phenotype}/my_str/batches/chr{region}.tab' for
+            [f'association/results/{wildcards.phenotype}/my_imputed_snp/batches/chr{region}.tab' for
              region in regions(int(1e6)) if region[:3] == '21_']
     output:
         protected('association/results/{phenotype}/my_imputed_snp/chr21_results.tab')
@@ -238,10 +238,10 @@ rule subset_plink_gwas_results:
 rule compare_my_to_plink_gwas:
     input:
         "traits/phenotypes/height_unit.txt",
-        'association/plots/input/height/my_snp_results_chr21.tab',
+        'association/plots/input/height/my_imputed_snp_chr21_results.tab',
         'association/plots/input/height/plink_snp_results.tab'
     output:
-        'association/plots/{phenotype}_interactive_manhattan.html'
+        'association/plots/height_my_imputed_snp_vs_plink.html'
     shell:
         'association/interactive_manhattan_plots.py --my-plink-comparison'
 

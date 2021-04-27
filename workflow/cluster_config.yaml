@@ -40,16 +40,16 @@ rank_inverse_normalize_phenotype_subset:
   tasks-per-node: 1
   time: '00:05:00'
 
-write_my_snp_gwas_readme:
+write_my_imputed_snp_gwas_readme:
   tasks-per-node: 1
   time: '00:05:00'
 
-run_regional_my_snp_gwas:
+run_regional_my_imputed_snp_gwas:
   tasks-per-node: 1
   time: '04:00:00'
   mem: 9G
 
-concatenate_my_snp_gwas_chr21:
+concatenate_my_imputed_snp_gwas_chr21:
   tasks-per-node: 1
   time: '04:00:00'
 
