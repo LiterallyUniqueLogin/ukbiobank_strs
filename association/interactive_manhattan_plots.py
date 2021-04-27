@@ -291,6 +291,23 @@ def make_manhattan_plots(
             my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
         manhattan_plot.add_tools(my_str_hover)
 
+    if plot_my_snp_data:
+        my_snp_hover = bokeh.models.tools.HoverTool(renderers=[my_snp_manhattan])
+        my_snp_hover.tooltips = [
+            ('var type', 'STR'),
+            ('alleles:', '@alleles'),
+            ('pos', '@pos'),
+            ('-log10(p_val) my code', '@p_val')
+        ]
+        snp_means_start_idx = list(my_snp_data.dtype.names).index(
+            f'mean_residual_{phenotype}_per_single_dosage'
+        )
+        for detail_name in my_snp_data.dtype.names[7:snp_means_start_idx]:
+            if detail_name in cols_to_skip:
+                continue
+            my_snp_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
+        manhattan_plot.add_tools(my_snp_hover)
+
     plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[plink_snp_manhattan])
     plink_snp_hover.tooltips = [
         ('var type', 'SNP'),
@@ -314,7 +331,7 @@ def make_manhattan_plots(
     if plot_my_str_data:
         manhattan_plot.toolbar.active_inspect = [my_str_hover, plink_snp_hover, catalog_hover]
     else:
-        manhattan_plot.toolbar.active_inspect = [plink_snp_hover]
+        manhattan_plot.toolbar.active_inspect = [my_snp_hover, plink_snp_hover]
 
     if plot_my_str_data:
         tap = bokeh.models.tools.TapTool()

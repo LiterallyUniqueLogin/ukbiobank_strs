@@ -27,7 +27,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     batch_size = 50
     total_time = 0
 
-    pheno_specific_covars = np.load(f'{ukb}/traits/adjusted_srin_phenotypes/{phenotype}_linear.npy')
+    pheno_specific_covars = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')
     shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')[:, :-3]
     covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
 
@@ -46,7 +46,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
 
     outcome = merge[unfiltered_samples, 1].copy()
     covars = merge[unfiltered_samples, :]
-    covars[:, 1] = 1
+    covars[:, 1] = 1 # reuse the column that was the outcome as the intercept
 
     ori_phenotypes = np.load(f'{ukb}/traits/phenotypes/{phenotype}.npy')
     ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
@@ -81,7 +81,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     for dosage_gts, unique_alleles, chrom, pos, locus_filtered, locus_details in genotype_iter:
         assert len(locus_details) == len(extra_detail_fields)
 
-        covars[:, 0] = np.nan
+        covars[:, 0] = np.nan # reuse the column that was the ids as the genotypes
 
         n_loci += 1
         allele_names = ','.join(list(unique_alleles.astype(str)))
@@ -222,10 +222,13 @@ def perform_regional_gwas(phenotype, region, runtype, imputation_run_name):
         perform_regional_gwas_helper(
             phenotype, outfile, runtype, imputation_run_name, region
         )
+        permanent_loc = f'{ukb}/association/results/{phenotype}/my_{dirname}/batches/chr{region_str}.tab'
+        print(f"Copying {outfile.name} to {permanent_loc}")
         shutil.copy(
             outfile.name,
-            f'{ukb}/association/results/{phenotype}/my_{dirname}/batches/chr{region_str}.tab'
+            permanent_loc
         )
+        print("Done.")
 
 def write_str_readme(phenotype, imputation_run_name):
     with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt', 'w') as readme:
