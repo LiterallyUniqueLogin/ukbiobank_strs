@@ -46,7 +46,7 @@ write_my_imputed_snp_gwas_readme:
 
 run_regional_my_imputed_snp_gwas:
   tasks-per-node: 1
-  time: '04:00:00'
+  time: '12:00:00'
   mem: 9G
 
 concatenate_my_imputed_snp_gwas_chr21:
@@ -59,7 +59,7 @@ write_my_str_gwas_readme:
 
 run_regional_my_str_gwas:
   tasks-per-node: 1
-  time: '04:00:00'
+  time: '12:00:00'
   mem: 9G
 
 concatenate_my_str_gwas:

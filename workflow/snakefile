@@ -126,7 +126,7 @@ rule concatenate_my_imputed_snp_gwas_chr21:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_imputed_snp/batches/chr{region}.tab' for
-             region in regions(int(1e6)) if region[:3] == '21_']
+             region in regions(int(1e5)) if region[:3] == '21_']
     output:
         protected('association/results/{phenotype}/my_imputed_snp/chr21_results.tab')
     run:
@@ -161,7 +161,7 @@ rule concatenate_my_str_gwas:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_str/batches/chr{region}.tab' for
-             region in regions(int(1e7))]
+             region in regions(int(1e6))]
     output:
         protected('association/results/{phenotype}/my_str/results.tab')
     run:
