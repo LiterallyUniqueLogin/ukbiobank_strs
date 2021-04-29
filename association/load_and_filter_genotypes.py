@@ -67,7 +67,8 @@ def load_strs(imputation_run_name: str,
 
         None if locus_filtered is not None
     unique_alleles: np.ndarray
-        Array of unique length alleles, same length as the dosages dict
+        Array of unique length alleles (measured in number of repeats),
+        same length as the dosages dict
     chrom: str
         e.g. '13'
     pos: int

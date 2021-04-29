@@ -195,6 +195,16 @@ rule run_plink_gwas:
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
 
+"""
+rule run_conditional_plink_gwas:
+    input:
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/rin_phenotype_covars_and_variants.tab'
+    output:
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
+    shell:
+        'PHENOTYPE={wildcards.} CHROM{wildcards.blah}'
+"""
+
 rule concatenate_plink_gwas:
     input:
         lambda wildcards:
