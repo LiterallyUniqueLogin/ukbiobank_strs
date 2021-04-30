@@ -186,8 +186,6 @@ rule timestamp_plink_run:
 
 rule run_plink_gwas:
     input:
-        'traits/shared_covars/covar_names.txt',
-        'traits/phenotypes/{phenotype}_covar_names.txt',
         'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab',
         'association/results/{phenotype}/plink_snp/time.stamp'
     output:
@@ -229,19 +227,20 @@ rule prep_conditional_plink_input:
         'traits/subset_rin_phenotypes/{phenotype}.npy',
         'traits/phenotypes/{phenotype}_covar_names.txt'
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_plink.txt'
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_plink.tab'
     shell:
         'association/prep_plink_input.py {wildcards.phenotype} --conditional chr{wildcards.chr}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
 
-"""
 rule run_conditional_plink_gwas:
     input:
         'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/rin_phenotype_covars_and_variants.tab'
     output:
         'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
     shell:
-        'PHENOTYPE={wildcards.} CHROM{wildcards.blah}'
-"""
+        'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
+        'CONDITIONAL=STR{wildcards.STRs}__ISNP{wildcards.ISNPs}__ASNP '
+        'START={wildcards.start} END={wildcards.end} '
+        'association/plink_association.sh'
 
 rule subset_my_gwas_results:
     input:

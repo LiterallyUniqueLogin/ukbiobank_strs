@@ -65,7 +65,7 @@ else:
             col_names.append(word)
 
     np.savetxt(
-        f'{conditional_loc}_plink.txt',
+        f'{conditional_loc}_plink.tab',
         data,
         delimiter='\t',
         header='\t'.join(col_names),

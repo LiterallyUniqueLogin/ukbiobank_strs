@@ -83,6 +83,19 @@ concatenate_plink_gwas:
   tasks-per-node: 1
   time: '04:00:00'
 
+prep_conditional_input:
+  tasks-per-node: 1
+  time: '00:30:00'
+
+prep_conditional_plink_input:
+  tasks-per-node: 1
+  time: '00:30:00'
+
+run_conditional_plink_gwas:
+  tasks-per-node: 28
+  time: '47:30:00'
+  mem: 110G
+    
 subset_my_gwas_results:
   tasks-per-node: 1
   time: '01:00:00'
