@@ -195,16 +195,6 @@ rule run_plink_gwas:
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
 
-"""
-rule run_conditional_plink_gwas:
-    input:
-        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/rin_phenotype_covars_and_variants.tab'
-    output:
-        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
-    shell:
-        'PHENOTYPE={wildcards.} CHROM{wildcards.blah}'
-"""
-
 rule concatenate_plink_gwas:
     input:
         lambda wildcards:
@@ -214,6 +204,44 @@ rule concatenate_plink_gwas:
         protected('association/results/{phenotype}/plink_snp/results.tab')
     run:
         concatenate_csvs(output[0], input)
+
+rule prep_conditional_input:
+    output:
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_README.txt'
+    run:
+        command = 'association/prep_conditional_inputs.py {wildcards.phenotype} {wildcards.chr} '
+        if wildcards.STRs:
+            command += f'--imputation-run-name {str_imputation_run_name} --STRs ' 
+            command += wildcards.STRs.replace('_', ' ') + ' '
+        if wildcards.imputed_SNPs:
+            command += '--imputed-SNPs '
+            command += wildcards.imputed_SNPs.replace('_', ' ') + ' '
+        shell(command)
+
+rule prep_conditional_plink_input:
+    input:
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
+        'traits/shared_covars/shared_covars.npy',
+        'traits/shared_covars/covar_names.txt',
+        'traits/subset_rin_phenotypes/{phenotype}.npy',
+        'traits/phenotypes/{phenotype}_covar_names.txt'
+    output:
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_plink.txt'
+    shell:
+        'association/prep_plink_input.py {wildcards.phenotype} --conditional chr{wildcards.chr}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
+
+"""
+rule run_conditional_plink_gwas:
+    input:
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/rin_phenotype_covars_and_variants.tab'
+    output:
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
+    shell:
+        'PHENOTYPE={wildcards.} CHROM{wildcards.blah}'
+"""
 
 rule subset_my_gwas_results:
     input:

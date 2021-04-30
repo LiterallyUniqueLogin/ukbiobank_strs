@@ -11,6 +11,7 @@ ukb = os.environ['UKB']
 
 parser = argparse.ArgumentParser()
 parser.add_argument('phenotype')
+parser.add_argument('--conditional')
 args = parser.parse_args()
 
 phenotype = args.phenotype
@@ -40,12 +41,34 @@ with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_names_file:
             continue
         col_names.append(line)
 
-np.savetxt(
-    f'{ukb}/association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab',
-    data,
-    delimiter='\t',
-    header='\t'.join(col_names),
-    comments='',
-    fmt='%.16g'
-)
+if not args.conditional:
+    np.savetxt(
+        f'{ukb}/association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab',
+        data,
+        delimiter='\t',
+        header='\t'.join(col_names),
+        comments='',
+        fmt='%.16g'
+    )
+else:
+    conditional_loc = f'{ukb}/association/results/{args.phenotype}/conditional_inputs/{args.conditional}'
+    genotypes = np.load(f'{conditional_loc}.npy')
+    data = utils.merge_arrays(data, genotypes)
 
+    with open(f'{conditional_loc}_varnames.txt') as conditional_names_file:
+        line = next(conditional_names_file)
+        first = True
+        for word in line.split():
+            if first:
+                first = False
+                continue
+            col_names.append(word)
+
+    np.savetxt(
+        f'{conditional_loc}_plink.txt',
+        data,
+        delimiter='\t',
+        header='\t'.join(col_names),
+        comments='',
+        fmt='%.16g'
+    )

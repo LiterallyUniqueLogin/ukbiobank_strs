@@ -18,7 +18,8 @@ parser.add_argument('--imputed-SNPs', nargs='+')
 
 args = parser.parse_args()
 
-assert len(args.STRs) + len(args.imputed_SNPs) > 0
+assert ((args.STRs is not None and len(args.STRs) > 0) or 
+        (args.imputed_SNPs is not None and len(args.imputed_SNPs) > 0))
 
 if len(args.STRs) > 0:
     assert args.imputation_run_name
@@ -92,7 +93,7 @@ if len(iSNP_string) > 0:
 fname = f'chr{args.chr}_STR{STR_string}__ISNP{iSNP_string}__ASNP'
 
 gts.insert(0, samples_array)
-dirname = f'{ukb}/association/results/height/conditional_inputs'
+dirname = f'{ukb}/association/results/{args.phenotype}/conditional_inputs'
 np.save(
     f'{dirname}/{fname}.npy',
     np.stack(gts, axis=1)
