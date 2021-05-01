@@ -87,6 +87,11 @@ prep_conditional_input:
   tasks-per-node: 1
   time: '00:30:00'
 
+run_conditional_my_str_gwas:
+  tasks-per-node: 1
+  time: '12:00:00'
+  mem: 9G
+
 prep_conditional_plink_input:
   tasks-per-node: 1
   time: '00:30:00'
@@ -104,12 +109,25 @@ subset_plink_gwas_results:
   tasks-per-node: 1
   time: '01:00:00'
 
+subset_conditional_my_gwas_results:
+  tasks-per-node: 1
+  time: '01:00:00'
+
+subset_conditional_plink_gwas_results:
+  tasks-per-node: 1
+  time: '01:00:00'
+
 compare_my_to_plink_gwas:
   tasks-per-node: 1
   time: '00:30:00'
   mem: 50G
 
 interactive_manhattan:
+  tasks-per-node: 1
+  time: '00:30:00'
+  mem: 50G
+
+interactive_manhattan_conditional:
   tasks-per-node: 1
   time: '00:30:00'
   mem: 50G

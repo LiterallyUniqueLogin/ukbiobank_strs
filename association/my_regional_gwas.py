@@ -17,7 +17,7 @@ import python_array_utils as utils
 
 ukb = os.environ['UKB']
 
-def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_name, region):
+def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_name, region, conditional):
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
                   f"p_{phenotype}\tcoeff_{phenotype}\tcoeff_intercept\tR^2\t")
     outfile.flush()
@@ -30,6 +30,13 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     pheno_specific_covars = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')
     shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')[:, :-3]
     covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
+
+    if conditional:
+        chrom = region.split(':')[0]
+        gt_covars = np.load(
+            f'{ukb}/association/results/{phenotype}/conditional_inputs/chr{chrom}_{conditional}.npy'
+        )
+        covars = utils.merge_arrays(covars, gt_covars)
 
     # order samples according to order in genetics files
     bgen_samples = []
@@ -208,7 +215,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
         print(f"No variants found in the region {region}\n", flush=True)
 
 
-def perform_regional_gwas(phenotype, region, runtype, imputation_run_name):
+def perform_regional_gwas(phenotype, region, runtype, imputation_run_name, conditional):
     chrom, poses = region.split(':')
     start, end = poses.split('-')
     region_str = f'{chrom}_{start}_{end}'
@@ -220,9 +227,17 @@ def perform_regional_gwas(phenotype, region, runtype, imputation_run_name):
     with tempfile.NamedTemporaryFile(mode='w+') as outfile:
         print(f"Writing output to temp file {outfile.name}", flush=True)
         perform_regional_gwas_helper(
-            phenotype, outfile, runtype, imputation_run_name, region
+            phenotype, outfile, runtype, imputation_run_name, region, conditional
         )
-        permanent_loc = f'{ukb}/association/results/{phenotype}/my_{dirname}/batches/chr{region_str}.tab'
+        if not conditional:
+            permanent_loc = \
+                f'{ukb}/association/results/{phenotype}/my_{dirname}/batches/chr{region_str}.tab'
+        else:
+            permanent_loc = (
+                f'{ukb}/association/results/{phenotype}/my_{dirname}_conditional/'
+                f'chr{chrom}_{start}_{end}_{conditional}.tab'
+            )
+
         print(f"Copying {outfile.name} to {permanent_loc}")
         shutil.copy(
             outfile.name,
@@ -263,6 +278,7 @@ def main():
     parser.add_argument('--readme', action='store_true')
     parser.add_argument('--region')
     parser.add_argument('--imputation-run-name')
+    parser.add_argument('--conditional')
     args = parser.parse_args()
 
     assert args.readme == (args.region is None)
@@ -278,7 +294,7 @@ def main():
         return
     else:
         perform_regional_gwas(
-            args.phenotype, args.region, args.runtype, args.imputation_run_name
+            args.phenotype, args.region, args.runtype, args.imputation_run_name, args.conditional
         )
 
 

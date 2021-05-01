@@ -53,9 +53,12 @@ max_p_val = 350
 
 def create_source_dict(
         data: np.recarray,
+        start_chrom: Optional[int],
         cols_to_skip: Set[str] = set(),
         cols_to_include: Set[str] = set()
     ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
+    if not start_chrom:
+        start_chrom = 1
     sources = {}
     assert len(cols_to_skip) == 0 or len(cols_to_include) == 0
     for field in 'chr', 'pos', 'p_val':
@@ -77,9 +80,9 @@ def create_source_dict(
         sources[chrom].data['display_p_val'] = np.minimum(
             sources[chrom].data['p_val'], start_p_val_cap
         )
-    copy_source_1 = bokeh.models.ColumnDataSource(copy.deepcopy(sources[1].data))
+    copy_source = bokeh.models.ColumnDataSource(copy.deepcopy(sources[start_chrom].data))
 
-    return copy_source_1, sources
+    return copy_source, sources
 
 def plot_manhattan(plot, source, label, color, size=4):
     return plot.circle(
@@ -103,7 +106,10 @@ def make_manhattan_plots(
         gwas_catalog,
         gwas_catalog_ids,
         my_snp_data,
-        my_snp_run_date):
+        my_snp_run_date,
+        chrom,
+        start,
+        end):
 
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
@@ -125,12 +131,12 @@ def make_manhattan_plots(
     source_dicts = []
 
     if plot_my_str_data:
-        my_str_source, my_str_sources = create_source_dict(my_str_data, cols_to_skip=cols_to_skip)
+        my_str_source, my_str_sources = create_source_dict(my_str_data, chrom, cols_to_skip=cols_to_skip)
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
 
     if plot_my_snp_data:
-        my_snp_source, my_snp_sources = create_source_dict(my_snp_data, cols_to_skip=cols_to_skip)
+        my_snp_source, my_snp_sources = create_source_dict(my_snp_data, chrom, cols_to_skip=cols_to_skip)
         sources.append(my_snp_source)
         source_dicts.append(my_snp_sources)
 
@@ -142,7 +148,7 @@ def make_manhattan_plots(
             ),), names=['alleles'])
         ), flatten=True
     )
-    plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data)
+    plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data, chrom)
     sources.append(plink_snp_source)
     source_dicts.append(plink_snp_sources)
 
@@ -152,7 +158,8 @@ def make_manhattan_plots(
             gwas_catalog[phenotype][:, 1],
             gwas_catalog[phenotype][:, 2],
             gwas_catalog_ids[phenotype]
-        ), names=['chr', 'pos', 'p_val', 'rsids']))
+        ), names=['chr', 'pos', 'p_val', 'rsids']),
+        chrom)
         sources.append(catalog_source)
         source_dicts.append(catalog_sources)
 
@@ -165,6 +172,10 @@ def make_manhattan_plots(
             y_axis_label=f'Mean {phenotype} ({unit})',
             tools='save'
         )
+        locus_plot.add_layout(bokeh.models.Title(
+            text="Phenotype values are unadjusted for covariates or conditioned genotypes",
+            align='right'
+        ), 'below')
 
         locus_source = bokeh.models.ColumnDataSource({
             'x': [1, 2],
@@ -227,8 +238,14 @@ def make_manhattan_plots(
     """)
     manhattan_plot.js_on_event(bokeh.events.MouseEnter, one_tooltip_callback)
 
+    if not start:
+        start = 0
+        if not chrom:
+            end = chr_lens[1]
+        else:
+            end = chr_lens[chrom]
     line_source = bokeh.models.ColumnDataSource(dict(
-        x=[0, chr_lens[1]],
+        x=[start, end],
         y=[-np.log10(5e-8)]*2,
     ))
     manhattan_plot.line(
@@ -415,64 +432,79 @@ def make_manhattan_plots(
     )
     height_slider.js_on_change('value', height_callback)
 
-    chrom_select = bokeh.models.Select(
-        title="Chromosome:",
-        options=[str(num) for num in range(1, 23)]
-    )
-    for source, source_dict in zip(sources, source_dicts):
-        chrom_callback = bokeh.models.CustomJS(
-            args=dict(
-                source=source,
-                source_dict=source_dict,
-                height_slider = height_slider,
-                line_source = line_source,
-                chr_lens = chr_lens,
-                range=manhattan_plot.x_range
-            ),
-            code = """
-                source.data = source_dict[this.value].data;
-                const data = source.data;
-                const display_p_val = data['display_p_val'];
-                const p_val= data['p_val'];
-                const new_max = height_slider.value;
-                for (var i = 0; i < display_p_val.length; i++) {
-                    display_p_val[i] = Math.min(p_val[i], new_max);
-                }
-                source.change.emit();
-                line_source.data['x'] = [0, chr_lens[this.value-1]];
-                line_source.change.emit();
-                range.start = 0;
-                range.end = chr_lens[this.value-1];
-            """
+    if chrom is None:
+        chrom_select = bokeh.models.Select(
+            title="Chromosome:",
+            options=[str(num) for num in range(1, 23)]
         )
-        chrom_select.js_on_change('value', chrom_callback)
+        for source, source_dict in zip(sources, source_dicts):
+            chrom_callback = bokeh.models.CustomJS(
+                args=dict(
+                    source=source,
+                    source_dict=source_dict,
+                    height_slider = height_slider,
+                    line_source = line_source,
+                    chr_lens = chr_lens,
+                    range=manhattan_plot.x_range
+                ),
+                code = """
+                    source.data = source_dict[this.value].data;
+                    const data = source.data;
+                    const display_p_val = data['display_p_val'];
+                    const p_val= data['p_val'];
+                    const new_max = height_slider.value;
+                    for (var i = 0; i < display_p_val.length; i++) {
+                        display_p_val[i] = Math.min(p_val[i], new_max);
+                    }
+                    source.change.emit();
+                    line_source.data['x'] = [0, chr_lens[this.value-1]];
+                    line_source.change.emit();
+                    range.start = 0;
+                    range.end = chr_lens[this.value-1];
+                """
+            )
+            chrom_select.js_on_change('value', chrom_callback)
 
     if plot_my_str_data:
-        layout = bokeh.layouts.grid([
-            [None, locus_plot],
-            [height_slider, chrom_select],
-            manhattan_plot
-        ])
+        if chrom is None:
+            layout = bokeh.layouts.grid([
+                [None, locus_plot],
+                [height_slider, chrom_select],
+                manhattan_plot
+            ])
+        else:
+            layout = bokeh.layouts.column(
+                locus_plot,
+                height_slider,
+                manhattan_plot
+            )
     else:
-        layout = bokeh.layouts.grid([
-            [height_slider, chrom_select],
-            manhattan_plot
-        ])
+        if chrom is None:
+            layout = bokeh.layouts.grid([
+                [height_slider, chrom_select],
+                manhattan_plot
+            ])
+        else:
+            layout = bokeh.layouts.column(
+                height_slider,
+                manhattan_plot
+            )
 
-    if plot_my_str_data:
+    if my_str_run_date:
         manhattan_plot.add_layout(bokeh.models.Title(
             text=f"My STR code run date: {my_str_run_date}",
             align='right'
         ), 'below')
-    if plot_my_snp_data:
+    if my_snp_run_date:
         manhattan_plot.add_layout(bokeh.models.Title(
             text=f"My SNP code run date: {my_snp_run_date}",
             align='right'
         ), 'below')
-    manhattan_plot.add_layout(bokeh.models.Title(
-        text=f"New plink SNP run dat: {plink_snp_run_date}",
-        align='right'
-    ), 'below')
+    if plink_snp_run_date:
+        manhattan_plot.add_layout(bokeh.models.Title(
+            text=f"New plink SNP run dat: {plink_snp_run_date}",
+            align='right'
+        ), 'below')
 
     manhattan_plot.legend.click_policy="mute"
 
@@ -510,17 +542,30 @@ my_str_results_rename = {
     -1: 'CI5e_8PairedDosagePhenotype'
 }
 
-def load_data(phenotype):
-    return (
-        load_my_str_results(phenotype),
-        load_plink_results(phenotype),
-        *load_gwas_catalog(phenotype)
-    )
+def load_data(phenotype, condition):
+    if not condition:
+        return (
+            load_my_str_results(phenotype),
+            load_plink_results(phenotype),
+            *load_gwas_catalog(phenotype)
+        )
+    else:
+        return (
+            load_my_str_results(phenotype, condition),
+            load_plink_results(phenotype, condition),
+            None,
+            None
+        )
 
-def load_my_str_results(phenotype):
+def load_my_str_results(phenotype, condition):
     print(f"Loading my STR results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
-    str_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_str_results.tab'
+    if not condition:
+        str_results_fname = \
+            f'{ukb}/association/plots/input/{phenotype}/my_str_results.tab'
+    else:
+        str_results_fname = \
+            f'{ukb}/association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
     my_str_results = df_to_recarray(pd.read_csv(
         str_results_fname,
         header=0,
@@ -557,12 +602,19 @@ def load_my_chr21_height_snp_results():
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_snp_results
 
-def load_plink_results(phenotype):
+def load_plink_results(phenotype, condition):
     # Load plink SNP results
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
+    if not condition:
+        plink_snp_fname = \
+            f'{ukb}/association/plots/input/{phenotype}/plink_snp_results.tab'
+    else:
+        plink_snp_fname = \
+            'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
+
     plink_results = df_to_recarray(pd.read_csv(
-        f'{ukb}/association/plots/input/{phenotype}/plink_snp_results.tab',
+        plink_snp_fname,
         sep='\t',
         usecols=(0,1,2,3,4,13,14),
         encoding='UTF-8',
@@ -631,18 +683,35 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--my-plink-comparison", action='store_true')
     parser.add_argument("--phenotype")
+    parser.add_argument("--condition")
     args = parser.parse_args()
     assert bool(args.my_plink_comparison) != bool(args.phenotype)
+    if args.condition:
+        assert bool(args.phenotype)
+
     if args.phenotype:
         phenotype = args.phentoype
         my_str_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
-            phenotype
+            phenotype, args.condition
         )
-        with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
-            date_line = next(README)
-            my_str_run_date = date_line.split(' ')[2]
+        if not args.condition:
+            chrom = None
+            start = None
+            end = None
+            with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
+                date_line = next(README)
+                my_str_run_date = date_line.split(' ')[2]
+        else:
+            my_str_run_date = None
+            chrom, start, end, _ = condition.split('_')
+            chrom = int(chrom[3:])
+            start = int(start)
+            end = int(end)
     else:
         phenotype = 'height'
+        chrom = 21
+        start = None
+        end = None
         my_snp_results = load_my_chr21_height_snp_results()
         plink_snp_results = load_plink_results(phenotype)
         plink_snp_results = plink_snp_results[plink_snp_results['chr'] == 21]
@@ -653,8 +722,11 @@ def main():
             date_line = next(README)
             my_snp_run_date = date_line.split(' ')[2]
 
-    with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as README:
-        plink_snp_run_date = ' '.join(README.readlines()[-1].split(' ')[2:])
+    if not args.condition:
+        with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as README:
+            plink_snp_run_date = ' '.join(README.readlines()[-1].split(' ')[2:])
+    else:
+        plink_snp_run_date = None
 
     with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unit_file:
         unit = next(unit_file).strip()
@@ -669,7 +741,10 @@ def main():
         gwas_catalog,
         gwas_catalog_ids,
         my_snp_results,
-        my_snp_run_date
+        my_snp_run_date,
+        chrom = chrom,
+        start = start,
+        end = end
     )
 
 if __name__ == "__main__":
