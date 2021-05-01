@@ -39,7 +39,7 @@ else
 	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/conditional_inputs/chr"$CHROM"_"$CONDITIONAL"_plink.tab
 	LOG_OUT=plink.stdout
 	LOG_ERR=plink.stderr
-	echo -e chr"$CHROM""\t""$START""\t""$((END + 1))""\n" > region.bed
+	echo -e chr"$CHROM""\t""$START""\t""$((END + 1))" > region.bed
 	BED_FILE_COMMAND=" --extract bed1 region.bed"
 fi
 

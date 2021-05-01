@@ -161,7 +161,7 @@ rule concatenate_my_str_gwas:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_str/batches/chr{region}.tab' for
-             region in regions(int(1e6))]
+             region in regions(int(1e7))]
     output:
         protected('association/results/{phenotype}/my_str/results.tab')
     run:
@@ -205,9 +205,9 @@ rule concatenate_plink_gwas:
 
 rule prep_conditional_input:
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_README.txt'
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.npy',
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_varnames.txt',
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_README.txt'
     run:
         command = 'association/prep_conditional_inputs.py {wildcards.phenotype} {wildcards.chr} '
         if wildcards.STRs:
@@ -226,12 +226,12 @@ rule run_conditional_my_str_gwas:
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi",
         'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
     output:
-        'association/results/{phenotype}/my_str_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP.tab'
+        'association/results/{phenotype}/my_str_conditional/chr{chr}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.tab'
     shell:
         'association/my_regional_gwas.py strs {wildcards.phenotype} '
         '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
         f'--imputation-run-name {str_imputation_run_name} '
-        '--conditional STR{wildcards.STRs}__ISNP{wildcards.ISNPs}__ASNP'
+        '--conditional STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
 
 rule prep_conditional_plink_input:
     input:
@@ -242,15 +242,15 @@ rule prep_conditional_plink_input:
         'traits/subset_rin_phenotypes/{phenotype}.npy',
         'traits/phenotypes/{phenotype}_covar_names.txt'
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_plink.tab'
+        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
     shell:
         'association/prep_plink_input.py {wildcards.phenotype} --conditional chr{wildcards.chr}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
 
 rule run_conditional_plink_gwas:
     input:
-        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/rin_phenotype_covars_and_variants.tab'
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{ISNPs}__ASNP_plink.tab'
     output:
-        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs}__ISNP{ISNPs}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
         'CONDITIONAL=STR{wildcards.STRs}__ISNP{wildcards.ISNPs}__ASNP '
@@ -276,7 +276,7 @@ rule subset_my_gwas_results:
     input:
         'association/results/{phenotype}/my_{gwas_type}/{chr_prefix}results.tab'
     output:
-        'association/plots/input/{phenotype}/my_{gwas_type}_{chr_prefix}results.tab'
+        'association/plots/input/{phenotype}/my_{gwas_type}_{chr_prefix,.*}results.tab'
     run:
         subset_gwas_results(
             "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/{wildcards.chr_prefix}results.tab",

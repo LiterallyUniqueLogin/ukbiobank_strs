@@ -13,13 +13,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('phenotype')
 parser.add_argument('chr')
 parser.add_argument('--imputation-run-name')
-parser.add_argument('--STRs', nargs='+')
-parser.add_argument('--imputed-SNPs', nargs='+')
+parser.add_argument('--STRs', nargs='+', default=[])
+parser.add_argument('--imputed-SNPs', nargs='+', default=[])
 
 args = parser.parse_args()
 
-assert ((args.STRs is not None and len(args.STRs) > 0) or 
-        (args.imputed_SNPs is not None and len(args.imputed_SNPs) > 0))
+assert len(args.STRs) + len(args.imputed_SNPs) > 0
 
 if len(args.STRs) > 0:
     assert args.imputation_run_name

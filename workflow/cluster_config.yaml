@@ -76,7 +76,7 @@ timestamp_plink_run:
 
 run_plink_gwas:
   tasks-per-node: 28
-  time: '47:30:00'
+  time: '23:30:00' # todo change back to 47
   mem: 110G
 
 concatenate_plink_gwas:
@@ -98,7 +98,7 @@ prep_conditional_plink_input:
 
 run_conditional_plink_gwas:
   tasks-per-node: 28
-  time: '47:30:00'
+  time: '23:30:00' # todo change back to 47
   mem: 110G
     
 subset_my_gwas_results:
