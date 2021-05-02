@@ -279,8 +279,8 @@ rule subset_my_gwas_results:
         'association/plots/input/{phenotype}/my_{gwas_type}_{chr_prefix,.*}results.tab'
     run:
         subset_gwas_results(
-            "association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/{wildcards.chr_prefix}results.tab",
-            "association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab",
+             f"association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/{wildcards.chr_prefix}results.tab",
+             f"association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab",
              5
          )
 
@@ -291,9 +291,9 @@ rule subset_plink_gwas_results:
         'association/plots/input/{phenotype}/plink_snp_results.tab'
     run:
         subset_gwas_results(
-            "association/results/{wildcards.phenotype}/plink_snp/results.tab",
-            "association/plots/input/{wildcards.phenotype}/plink_snp_results.tab",
-            14
+             f"association/results/{wildcards.phenotype}/plink_snp/results.tab",
+             f"association/plots/input/{wildcards.phenotype}/plink_snp_results.tab",
+             14
         )
 
 rule subset_conditional_my_str_gwas_results:
@@ -303,8 +303,8 @@ rule subset_conditional_my_str_gwas_results:
         'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
     run:
         subset_gwas_results(
-            'association/results/{phenotype}/my_str_conditional/{condition}.tab',
-            'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab',
+             f'association/results/{wildcards.phenotype}/my_str_conditional/{wildcards.condition}.tab',
+             f'association/plots/input/{wildcards.phenotype}/my_str_conditional_{wildcards.condition}_results.tab',
              5
          )
 
@@ -315,8 +315,8 @@ rule subset_conditional_plink_gwas_results:
         'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
     run:
         subset_gwas_results(
-            'association/results/{phenotype}/my_str_conditional/{condition}.tab',
-            'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab',
+             f'association/results/{wildcards.phenotype}/plink_snp_conditional/{wildcards.condition}/plink2.rin_{wildcards.phenotype}.glm.linear.done',
+             f'association/plots/input/{wildcards.phenotype}/plink_snp_conditional_{wildcards.condition}_results.tab',
              14
          )
 
@@ -346,9 +346,9 @@ rule interactive_manhattan_conditional:
         'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab',
         'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
     output:
-        'association/plots/{phenotype}_conditional_manhattan_{condition}.html'
+        'association/plots/{phenotype}_interactive_manhattan_{condition}.html'
     shell:
         'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} '
-        '--condition condition '
+        '--condition {wildcards.condition} '
 
 phenotypes = ['height', 'total_bilirubin']

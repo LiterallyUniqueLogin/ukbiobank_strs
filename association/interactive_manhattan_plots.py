@@ -97,6 +97,7 @@ def plot_manhattan(plot, source, label, color, size=4):
 
 
 def make_manhattan_plots(
+        outfname,
         phenotype,
         unit,
         my_str_data,
@@ -154,10 +155,10 @@ def make_manhattan_plots(
 
     if plot_gwas_catalog:
         catalog_source, catalog_sources = create_source_dict(np.rec.fromarrays((
-            gwas_catalog[phenotype][:, 0],
-            gwas_catalog[phenotype][:, 1],
-            gwas_catalog[phenotype][:, 2],
-            gwas_catalog_ids[phenotype]
+            gwas_catalog[:, 0],
+            gwas_catalog[:, 1],
+            gwas_catalog[:, 2],
+            gwas_catalog_ids
         ), names=['chr', 'pos', 'p_val', 'rsids']),
         chrom)
         sources.append(catalog_source)
@@ -194,11 +195,16 @@ def make_manhattan_plots(
         locus_plot.add_tools(means_hover)
 
     # set up drawing canvas
+    if chrom is None:
+        x_axis_label = 'Position'
+    else:
+        x_axis_label = f'Position (chr {chrom})'
+
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
         height=900,
         title=(phenotype.capitalize() + ' Manhattan Plot'),
-        x_axis_label='Position',
+        x_axis_label=x_axis_label,
         y_axis_label='-log10(p-value)',
         tools='xzoom_in,xzoom_out,save',
         y_range=(-.25, start_p_val_cap+.25),
@@ -291,6 +297,7 @@ def make_manhattan_plots(
 
     # add hover tooltips for each manhattan plot
     # see https://stackoverflow.com/questions/49282078/multiple-hovertools-for-different-lines-bokeh
+    hover_tools = []
     if plot_my_str_data:
         my_str_hover = bokeh.models.tools.HoverTool(renderers=[my_str_manhattan])
         my_str_hover.tooltips = [
@@ -307,6 +314,7 @@ def make_manhattan_plots(
                 continue
             my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
         manhattan_plot.add_tools(my_str_hover)
+        hover_tools.append(my_str_hover)
 
     if plot_my_snp_data:
         my_snp_hover = bokeh.models.tools.HoverTool(renderers=[my_snp_manhattan])
@@ -324,6 +332,7 @@ def make_manhattan_plots(
                 continue
             my_snp_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
         manhattan_plot.add_tools(my_snp_hover)
+        hover_tools.append(my_snp_hover)
 
     plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[plink_snp_manhattan])
     plink_snp_hover.tooltips = [
@@ -334,6 +343,7 @@ def make_manhattan_plots(
         ('-log10(p_val) Plink', '@p_val')
     ]
     manhattan_plot.add_tools(plink_snp_hover)
+    hover_tools.append(plink_snp_hover)
 
     if plot_gwas_catalog:
         catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
@@ -344,11 +354,9 @@ def make_manhattan_plots(
             ('-log10(p_val)', '@p_val')
         ]
         manhattan_plot.add_tools(catalog_hover)
+        hover_tools.append(catalog_hover)
 
-    if plot_my_str_data:
-        manhattan_plot.toolbar.active_inspect = [my_str_hover, plink_snp_hover, catalog_hover]
-    else:
-        manhattan_plot.toolbar.active_inspect = [my_snp_hover, plink_snp_hover]
+    manhattan_plot.toolbar.active_inspect = hover_tools
 
     if plot_my_str_data:
         tap = bokeh.models.tools.TapTool()
@@ -509,12 +517,8 @@ def make_manhattan_plots(
     manhattan_plot.legend.click_policy="mute"
 
     html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'Manhattan plot test')
-    if plot_my_snp_data:
-        with open(f'{ukb}/association/plots/height_my_imputed_snp_vs_plink.html', 'w') as out_file:
-            out_file.write(html)
-    else:
-        with open(f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html', 'w') as out_file:
-            out_file.write(html)
+    with open(outfname, 'w') as outfile:
+        outfile.write(html)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
 def get_dtypes(fname):
@@ -545,8 +549,8 @@ my_str_results_rename = {
 def load_data(phenotype, condition):
     if not condition:
         return (
-            load_my_str_results(phenotype),
-            load_plink_results(phenotype),
+            load_my_str_results(phenotype, None),
+            load_plink_results(phenotype, None),
             *load_gwas_catalog(phenotype)
         )
     else:
@@ -611,7 +615,7 @@ def load_plink_results(phenotype, condition):
             f'{ukb}/association/plots/input/{phenotype}/plink_snp_results.tab'
     else:
         plink_snp_fname = \
-            'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
+            f'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
 
     plink_results = df_to_recarray(pd.read_csv(
         plink_snp_fname,
@@ -690,10 +694,12 @@ def main():
         assert bool(args.phenotype)
 
     if args.phenotype:
-        phenotype = args.phentoype
+        phenotype = args.phenotype
         my_str_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
             phenotype, args.condition
         )
+        my_snp_results = None
+        my_snp_run_date = None
         if not args.condition:
             chrom = None
             start = None
@@ -701,23 +707,26 @@ def main():
             with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
                 date_line = next(README)
                 my_str_run_date = date_line.split(' ')[2]
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html'
         else:
             my_str_run_date = None
-            chrom, start, end, _ = condition.split('_')
+            chrom, start, end = args.condition.split('_')[:3]
             chrom = int(chrom[3:])
             start = int(start)
             end = int(end)
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_{args.condition}.html'
     else:
         phenotype = 'height'
         chrom = 21
         start = None
         end = None
         my_snp_results = load_my_chr21_height_snp_results()
-        plink_snp_results = load_plink_results(phenotype)
+        plink_snp_results = load_plink_results(phenotype, None)
         plink_snp_results = plink_snp_results[plink_snp_results['chr'] == 21]
         gwas_catalog = gwas_catalog_ids = None
         my_str_results = my_str_run_date = None
 
+        outfname = f'{ukb}/association/plots/height_my_imputed_snp_vs_plink.html'
         with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
             date_line = next(README)
             my_snp_run_date = date_line.split(' ')[2]
@@ -732,6 +741,7 @@ def main():
         unit = next(unit_file).strip()
 
     make_manhattan_plots(
+        outfname,
         phenotype,
         unit,
         my_str_results,
