@@ -10,43 +10,53 @@ chr_lens = np.genfromtxt(
     dtype=int
 )
 
-PhenotypeLoadingArg = collections.namedtuple(
-    'PhenotypeLoadingArg',
-    ['data_field_id', 'unit', 'age']
-)
-# unit of None represents a binary trait has/doesn't have
+class PhenotypeLoadingArg:
+    def __init__(self, data_field_id, age, *, unit = 'binary'):
+        self.data_field_id = data_field_id
+        self.age = age
+        self.unit = unit
 
 pheno_args = {
-    'english_education_score': PhenotypeLoadingArg(
+    'height': PhenotypeLoadingArg(
+        '50',
+        'first-available',
+        unit = 'cm'
+    ),
+    'total_bilirubin': PhenotypeLoadingArg(
+        '30840',
+        'first-available',
+        unit = 'umol/L'
+    ),
+    'education_score_england': PhenotypeLoadingArg(
         '26414',
-        'English IMD Units',
-        'init-assessment'
+        'init-assessment',
+        unit = 'English IMD Units'
     ),
     'fluid_intelligence_score': PhenotypeLoadingArg(
         '20016',
-        'Num. correct answers',
-        'init-assessment'
+        'first-available',
+        unit = 'Correct Answers'
     ),
     'inpatient_ICD10_main_diagnoses' : PhenotypeLoadingArg(
         '41202',
-        None,
         'tbd'
     ),
     'tower_rearranging_correct' : PhenotypeLoadingArg(
         '21004',
-        'Num. correct answers',
-        'tbd'
+        'first-available',
+        unit = 'Correct Answers'
     ),
     's_word_count_pilot' : PhenotypeLoadingArg(
         '10612',
-        'Num. words',
-        'tbd'
+        'init-assessment',
+        unit = 'Words Produced'
     )
 }
 
 rule load_shared_covars:
     output:
         protected("traits/shared_covars/shared_covars.npy"),
+        protected("traits/shared_covars/assessment_ages.npy"),
         protected("traits/shared_covars/README.txt"),
         protected("traits/shared_covars/covar_names.txt")
     shell:
@@ -54,12 +64,13 @@ rule load_shared_covars:
 
 rule decompress_phenotype:
     output:
-        protected("main_dataset/extracted_data/{phenotype}.txt")
+        protected("main_dataset/extracted_data/{phenotype}.txt"),
+        protected("main_dataset/extracted_data/{phenotype}_README.txt")
     run:
         phenotype = wildcards.phenotype
         args = pheno_args[phenotype]
         shell(
-            "traits/decompress_trait_from_main_dataset.py "
+            "main_dataset/decompress_trait.py "
             f"{phenotype} {args.data_field_id} "
         )
 
@@ -74,10 +85,9 @@ rule load_phenotype:
         protected("traits/phenotypes/{phenotype}_covar_names.txt")
     run:
         phenotype = wildcards.phenotype
-        if phenotype in {'height', 'total_bilirubin'}:
-            shell(f"traits/load_{phenotype}.py")
-        elif phenotype in pheno_args:
+        if phenotype in pheno_args:
             args = pheno_args[phenotype]
+            assert args.unit != 'binary'
             shell(
                 f"traits/load_trait_from_main_dataset.py "
                 f"{phenotype} '{args.unit}' {args.age} "

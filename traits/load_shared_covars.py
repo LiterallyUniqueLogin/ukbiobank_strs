@@ -73,6 +73,8 @@ def load_covars():
         data = data[data[:, 0] >= 0, :]
         # assert sex is either 1 (male) or 2 (female)
         assert np.all((data[:, 1] == 1) | (data[:, 1] == 2))
+        
+        np.save(f'{ukb}/traits/shared_covars/shared_covars.npy', data)
 
         # Age will be included as a covariate for all dependent variables
         # to prevent confounding.
@@ -83,11 +85,10 @@ def load_covars():
         # have been measured at one of multiple assessments.
         # As such, each measured dependent variable needs to specify which assessments
         # the age should be drawn from for each participant.
-        # So we load ages for each assessment here but do not mark them as
-        # independent variables to be directly included in the analysis.
+        # because of that, ages are saved as a separate file
         age_file_name = f'{ukb}/main_dataset/extracted_data/assessment_age.csv'
         readme.write(
-            f"Adding ages at assessments. File: {age_file_name}\n"
+            f"Loading ages at assessments into assessment_ages.npy from file: {age_file_name}\n"
         )
         readme.flush()
         with open(age_file_name) as age_file:
@@ -96,9 +97,8 @@ def load_covars():
                 skip_header=1,
                 delimiter=','
             )
-        data = utils.merge_arrays(data, assessment_age)
 
-        np.save(f'{ukb}/traits/shared_covars/shared_covars.npy', data)
+        np.save(f'{ukb}/traits/shared_covars/assessment_ages.npy', assessment_age)
 
 
 if __name__ == "__main__":

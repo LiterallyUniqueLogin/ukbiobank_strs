@@ -16,7 +16,7 @@ args = parser.parse_args()
 
 phenotype = args.phenotype
 
-shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')[:, :-3]
+shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
 
 subset_rin_phenotype = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')
 
