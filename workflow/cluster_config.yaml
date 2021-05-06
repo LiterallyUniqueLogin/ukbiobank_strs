@@ -19,6 +19,10 @@ load_shared_covars:
   tasks-per-node: 1
   time: '00:05:00'
 
+decompress_phenotype:
+  tasks-per-node: 1
+  time: '05:00:00'
+
 load_phenotype:
   tasks-per-node: 1
   time: '00:05:00'

@@ -1,3 +1,5 @@
+import collections
+
 import numpy as np
 import shutil
 
@@ -8,6 +10,40 @@ chr_lens = np.genfromtxt(
     dtype=int
 )
 
+PhenotypeLoadingArg = collections.namedtuple(
+    'PhenotypeLoadingArg',
+    ['data_field_id', 'unit', 'age']
+)
+# unit of None represents a binary trait has/doesn't have
+
+pheno_args = {
+    'english_education_score': PhenotypeLoadingArg(
+        '26414',
+        'English IMD Units',
+        'init-assessment'
+    ),
+    'fluid_intelligence_score': PhenotypeLoadingArg(
+        '20016',
+        'Num. correct answers',
+        'init-assessment'
+    ),
+    'inpatient_ICD10_main_diagnoses' : PhenotypeLoadingArg(
+        '41202',
+        None,
+        'tbd'
+    ),
+    'tower_rearranging_correct' : PhenotypeLoadingArg(
+        '21004',
+        'Num. correct answers',
+        'tbd'
+    ),
+    's_word_count_pilot' : PhenotypeLoadingArg(
+        '10612',
+        'Num. words',
+        'tbd'
+    )
+}
+
 rule load_shared_covars:
     output:
         protected("traits/shared_covars/shared_covars.npy"),
@@ -16,16 +52,38 @@ rule load_shared_covars:
     shell:
         "traits/load_shared_covars.py"
 
+rule decompress_phenotype:
+    output:
+        protected("main_dataset/extracted_data/{phenotype}.txt")
+    run:
+        phenotype = wildcards.phenotype
+        args = pheno_args[phenotype]
+        shell(
+            "traits/decompress_trait_from_main_dataset.py "
+            f"{phenotype} {args.data_field_id} "
+        )
+
 rule load_phenotype:
     input:
+        "main_dataset/extracted_data/{phenotype}.txt"
         "traits/shared_covars/shared_covars.npy"
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
         protected("traits/phenotypes/{phenotype}_README.txt"),
         protected("traits/phenotypes/{phenotype}_unit.txt"),
         protected("traits/phenotypes/{phenotype}_covar_names.txt")
-    shell:
-        "traits/load_{wildcards.phenotype}.py"
+    run:
+        phenotype = wildcards.phenotype
+        if phenotype in {'height', 'total_bilirubin'}:
+            shell(f"traits/load_{phenotype}.py")
+        elif phenotype in pheno_args:
+            args = pheno_args[phenotype]
+            shell(
+                f"traits/load_trait_from_main_dataset.py "
+                f"{phenotype} '{args.unit}' {args.age} "
+            )
+        else:
+            raise ValueError(f"Couldn't identify phenotype {phenotype}")
 
 rule plot_phenotype_by_sex:
     input:

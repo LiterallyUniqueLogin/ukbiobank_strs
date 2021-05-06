@@ -171,7 +171,8 @@ def make_manhattan_plots(
             title='Click on an STR in the Manhattan plot!                                      ',
             x_axis_label='Sum of allele lengths (repeat copies)',
             y_axis_label=f'Mean {phenotype} ({unit})',
-            tools='save'
+            tools='save',
+            y_range=(-2, 5)
         )
         locus_plot.add_layout(bokeh.models.Title(
             text="Phenotype values are unadjusted for covariates or conditioned genotypes",
@@ -181,18 +182,25 @@ def make_manhattan_plots(
         locus_source = bokeh.models.ColumnDataSource({
             'x': [1, 2],
             'y': [1, 2],
-            'CI5e_2': ['nan', 'nan'],
-            'CI5e_8': ['nan', 'nan']
+            'CI5e_2_lower': ['0', '1'],
+            'CI5e_2_upper': ['3', '4'],
+            'CI5e_8_lower': ['-1', '-2'],
+            'CI5e_8_upper': ['4', '4.5']
         })
 
-        phenotype_means = locus_plot.circle('x', 'y', source=locus_source)
+        locus_plot.varea('x', 'CI5e_2_upper', 'CI5e_8_upper', source=locus_source, color="red", alpha=0.2)
+        locus_plot.varea('x', 'CI5e_2_upper', 'CI5e_2_lower', source=locus_source, color="red", alpha=0.4)
+        locus_plot.varea('x', 'CI5e_2_lower', 'CI5e_8_lower', source=locus_source, color="red", alpha=0.2)
+        locus_plot.line('x', 'y', source=locus_source, line_width=2, color="black")
+        locus_plot.circle('x', 'y', source=locus_source, color="black", size=6)
+        
+        locus_wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="height")
+        locus_plot.add_tools(locus_wheel_zoom)
+        locus_plot.toolbar.active_scroll = locus_wheel_zoom
 
-        means_hover = bokeh.models.tools.HoverTool(renderers=[phenotype_means])
-        means_hover.tooltips = [
-            ('5e-2 CI', '@CInorm'),
-            ('5e-8 CI', '@CIgwas')
-        ]
-        locus_plot.add_tools(means_hover)
+        locus_pan = bokeh.models.tools.PanTool(dimensions="height")
+        locus_plot.add_tools(locus_pan)
+        locus_plot.toolbar.active_drag = locus_pan
 
     # set up drawing canvas
     if chrom is None:
@@ -364,8 +372,13 @@ def make_manhattan_plots(
         manhattan_plot.toolbar.active_tap = tap
 
         plot_tap_callback = bokeh.models.CustomJS(
-            args=dict(locus_plot=locus_plot, my_str_source=my_str_source, locus_source=locus_source),
-            #args=dict(my_str_source=my_str_source, locus_source=locus_source),
+            args=dict(
+                locus_plot=locus_plot,
+                y_range=locus_plot.y_range,
+                x_range=locus_plot.x_range,
+                my_str_source=my_str_source,
+                locus_source=locus_source
+            ),
             code = f"""
                 if (my_str_source.selected.indices.length == 0) {{
                     return;
@@ -377,27 +390,53 @@ def make_manhattan_plots(
                 var CI5e_2_dict = JSON.parse(CI5e_2_str);
                 var CI5e_8_str = data['CI5e_8SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
                 var CI5e_8_dict = JSON.parse(CI5e_8_str);
-                console.log(data['mean_residual_{phenotype}_per_single_dosage'][idx]);
-                console.log(CI5e_2_str);
-                console.log(CI5e_8_str);
                 var gts = [];
                 var str_gts = [];
                 var phenotypes = [];
-                var CI5e_2 = [];
-                var CI5e_8 = []; 
+                var CI5e_2_lower = [];
+                var CI5e_2_upper = [];
+                var CI5e_8_lower = []; 
+                var CI5e_8_upper = []; 
                 Object.entries(locus_dict).forEach(([key, value]) => {{
-                    str_gts.push(key);
-                    gts.push(parseFloat(key));
-                    phenotypes.push(parseFloat(value));
+                    // if (value != 'NaN') {{
+                        str_gts.push(key);
+                        gts.push(parseFloat(key));
+                        phenotypes.push(parseFloat(value));
+                    // }}
                 }});
-                console.log(gts);
+                var y_max = Math.max.apply(Math, phenotypes);
+                var y_min = Math.min.apply(Math, phenotypes);
+                y_range.start = y_min - 0.05*(y_max - y_min);
+                y_range.end = y_max + 0.05*(y_max - y_min);
+                y_range.change.emit();
+                var x_max = Math.max.apply(Math, gts);
+                var x_min = Math.min.apply(Math, gts);
+                x_range.start = x_min - 0.05*(x_max - x_min);
+                x_range.end = x_max + 0.05*(x_max - x_min);
+                x_range.change.emit();
                 for (idx=0; idx<gts.length; idx++) {{
-                    console.log(idx, gts[idx], str_gts[idx]);
-                    CI5e_2.push(CI5e_2_dict[str_gts[idx]].toString()); 
-                    CI5e_8.push(CI5e_8_dict[str_gts[idx]].toString()); 
+                    CI5e_2_lower.push(CI5e_2_dict[str_gts[idx]][0]); 
+                    CI5e_2_upper.push(CI5e_2_dict[str_gts[idx]][1]); 
+                    CI5e_8_lower.push(CI5e_8_dict[str_gts[idx]][0]); 
+                    CI5e_8_upper.push(CI5e_8_dict[str_gts[idx]][1]); 
                 }}
                 
-                var new_dict = {{'x': gts, 'y': phenotypes, 'CInorm': CI5e_2, 'CIgwas': CI5e_8}};
+                console.log(
+                    gts,
+                    phenotypes,
+                    CI5e_2_lower, 
+                    CI5e_2_upper, 
+                    CI5e_8_lower, 
+                    CI5e_8_upper
+                )
+                var new_dict = {{
+                    'x': gts,
+                    'y': phenotypes,
+                    'CI5e_2_lower': CI5e_2_lower,
+                    'CI5e_2_upper': CI5e_2_upper,
+                    'CI5e_8_lower': CI5e_8_lower,
+                    'CI5e_8_upper': CI5e_8_upper
+                }};
                 locus_source.data = new_dict; 
                 locus_source.change.emit();
 

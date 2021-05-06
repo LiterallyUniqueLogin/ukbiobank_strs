@@ -73,12 +73,12 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     # first yield is special
     extra_detail_fields = next(genotype_iter)
     outfile.write('\t'.join(extra_detail_fields) + '\t')
-    outfile.write(f'mean_residual_{phenotype}_per_single_dosage\t'
+    outfile.write(f'mean_{phenotype}_per_single_dosage\t'
                   '0.05_significance_CI\t'
                   '5e-8_significance_CI')
 
     if runtype == 'strs':
-        outfile.write(f'\tmean_residual_{phenotype}_per_paired_dosage\t'
+        outfile.write(f'\tmean_{phenotype}_per_paired_dosage\t'
                       '0.05_significance_CI\t'
                       '5e-8_significance_CI')
     outfile.write('\n')
