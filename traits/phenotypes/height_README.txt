@@ -1,4 +1,3 @@
-Run date: 2021_03_09
-Loading height phenotype and age at measurement. File: /expanse/projects/gymreklab/jmargoli/ukbiobank/main_dataset/extracted_data/height.txt.
-Only reporting first height measurement taken even if there were measurements at multiple vists.
-Filtering 0 height values that are taller than the world's tallest person or shorter than the shortest.
+Run date: 2021_05_11
+Loading phenotype height from txt file  /expanse/projects/gymreklab/jmargoli/ukbiobank/main_dataset/extracted_data/height.txt 
+Choosing phenotype value and age for each participant based on the first visit for which this phenotype had a recorded value. If the participant had this phenotype measured at multiple visits, only the phenotype value and age at the first visit are being used. The age is being loaded from the shared_covars file /expanse/projects/gymreklab/jmargoli/ukbiobank/traits/shared_covars/shared_covars.npy . An additional dummy covariate indicating visit number is being added for each visit whose data is used beyond the first.

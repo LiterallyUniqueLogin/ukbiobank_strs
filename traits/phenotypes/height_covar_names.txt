@@ -1,1 +1,3 @@
 age
+pheno_from_repeat_assessment_1
+pheno_from_imaging_visit

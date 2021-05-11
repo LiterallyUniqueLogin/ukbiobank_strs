@@ -76,7 +76,7 @@ rule decompress_phenotype:
 
 rule load_phenotype:
     input:
-        "main_dataset/extracted_data/{phenotype}.txt"
+        "main_dataset/extracted_data/{phenotype}.txt",
         "traits/shared_covars/shared_covars.npy"
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
@@ -137,9 +137,30 @@ rule rank_inverse_normalize_phenotype_subset:
         "sample_qc/runs/{phenotype}/combined_unrelated.sample"
     output:
         protected("traits/subset_rin_phenotypes/{phenotype}_README.txt"),
-        "traits/subset_rin_phenotypes/{phenotype}.npy"
+        protected("traits/subset_rin_phenotypes/{phenotype}.npy")
     shell:
         'traits/rank_inverse_normalize.py {wildcards.phenotype}'
+
+rule plot_str_locus:
+    input:
+        "traits/phenotypes/{phenotype}_unit.txt",
+        'traits/phenotypes/{phenotype}.npy',
+        'traits/subset_rin_phenotypes/{phenotype}.npy'
+    output:
+        'association/locus_plots/{phenotype}/{chrom}_{pos,[0-9]+}{transform,(_.*)?}.png',
+        'association/locus_plots/{phenotype}/{chrom}_{pos,[0-9]+}{transform,(_.*)?}.csv'
+    run:
+        if wildcards.transform == '':
+            transform_step = 'original'
+        elif wildcards.transform == '_rin':
+            transform_step = 'rin'
+        else:
+            raise ValueError()
+        shell(
+            f'association/plot_loci.py {str_imputation_run_name} '
+            f'{wildcards.phenotype} {transform_step} '
+            f'{wildcards.chrom}:{wildcards.pos} '
+        )
 
 def concatenate_csvs(output_file, input_files):
     with open(output_file + '.temp', 'w') as outfile:

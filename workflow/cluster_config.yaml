@@ -44,6 +44,10 @@ rank_inverse_normalize_phenotype_subset:
   tasks-per-node: 1
   time: '00:05:00'
 
+plot_str_locus:
+  tasks-per-node: 1
+  time: '00:30:00'
+
 write_my_imputed_snp_gwas_readme:
   tasks-per-node: 1
   time: '00:05:00'

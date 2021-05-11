@@ -12,8 +12,14 @@ unit = args[6]
 period = args[7]
 ref = args[8]
 
+if (transform_step == 'original') {
+    out_fname = sprintf("%s/%s_%s", plot_dir, chrom, pos)
+} else {
+    out_fname = sprintf("%s/%s_%s_%s", plot_dir, chrom, pos, transform_step)
+}
+
 data = read_csv(
-    sprintf("%s/%s_%s_%s.csv", plot_dir, chrom, pos, transform_step),
+    sprintf("%s.csv", out_fname),
     col_names=c('phenotype', 'gt')
 )
 # data = data %>% drop_na()
@@ -87,9 +93,7 @@ p2 = ggplot(
   guides(shape="none", color=guide_legend("")) +
   scale_x_continuous(breaks=gt_counts$gt, labels=gt_counts$xlab) +
   theme(axis.text.x = element_text(size=9)) +
-  ggtitle("Extrema not plotted") +
-  labs(caption=sprintf("(%s values are residuals after regressing out covariates)",phenotype),
-       color="legend")
+  ggtitle("Extrema not plotted")
 
 plot = arrangeGrob(
     p1,
@@ -103,5 +107,5 @@ plot = arrangeGrob(
     )
 )
 
-ggsave(sprintf("%s/%s_%s_%s.png", plot_dir, chrom, pos, transform_step), plot=plot, height=7, width=14)
+ggsave(sprintf("%s.png", out_fname), plot=plot, height=7, width=14)
 

@@ -35,7 +35,7 @@ with open(f'{ukb}/main_dataset/extracted_data/{phenotype}_README.txt', 'w') as r
         f"Run date: {today}\n"
         f'Loading data field ID {args.data_field_id} from data request '
         f'{data_request_id} located at {ukb}/main_dataset/raw_data/ukb{data_request_id}.enc_ukb .'
-        f'Naming this data field {phenotype}.'
+        f"\nNaming this data field '{phenotype}'. "
     )
 
 out = sp.run(

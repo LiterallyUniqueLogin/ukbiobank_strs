@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import os
 import subprocess as sp
@@ -14,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("imputation_run_name")
     parser.add_argument("phenotype")
-    parser.add_argument('transform_step', choices=['original', 'rin', 'adjusted'])
+    parser.add_argument('transform_step', choices=['original', 'rin'])
     parser.add_argument("locus", nargs="+",
                         help="should be represented as chrom:pos")
 
@@ -25,15 +27,16 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
 
     if args.transform_step == 'original':
+        transform = ''
         phenotypes = np.load(f'{ukb}/traits/phenotypes/{phenotype}.npy')[:, :2]
         with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unit_file:
             unit = next(unit_file).strip()
     elif args.transform_step == 'rin':
+        transform = '_rin'
         phenotypes = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')[:, :2]
-        unit = 'rank inverse normalized'
-    elif args.transform_step == 'adjusted':
-        phenotypes = np.load(f'{ukb}/traits/adjusted_srin_phenotypes/{phenotype}_linear.npy')[:, :2]
-        unit = 'adjusted rank inverse normalized'
+        unit = 'rank inverse normalized values'
+    else:
+        raise ValueError()
 
     for locus in args.locus:
         chrom, pos = locus.split(":")
@@ -64,7 +67,7 @@ def main():
         outarray = utils.merge_arrays(phenotypes, gts_array)
 
         np.savetxt(
-            f'{plot_dir}/{chrom}_{pos}_{args.transform_step}.csv',
+            f'{plot_dir}/{chrom}_{pos}{transform}.csv',
             outarray[:, 1:],
             delimiter=','
         )

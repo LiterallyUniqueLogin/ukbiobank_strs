@@ -39,3 +39,4 @@ dask-worker-space/
 twistd.pid
 .snakemake
 *.npy
+*Rplots.pdf
