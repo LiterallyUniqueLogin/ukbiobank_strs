@@ -3,8 +3,6 @@
 import argparse
 import datetime
 import os
-import subprocess as sp
-import sys
 
 import numpy as np
 

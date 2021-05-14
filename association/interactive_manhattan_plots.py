@@ -22,6 +22,8 @@ import numpy.ma
 import numpy.random
 import pandas as pd
 
+import python_array_utils as utils
+
 ukb = os.environ['UKB']
 
 chr_lens = np.genfromtxt(
@@ -32,21 +34,6 @@ chr_lens = np.genfromtxt(
 )
 
 cum_lens = np.cumsum(chr_lens)
-
-# from https://stackoverflow.com/questions/52579601/convert-dataframe-to-a-rec-array-and-objects-to-strings
-def df_to_recarray(df):
-    names = df.columns
-    arrays = [df[col].values for col in names]
-
-    formats = [ array.dtype if array.dtype != 'O'
-                else f'{array.astype(str).dtype}' for array in arrays ]
-
-    rec_array = np.rec.fromarrays(
-        arrays,
-        dtype={'names': names, 'formats': formats}
-    )
-
-    return rec_array
 
 start_p_val_cap = 30
 max_p_val = 350
@@ -560,18 +547,6 @@ def make_manhattan_plots(
         outfile.write(html)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-def get_dtypes(fname):
-    df = pd.read_csv(
-        fname,
-        header=0,
-        delimiter='\t',
-        encoding='UTF-8',
-        nrows=1
-    )
-    dtypes = dict(df.dtypes)
-    dtypes['locus_filtered'] = str
-    return dtypes
-
 my_results_rename = {
     0: 'chr',
     3: 'filtered',
@@ -609,12 +584,12 @@ def load_my_str_results(phenotype, condition):
     else:
         str_results_fname = \
             f'{ukb}/association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
-    my_str_results = df_to_recarray(pd.read_csv(
+    my_str_results = utils.df_to_recarray(pd.read_csv(
         str_results_fname,
         header=0,
         delimiter='\t',
         encoding='UTF-8',
-        dtype=get_dtypes(str_results_fname)
+        dtype=utils.get_dtypes(str_results_fname, {'locus_filtered': str})
     ))
     names = list(my_str_results.dtype.names)
     for idx, name in my_results_rename.items():
@@ -630,12 +605,12 @@ def load_my_chr21_height_snp_results():
     print("Loading my chr21 height results ... ", end='', flush=True)
     start_time = time.time()
     snp_results_fname = f'{ukb}/association/plots/input/height/my_imputed_snp_chr21_results.tab'
-    my_snp_results = df_to_recarray(pd.read_csv(
+    my_snp_results = utils.df_to_recarray(pd.read_csv(
         snp_results_fname,
         header=0,
         delimiter='\t',
         encoding='UTF-8',
-        dtype=get_dtypes(snp_results_fname)
+        dtype=utils.get_dtypes(snp_results_fname, {'locus_filtered': str})
     ))
     names = list(my_snp_results.dtype.names)
     for idx, name in my_results_rename.items():
@@ -656,7 +631,7 @@ def load_plink_results(phenotype, condition):
         plink_snp_fname = \
             f'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
 
-    plink_results = df_to_recarray(pd.read_csv(
+    plink_results = utils.df_to_recarray(pd.read_csv(
         plink_snp_fname,
         sep='\t',
         usecols=(0,1,2,3,4,13,14),

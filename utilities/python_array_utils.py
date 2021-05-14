@@ -33,3 +33,36 @@ def merge_arrays(a, b):
         new_data
     ), axis=1)
 
+# from https://stackoverflow.com/questions/52579601/convert-dataframe-to-a-rec-array-and-objects-to-strings
+def df_to_recarray(df):
+    '''
+    Parameters
+    ----------
+    df: pandas dataframe
+    '''
+    names = df.columns
+    arrays = [df[col].values for col in names]
+
+    formats = [ array.dtype if array.dtype != 'O'
+                else f'{array.astype(str).dtype}' for array in arrays ]
+
+    rec_array = np.rec.fromarrays(
+        arrays,
+        dtype={'names': names, 'formats': formats}
+    )
+
+    return rec_array
+
+def get_dtypes(fname, type_dict = {}):
+    df = pd.read_csv(
+        fname,
+        header=0,
+        delimiter='\t',
+        encoding='UTF-8',
+        nrows=1
+    )
+    dtypes = dict(df.dtypes)
+    for key, val in type_dict.items():
+        dtypes[key] = val
+    return dtypes
+

@@ -50,6 +50,12 @@ pheno_args = {
         '10612',
         'init-assessment',
         unit = 'Words Produced'
+    ),
+    'white_blood_cell_count': PhenotypeLoadingArg(
+        '30000',
+        'first-available',
+        unit = '10^9 cells/Liter'
+        # TODO add machine measurement ID as covariate 30003
     )
 }
 
@@ -440,4 +446,27 @@ rule interactive_manhattan_conditional:
         'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} '
         '--condition {wildcards.condition} '
 
-phenotypes = ['height', 'total_bilirubin']
+rule clump_results:
+    input:
+        'association/results/{phenotype}/my_str/results.tab',
+        'association/results/{phenotype}/plink_snp/results.tab'
+    output:
+        'finemapping/signal_clumps/{phenotype}.txt'
+    shell:
+        'finemapping/clump.py {wildcards.phenotype}'
+
+rule run_finemap:
+    input:
+        'association/results/{phenotype}/my_str/results.tab',
+        'association/results/{phenotype}/plink_snp/results.tab',
+        'sample_qc/runs/{phenotype}/combined_unrelated.sample'
+    output:
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.snp',
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.config',
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.cred',
+    shell:
+        'finemapping/prep_and_run_finemap.py '
+        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.end} '
+        f'{str_imputation_run_name} '
+

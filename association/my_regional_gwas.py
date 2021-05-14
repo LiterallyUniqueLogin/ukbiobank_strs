@@ -19,7 +19,7 @@ ukb = os.environ['UKB']
 
 def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_name, region, conditional):
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
-                  f"p_{phenotype}\tcoeff_{phenotype}\tcoeff_intercept\tR^2\t")
+                  f"p_{phenotype}\tcoeff_{phenotype}\tse_{phenotype}\tR^2\t")
     outfile.flush()
 
     n_loci = 0
@@ -121,9 +121,9 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
         reg_result = model.fit()
         pval = reg_result.pvalues[0]
         coef = reg_result.params[0]
-        intercept_coef = reg_result.params[1]
+        se = reg_results.bse[0]
         rsquared = reg_result.rsquared
-        outfile.write(f"{pval:.2e}\t{coef}\t{intercept_coef}\t{rsquared}\t")
+        outfile.write(f"{pval:.2e}\t{coef}\t{se}\t{rsquared}\t")
         outfile.write('\t'.join(locus_details) + '\t')
 
         if runtype == 'strs':
