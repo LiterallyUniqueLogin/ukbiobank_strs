@@ -121,7 +121,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
         reg_result = model.fit()
         pval = reg_result.pvalues[0]
         coef = reg_result.params[0]
-        se = reg_results.bse[0]
+        se = reg_result.bse[0]
         rsquared = reg_result.rsquared
         outfile.write(f"{pval:.2e}\t{coef}\t{se}\t{rsquared}\t")
         outfile.write('\t'.join(locus_details) + '\t')

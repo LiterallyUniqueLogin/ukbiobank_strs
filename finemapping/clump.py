@@ -81,15 +81,15 @@ def main():
     with open(f'{ukb}/finemapping/signal_clumps/{phenotype}_README.txt', 'w') as readme:
         readme.write(
             f'Clumping results from my_str and plink_snp runs for phenotype {phenotype} '
-            'by cenetering a 500kb interval (250kb in each directino) around each variant '
-            'from either run that passess the 5e-8 threshold and then joining all '
+            'by cenetering a 500kb interval (250kb in each direction) around each variant '
+            'from either run that passes the 5e-8 threshold and then joining all '
             'overlapping intervals.\n'
         )
     with open(f'{ukb}/finemapping/signal_clumps/{phenotype}.txt', 'w') as outfile:
         outfile.write('chrom\tstart\tend\n')
         outfile.flush()
         for clump in generate_clumps(itrs):
-            outfile.write('\t'.join(clump) + '\n')
+            outfile.write(f'{int(clump[0])}\t{int(clump[1])}\t{int(clump[2])}\n')
             outfile.flush()
 
 if __name__ == '__main__':
