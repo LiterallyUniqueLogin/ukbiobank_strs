@@ -10,36 +10,33 @@ import time
 import bgen_reader
 import cyvcf2
 import numpy as np
-import pandas as pd
 
 import python_array_utils as utils
 import load_and_filter_genotypes as lfg
 
 ukb = os.environ['UKB']
 
-inclusion_threshold = 0.005
+inclusion_threshold = 0.05
 
-def write_ldstore_input(readme, workdir, phenotype, chrom, start_pos, end_pos):
+def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
     plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
-    readme.write(
-        'Running ldstore2 to get pairwise LD for each imputed SNP in the region '
-        'that plink ran an association for without error and that reached p < '
-        f'{inclusion_threshold}\n'
-    )
-    included_imputed_snps = []
-    with open(plink_results_fname) as plink_result_file:
-        plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
-        header = next(plink_results_reader)
-        cols = {
-            col: header.index(col) for col in
-            ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'BETA', 'SE', 'P', 'ERRCODE']
-        }
+    str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
 
-        with open(f'{workdir}/ldstore_input.z', 'w') as ldstore_input, \
-                open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
-            ldstore_input.write('rsid chromosome position allele1 allele2\n')
-            finemap_input_z.write('rsid chromosome position allele1 allele2 beta se\n')
-            # assumes ordered numeric chromosomes
+    with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
+        finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
+
+        included_imputed_snps = []
+        prev_rsids = set()
+        last_rsid = None
+        n_rsid_uses = 0
+        with open(plink_results_fname) as plink_result_file:
+            plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
+            header = next(plink_results_reader)
+            cols = {
+                col: header.index(col) for col in
+                ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'BETA', 'SE', 'P', 'ERRCODE']
+            }
+
             for result in plink_results_reader:
                 result_chrom = int(result[cols['#CHROM']])
                 result_pos = int(result[cols['POS']])
@@ -52,120 +49,70 @@ def write_ldstore_input(readme, workdir, phenotype, chrom, start_pos, end_pos):
                 included_imputed_snps.append(result_pos)
 
                 rsid = result[cols['ID']]
-                allele1 = result[cols['REF']]
-                allele2 = result[cols['ALT']]
+                if rsid == last_rsid:
+                    n_rsid_uses += 1
+                    rsid += '+'*n_rsid_uses
+                elif rsid in prev_rsids:
+                    raise ValueError(f"Reusing same rsid {rsid} at a new location!")
+                else:
+                    prev_rsids.add(rsid)
+                    last_rsid = rsid
+
                 beta = result[cols['BETA']]
                 se = result[cols['SE']]
-                ldstore_input.write(
-                    f'{rsid} {result_chrom:02} {result_pos} {allele1} {allele2}\n'
-                )
                 finemap_input_z.write(
-                    f'{rsid} {result_chrom:02} {result_pos} nan nan {beta} {se}\n'
+                    f'{rsid} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
                 )
 
-    outsample_fname = f'{workdir}/ldstore_input.incl'
-    nsamples = 0
-    with open(f'{ukb}/sample_qc/runs/{phenotype}/combined_unrelated.sample') as sample_file, \
-            open(outsample_fname, 'w') as outsample_file:
-        first = True
-        for line in sample_file:
-            if first:
-                first = False
-                continue
-            nsamples += 1
-            outsample_file.write(line)
+        included_strs = []
+        prev_str_pos = None
+        with open(str_results_fname) as str_results_file:
+            str_results_reader = csv.reader(str_results_file, delimiter='\t')
+            header = next(str_results_reader)
+            cols = {
+                col: header.index(col) for col in
+                ['chrom', 'pos', 'locus_filtered', f'p_{phenotype}', f'coeff_{phenotype}', f'se_{phenotype}']
+            }
 
-    bgen_fname = f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen'
-    with open(f'{workdir}/ldstore_input.master', 'w') as ldstore_master:
-        ldstore_master.write('z;bgen;bgi;sample;incl;bdose;ld;n_samples\n')
-        ldstore_master.write(
-            f'{workdir}/ldstore_input.z;'
-            f'{bgen_fname};'
-            f'{bgen_fname}.bgi;'
-            f'{ukb}/array_imputed/ukb46122_imp_chr1_v3_s487283.sample;'
-            f'{outsample_fname};'
-            f'{workdir}/ldstore_temp.bdose;'
-            f'{workdir}/ldstore_out.ld;'
-            f'{nsamples}'
-        )
+            # assumes ordered numeric chromosomes
+            for result in str_results_reader:
+                result_chrom = int(result[cols['chrom']])
+                result_pos = int(result[cols['pos']])
+                if (result_chrom, result_pos) < (chrom, start_pos):
+                    continue
+                if (result_chrom, result_pos) > (chrom, end_pos):
+                    break
+                if result[cols['locus_filtered']] != 'False' or float(result[cols[f'p_{phenotype}']]) >= inclusion_threshold:
+                    continue
+                if result_pos == prev_str_pos:
+                    raise ValueError(f"Two STR poses at the same location {result_pos}!")
+                prev_str_pos = result_pos
+                included_strs.append(result_pos)
 
-    return included_imputed_snps
+                beta = result[cols[f'coeff_{phenotype}']]
+                se = result[cols[f'se_{phenotype}']]
+                finemap_input_z.write(
+                    f'STR_{result_pos} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
+                )
 
-def run_ldstore(workdir):
-    out = sp.run(
-        f'{ukb}/utilities/ldstore/ldstore_v2.0_x86_64 --write-text '
-        f'--in-files {workdir}/ldstore_input.master '
-        f'--write-bdose --bdose-version 1.0 '
-        '--memory 19.9 --n-threads 8',
-        shell=True,
-        capture_output=True
-    )
-    print(out.stdout.decode(), flush=True)
-    print(out.stderr.decode(), file=sys.stderr, flush=True)
-    out.check_returncode()
+    n_snps = len(included_imputed_snps)
+    n_strs = len(included_strs)
 
-def prep_finemap_input(
-        readme,
-        workdir,
-        phenotype,
-        chrom,
-        start_pos,
-        end_pos,
-        str_imputation_run_name,
-        included_imputed_snps):
+    n_variants = n_snps + n_strs
 
-    snp_ld_matrix = np.genfromtxt(f'{workdir}/ldstore_out.ld')
-    assert len(snp_ld_matrix.shape) == 2
-    assert snp_ld_matrix.shape[0] == snp_ld_matrix.shape[1]
-    assert snp_ld_matrix.shape[0] == len(included_imputed_snps)
-    num_snps = snp_ld_matrix.shape[0]
+    print(f'Num snps: {n_snps}, num strs: {n_strs}, total: {n_variants}', flush=True)
 
     readme.write(
-        'Manually generating STR-STR LD and STR-SNP LD for each imputed SNP included in '
-        'the ldstore2 run and each STR in the region where an association was successfully '
+        'Manually generating variant-variant LD for each imputed SNP  each STR in the region '
+        'where an association was successfully '
         f'performed and had p < {inclusion_threshold}\n'
+        'Correlation is STR length dosage vs SNP dosage.\n'
         'Running FINEMAP with that list of imputed SNPs and STRs.\n'
     )
-
-    str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    included_strs = []
-    with open(str_results_fname) as str_result_file, \
-            open(f'{workdir}/finemap_input.z', 'a') as finemap_input_z:
-        str_results_reader = csv.reader(str_result_file, delimiter='\t')
-        header = next(str_results_reader)
-        cols = {
-            col: header.index(col) for col in
-            ['chrom', 'pos', 'locus_filtered', f'p_{phenotype}', f'coeff_{phenotype}', f'se_{phenotype}']
-        }
-
-        last_str_pos = None
-        num_strs = 0
-        for result in str_results_reader:
-            num_strs += 1
-            result_chrom = int(result[cols['chrom']])
-            result_pos = int(result[cols['pos']])
-            if (result_chrom, result_pos) < (chrom, start_pos):
-                continue
-            if (result_chrom, result_pos) > (chrom, end_pos):
-                break
-            if result[cols['locus_filtered']] != 'False' or float(result[cols[f'p_{phenotype}']]) >= inclusion_threshold:
-                continue
-            included_strs.append(result_pos)
-
-            if result_pos == last_str_pos:
-                raise ValueError(f"Already encountered pos {result_pos}!")
-
-            beta = result[cols[f'coeff_{phenotype}']]
-            se = result[cols[f'coeff_{phenotype}']]
-            finemap_input_z.write(
-                f'STR_{result_pos} {result_chrom} {result_pos} nan nan nan {beta} {se}\n'
-            )
 
     imp_snp_samples_filepath = f'{ukb}/array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
     with open(imp_snp_samples_filepath) as imp_snp_samples_file:
         imp_snp_samples = np.array([line.split()[0] for line in imp_snp_samples_file][2:], dtype=int)
-
-    region = f'{chrom}:{start_pos}-{end_pos}'
 
     vcffile = f'{ukb}/str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz'
     vcf = cyvcf2.VCF(vcffile)
@@ -181,26 +128,56 @@ def prep_finemap_input(
     samples_merge = utils.merge_arrays(str_samples.reshape(-1, 1), samples_indicator)
     assert samples_merge.shape[1] == 2
     sample_idx = ~np.isnan(samples_merge[:, 1])
+    n_samples = np.sum(sample_idx)
 
-    num_variants = num_strs + num_snps
-    print(f'Num snps: {num_snps}, num strs: {num_strs}, total: {num_variants}', flush=True)
-    total_corrs = num_strs*num_snps + num_strs**2
+    print(f"Working with # samples: {n_samples}", flush=True)
 
-    full_ld_matrix = np.full((num_variants, num_variants), np.nan)
-    full_ld_matrix[:num_snps, :num_snps] = snp_ld_matrix
+    gts = np.full((n_variants, n_samples), np.nan)
+    print(f"Size of LD matrix: {gts.nbytes/1e9}GB", flush=True)
 
+    print("Loading snps ...", flush=True)
     snp_bgen = bgen_reader.open_bgen(
         f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen',
         verbose=False
     )
 
-    corrs_complete = 0
     start = time.time()
-    next_strs = enumerate(included_strs)
-    str_num, next_str = next(next_strs)
+    next_snps = iter(included_imputed_snps)
+    next_snp = next(next_snps)
+    snp_done = False
+    snp_num = 0
+    for all_snp_num, snp_pos in enumerate(snp_bgen.positions):
+        if snp_pos < next_snp:
+            continue
+        elif snp_pos == next_snp:
+            try:
+                next_snp = next(next_snps)
+            except StopIteration:
+                snp_done = True
+        else:
+            raise ValueError(f"Skipped snp {next_snp}!")
+
+        snp_probs = snp_bgen.read(all_snp_num).squeeze()[sample_idx, :]
+        assert len(snp_probs.shape) == 2
+        assert snp_probs.shape[1] == 3
+        snp_dosages = snp_probs[:, 1] + 2*snp_probs[:, 2]
+        gts[snp_num, :] = snp_dosages
+
+        snp_num += 1
+        if snp_num % 100 == 0:
+            print(f'{snp_num}/{n_snps} loaded. ETA: {(time.time() - start)*(n_snps-snp_num)/snp_num}sec', flush=True)
+        if snp_done:
+            break
+
+    print("Loading strs ...", flush=True)
+    start = time.time()
+    next_strs = iter(included_strs)
+    next_str = next(next_strs)
+    region = f'{chrom}:{start_pos}-{end_pos}'
     all_str_itr = lfg.load_strs(str_imputation_run_name, region, sample_idx)
     next(all_str_itr) # skip locus_details list
-    done_done = False
+    str_done = False
+    str_num = 0
     for str_dosages_dict, _, _, str_pos, str_locus_filtered, _ in all_str_itr:
         if str_locus_filtered:
             continue
@@ -208,69 +185,28 @@ def prep_finemap_input(
             continue
         elif str_pos == next_str:
             try:
-                str_num, next_str = next(next_strs)
+                next_str = next(next_strs)
             except StopIteration:
-                done_done = True
+                str_done = True
         else:
             raise ValueError(f"Skipped str {next_str}!")
         str_dosages = get_str_dosages(str_dosages_dict)
 
-        next_snps = enumerate(included_imputed_snps)
-        snp_num, next_snp = next(next_snps)
-        snp_done = False
-        for all_snp_num, snp_pos in enumerate(snp_bgen.positions):
-            if snp_pos < next_snp:
-                continue
-            elif snp_pos == next_snp:
-                try:
-                    snp_num, next_snp = next(next_snps)
-                except StopIteration:
-                    snp_done = True
-            else:
-                raise ValueError(f"Skipped snp {next_snp}!")
-            snp_probs = snp_bgen.read(all_snp_num).squeeze()[sample_idx, :]
-            assert len(snp_probs.shape) == 2
-            assert snp_probs.shape[1] == 3
-            snp_dosages = snp_probs[:, 1] + 2*snp_probs[:, 2]
-            corr = np.corrcoef(str_dosages, snp_dosages)[0,1]
-            full_ld_matrix[snp_num, num_snps + str_num] = corr
-            full_ld_matrix[num_snps + str_num, snp_num] = corr
-            corrs_complete += 1
-            if corrs_complete % 20 == 0:
-                print(f'{corrs_complete}/{total_corrs} correlation. ETA: {(time.time() - start)*(total_corrs-corrs_complete)/corrs_complete}sec', flush=True)
-            if snp_done:
-                break
+        gts[n_snps + str_num, :] = str_dosages
 
-        next_strs2 = enumerate(included_strs)
-        str_additional_num, next_str2 = next(next_strs2)
-        all_str_itr2 = lfg.load_strs(str_imputation_run_name, f'{chrom}:{str_pos}-{end_pos}', sample_idx)
-        next(all_str_itr2) # skip locus_details list
-        str_done = False
-        for str_dosages_dict2, _, _, str_pos2, str_locus_filtered2, _ in all_str_itr2:
-            if str_locus_filtered2:
-                continue
-            if str_pos2 < next_str2:
-                continue
-            elif str_pos2 == next_str2:
-                try:
-                    str_additional_num, next_str2 = next(next_strs2)
-                except StopIteration:
-                    str_done = True
-            else:
-                raise ValueError(f"Skipped str {next_str2}!")
-            str_dosages2 = get_str_dosages(str_dosages_dict2)
-            corr = np.corrcoef(str_dosages, str_dosages2)[0,1]
-            full_ld_matrix[num_snps + str_num, num_snps + str_num + str_additional_num] = corr
-            full_ld_matrix[num_snps + str_num + str_additional_num, num_snps + str_num] = corr
-            corrs_complete += 1
-            if corrs_complete % 20 == 0:
-                print(f'{corrs_complete}/{total_corrs} correlation. ETA: {(time.time() - start)*(total_corrs-corrs_complete)/corrs_complete}sec', flush=True)
-            if str_done:
-                break
-        if done_done:
+        str_num += 1
+        if str_num % 5 == 0:
+            print(f'{str_num}/{n_strs} loaded. ETA: {(time.time() - start)*(n_strs-str_num)/str_num}sec', flush=True)
+        if str_done:
             break
 
-    np.savetxt(f'{workdir}/all_variants.ld', full_ld_matrix)
+    assert not np.any(np.isnan(gts))
+    print('Generating LD matrix (correlations) ...', flush=True)
+    start = time.time()
+    ld = np.corrcoef(gts)
+    print(f'Done generating LD matrix. Time: {time.time() - start}sec', flush=True)
+    assert ld.shape == (n_variants, n_variants)
+    np.savetxt(f'{workdir}/all_variants.ld', ld)
 
     with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
         finemap_master.write(
@@ -280,9 +216,9 @@ def prep_finemap_input(
             f'{workdir}/finemap_output.snp;'
             f'{workdir}/finemap_output.config;'
             f'{workdir}/finemap_output.cred;'
-            f'{workdir}/finemap_output.log'
+            f'{workdir}/finemap_output.log;'
+            f'{n_samples}'
         )
-
 
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for
@@ -294,7 +230,8 @@ def run_finemap(workdir):
         f'--in-files {workdir}/finemap_input.master '
         '--log '
         '--n-configs-top 100 '
-        '--n-threads 8',
+        '--n-threads 8 '
+        '--n-causal-snps 20',
         shell=True,
         capture_output=True
     )
@@ -322,28 +259,9 @@ def main():
 
     with open(f'{workdir}/README.txt', 'w') as readme:
         start = time.time()
-        print('Writing ldstore input ...', flush=True)
-        included_imputed_snps = write_ldstore_input(readme, workdir, phenotype, chrom, start_pos, end_pos)
-        print(f'Done writing ldstore input. Elapsed time = {time.time() - start}sec', flush=True)
-
-        start = time.time()
-        print('Running ldstore ... ', flush=True)
-        run_ldstore(workdir)
-        print(f'Done running ldstore. Elapsed time = {time.time() - start}sec', flush=True)
-
-        start = time.time()
-        print('Prepping FINEMAP input ... ', flush=True)
-        prep_finemap_input(
-            readme,
-            workdir,
-            phenotype,
-            chrom,
-            start_pos,
-            end_pos,
-            args.str_imputation_run_name,
-            included_imputed_snps
-        )
-        print(f'Done prepping FINEMAP input. Elapsed time = {time.time() - start}sec', flush=True)
+        print("Writting FINEMAP input ... ", flush=True)
+        prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
+        print(f'Done writing FINEMAP input. Elapsed time = {time.time() - start}sec', flush=True)
 
         start = time.time()
         print('Running FINEMAP ... ', flush=True)
