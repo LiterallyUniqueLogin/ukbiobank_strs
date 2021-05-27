@@ -4,12 +4,11 @@
 #SBATCH --job-name=launch_snakemake
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
-#SBATCH --time=24:00:00
+#SBATCH --time=47:30:00
 #SBATCH --output=/expanse/projects/gymreklab/jmargoli/ukbiobank/workflow/output/%x_%j.out
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=jbmargoliash@ucsd.edu
 #SBATCH --export=ALL
-# TODO change time back to 47:30
 
 if [ -z "$TARGET" ] ; then echo "TARGET variable is unset" ; exit 1 ; fi
 echo "TARGET $TARGET"

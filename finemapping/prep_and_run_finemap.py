@@ -3,6 +3,7 @@
 import argparse
 import csv
 import os
+import pathlib
 import subprocess as sp
 import sys
 import time
@@ -24,45 +25,6 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
 
     with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
         finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
-
-        included_imputed_snps = []
-        prev_rsids = set()
-        last_rsid = None
-        n_rsid_uses = 0
-        with open(plink_results_fname) as plink_result_file:
-            plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
-            header = next(plink_results_reader)
-            cols = {
-                col: header.index(col) for col in
-                ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'BETA', 'SE', 'P', 'ERRCODE']
-            }
-
-            for result in plink_results_reader:
-                result_chrom = int(result[cols['#CHROM']])
-                result_pos = int(result[cols['POS']])
-                if (result_chrom, result_pos) < (chrom, start_pos):
-                    continue
-                if (result_chrom, result_pos) > (chrom, end_pos):
-                    break
-                if result[cols['ERRCODE']] != '.' or float(result[cols['P']]) >= inclusion_threshold:
-                    continue
-                included_imputed_snps.append(result_pos)
-
-                rsid = result[cols['ID']]
-                if rsid == last_rsid:
-                    n_rsid_uses += 1
-                    rsid += '+'*n_rsid_uses
-                elif rsid in prev_rsids:
-                    raise ValueError(f"Reusing same rsid {rsid} at a new location!")
-                else:
-                    prev_rsids.add(rsid)
-                    last_rsid = rsid
-
-                beta = result[cols['BETA']]
-                se = result[cols['SE']]
-                finemap_input_z.write(
-                    f'{rsid} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
-                )
 
         included_strs = []
         prev_str_pos = None
@@ -93,6 +55,60 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
                 se = result[cols[f'se_{phenotype}']]
                 finemap_input_z.write(
                     f'STR_{result_pos} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
+                )
+        if len(included_strs) == 0:
+            pathlib.Path(f"{workdir}/finemap_output.snp").touch()
+            pathlib.Path(f"{workdir}/finemap_output.config").touch()
+            pathlib.Path(f"{workdir}/no_strs").touch()
+            readme.write(
+                "No nominally significant (p<=0.05) STRs were found in the region, "
+                "so finemapping is being skipped."
+            )
+            print(
+                "No nominally significant (p<=0.05) STRs were found in the region, "
+                "so finemapping is being skipped.",
+                flush = True
+            )
+            sys.exit()
+
+        included_imputed_snps = []
+        prev_rsids = set()
+        last_rsid = None
+        n_rsid_uses = 0
+        with open(plink_results_fname) as plink_result_file:
+            plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
+            header = next(plink_results_reader)
+            cols = {
+                col: header.index(col) for col in
+                ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'BETA', 'SE', 'P', 'ERRCODE']
+            }
+
+            for result in plink_results_reader:
+                result_chrom = int(result[cols['#CHROM']])
+                result_pos = int(result[cols['POS']])
+                if (result_chrom, result_pos) < (chrom, start_pos):
+                    continue
+                if (result_chrom, result_pos) > (chrom, end_pos):
+                    break
+                if result[cols['ERRCODE']] != '.' or float(result[cols['P']]) >= inclusion_threshold:
+                    continue
+                included_imputed_snps.append(result_pos)
+
+                rsid = result[cols['ID']]
+                if rsid == last_rsid:
+                    n_rsid_uses += 1
+                    rsid += '+'*n_rsid_uses
+                elif rsid in prev_rsids:
+                    n_rsid_uses = 0
+                    rsid = rsid + '_' + str(result_pos)
+                else:
+                    prev_rsids.add(rsid)
+                    last_rsid = rsid
+
+                beta = result[cols['BETA']]
+                se = result[cols['SE']]
+                finemap_input_z.write(
+                    f'{rsid} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
                 )
 
     n_snps = len(included_imputed_snps)
@@ -135,6 +151,37 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
     gts = np.full((n_variants, n_samples), np.nan)
     print(f"Size of LD matrix: {gts.nbytes/1e9}GB", flush=True)
 
+    print("Loading strs ...", flush=True)
+    start = time.time()
+    next_strs = iter(included_strs)
+    next_str = next(next_strs)
+    region = f'{chrom}:{start_pos}-{end_pos}'
+    all_str_itr = lfg.load_strs(str_imputation_run_name, region, sample_idx)
+    next(all_str_itr) # skip locus_details list
+    str_done = False
+    str_num = 0
+    for str_dosages_dict, _, _, str_pos, str_locus_filtered, _ in all_str_itr:
+        if str_locus_filtered:
+            continue
+        if str_pos < next_str:
+            continue
+        elif str_pos == next_str:
+            try:
+                next_str = next(next_strs)
+            except StopIteration:
+                str_done = True
+        else:
+            raise ValueError(f"Skipped str {next_str}!")
+        str_dosages = get_str_dosages(str_dosages_dict)
+
+        gts[str_num, :] = str_dosages
+
+        str_num += 1
+        if str_num % 5 == 0:
+            print(f'{str_num}/{n_strs} loaded. ETA: {(time.time() - start)*(n_strs-str_num)/str_num}sec', flush=True)
+        if str_done:
+            break
+
     print("Loading snps ...", flush=True)
     snp_bgen = bgen_reader.open_bgen(
         f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen',
@@ -161,43 +208,12 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
         assert len(snp_probs.shape) == 2
         assert snp_probs.shape[1] == 3
         snp_dosages = snp_probs[:, 1] + 2*snp_probs[:, 2]
-        gts[snp_num, :] = snp_dosages
+        gts[n_strs + snp_num, :] = snp_dosages
 
         snp_num += 1
         if snp_num % 100 == 0:
             print(f'{snp_num}/{n_snps} loaded. ETA: {(time.time() - start)*(n_snps-snp_num)/snp_num}sec', flush=True)
         if snp_done:
-            break
-
-    print("Loading strs ...", flush=True)
-    start = time.time()
-    next_strs = iter(included_strs)
-    next_str = next(next_strs)
-    region = f'{chrom}:{start_pos}-{end_pos}'
-    all_str_itr = lfg.load_strs(str_imputation_run_name, region, sample_idx)
-    next(all_str_itr) # skip locus_details list
-    str_done = False
-    str_num = 0
-    for str_dosages_dict, _, _, str_pos, str_locus_filtered, _ in all_str_itr:
-        if str_locus_filtered:
-            continue
-        if str_pos < next_str:
-            continue
-        elif str_pos == next_str:
-            try:
-                next_str = next(next_strs)
-            except StopIteration:
-                str_done = True
-        else:
-            raise ValueError(f"Skipped str {next_str}!")
-        str_dosages = get_str_dosages(str_dosages_dict)
-
-        gts[n_snps + str_num, :] = str_dosages
-
-        str_num += 1
-        if str_num % 5 == 0:
-            print(f'{str_num}/{n_strs} loaded. ETA: {(time.time() - start)*(n_strs-str_num)/str_num}sec', flush=True)
-        if str_done:
             break
 
     assert not np.any(np.isnan(gts))
@@ -230,7 +246,7 @@ def run_finemap(workdir):
         f'--in-files {workdir}/finemap_input.master '
         '--log '
         '--n-configs-top 100 '
-        '--n-threads 8 '
+        '--n-threads 128 '
         '--n-causal-snps 20',
         shell=True,
         capture_output=True

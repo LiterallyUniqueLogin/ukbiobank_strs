@@ -54,6 +54,7 @@ def df_to_recarray(df):
     return rec_array
 
 def get_dtypes(fname, type_dict = {}):
+    import pandas as pd
     df = pd.read_csv(
         fname,
         header=0,

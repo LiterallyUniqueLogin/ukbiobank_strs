@@ -302,7 +302,7 @@ def make_manhattan_plots(
             ('-log10(p_val) my code', '@p_val')
         ]
         str_means_start_idx = list(my_str_data.dtype.names).index(
-            f'mean_residual_{phenotype}_per_single_dosage'
+            f'mean_{phenotype}_per_single_dosage'
         )
         for detail_name in my_str_data.dtype.names[7:str_means_start_idx]:
             if detail_name in cols_to_skip:
@@ -320,7 +320,7 @@ def make_manhattan_plots(
             ('-log10(p_val) my code', '@p_val')
         ]
         snp_means_start_idx = list(my_snp_data.dtype.names).index(
-            f'mean_residual_{phenotype}_per_single_dosage'
+            f'mean_{phenotype}_per_single_dosage'
         )
         for detail_name in my_snp_data.dtype.names[7:snp_means_start_idx]:
             if detail_name in cols_to_skip:
@@ -335,7 +335,9 @@ def make_manhattan_plots(
         ('alleles:', '@alleles'),
         ('pos', '@pos'),
         ('ID', '@id'),
-        ('-log10(p_val) Plink', '@p_val')
+        ('-log10(p_val) Plink', '@p_val'),
+        ('Minor allele frequency', '@maf'),
+        ('Imputation INFO', '@info')
     ]
     manhattan_plot.add_tools(plink_snp_hover)
     hover_tools.append(plink_snp_hover)
@@ -372,7 +374,7 @@ def make_manhattan_plots(
                 }}
                 var idx = my_str_source.selected.indices[0];
                 var data = my_str_source.data;
-                var locus_dict = JSON.parse(data['mean_residual_{phenotype}_per_single_dosage'][idx]);
+                var locus_dict = JSON.parse(data['mean_{phenotype}_per_single_dosage'][idx]);
                 var CI5e_2_str = data['CI5e_2SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
                 var CI5e_2_dict = JSON.parse(CI5e_2_str);
                 var CI5e_8_str = data['CI5e_8SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
@@ -626,22 +628,13 @@ def load_plink_results(phenotype, condition):
     start_time = time.time()
     if not condition:
         plink_snp_fname = \
-            f'{ukb}/association/plots/input/{phenotype}/plink_snp_results.tab'
+            f'{ukb}/association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     else:
         plink_snp_fname = \
-            f'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
+            f'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_with_mfi.npy'
 
-    plink_results = utils.df_to_recarray(pd.read_csv(
-        plink_snp_fname,
-        sep='\t',
-        usecols=(0,1,2,3,4,13,14),
-        encoding='UTF-8',
-        header=0,
-        names=('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
-    ))
-
+    plink_results = np.load(plink_snp_fname)
     plink_results['p_val'] = -np.log10(plink_results['p_val'])
-    plink_results = plink_results[plink_results['p_val'] >= 3]
 
     assert np.all(plink_results['error'] == '.')
 

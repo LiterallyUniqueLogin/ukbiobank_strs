@@ -668,3 +668,7 @@ as stated by this correspondance: https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2
 From Ganesh Chauhan with subject "The different INFO scores"
 The definition in this paper seems to be the Fisher information of the likelihood of the data
 TODO: understand this
+
+2021/05/27 - temporarily adding libathr.so.1 in ukb conda env pointing to libathr.so.2 to hopefully make python's bgen_reader work
+comes from package almosthere (as seen by going to $CONDA_PREFIX/conda-meta and grepping all the json files for libathr)
+which is a progress bar indicator, and so even if I screwed that up the bgen reading should be fine

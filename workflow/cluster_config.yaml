@@ -117,11 +117,19 @@ subset_plink_gwas_results:
   tasks-per-node: 1
   time: '01:00:00'
 
+append_mfi_to_subsetted_plink_results:
+  tasks-per-node: 1
+  time: '01:00:00'
+
 subset_conditional_my_str_gwas_results:
   tasks-per-node: 1
   time: '01:00:00'
 
 subset_conditional_plink_gwas_results:
+  tasks-per-node: 1
+  time: '01:00:00'
+
+append_mfi_to_subsetted_conditional_plink_results:
   tasks-per-node: 1
   time: '01:00:00'
 
@@ -145,5 +153,11 @@ clump_results:
   time: '00:30:00'
 
 run_finemap:
+  # TODO this will be very expensive if we run this on all signals
+  tasks-per-node: 127
+  time: '47:30:00'
+  mem: 250G
+
+run_finemap_phenotype:
   tasks-per-node: 1
-  time: '24:00:00'
+  time: '00:05:00'
