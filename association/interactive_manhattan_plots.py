@@ -42,7 +42,9 @@ def create_source_dict(
         data: np.recarray,
         start_chrom: Optional[int],
         cols_to_skip: Set[str] = set(),
-        cols_to_include: Set[str] = set()
+        cols_to_include: Set[str] = set(),
+        chrs_to_vars_pcausal = None,
+        match_pcausal_on_pos = False
     ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
     if not start_chrom:
         start_chrom = 1
@@ -53,8 +55,10 @@ def create_source_dict(
             print(field, flush=True)
             1/0
     for chrom in range(1, 23):
+        print(f'Converting chrom {chrom} ...', end='\r')
         chrom_dict = {}
         idx = data['chr'] == chrom
+        n_variants = np.sum(idx)
         for name in data.dtype.names:
             if len(cols_to_skip) > 0:
                 if name in cols_to_skip:
@@ -67,21 +71,35 @@ def create_source_dict(
         sources[chrom].data['display_p_val'] = np.minimum(
             sources[chrom].data['p_val'], start_p_val_cap
         )
+        if chrs_to_vars_pcausal:
+            sources[chrom].data['FINEMAP_pcausal'] = np.zeros((n_variants, ))
+            finemap_idx = 0
+            if match_pcausal_on_pos:
+                for var_num, pos in enumerate(chrom_dict['pos']):
+                    print(f'looking for pos {chrs_to_vars_pcausal[chrom][0][finemap_idx]}')
+                    if chrs_to_vars_pcausal[chrom][0][finemap_idx] == pos:
+                        print(f'matching on pos {pos}')
+                        sources[chrom].data['FINEMAP_pcausal'][var_num] = chrs_to_vars_pcausal[chrom][1][finemap_idx]
+                        finemap_idx += 1
+                        print(f'looking for pos {chrs_to_vars_pcausal[chrom][0][finemap_idx]}')
+            else:
+                curr_id = chrs_to_vars_pcausal[chrom][0][finemap_idx].strip('+')
+                if curr_id[:2] == 'rs' and '_' in curr_id:
+                    curr_id = curr_id.split('_')[0]
+                print(f'Looking for id {curr_id}')
+                for var_num, _id in enumerate(chrom_dict['id']):
+                    if curr_id == _id:
+                        print(f'matching on id {_id}')
+                        sources[chrom].data['FINEMAP_pcausal'][var_num] = chrs_to_vars_pcausal[chrom][1][finemap_idx]
+                        finemap_idx += 1
+                        curr_id = chrs_to_vars_pcausal[chrom][0][finemap_idx].strip('+')
+                        if curr_id[:2] == 'rs' and '_' in curr_id:
+                            curr_id = curr_id.split('_')[0]
+                        print(f'Looking for id {curr_id}')
+
     copy_source = bokeh.models.ColumnDataSource(copy.deepcopy(sources[start_chrom].data))
 
     return copy_source, sources
-
-def plot_manhattan(plot, source, label, color, size=4):
-    return plot.circle(
-        'pos',
-        'display_p_val',
-        legend_label=label,
-        source=source,
-        color=color,
-        size=size,
-        muted_alpha=0.1
-    )
-
 
 def make_manhattan_plots(
         outfname,
@@ -97,7 +115,9 @@ def make_manhattan_plots(
         my_snp_run_date,
         chrom,
         start,
-        end):
+        end,
+        snp_finemap_signals,
+        str_finemap_signals):
 
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
@@ -119,12 +139,22 @@ def make_manhattan_plots(
     source_dicts = []
 
     if plot_my_str_data:
-        my_str_source, my_str_sources = create_source_dict(my_str_data, chrom, cols_to_skip=cols_to_skip)
+        my_str_source, my_str_sources = create_source_dict(
+            my_str_data,
+            chrom,
+            cols_to_skip = cols_to_skip,
+            chrs_to_vars_pcausal = str_finemap_signals,
+            match_pcausal_on_pos = True
+        )
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
 
     if plot_my_snp_data:
-        my_snp_source, my_snp_sources = create_source_dict(my_snp_data, chrom, cols_to_skip=cols_to_skip)
+        my_snp_source, my_snp_sources = create_source_dict(
+            my_snp_data,
+            chrom,
+            cols_to_skip = cols_to_skip,
+        )
         sources.append(my_snp_source)
         source_dicts.append(my_snp_sources)
 
@@ -136,7 +166,12 @@ def make_manhattan_plots(
             ),), names=['alleles'])
         ), flatten=True
     )
-    plink_snp_source, plink_snp_sources = create_source_dict(plink_snp_data, chrom)
+    plink_snp_source, plink_snp_sources = create_source_dict(
+        plink_snp_data,
+        chrom,
+        chrs_to_vars_pcausal = snp_finemap_signals,
+        match_pcausal_on_pos = False
+    )
     sources.append(plink_snp_source)
     source_dicts.append(plink_snp_sources)
 
@@ -268,20 +303,41 @@ def make_manhattan_plots(
     # 0, 114, 178
     # 213, 94, 0
     # 204, 121, 167
-    plink_snp_manhattan = plot_manhattan(
-        manhattan_plot, plink_snp_source, 'SNPs Plink', color=(0, 114, 178)
+    plink_snp_manhattan = manhattan_plot.circle(
+        'pos',
+        'display_p_val',
+        source=plink_snp_source,
+        legend_label='SNPs Plink',
+        color=(0, 114, 178),
+        size=4,
+        muted_alpha=0.1
     )
     if plot_my_str_data:
-        my_str_manhattan = plot_manhattan(
-            manhattan_plot, my_str_source, 'STRs my code', color=(204, 121, 167), size=6
+        my_str_manhattan = manhattan_plot.square_pin(
+            'pos',
+            'display_p_val',
+            source=my_str_source,
+            legend_label='STRs my code',
+            color=(204, 121, 167),
+            size=6
         )
     if plot_my_snp_data:
-        my_snp_manhattan = plot_manhattan(
-            manhattan_plot, my_snp_source, 'SNPs my code', color=(204, 121, 167)
+        my_snp_manhattan = manhattan_plot.circle(
+            'pos',
+            'display_p_val',
+            source=my_snp_source,
+            legend_label='SNPs my code',
+            color=(204, 121, 167),
+            size=4
         )
     if plot_gwas_catalog:
-        catalog_manhattan = plot_manhattan(
-            manhattan_plot, catalog_source, 'GWAS Catalog Hits', color=(213, 94, 0), size=7
+        catalog_manhattan = manhattan_plot.square(
+            'pos',
+            'display_p_val',
+            source=catalog_source,
+            legend_label='GWAS Catalog Hits',
+            color=(213, 94, 0),
+            size=7
         )
 
     # add custom tick formatter. See FuncTickFormatter
@@ -301,6 +357,8 @@ def make_manhattan_plots(
             ('pos', '@pos'),
             ('-log10(p_val) my code', '@p_val')
         ]
+        if str_finemap_signals:
+            my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal' '{safe}'))
         str_means_start_idx = list(my_str_data.dtype.names).index(
             f'mean_{phenotype}_per_single_dosage'
         )
@@ -339,6 +397,8 @@ def make_manhattan_plots(
         ('Minor allele frequency', '@maf'),
         ('Imputation INFO', '@info')
     ]
+    if snp_finemap_signals:
+        plink_snp_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal' '{safe}'))
     manhattan_plot.add_tools(plink_snp_hover)
     hover_tools.append(plink_snp_hover)
 
@@ -689,18 +749,53 @@ def load_gwas_catalog(phenotype):
 
     return known_assocs[phenotype], known_assoc_ids[phenotype]
 
+def load_finemap_signals(finemap_signals):
+    # finemap signals must be sorted
+    chrs_to_snps_pcausal = {}
+    chrs_to_strs_pcausal = {}
+    for i in range(1, 23):
+        chrs_to_snps_pcausal[i] = [], []
+        chrs_to_strs_pcausal[i] = [], []
+    for signal in finemap_signals:
+        signal_dir = '/'.join(signal.split('/')[:-1])
+        if os.path.exists(f'{signal_dir}/no_strs'):
+            continue
+        chrom = int(signal.split('/')[-2].split('_')[0])
+        with open(f'{ukb}/{signal}') as per_var_output:
+            next(per_var_output)
+            for line in per_var_output:
+                _id, pos, p = np.array(line.split())[[1, 3, 10]]
+                pos = int(pos)
+                if p == 'NA':
+                    p = np.nan
+                else:
+                    p = float(p)
+                if _id[:4] == 'STR_':
+                    chrs_to_strs_pcausal[chrom][0].append(pos)
+                    chrs_to_strs_pcausal[chrom][1].append(p)
+                else:
+                    chrs_to_snps_pcausal[chrom][0].append(_id)
+                    chrs_to_snps_pcausal[chrom][1].append(p)
+    return (chrs_to_snps_pcausal, chrs_to_strs_pcausal)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--my-plink-comparison", action='store_true')
     parser.add_argument("--phenotype")
     parser.add_argument("--condition")
+    parser.add_argument('--finemap-signals', nargs = '+')
     args = parser.parse_args()
-    assert bool(args.my_plink_comparison) != bool(args.phenotype)
-    if args.condition:
+    assert bool(args.finemap_signals) + bool(args.my_plink_comparison) + bool(args.condition) <= 1
+    if not bool(args.my_plink_comparison):
+        assert bool(args.phenotype)
+    else:
         assert bool(args.phenotype)
 
-    if args.phenotype:
+    if not bool(args.finemap_signals):
+        snp_finemap_signals = None
+        str_finemap_signals = None
+
+    if not bool(args.my_plink_comparison):
         phenotype = args.phenotype
         my_str_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
             phenotype, args.condition
@@ -722,6 +817,14 @@ def main():
             start = int(start)
             end = int(end)
             outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_{args.condition}.html'
+
+        # change the output file
+        if args.finemap_signals:
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
+            snp_finemap_signals, str_finemap_signals = load_finemap_signals(sorted(
+                args.finemap_signals,
+                key=lambda dirname: [int(val) for val in dirname.split('/')[-2].split('_')]
+            ))
     else:
         phenotype = 'height'
         chrom = 21
@@ -761,7 +864,9 @@ def main():
         my_snp_run_date,
         chrom = chrom,
         start = start,
-        end = end
+        end = end,
+        snp_finemap_signals = snp_finemap_signals,
+        str_finemap_signals = str_finemap_signals,
     )
 
 if __name__ == "__main__":

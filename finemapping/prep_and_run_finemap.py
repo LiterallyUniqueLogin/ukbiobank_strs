@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import math
 import os
 import pathlib
 import subprocess as sp
@@ -10,6 +11,7 @@ import time
 
 import bgen_reader
 import cyvcf2
+import h5py
 import numpy as np
 
 import python_array_utils as utils
@@ -53,6 +55,9 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
 
                 beta = result[cols[f'coeff_{phenotype}']]
                 se = result[cols[f'se_{phenotype}']]
+                # I have forced there to be a unique STR per position during association testing
+                # (throwing out all but the first at any single location),
+                # so STR_{pos} is a unique ID
                 finemap_input_z.write(
                     f'STR_{result_pos} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
                 )
@@ -72,9 +77,6 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
             sys.exit()
 
         included_imputed_snps = []
-        prev_rsids = set()
-        last_rsid = None
-        n_rsid_uses = 0
         with open(plink_results_fname) as plink_result_file:
             plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
             header = next(plink_results_reader)
@@ -86,29 +88,23 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
             for result in plink_results_reader:
                 result_chrom = int(result[cols['#CHROM']])
                 result_pos = int(result[cols['POS']])
+                ref = result[cols['REF']]
+                alt = result[cols['ALT']]
                 if (result_chrom, result_pos) < (chrom, start_pos):
                     continue
                 if (result_chrom, result_pos) > (chrom, end_pos):
                     break
                 if result[cols['ERRCODE']] != '.' or float(result[cols['P']]) >= inclusion_threshold:
                     continue
-                included_imputed_snps.append(result_pos)
-
-                rsid = result[cols['ID']]
-                if rsid == last_rsid:
-                    n_rsid_uses += 1
-                    rsid += '+'*n_rsid_uses
-                elif rsid in prev_rsids:
-                    n_rsid_uses = 0
-                    rsid = rsid + '_' + str(result_pos)
-                else:
-                    prev_rsids.add(rsid)
-                    last_rsid = rsid
+                # snps can only be uniquely identified by pos, ref, alt
+                # some IDs are duplicate at the same or even different locations
+                # so those don't help
+                included_imputed_snps.append((result_pos, ref, alt))
 
                 beta = result[cols['BETA']]
                 se = result[cols['SE']]
                 finemap_input_z.write(
-                    f'{rsid} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
+                    f'SNP_{result_pos}_{ref}_{alt} {result_chrom:02} {result_pos} {ref} {alt} nan {beta} {se}\n'
                 )
 
     n_snps = len(included_imputed_snps)
@@ -148,81 +144,108 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
 
     print(f"Working with # samples: {n_samples}", flush=True)
 
-    gts = np.full((n_variants, n_samples), np.nan)
-    print(f"Size of LD matrix: {gts.nbytes/1e9}GB", flush=True)
+    chunk_len = 2**6
+    n_chunks = math.ceil(n_variants/chunk_len)
+    with h5py.File(f'{workdir}/ld.h5', 'w') as h5file:
+        if n_variants >= chunk_len:
+            gts = h5file.create_dataset("gts", (n_variants, n_samples), chunks=(chunk_len, n_samples))
+        else:
+            gts = h5file.create_dataset("gts", (n_variants, n_samples))
 
-    print("Loading strs ...", flush=True)
-    start = time.time()
-    next_strs = iter(included_strs)
-    next_str = next(next_strs)
-    region = f'{chrom}:{start_pos}-{end_pos}'
-    all_str_itr = lfg.load_strs(str_imputation_run_name, region, sample_idx)
-    next(all_str_itr) # skip locus_details list
-    str_done = False
-    str_num = 0
-    for str_dosages_dict, _, _, str_pos, str_locus_filtered, _ in all_str_itr:
-        if str_locus_filtered:
-            continue
-        if str_pos < next_str:
-            continue
-        elif str_pos == next_str:
+        print("Loading strs ...", flush=True)
+        start = time.time()
+        next_strs = iter(included_strs)
+        next_str = next(next_strs)
+        region = f'{chrom}:{start_pos}-{end_pos}'
+        all_str_itr = lfg.load_strs(str_imputation_run_name, region, sample_idx)
+        next(all_str_itr) # skip locus_details list
+        str_num = 0
+        for str_dosages_dict, _, _, str_pos, str_locus_filtered, _ in all_str_itr:
+            if str_locus_filtered:
+                continue
+            if str_pos < next_str:
+                continue
+            elif str_pos > next_str:
+                raise ValueError(f"Skipped str {next_str}!")
+            str_dosages = get_str_dosages(str_dosages_dict)
+
+            gts[str_num, :] = str_dosages
+
+            str_num += 1
+            if str_num % 5 == 0:
+                print(f'{str_num}/{n_strs} loaded. ETA: {(time.time() - start)*(n_strs-str_num)/str_num}sec', flush=True)
             try:
                 next_str = next(next_strs)
             except StopIteration:
-                str_done = True
-        else:
-            raise ValueError(f"Skipped str {next_str}!")
-        str_dosages = get_str_dosages(str_dosages_dict)
+                break
+        print(f'Done loading STRs. Time: {time.time() - start}sec', flush=True)
 
-        gts[str_num, :] = str_dosages
+        print("Loading snps ...", flush=True)
+        snp_bgen = bgen_reader.open_bgen(
+            f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen',
+            verbose=False
+        )
 
-        str_num += 1
-        if str_num % 5 == 0:
-            print(f'{str_num}/{n_strs} loaded. ETA: {(time.time() - start)*(n_strs-str_num)/str_num}sec', flush=True)
-        if str_done:
-            break
+        start = time.time()
+        next_snps = iter(included_imputed_snps)
+        next_snp_pos, next_snp_ref, next_snp_alt = next(next_snps)
+        snp_num = 0
+        for all_snp_num, snp_pos in enumerate(snp_bgen.positions):
+            if snp_pos < next_snp_pos:
+                continue
+            elif snp_pos > next_snp_pos:
+                raise ValueError(f"Skipped snp pos {next_snp_pos}!")
 
-    print("Loading snps ...", flush=True)
-    snp_bgen = bgen_reader.open_bgen(
-        f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen',
-        verbose=False
-    )
+            # match not just on pos but also ref, alt
+            # assume that multiple SNPs at the same pos have the same ordering
+            ref, alt = snp_bgen.allele_ids[all_snp_num].split(',')
+            if (ref, alt) != (next_snp_ref, next_snp_alt):
+                continue
 
-    start = time.time()
-    next_snps = iter(included_imputed_snps)
-    next_snp = next(next_snps)
-    snp_done = False
-    snp_num = 0
-    for all_snp_num, snp_pos in enumerate(snp_bgen.positions):
-        if snp_pos < next_snp:
-            continue
-        elif snp_pos == next_snp:
+            snp_probs = snp_bgen.read(all_snp_num).squeeze()[sample_idx, :]
+            assert len(snp_probs.shape) == 2
+            assert snp_probs.shape[1] == 3
+            snp_dosages = snp_probs[:, 1] + 2*snp_probs[:, 2]
+            gts[n_strs + snp_num, :] = snp_dosages
+
+            snp_num += 1
+            if snp_num % 100 == 0:
+                print(f'{snp_num}/{n_snps} loaded. ETA: {(time.time() - start)*(n_snps-snp_num)/snp_num}sec', flush=True)
+
             try:
-                next_snp = next(next_snps)
+                next_snp_pos, next_snp_ref, next_snp_alt = next(next_snps)
             except StopIteration:
-                snp_done = True
-        else:
-            raise ValueError(f"Skipped snp {next_snp}!")
+                break
+        print(f'Done loading SNPs. Time: {time.time() - start}sec', flush=True)
 
-        snp_probs = snp_bgen.read(all_snp_num).squeeze()[sample_idx, :]
-        assert len(snp_probs.shape) == 2
-        assert snp_probs.shape[1] == 3
-        snp_dosages = snp_probs[:, 1] + 2*snp_probs[:, 2]
-        gts[n_strs + snp_num, :] = snp_dosages
+        lds = h5file.create_dataset('ld', (n_variants, n_variants), chunks=True)
+        print('Generating LD matrix (correlations) ...', flush=True)
+        start = time.time()
+        def correlate_chunks(chunk_idx1, chunk_idx2):
+            slice1 = slice(chunk_idx1*chunk_len, min((chunk_idx1+1)*chunk_len, n_variants))
+            len_slice1 = slice1.stop - slice1.start
+            slice2 = slice(chunk_idx2*chunk_len, min((chunk_idx2+1)*chunk_len, n_variants))
+            gt1s = gts[slice1, :]
+            gt2s = gts[slice2, :]
+            corrs = np.corrcoef(gt1s, gt2s)
+            assert not np.any(np.isnan(corrs))
+            lds[slice1, slice2] = corrs[:len_slice1, len_slice1:]
+            lds[slice2, slice1] = corrs[len_slice1:, :len_slice1]
+            print(f"Done with correlating chunks {chunk_idx1}, {chunk_idx2}", flush=True)
 
-        snp_num += 1
-        if snp_num % 100 == 0:
-            print(f'{snp_num}/{n_snps} loaded. ETA: {(time.time() - start)*(n_snps-snp_num)/snp_num}sec', flush=True)
-        if snp_done:
-            break
+        for i in range(n_chunks):
+            for j in range(i, n_chunks):
+                correlate_chunks(i, j)
 
-    assert not np.any(np.isnan(gts))
-    print('Generating LD matrix (correlations) ...', flush=True)
-    start = time.time()
-    ld = np.corrcoef(gts)
-    print(f'Done generating LD matrix. Time: {time.time() - start}sec', flush=True)
-    assert ld.shape == (n_variants, n_variants)
-    np.savetxt(f'{workdir}/all_variants.ld', ld)
+        print('... and writing out the matrix  ... ', flush=True)
+        with open(f'{workdir}/all_variants.ld', 'w') as ld_file:
+            for i in range(n_variants):
+                ld_file.write(f'{lds[i, 0]:.10f}')
+                for j in range(1, n_variants):
+                    ld_file.write(f' {lds[i, j]:.10f}')
+                ld_file.write('\n')
+
+        print(f'Done generating and writing LD matrix. Time: {time.time() - start}sec', flush=True)
 
     with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
         finemap_master.write(
@@ -246,7 +269,7 @@ def run_finemap(workdir):
         f'--in-files {workdir}/finemap_input.master '
         '--log '
         '--n-configs-top 100 '
-        '--n-threads 128 '
+        '--n-threads 5 '
         '--n-causal-snps 20',
         shell=True,
         capture_output=True

@@ -513,6 +513,13 @@ def collect_finemap_target_files(wildcards):
             files.append(
                     f'finemapping/finemap_results/{phenotype}/{line[0]}_{line[1]}_{line[2]}/finemap_output.snp'
             )
+    # TODO generalize this to other genotypes
+    # Remove this region which won't finemap 
+    for f in (
+            'finemapping/finemap_results/height/6_25164325_33472053/finemap_output.snp',
+            #'finemapping/finemap_results/height/11_64541585_68777600/finemap_output.snp'
+        ):
+        files.remove(f)
     return files
 
 rule run_finemap_phenotype:
@@ -522,4 +529,24 @@ rule run_finemap_phenotype:
         'finemapping/finemap_results/.{phenotype}_all_signals'
     shell:
         'touch finemapping/finemap_results/.{wildcards.phenotype}_all_signals'
+
+rule summarize_finemap_output:
+    input:
+        collect_finemap_target_files
+    output:
+        'finemapping/finemap_results/{phenotype}/summary/summary.txt'
+    shell:
+        'finemapping/summarize_finemap_output.py {wildcards.phenotype} --signals {input}'
+
+rule interactive_manhattan_finemap:
+    input:
+        "traits/phenotypes/{phenotype}_unit.txt",
+        'association/plots/input/{phenotype}/my_str_results.tab',
+        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
+        finemap=collect_finemap_target_files
+    output:
+        'association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
+    shell:
+        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} --finemap-signals {input.finemap}'
+
 

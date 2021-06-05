@@ -11,7 +11,7 @@ __default__:
   # https://support.pawsey.org.au/documentation/display/US/Customize+the+SLURM+output+file+name
   output: 'output/{rule}.{wildcards}.%j.out'
   # will modify for some tasks
-  mem: 5G
+  mem: 2G
   mail-type: FAIL
   # must set tasks-per-node, time and output for each task
 
@@ -153,11 +153,20 @@ clump_results:
   time: '00:30:00'
 
 run_finemap:
-  # TODO this will be very expensive if we run this on all signals
-  tasks-per-node: 127
+  tasks-per-node: 5
   time: '47:30:00'
-  mem: 250G
+  mem: 10G
 
 run_finemap_phenotype:
   tasks-per-node: 1
   time: '00:05:00'
+
+summarize_finemap_output:
+  tasks-per-node: 1
+  time: '00:30:00'
+
+interactive_manhattan:
+  tasks-per-node: 1
+  time: '00:30:00'
+  mem: 50G
+
