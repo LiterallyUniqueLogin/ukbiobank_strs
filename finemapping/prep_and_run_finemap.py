@@ -231,13 +231,13 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
             assert not np.any(np.isnan(corrs))
             lds[slice1, slice2] = corrs[:len_slice1, len_slice1:]
             lds[slice2, slice1] = corrs[len_slice1:, :len_slice1]
-            print(f"Done with correlating chunks {chunk_idx1}, {chunk_idx2}", flush=True)
+            print(f"Done with correlating chunks {chunk_idx1}, {chunk_idx2}   ", flush=True, end='\r')
 
         for i in range(n_chunks):
             for j in range(i, n_chunks):
                 correlate_chunks(i, j)
 
-        print('... and writing out the matrix  ... ', flush=True)
+        print('... and writing out the matrix  ...     ', flush=True)
         with open(f'{workdir}/all_variants.ld', 'w') as ld_file:
             for i in range(n_variants):
                 ld_file.write(f'{lds[i, 0]:.10f}')

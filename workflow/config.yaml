@@ -1,0 +1,42 @@
+# config from https://github.com/jdblischak/smk-simple-slurm
+# after reading https://github.com/Snakemake-Profiles/slurm/issues/40
+# and https://github.com/Snakemake-Profiles/slurm/issues/73
+
+# snakemake config should be `item: <value>`
+# config for sbatch should be after the sbatch command in the form
+# `--<option>=<value>
+# snakemake vs sbatch options are not interchangeable
+    
+# snakemake replaces {rule} and {wildcards}
+# https://snakemake.readthedocs.io/en/stable/snakefiles/configuration.html#cluster-configuration-deprecated
+# this is then passed to slurm, which replaces %j with jobid
+# https://support.pawsey.org.au/documentation/display/US/Customize+the+SLURM+output+file+name
+# all the resourcem may be modified for different runs
+cluster:
+  mkdir -p logs/{rule} &&
+  sbatch
+    --account ddp268
+    --partition shared
+    --export ALL
+    --nodes 1
+    --job-name={rule}-{wildcards}
+    --output=logs/{rule}/{rule}-{wildcards}-%j.out
+    --mail-type FAIL
+    --mail-user jbmargoliash@ucsd.edu
+    --ntasks-per-node={resources.threads}
+    --mem={resources.mem_gb}G
+    --time={resources.time}
+default-resources:
+  - threads=1
+  - mem_gb=2
+  # every job must specify time in the 'hh:mm:ss' format (quotes required)
+restart-times: 2
+max-jobs-per-second: 100 #too many?
+max-status-checks-per-second: 10
+latency-wait: 60
+jobs: 500
+keep-going: True
+rerun-incomplete: True # https://groups.google.com/g/snakemake/c/fbQbnD8yYkQ?pli=1
+printshellcmds: True
+scheduler: greedy
+use-conda: True

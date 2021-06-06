@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
 #SBATCH --time=47:30:00
-#SBATCH --output=/expanse/projects/gymreklab/jmargoli/ukbiobank/workflow/output/%x_%j.out
+#SBATCH --output=/expanse/projects/gymreklab/jmargoli/ukbiobank/workflow/logs/%x_%j.out
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=jbmargoliash@ucsd.edu
 #SBATCH --export=ALL
@@ -22,8 +22,7 @@ cd "$UKB" || { echo "Directory $UKB doesn't exist" ; exit 1 ; }
 
 # intentional no quote on TARGET
 snakemake \
-	--cluster-config workflow/cluster_config.yaml \
-	--profile workflow/profile \
+	--profile workflow \
 	$TARGET
 
 conda deactivate

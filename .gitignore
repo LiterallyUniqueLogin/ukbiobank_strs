@@ -8,6 +8,7 @@
 *.tbi
 *.zip
 *log
+*logs/
 *.swp
 *.swn
 *.swm
