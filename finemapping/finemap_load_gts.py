@@ -2,10 +2,8 @@
 
 import argparse
 import csv
-import math
 import os
 import pathlib
-import subprocess as sp
 import sys
 import time
 
@@ -21,9 +19,57 @@ ukb = os.environ['UKB']
 
 inclusion_threshold = 0.05
 
-def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
+def load_gts(workdir, readme, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
+    '''
+    write README.txt
+    write finemap_input.master
+    write finemap_input.z
+    write gts.h5 - dataset 'gts'
+    '''
     plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
     str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
+
+    readme.write(
+        'Manually generating variant-variant LD for each imputed SNP  each STR in the region '
+        'where an association was successfully '
+        f'performed and had p < {inclusion_threshold}\n'
+        'Correlation is STR length dosage vs SNP dosage.\n'
+        'Running FINEMAP with that list of imputed SNPs and STRs.\n'
+    )
+
+    imp_snp_samples_filepath = f'{ukb}/array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
+    with open(imp_snp_samples_filepath) as imp_snp_samples_file:
+        imp_snp_samples = np.array([line.split()[0] for line in imp_snp_samples_file][2:], dtype=int)
+
+    vcffile = f'{ukb}/str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz'
+    vcf = cyvcf2.VCF(vcffile)
+    str_samples = np.array([sample.split('_')[0] for sample in vcf.samples], dtype=int)
+    vcf.close()
+
+    assert np.all((imp_snp_samples == str_samples)[(str_samples > 0) & (imp_snp_samples > 0)])
+
+    with open(f'{ukb}/sample_qc/runs/{phenotype}/combined_unrelated.sample') as samples_file:
+        samples = np.array([line.strip() for line in samples_file][1:], dtype=int).reshape(-1, 1)
+
+    samples_indicator = np.concatenate((samples, samples), axis=1)
+    samples_merge = utils.merge_arrays(str_samples.reshape(-1, 1), samples_indicator)
+    assert samples_merge.shape[1] == 2
+    sample_idx = ~np.isnan(samples_merge[:, 1])
+    n_samples = np.sum(sample_idx)
+
+    print(f"Working with # samples: {n_samples}", flush=True)
+
+    with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
+        finemap_master.write(
+            'z;ld;snp;config;cred;log;n_samples\n'
+            f'{workdir}/finemap_input.z;'
+            f'{workdir}/all_variants.ld;'
+            f'{workdir}/finemap_output.snp;'
+            f'{workdir}/finemap_output.config;'
+            f'{workdir}/finemap_output.cred;'
+            f'{workdir}/finemap_output.log;'
+            f'{n_samples}'
+        )
 
     with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
         finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
@@ -114,39 +160,8 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
 
     print(f'Num snps: {n_snps}, num strs: {n_strs}, total: {n_variants}', flush=True)
 
-    readme.write(
-        'Manually generating variant-variant LD for each imputed SNP  each STR in the region '
-        'where an association was successfully '
-        f'performed and had p < {inclusion_threshold}\n'
-        'Correlation is STR length dosage vs SNP dosage.\n'
-        'Running FINEMAP with that list of imputed SNPs and STRs.\n'
-    )
-
-    imp_snp_samples_filepath = f'{ukb}/array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
-    with open(imp_snp_samples_filepath) as imp_snp_samples_file:
-        imp_snp_samples = np.array([line.split()[0] for line in imp_snp_samples_file][2:], dtype=int)
-
-    vcffile = f'{ukb}/str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz'
-    vcf = cyvcf2.VCF(vcffile)
-    str_samples = np.array([sample.split('_')[0] for sample in vcf.samples], dtype=int)
-    vcf.close()
-
-    assert np.all((imp_snp_samples == str_samples)[(str_samples > 0) & (imp_snp_samples > 0)])
-
-    with open(f'{ukb}/sample_qc/runs/{phenotype}/combined_unrelated.sample') as samples_file:
-        samples = np.array([line.strip() for line in samples_file][1:], dtype=int).reshape(-1, 1)
-
-    samples_indicator = np.concatenate((samples, samples), axis=1)
-    samples_merge = utils.merge_arrays(str_samples.reshape(-1, 1), samples_indicator)
-    assert samples_merge.shape[1] == 2
-    sample_idx = ~np.isnan(samples_merge[:, 1])
-    n_samples = np.sum(sample_idx)
-
-    print(f"Working with # samples: {n_samples}", flush=True)
-
     chunk_len = 2**6
-    n_chunks = math.ceil(n_variants/chunk_len)
-    with h5py.File(f'{workdir}/ld.h5', 'w') as h5file:
+    with h5py.File(f'{workdir}/gts.h5', 'w') as h5file:
         if n_variants >= chunk_len:
             gts = h5file.create_dataset("gts", (n_variants, n_samples), chunks=(chunk_len, n_samples))
         else:
@@ -174,6 +189,7 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
             str_num += 1
             if str_num % 5 == 0:
                 print(f'{str_num}/{n_strs} loaded. ETA: {(time.time() - start)*(n_strs-str_num)/str_num}sec', flush=True)
+
             try:
                 next_str = next(next_strs)
             except StopIteration:
@@ -218,66 +234,9 @@ def prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, str_impu
                 break
         print(f'Done loading SNPs. Time: {time.time() - start}sec', flush=True)
 
-        lds = h5file.create_dataset('ld', (n_variants, n_variants), chunks=True)
-        print('Generating LD matrix (correlations) ...', flush=True)
-        start = time.time()
-        def correlate_chunks(chunk_idx1, chunk_idx2):
-            slice1 = slice(chunk_idx1*chunk_len, min((chunk_idx1+1)*chunk_len, n_variants))
-            len_slice1 = slice1.stop - slice1.start
-            slice2 = slice(chunk_idx2*chunk_len, min((chunk_idx2+1)*chunk_len, n_variants))
-            gt1s = gts[slice1, :]
-            gt2s = gts[slice2, :]
-            corrs = np.corrcoef(gt1s, gt2s)
-            assert not np.any(np.isnan(corrs))
-            lds[slice1, slice2] = corrs[:len_slice1, len_slice1:]
-            lds[slice2, slice1] = corrs[len_slice1:, :len_slice1]
-            print(f"Done with correlating chunks {chunk_idx1}, {chunk_idx2}   ", flush=True, end='\r')
-
-        for i in range(n_chunks):
-            for j in range(i, n_chunks):
-                correlate_chunks(i, j)
-
-        print('... and writing out the matrix  ...     ', flush=True)
-        with open(f'{workdir}/all_variants.ld', 'w') as ld_file:
-            for i in range(n_variants):
-                ld_file.write(f'{lds[i, 0]:.10f}')
-                for j in range(1, n_variants):
-                    ld_file.write(f' {lds[i, j]:.10f}')
-                ld_file.write('\n')
-
-        print(f'Done generating and writing LD matrix. Time: {time.time() - start}sec', flush=True)
-
-    with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
-        finemap_master.write(
-            'z;ld;snp;config;cred;log;n_samples\n'
-            f'{workdir}/finemap_input.z;'
-            f'{workdir}/all_variants.ld;'
-            f'{workdir}/finemap_output.snp;'
-            f'{workdir}/finemap_output.config;'
-            f'{workdir}/finemap_output.cred;'
-            f'{workdir}/finemap_output.log;'
-            f'{n_samples}'
-        )
-
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for
                    _len, dosages in str_dosages_dict.items()], axis=0)
-
-def run_finemap(workdir):
-    out = sp.run(
-        f'{ukb}/utilities/finemap/finemap_v1.4_x86_64 --sss '
-        f'--in-files {workdir}/finemap_input.master '
-        '--log '
-        '--n-configs-top 100 '
-        '--n-threads 5 '
-        '--n-causal-snps 20',
-        shell=True,
-        capture_output=True
-    )
-
-    print(out.stdout.decode(), flush=True)
-    print(out.stderr.decode(), file=sys.stderr, flush=True)
-    out.check_returncode()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -297,15 +256,8 @@ def main():
     workdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
     with open(f'{workdir}/README.txt', 'w') as readme:
-        start = time.time()
-        print("Writting FINEMAP input ... ", flush=True)
-        prep_finemap(workdir, readme, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
-        print(f'Done writing FINEMAP input. Elapsed time = {time.time() - start}sec', flush=True)
-
-        start = time.time()
-        print('Running FINEMAP ... ', flush=True)
-        run_finemap(workdir)
-        print(f'Done running FINEMAP. Elapsed time = {time.time() - start}sec', flush=True)
+        load_gts(workdir, readme, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
 
 if __name__ == '__main__':
     main()
+

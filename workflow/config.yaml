@@ -12,6 +12,7 @@
 # this is then passed to slurm, which replaces %j with jobid
 # https://support.pawsey.org.au/documentation/display/US/Customize+the+SLURM+output+file+name
 # all the resourcem may be modified for different runs
+# parsable needed for status-sacct
 cluster:
   mkdir -p logs/{rule} &&
   sbatch
@@ -26,11 +27,12 @@ cluster:
     --ntasks-per-node={resources.threads}
     --mem={resources.mem_gb}G
     --time={resources.time}
+    --parsable
 default-resources:
   - threads=1
   - mem_gb=2
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
-restart-times: 2
+restart-times: 1
 max-jobs-per-second: 100 #too many?
 max-status-checks-per-second: 10
 latency-wait: 60
@@ -40,3 +42,4 @@ rerun-incomplete: True # https://groups.google.com/g/snakemake/c/fbQbnD8yYkQ?pli
 printshellcmds: True
 scheduler: greedy
 use-conda: True
+cluster-status: status-sacct.sh

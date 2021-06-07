@@ -569,42 +569,61 @@ checkpoint clump_results:
     shell:
         'finemapping/clump.py {wildcards.phenotype}'
 
-def run_finemap_time(wildcards, attempt):
-    if attempt == 1:
-        return '04:00:00'
-    else:
-        return '47:30:00'
-
-def run_finemap_memory(wildcards, attempt):
-    if attempt == 1:
-        return 2
-    else:
-        return 10
-
-def run_finemap_threads(wildcards, attempt):
-    if attempt == 1:
-        return 1
-    else:
-        return 5
-
-rule run_finemap:
+rule finemap_load_gts:
     input:
         'association/results/{phenotype}/my_str/results.tab',
         'association/results/{phenotype}/plink_snp/results.tab',
         'sample_qc/runs/{phenotype}/combined_unrelated.sample'
     output:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.snp'),
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.config')
+        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'),
+        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
+        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
     resources:
-        mem_gb = run_finemap_memory,
-        time = run_finemap_time,
-        threads = run_finemap_threads
+        mem_gb = 4,
+        time = '02:00:00'
     shell:
-        'finemapping/prep_and_run_finemap.py '
+        'finemapping/finemap_load_gts.py '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
         f'{str_imputation_run_name} '
+
+def finemap_corrs_time(wildcards, attempt):
+    if attempt == 1:
+        return '02:00:00'
+    else:
+        return '47:30:00'
+
+rule finemap_calc_corrs:
+    input:
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5'
+    output:
+        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/lds.h5')
+    resources:
+        time = finemap_corrs_time,
+        mem_gb = 4
+    shell:
+        'finemapping/finemap_calc_corrs.py '
+        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.end} '
+
+rule finemap_write_corrs_and_run:
+    input:
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/README.txt',
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z',
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master',
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/lds.h5'
+    output:
+        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.snp'),
+        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.config')
+    resources:
+        time = finemap_corrs_time,
+        mem_gb = 4,
+        threads = 2
+    shell:
+        'finemapping/finemap_write_corrs_and_run.py '
+        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.end} '
 
 def collect_finemap_target_files(wildcards):
     phenotype = wildcards.phenotype
