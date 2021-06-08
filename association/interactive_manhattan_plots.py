@@ -7,6 +7,7 @@ import os.path
 import time
 from typing import Dict, Tuple, Optional, Set
 
+import bokeh.colors
 import bokeh.embed
 import bokeh.events
 import bokeh.io
@@ -16,6 +17,7 @@ import bokeh.models.callbacks
 import bokeh.models.tools
 import bokeh.plotting
 import bokeh.resources
+import colorcet
 import numpy as np
 import numpy.lib.recfunctions
 import numpy.ma
@@ -46,18 +48,21 @@ def create_source_dict(
         chrs_to_var_signals = None
     ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
     if not start_chrom:
+        cds_range = range(1, 23)
         start_chrom = 1
+    else:
+        cds_range = [start_chrom]
+
     sources = {}
     assert len(cols_to_skip) == 0 or len(cols_to_include) == 0
     for field in 'chr', 'pos', 'p_val':
         if field not in data.dtype.names:
             print(field, flush=True)
             1/0
-    for chrom in range(1, 23):
-        print(f'Converting chrom {chrom} ...', end='\r')
+    for chrom in cds_range:
+        #print(f'Converting chrom {chrom} ...', end='\r')
         chrom_dict = {}
         idx = data['chr'] == chrom
-        n_variants = np.sum(idx)
         for name in data.dtype.names:
             if len(cols_to_skip) > 0:
                 if name in cols_to_skip:
@@ -71,12 +76,18 @@ def create_source_dict(
             sources[chrom].data['p_val'], start_p_val_cap
         )
         if chrs_to_var_signals:
-            colnames_to_merge_on = chrs_to_var_signals[chrom].dtype.names[:-1]
-            merge_cols = pd.DataFrame(sources[chrom].data[colnames_to_merge_on])
-            merged_data = merge_cols.join(chrs_to_var_signals[chrom], on=colnames_to_merge_on, how='left')
-            assert len(merged_data.shape[0]) == len(chrs_to_var_signals[chrom].dtype.names)
-            assert not np.any(np.isnan(merged_data))
+            colnames_to_merge_on = list(chrs_to_var_signals[chrom].columns)[:-1]
+            merge_cols = pd.DataFrame(data[colnames_to_merge_on][idx])
+                
+            merged_data = merge_cols.merge(
+                chrs_to_var_signals[chrom].astype({'pos': int}),
+                on=colnames_to_merge_on,
+                how='left'
+            )
+            assert merged_data.shape[1] == len(chrs_to_var_signals[chrom].columns)
+            assert merged_data.shape[0] == merge_cols.shape[0]
             sources[chrom].data['FINEMAP_pcausal'] = merged_data['p']
+            sources[chrom].data['FINEMAP_pcausal_color'] = np.exp(sources[chrom].data['FINEMAP_pcausal'])
 
     copy_source = bokeh.models.ColumnDataSource(copy.deepcopy(sources[start_chrom].data))
 
@@ -117,6 +128,7 @@ def make_manhattan_plots(
         'R^2',
         'total_hardcall_genotypes',
         'subset_total_hardcall_genotypes',
+        'FINEMAP_pcausal_color'
     }
 
     sources = []
@@ -127,8 +139,7 @@ def make_manhattan_plots(
             my_str_data,
             chrom,
             cols_to_skip = cols_to_skip,
-            chrs_to_vars_pcausal = str_finemap_signals,
-            match_pcausal_on_pos = True
+            chrs_to_var_signals = str_finemap_signals
         )
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
@@ -153,8 +164,7 @@ def make_manhattan_plots(
     plink_snp_source, plink_snp_sources = create_source_dict(
         plink_snp_data,
         chrom,
-        chrs_to_vars_pcausal = snp_finemap_signals,
-        match_pcausal_on_pos = False
+        chrs_to_var_signals = snp_finemap_signals
     )
     sources.append(plink_snp_source)
     source_dicts.append(plink_snp_sources)
@@ -287,38 +297,57 @@ def make_manhattan_plots(
     # 0, 114, 178
     # 213, 94, 0
     # 204, 121, 167
-    plink_snp_color = (0, 114, 178)
+    if finemap_regions:
+        cmap_field_name = 'FINEMAP_pcausal'
+    else:
+        cmap_field_name = 'pos' # arbitrary existant field
+
+    plink_snp_color = bokeh.colors.RGB(0, 114, 178)
     plink_snp_cmap = bokeh.transform.linear_cmap(
-            field_name = 'FINEMAP_pcausal',
-            low = 0,
-            high = 0,
-            palette = [plink_snp_color],
-            nan_color = plink_snp_color
-        )
+        field_name = cmap_field_name,
+        low = 0,
+        high = 0.2,
+        palette = colorcet.kr,
+        nan_color = 'purple'
+    )
+    ''' 
+        palette = [plink_snp_color],
+        nan_color = plink_snp_color,
+        low_color = plink_snp_color,
+        high_color = plink_snp_color
+    )
+    '''
     plink_snp_manhattan = manhattan_plot.circle(
         'pos',
         'display_p_val',
         source=plink_snp_source,
         legend_label='SNPs Plink',
-        color=plink_snp_cmap,
-        size=4,
+        color=plink_snp_color,
+        size=5,
         muted_alpha=0.1
     )
     if plot_my_str_data:
-        my_str_color = (204, 121, 167)
+        my_str_color = bokeh.colors.RGB(204, 121, 167)
         my_str_cmap = bokeh.transform.linear_cmap(
-            field_name = 'FINEMAP_pcausal',
+            field_name = cmap_field_name,
             low = 0,
-            high = 0,
-            palette = [my_str_color],
-            nan_color = my_str_color
+            high = 0.2,
+            palette = colorcet.kr,
+            nan_color = 'purple'
         )
+        '''
+            palette = [my_str_color],
+            nan_color = my_str_color,
+            low_color = my_str_color,
+            high_color = my_str_color
+        )
+        '''
         my_str_manhattan = manhattan_plot.square_pin(
             'pos',
             'display_p_val',
             source=my_str_source,
             legend_label='STRs my code',
-            color=my_str_cmap,
+            color=my_str_color,
             size=6
         )
     if plot_my_snp_data:
@@ -328,16 +357,15 @@ def make_manhattan_plots(
             source=my_snp_source,
             legend_label='SNPs my code',
             color=(204, 121, 167),
-            size=4
+            size=5
         )
     if plot_gwas_catalog:
-        catalog_color = (213, 94, 0)
         catalog_manhattan = manhattan_plot.square(
             'pos',
             'display_p_val',
             source=catalog_source,
             legend_label='GWAS Catalog Hits',
-            color=catalog_color,
+            color=(213, 94, 0),
             size=7
         )
 
@@ -359,7 +387,7 @@ def make_manhattan_plots(
             ('-log10(p_val) my code', '@p_val')
         ]
         if str_finemap_signals:
-            my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal' '{safe}'))
+            my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal{safe}'))
         str_means_start_idx = list(my_str_data.dtype.names).index(
             f'mean_{phenotype}_per_single_dosage'
         )
@@ -567,57 +595,70 @@ def make_manhattan_plots(
         finemap_toggle.js_on_click(bokeh.models.CustomJS(
             args=dict(
                 sources = [my_str_source, plink_snp_source],
-                #manhattans = [my_str_manhattan, plink_snp_manhattan],
+                manhattans = [my_str_manhattan, plink_snp_manhattan],
                 colors = [my_str_color, plink_snp_color],
-                cmaps = [my_str_cmap, plink_snp_cmap],
+                cmaps = [my_str_cmap, plink_snp_cmap]
             ),
             code = """
-                if (this.active) { for (i=0; i<manhattans.length; i++) {
-                    //manhattan = manhattans[i];
-                    //manhattan.glyph.fill_color = {field: , transform: };
-                    //manhattan.glyph.line_color = {field: , transform: };
-                    cmaps[i].palette = ['black', 'red'];
-                    cmaps[i].low = 0;
-                    cmaps[i].high = 1;
-                    cmaps.nan_color = 'purple';
+                if (this.active) { for (var i=0; i<cmaps.length; i++) {
+                    manhattans[i].glyph.fill_color = cmaps[i];
+                    manhattans[i].glyph.line_color = cmaps[i];
                     sources[i].change.emit();
-                }} else { for (i=0; i<manhattans.length; i++) {
-                    cmaps[i].low = 0;
-                    cmaps[i].high = 0;
-                    cmaps[i].palette = [color[i]];
-                    cmaps[i].nan_color = colors[i];
+                }} else { for (var i=0; i<cmaps.length; i++) {
+                    manhattans[i].glyph.fill_color = colors[i];
+                    manhattans[i].glyph.line_color = colors[i];
                     sources[i].change.emit();
-                }
+                }}
             """
         ))
 
+        use_chrom = chrom
+        if use_chrom is None:
+            use_chrom = 1
         finemap_region_select = bokeh.models.Select(
             title="Select finemap region:",
-            options=finemap_regions[1]
+            options=finemap_regions[use_chrom]
         )
-        finemap_region_select.js_on_change(bokeh.models.CustomJS(
-            args = dict(
-                x_range=manhattan_plot.x_range,
-                chrom_max=chr_lens[int(chrom_select.value) - 1]
-            ),
-            code = """
-                pieces = this.value.split('_');
-                x_range.start = Math.max(parseInt(pieces[0]) - 50000, 0);
-                x_range.end = Math.min(parseInt(pieces[1]) + 50000, chrom_max);
-                x_range.change.emit();
-            """
-        ))
-        chrom_select.js_on_change(bokeh.models.CustomJS(
-            args=dict(
-                region_select=finemap_region_select,
-                regions=finemap_regions
-            ),
-            code = """
-                region_select.value = '';
-                region_select.options = regions[parseInt(this.value)];
-                region_select.change.emit();
-            """
-        ))
+        if chrom is None:
+            finemap_region_select.js_on_change(bokeh.models.CustomJS(
+                args = dict(
+                    x_range=manhattan_plot.x_range,
+                    chr_lens=chr_lens,
+                    chrom_select=chrom_select
+                ),
+                code = """
+                    var chrom_max = chr_lens[parseInt(chrom_select.value) - 1];
+                    var pieces = this.value.split('_');
+                    x_range.start = Math.max(parseInt(pieces[0]) - 50000, 0);
+                    x_range.end = Math.min(parseInt(pieces[1]) + 50000, chrom_max);
+                    x_range.change.emit();
+                """
+            ))
+            chrom_select.js_on_change(bokeh.models.CustomJS(
+                args=dict(
+                    region_select=finemap_region_select,
+                    regions=finemap_regions
+                ),
+                code = """
+                    region_select.value = '';
+                    region_select.options = regions[parseInt(this.value)];
+                    region_select.change.emit();
+                """
+            ))
+        else:
+            finemap_region_select.js_on_change('value', bokeh.models.CustomJS(
+                args = dict(
+                    x_range=manhattan_plot.x_range,
+                    chrom_max=chr_lens[chrom - 1]
+                ),
+                code = """
+                    var pieces = this.value.split('_');
+                    x_range.start = Math.max(parseInt(pieces[0]) - 50000, 0);
+                    x_range.end = Math.min(parseInt(pieces[1]) + 50000, chrom_max);
+                    x_range.change.emit();
+                """
+            ))
+
 
     if chrom is None:
         chrom_layout_row = [height_slider, chrom_select]
@@ -630,7 +671,7 @@ def make_manhattan_plots(
 
     if plot_my_str_data:
         layout = bokeh.layouts.grid([
-            [None, locus_plot],
+            locus_plot,
             chrom_layout_row,
             manhattan_plot
         ])
@@ -805,17 +846,25 @@ def load_gwas_catalog(phenotype):
 
 def load_finemap_signals(finemap_signals):
     # finemap signals must be sorted
+    print("Loading FINEMAP causality results ... ", end='', flush=True)
+    start_time = time.time()
     chrs_to_snp_signals = {}
     chrs_to_str_signals = {}
     chrs_to_regions = {}
     for i in range(1, 23):
+        # TODO uncomment once I've fixed the overlapping interavls bug
+        '''
         chrs_to_snp_signals[i] = []
         chrs_to_str_signals[i] = []
+        '''
+        chrs_to_snp_signals[i] = {}
+        chrs_to_str_signals[i] = {}
+        chrs_to_regions[i] = []
     for signal in finemap_signals:
         region = signal.split('/')[-2]
         chrom, start, end = (int(val) for val in region.split('_'))
         chrs_to_regions[chrom].append(f'{start}_{end}')
-        with open(f'{ukb}/{signal}') as per_var_output:
+        with open(signal) as per_var_output:
             next(per_var_output)
             for line in per_var_output:
                 _id, pos, p = np.array(line.split())[[1, 3, 10]]
@@ -827,14 +876,24 @@ def load_finemap_signals(finemap_signals):
                 else:
                     p = float(p)
                 if _id[:4] == 'STR_':
+                    '''
                     chrs_to_str_signals[chrom].append((pos, p))
+                    '''
+                    if pos not in chrs_to_str_signals[chrom] or chrs_to_str_signals[chrom][pos] > p:
+                        chrs_to_str_signals[chrom][pos] = p
                 elif _id[:4] == 'SNP_':
+                    '''
                     chrs_to_snp_signals[chrom].append(
                         (pos, split[2], split[3], p)
                     )
+                    '''
+                    key = (pos, split[2], split[3])
+                    if key not in chrs_to_snp_signals[chrom] or chrs_to_snp_signals[chrom][key] > p:
+                        chrs_to_snp_signals[chrom][key] = p
                 else:
                     raise ValueError(f'Found uninterpretable id {_id}')
 
+    '''
     chrs_to_snp_signals = {
         key: pd.DataFrame(np.stack(val), columns=('pos', 'ref', 'alt', 'p'))
         for key, val in chrs_to_snp_signals.items()
@@ -843,7 +902,27 @@ def load_finemap_signals(finemap_signals):
         key: pd.DataFrame(np.stack(val), columns=('pos', 'p'))
         for key, val in chrs_to_str_signals.items()
     }
+    '''
+    chrs_to_snp_signals = {
+        key: pd.DataFrame.from_dict(val, orient='index', columns=['p'])
+        for key, val in chrs_to_snp_signals.items()
+    }
+    for key, df in chrs_to_snp_signals.items():
+        df.reset_index(inplace=True)
+        df[['pos', 'ref', 'alt']] = pd.DataFrame(df['index'].tolist(), index=df.index)
+        chrs_to_snp_signals[key] = df[['pos', 'ref', 'alt', 'p']]
 
+    chrs_to_str_signals = {
+        key: pd.DataFrame.from_dict(val, orient='index', columns=['p'])
+        for key, val in chrs_to_str_signals.items()
+    }
+    for key, df in chrs_to_str_signals.items():
+        df.reset_index(inplace=True)
+    chrs_to_str_signals = {
+        key: df.rename(columns={'index': 'pos'}) for key, df in chrs_to_str_signals.items()
+    }
+
+    print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return (chrs_to_snp_signals, chrs_to_str_signals, chrs_to_regions)
 
 def main():
@@ -862,6 +941,7 @@ def main():
     if not args.finemap_signals:
         snp_finemap_signals = None
         str_finemap_signals = None
+        finemap_regions = None
 
     if not bool(args.my_plink_comparison):
         phenotype = args.phenotype
@@ -889,9 +969,10 @@ def main():
         if args.finemap_signals:
             # change the output file
             outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
-            out_files = [f'{d}/finemap_output.snp' for d in
-                         os.listdir(f'{ukb}/finemapping/finemap_results/{phenotype}')
-                         if d[0] in '0123456789']
+            finemap_loc = f'{ukb}/finemapping/finemap_results/overlapping_{phenotype}'
+            #finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
+            out_files = [f'{finemap_loc}/{d}/finemap_output.snp' for d in
+                         os.listdir(finemap_loc) if d[0] in '0123456789']
             out_files = [f for f in out_files if os.path.exists(f) and os.path.getsize(f) > 0]
             snp_finemap_signals, str_finemap_signals, finemap_regions = load_finemap_signals(sorted(
                 out_files,
@@ -934,7 +1015,8 @@ def main():
         gwas_catalog_ids,
         my_snp_results,
         my_snp_run_date,
-        chrom = chrom,
+        chrom = 21,
+        #chrom = chrom,
         start = start,
         end = end,
         snp_finemap_signals = snp_finemap_signals,

@@ -1,6 +1,0 @@
-Total 21T
-STR first run 16T
--- Batches 10.4T
--- Full VCFs 4.5T
--- STRs only 1.1T
-Exome 3.6T

@@ -36,9 +36,9 @@ args = parser.parse_args()
 
 ids_to_skip = set()
 for filter_file_loc in args.filter:
-	with open(filter_file_loc) as filter_file:
-		for line in filter_file:
-			ids_to_skip.add(line.strip())
+    with open(filter_file_loc) as filter_file:
+        for line in filter_file:
+            ids_to_skip.add(line.strip())
 
 
 command = f'''source ~/.bashrc && conda activate bcftools && \
@@ -58,54 +58,54 @@ first = True
 current_chrom = None #chrom of the previous variant
 previous_chroms = set() #chroms previously seen in this VCF
 for variant_num, variant in enumerate(proc.stdout):
-	if variant_num % 1000 == 0:
-		print(f"Working on variant {variant_num}", end='\r')
-	chr, start_pos, ref, id = variant.split()
-	start_pos = int(start_pos)
-	end_pos = start_pos + len(ref) - 1
+    if variant_num % 1000 == 0:
+        print(f"Working on variant {variant_num}", end='\r')
+    chr, start_pos, ref, id = variant.split()
+    start_pos = int(start_pos)
+    end_pos = start_pos + len(ref) - 1
 
-	if id in ids_to_skip:
-		continue
+    if id in ids_to_skip:
+        continue
 
-	if not first:
-		if (chr != current_chrom and chr in previous_chroms) or start_pos < active_variants[-1][1]:
-			print(f"VCF is not sorted properly! Variant {active_variants[-1][3]} showed up before variant {id}", file = sys.stderr)
-			exit(-1)
+    if not first:
+        if (chr != current_chrom and chr in previous_chroms) or start_pos < active_variants[-1][1]:
+            print(f"VCF is not sorted properly! Variant {active_variants[-1][3]} showed up before variant {id}", file = sys.stderr)
+            exit(-1)
 
-	overlap_found = False
-	for chr2, start_pos2, end_pos2, id2 in active_variants:
-		if chr != chr2 or end_pos2 < start_pos:
-			continue
-		overlap_found = True
-		filtered_variants.add((start_pos, id))
-		if end_pos <= end_pos2:
-			total_containments.append((id, id2))
-		else:
-			filtered_variants.add((start_pos2, id2))
-			partial_overlaps.append((id, id2))
-			
-	if not overlap_found:
-		active_variants = []
+    overlap_found = False
+    for chr2, start_pos2, end_pos2, id2 in active_variants:
+        if chr != chr2 or end_pos2 < start_pos:
+            continue
+        overlap_found = True
+        filtered_variants.add((start_pos, id))
+        if end_pos <= end_pos2:
+            total_containments.append((id, id2))
+        else:
+            filtered_variants.add((start_pos2, id2))
+            partial_overlaps.append((id, id2))
+            
+    if not overlap_found:
+        active_variants = []
 
-	first = False
-	current_chrom = chr
-	previous_chroms.add(current_chrom)
-	active_variants.append((chr, start_pos, end_pos, id))
+    first = False
+    current_chrom = chr
+    previous_chroms.add(current_chrom)
+    active_variants.append((chr, start_pos, end_pos, id))
 
 if len(filtered_variants) ==  0:
-	print("Success: No overlapping variants found! Not writing output files")
-	exit(0)
+    print("Success: No overlapping variants found! Not writing output files")
+    exit(0)
 else:
-	print("Overlapping variants found. Writing output files")
+    print("Overlapping variants found. Writing output files")
 
 with open(f"{args.out}.info", 'w') as info_file:
-	info_file.write("Contained Variant\tContaining Variant\n")
-	for v1, v2 in total_containments:
-		info_file.write(v1 + "\t" + v2 + "\n")
-	info_file.write("Partially Overlapping Variant\tPartially Overlapping Variant\n")
-	for v1, v2 in partial_overlaps:
-		info_file.write(v1 + "\t" + v2 + "\n")
+    info_file.write("Contained Variant\tContaining Variant\n")
+    for v1, v2 in total_containments:
+        info_file.write(v1 + "\t" + v2 + "\n")
+    info_file.write("Partially Overlapping Variant\tPartially Overlapping Variant\n")
+    for v1, v2 in partial_overlaps:
+        info_file.write(v1 + "\t" + v2 + "\n")
 
 with open(f"{args.out}.id", 'w') as id_file:
-	for _, id in sorted(filtered_variants):
-		id_file.write(id + "\n")
+    for _, id in sorted(filtered_variants):
+        id_file.write(id + "\n")

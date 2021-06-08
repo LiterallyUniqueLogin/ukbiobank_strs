@@ -1,1 +1,1 @@
-Clumping results from my_str and plink_snp runs for phenotype height by cenetering a 500kb interval (250kb in each direction) around each variant from either run that passes the 5e-08 threshold and then joining all overlapping intervals.
+Clumping results from my_str and plink_snp runs for phenotype height by cenetering a 250kb interval (125kb in each direction) around each variant from either run that passes the 5e-08 threshold and then joining all overlapping intervals.
