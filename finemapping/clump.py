@@ -31,6 +31,9 @@ def generate_clumps(iters, spacing=250000):
         next_chrom, next_pos = min(curr_items)
         if next_chrom < curr_chrom:
             raise ValueError("Chroms out of order")
+        if next_chrom == 6 and 25e6 <= next_pos <= 33.5e6:
+            # skip MHC
+            continue
         if next_chrom == np.inf:
             if curr_pos_min != np.inf:
                 yield curr_chrom, curr_pos_min, min(curr_pos + spacing, chr_lens[int(curr_chrom) - 1])

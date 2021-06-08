@@ -593,12 +593,6 @@ def collect_finemap_input_variants_per_region(wildcards):
             files.append(
                     f'finemapping/finemap_results/{phenotype}/{line[0]}_{line[1]}_{line[2]}/finemap_input.z'
             )
-    # TODO generalize this to other phenotypes 
-    # Remove this region which won't finemap 
-    for f in (
-            'finemapping/finemap_results/height/6_25164325_33472053/finemap_input.z',
-        ):
-        files.remove(f)
     return files
 
 checkpoint finemap_input_variants_all_regions:

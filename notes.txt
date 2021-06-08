@@ -680,6 +680,7 @@ Manually loaded gts - seems like there are nonzero gts so corr should not be NaN
 
 TODOs:
 recalculate mafs, hardcall-mac, HWEp, entropy etc for plink snps
-exclude MHC locus from finemapping for future runs
 review SNPs that overlap STRs / find two-allele STRs that are indentical to indels
-
+finish pipeline for loading categorical covariates for regressions
+find a gwas postdoc mentor in another lab?
+compile list of papers I want to read, forward to Melissa for journal club.
