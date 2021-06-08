@@ -569,14 +569,53 @@ checkpoint clump_results:
     shell:
         'finemapping/clump.py {wildcards.phenotype}'
 
-rule finemap_load_gts:
+rule finemap_write_input_variants:
     input:
         'association/results/{phenotype}/my_str/results.tab',
         'association/results/{phenotype}/plink_snp/results.tab',
-        'sample_qc/runs/{phenotype}/combined_unrelated.sample'
     output:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'),
+    resources:
+        time = '00:30:00'
+    shell:
+        'finemapping/finemap_write_input_z.py '
+        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.end} '
+
+def collect_finemap_input_variants_per_region(wildcards):
+    phenotype = wildcards.phenotype
+    files = []
+    with checkpoints.clump_results.get(**wildcards).output[0].open() as signal_file:
+        reader = csv.reader(signal_file, delimiter='\t')
+        next(reader) # skip header
+        for line in reader:
+            files.append(
+                    f'finemapping/finemap_results/{phenotype}/{line[0]}_{line[1]}_{line[2]}/finemap_input.z'
+            )
+    # TODO generalize this to other phenotypes 
+    # Remove this region which won't finemap 
+    for f in (
+            'finemapping/finemap_results/height/6_25164325_33472053/finemap_input.z',
+        ):
+        files.remove(f)
+    return files
+
+checkpoint finemap_input_variants_all_regions:
+    input:
+        collect_finemap_input_variants_per_region
+    output:
+        protected('finemapping/finemap_results/{phenotype}/.input_variants_all_regions')
+    resources:
+        time='00:01:00'
+    shell:
+        'touch finemapping/finemap_results/{wildcards.phenotype}/.input_variants_all_regions'
+
+rule finemap_load_gts:
+    input:
+        'sample_qc/runs/{phenotype}/combined_unrelated.sample',
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
+    output:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
     resources:
@@ -625,39 +664,39 @@ rule finemap_write_corrs_and_run:
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
-def collect_finemap_target_files(wildcards):
+def collect_finemap_output_per_region_with_strs(wildcards):
     phenotype = wildcards.phenotype
     files = []
-    with checkpoints.clump_results.get(**wildcards).output[0].open() as signal_file:
-        reader = csv.reader(signal_file, delimiter='\t')
-        next(reader) # skip header
-        for line in reader:
-            files.append(
-                    f'finemapping/finemap_results/{phenotype}/{line[0]}_{line[1]}_{line[2]}/finemap_output.snp'
-            )
-    # TODO generalize this to other genotypes
-    # Remove this region which won't finemap 
-    for f in (
-            'finemapping/finemap_results/height/6_25164325_33472053/finemap_output.snp',
-            # TODO this next one is temp
-            'finemapping/finemap_results/height/3_46342530_53729895/finemap_output.snp'
-        ):
-        files.remove(f)
-    return files
+    # make sure we've loaded all input variants for all regions
+    checkpoints.finemap_input_variants_all_regions.get(phenotype=phenotype)
+    regions = glob_wildcards(
+        f'finemapping/finemap_results/{phenotype}/'
+        '{region}/finemap_input.z'         
+    ).region
+    regions_without_strs = glob_wildcards(
+        f'finemapping/finemap_results/{phenotype}/'
+        '{region}/no_strs'         
+    ).region
+    regions_with_strs = [region for region in regions if region not in regions_without_strs]
+    return expand(
+        f'finemapping/finemap_results/{phenotype}/'
+        '{region}/finemap_output.snp',
+        region=regions_with_strs
+    )
 
 rule run_finemap_phenotype:
     input:
-        collect_finemap_target_files
+        collect_finemap_output_per_region_with_strs
     output:
-        'finemapping/finemap_results/.{phenotype}_all_signals'
+        'finemapping/finemap_results/{phenotype}/.all_signals'
     resources:
         time='00:01:00'
     shell:
-        'touch finemapping/finemap_results/.{wildcards.phenotype}_all_signals'
+        'touch finemapping/finemap_results/{wildcards.phenotype}/.all_signals'
 
 rule summarize_finemap_output:
     input:
-        collect_finemap_target_files
+        'finemapping/finemap_results/{phenotype}/.all_signals'
     output:
         'finemapping/finemap_results/{phenotype}/summary/summary.txt'
     resources:
@@ -670,12 +709,12 @@ rule interactive_manhattan_finemap:
         "traits/phenotypes/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
-        finemap=collect_finemap_target_files
+        'finemapping/finemap_results/.{phenotype}_all_signals'
     output:
         'association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
     resources:
         time='00:30:00',
         mem=50
     shell:
-        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} --finemap-signals {input.finemap}'
+        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} --finemap-signals'
 

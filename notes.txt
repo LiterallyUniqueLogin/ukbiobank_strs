@@ -677,3 +677,9 @@ which is a progress bar indicator, and so even if I screwed that up the bgen rea
 been done with the same samples) filtered out locus rs540790763, but plink didn't, even though
 I'm currently seeing only 0 gts when calculating LDs, which is giving NaNs.
 Manually loaded gts - seems like there are nonzero gts so corr should not be NaN.
+
+TODOs:
+recalculate mafs, hardcall-mac, HWEp, entropy etc for plink snps
+exclude MHC locus from finemapping for future runs
+review SNPs that overlap STRs / find two-allele STRs that are indentical to indels
+

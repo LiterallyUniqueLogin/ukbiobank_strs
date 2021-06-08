@@ -43,8 +43,7 @@ def create_source_dict(
         start_chrom: Optional[int],
         cols_to_skip: Set[str] = set(),
         cols_to_include: Set[str] = set(),
-        chrs_to_vars_pcausal = None,
-        match_pcausal_on_pos = False
+        chrs_to_var_signals = None
     ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
     if not start_chrom:
         start_chrom = 1
@@ -71,31 +70,13 @@ def create_source_dict(
         sources[chrom].data['display_p_val'] = np.minimum(
             sources[chrom].data['p_val'], start_p_val_cap
         )
-        if chrs_to_vars_pcausal:
-            sources[chrom].data['FINEMAP_pcausal'] = np.zeros((n_variants, ))
-            finemap_idx = 0
-            if match_pcausal_on_pos:
-                for var_num, pos in enumerate(chrom_dict['pos']):
-                    print(f'looking for pos {chrs_to_vars_pcausal[chrom][0][finemap_idx]}')
-                    if chrs_to_vars_pcausal[chrom][0][finemap_idx] == pos:
-                        print(f'matching on pos {pos}')
-                        sources[chrom].data['FINEMAP_pcausal'][var_num] = chrs_to_vars_pcausal[chrom][1][finemap_idx]
-                        finemap_idx += 1
-                        print(f'looking for pos {chrs_to_vars_pcausal[chrom][0][finemap_idx]}')
-            else:
-                curr_id = chrs_to_vars_pcausal[chrom][0][finemap_idx].strip('+')
-                if curr_id[:2] == 'rs' and '_' in curr_id:
-                    curr_id = curr_id.split('_')[0]
-                print(f'Looking for id {curr_id}')
-                for var_num, _id in enumerate(chrom_dict['id']):
-                    if curr_id == _id:
-                        print(f'matching on id {_id}')
-                        sources[chrom].data['FINEMAP_pcausal'][var_num] = chrs_to_vars_pcausal[chrom][1][finemap_idx]
-                        finemap_idx += 1
-                        curr_id = chrs_to_vars_pcausal[chrom][0][finemap_idx].strip('+')
-                        if curr_id[:2] == 'rs' and '_' in curr_id:
-                            curr_id = curr_id.split('_')[0]
-                        print(f'Looking for id {curr_id}')
+        if chrs_to_var_signals:
+            colnames_to_merge_on = chrs_to_var_signals[chrom].dtype.names[:-1]
+            merge_cols = pd.DataFrame(sources[chrom].data[colnames_to_merge_on])
+            merged_data = merge_cols.join(chrs_to_var_signals[chrom], on=colnames_to_merge_on, how='left')
+            assert len(merged_data.shape[0]) == len(chrs_to_var_signals[chrom].dtype.names)
+            assert not np.any(np.isnan(merged_data))
+            sources[chrom].data['FINEMAP_pcausal'] = merged_data['p']
 
     copy_source = bokeh.models.ColumnDataSource(copy.deepcopy(sources[start_chrom].data))
 
@@ -117,11 +98,14 @@ def make_manhattan_plots(
         start,
         end,
         snp_finemap_signals,
-        str_finemap_signals):
+        str_finemap_signals,
+        finemap_regions):
 
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
     plot_gwas_catalog = gwas_catalog is not None
+
+    assert bool(snp_finemap_signals) + bool(str_finemap_signals) + bool(finemap_regions) in {0, 3}
 
     print(f"Plotting phenotype {phenotype} ... ", end='', flush=True)
     start_time = time.time()
@@ -303,22 +287,38 @@ def make_manhattan_plots(
     # 0, 114, 178
     # 213, 94, 0
     # 204, 121, 167
+    plink_snp_color = (0, 114, 178)
+    plink_snp_cmap = bokeh.transform.linear_cmap(
+            field_name = 'FINEMAP_pcausal',
+            low = 0,
+            high = 0,
+            palette = [plink_snp_color],
+            nan_color = plink_snp_color
+        )
     plink_snp_manhattan = manhattan_plot.circle(
         'pos',
         'display_p_val',
         source=plink_snp_source,
         legend_label='SNPs Plink',
-        color=(0, 114, 178),
+        color=plink_snp_cmap,
         size=4,
         muted_alpha=0.1
     )
     if plot_my_str_data:
+        my_str_color = (204, 121, 167)
+        my_str_cmap = bokeh.transform.linear_cmap(
+            field_name = 'FINEMAP_pcausal',
+            low = 0,
+            high = 0,
+            palette = [my_str_color],
+            nan_color = my_str_color
+        )
         my_str_manhattan = manhattan_plot.square_pin(
             'pos',
             'display_p_val',
             source=my_str_source,
             legend_label='STRs my code',
-            color=(204, 121, 167),
+            color=my_str_cmap,
             size=6
         )
     if plot_my_snp_data:
@@ -331,12 +331,13 @@ def make_manhattan_plots(
             size=4
         )
     if plot_gwas_catalog:
+        catalog_color = (213, 94, 0)
         catalog_manhattan = manhattan_plot.square(
             'pos',
             'display_p_val',
             source=catalog_source,
             legend_label='GWAS Catalog Hits',
-            color=(213, 94, 0),
+            color=catalog_color,
             size=7
         )
 
@@ -561,30 +562,83 @@ def make_manhattan_plots(
             )
             chrom_select.js_on_change('value', chrom_callback)
 
-    if plot_my_str_data:
-        if chrom is None:
-            layout = bokeh.layouts.grid([
-                [None, locus_plot],
-                [height_slider, chrom_select],
-                manhattan_plot
-            ])
-        else:
-            layout = bokeh.layouts.column(
-                locus_plot,
-                height_slider,
-                manhattan_plot
-            )
+    if snp_finemap_signals:
+        finemap_toggle = bokeh.models.Toggle(label="Color by FINEMAP causal posterior probability")
+        finemap_toggle.js_on_click(bokeh.models.CustomJS(
+            args=dict(
+                sources = [my_str_source, plink_snp_source],
+                #manhattans = [my_str_manhattan, plink_snp_manhattan],
+                colors = [my_str_color, plink_snp_color],
+                cmaps = [my_str_cmap, plink_snp_cmap],
+            ),
+            code = """
+                if (this.active) { for (i=0; i<manhattans.length; i++) {
+                    //manhattan = manhattans[i];
+                    //manhattan.glyph.fill_color = {field: , transform: };
+                    //manhattan.glyph.line_color = {field: , transform: };
+                    cmaps[i].palette = ['black', 'red'];
+                    cmaps[i].low = 0;
+                    cmaps[i].high = 1;
+                    cmaps.nan_color = 'purple';
+                    sources[i].change.emit();
+                }} else { for (i=0; i<manhattans.length; i++) {
+                    cmaps[i].low = 0;
+                    cmaps[i].high = 0;
+                    cmaps[i].palette = [color[i]];
+                    cmaps[i].nan_color = colors[i];
+                    sources[i].change.emit();
+                }
+            """
+        ))
+
+        finemap_region_select = bokeh.models.Select(
+            title="Select finemap region:",
+            options=finemap_regions[1]
+        )
+        finemap_region_select.js_on_change(bokeh.models.CustomJS(
+            args = dict(
+                x_range=manhattan_plot.x_range,
+                chrom_max=chr_lens[int(chrom_select.value) - 1]
+            ),
+            code = """
+                pieces = this.value.split('_');
+                x_range.start = Math.max(parseInt(pieces[0]) - 50000, 0);
+                x_range.end = Math.min(parseInt(pieces[1]) + 50000, chrom_max);
+                x_range.change.emit();
+            """
+        ))
+        chrom_select.js_on_change(bokeh.models.CustomJS(
+            args=dict(
+                region_select=finemap_region_select,
+                regions=finemap_regions
+            ),
+            code = """
+                region_select.value = '';
+                region_select.options = regions[parseInt(this.value)];
+                region_select.change.emit();
+            """
+        ))
+
+    if chrom is None:
+        chrom_layout_row = [height_slider, chrom_select]
     else:
-        if chrom is None:
-            layout = bokeh.layouts.grid([
-                [height_slider, chrom_select],
-                manhattan_plot
-            ])
-        else:
-            layout = bokeh.layouts.column(
-                height_slider,
-                manhattan_plot
-            )
+        chrom_layout_row = [height_slider]
+
+    if snp_finemap_signals:
+        chrom_layout_row.append(finemap_region_select)
+        chrom_layout_row.append(finemap_toggle)
+
+    if plot_my_str_data:
+        layout = bokeh.layouts.grid([
+            [None, locus_plot],
+            chrom_layout_row,
+            manhattan_plot
+        ])
+    else:
+        layout = bokeh.layouts.grid([
+            chrom_layout_row,
+            manhattan_plot
+        ])
 
     if my_str_run_date:
         manhattan_plot.add_layout(bokeh.models.Title(
@@ -751,47 +805,61 @@ def load_gwas_catalog(phenotype):
 
 def load_finemap_signals(finemap_signals):
     # finemap signals must be sorted
-    chrs_to_snps_pcausal = {}
-    chrs_to_strs_pcausal = {}
+    chrs_to_snp_signals = {}
+    chrs_to_str_signals = {}
+    chrs_to_regions = {}
     for i in range(1, 23):
-        chrs_to_snps_pcausal[i] = [], []
-        chrs_to_strs_pcausal[i] = [], []
+        chrs_to_snp_signals[i] = []
+        chrs_to_str_signals[i] = []
     for signal in finemap_signals:
-        signal_dir = '/'.join(signal.split('/')[:-1])
-        if os.path.exists(f'{signal_dir}/no_strs'):
-            continue
-        chrom = int(signal.split('/')[-2].split('_')[0])
+        region = signal.split('/')[-2]
+        chrom, start, end = (int(val) for val in region.split('_'))
+        chrs_to_regions[chrom].append(f'{start}_{end}')
         with open(f'{ukb}/{signal}') as per_var_output:
             next(per_var_output)
             for line in per_var_output:
                 _id, pos, p = np.array(line.split())[[1, 3, 10]]
                 pos = int(pos)
+                split = _id.split('_')
+                assert int(split[1]) == pos
                 if p == 'NA':
                     p = np.nan
                 else:
                     p = float(p)
                 if _id[:4] == 'STR_':
-                    chrs_to_strs_pcausal[chrom][0].append(pos)
-                    chrs_to_strs_pcausal[chrom][1].append(p)
+                    chrs_to_str_signals[chrom].append((pos, p))
+                elif _id[:4] == 'SNP_':
+                    chrs_to_snp_signals[chrom].append(
+                        (pos, split[2], split[3], p)
+                    )
                 else:
-                    chrs_to_snps_pcausal[chrom][0].append(_id)
-                    chrs_to_snps_pcausal[chrom][1].append(p)
-    return (chrs_to_snps_pcausal, chrs_to_strs_pcausal)
+                    raise ValueError(f'Found uninterpretable id {_id}')
+
+    chrs_to_snp_signals = {
+        key: pd.DataFrame(np.stack(val), columns=('pos', 'ref', 'alt', 'p'))
+        for key, val in chrs_to_snp_signals.items()
+    }
+    chrs_to_str_signals = {
+        key: pd.DataFrame(np.stack(val), columns=('pos', 'p'))
+        for key, val in chrs_to_str_signals.items()
+    }
+
+    return (chrs_to_snp_signals, chrs_to_str_signals, chrs_to_regions)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--my-plink-comparison", action='store_true')
     parser.add_argument("--phenotype")
     parser.add_argument("--condition")
-    parser.add_argument('--finemap-signals', nargs = '+')
+    parser.add_argument('--finemap-signals', action='store_true', default=False)
     args = parser.parse_args()
-    assert bool(args.finemap_signals) + bool(args.my_plink_comparison) + bool(args.condition) <= 1
+    assert args.finemap_signals + bool(args.my_plink_comparison) + bool(args.condition) <= 1
     if not bool(args.my_plink_comparison):
         assert bool(args.phenotype)
     else:
         assert bool(args.phenotype)
 
-    if not bool(args.finemap_signals):
+    if not args.finemap_signals:
         snp_finemap_signals = None
         str_finemap_signals = None
 
@@ -818,11 +886,15 @@ def main():
             end = int(end)
             outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_{args.condition}.html'
 
-        # change the output file
         if args.finemap_signals:
+            # change the output file
             outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
-            snp_finemap_signals, str_finemap_signals = load_finemap_signals(sorted(
-                args.finemap_signals,
+            out_files = [f'{d}/finemap_output.snp' for d in
+                         os.listdir(f'{ukb}/finemapping/finemap_results/{phenotype}')
+                         if d[0] in '0123456789']
+            out_files = [f for f in out_files if os.path.exists(f) and os.path.getsize(f) > 0]
+            snp_finemap_signals, str_finemap_signals, finemap_regions = load_finemap_signals(sorted(
+                out_files,
                 key=lambda dirname: [int(val) for val in dirname.split('/')[-2].split('_')]
             ))
     else:
@@ -867,6 +939,7 @@ def main():
         end = end,
         snp_finemap_signals = snp_finemap_signals,
         str_finemap_signals = str_finemap_signals,
+        finemap_regions = finemap_regions
     )
 
 if __name__ == "__main__":

@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import csv
 import os
-import pathlib
-import sys
 import time
 
 import bgen_reader
@@ -19,23 +16,11 @@ ukb = os.environ['UKB']
 
 inclusion_threshold = 0.05
 
-def load_gts(workdir, readme, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
+def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
     '''
-    write README.txt
     write finemap_input.master
-    write finemap_input.z
     write gts.h5 - dataset 'gts'
     '''
-    plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
-    str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-
-    readme.write(
-        'Manually generating variant-variant LD for each imputed SNP  each STR in the region '
-        'where an association was successfully '
-        f'performed and had p < {inclusion_threshold}\n'
-        'Correlation is STR length dosage vs SNP dosage.\n'
-        'Running FINEMAP with that list of imputed SNPs and STRs.\n'
-    )
 
     imp_snp_samples_filepath = f'{ukb}/array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
     with open(imp_snp_samples_filepath) as imp_snp_samples_file:
@@ -71,87 +56,24 @@ def load_gts(workdir, readme, phenotype, chrom, start_pos, end_pos, str_imputati
             f'{n_samples}'
         )
 
-    with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
-        finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
-
+    with open(f'{workdir}/finemap_input.z') as finemap_input_z:
         included_strs = []
-        prev_str_pos = None
-        with open(str_results_fname) as str_results_file:
-            str_results_reader = csv.reader(str_results_file, delimiter='\t')
-            header = next(str_results_reader)
-            cols = {
-                col: header.index(col) for col in
-                ['chrom', 'pos', 'locus_filtered', f'p_{phenotype}', f'coeff_{phenotype}', f'se_{phenotype}']
-            }
-
-            # assumes ordered numeric chromosomes
-            for result in str_results_reader:
-                result_chrom = int(result[cols['chrom']])
-                result_pos = int(result[cols['pos']])
-                if (result_chrom, result_pos) < (chrom, start_pos):
-                    continue
-                if (result_chrom, result_pos) > (chrom, end_pos):
-                    break
-                if result[cols['locus_filtered']] != 'False' or float(result[cols[f'p_{phenotype}']]) >= inclusion_threshold:
-                    continue
-                if result_pos == prev_str_pos:
-                    raise ValueError(f"Two STR poses at the same location {result_pos}!")
-                prev_str_pos = result_pos
-                included_strs.append(result_pos)
-
-                beta = result[cols[f'coeff_{phenotype}']]
-                se = result[cols[f'se_{phenotype}']]
-                # I have forced there to be a unique STR per position during association testing
-                # (throwing out all but the first at any single location),
-                # so STR_{pos} is a unique ID
-                finemap_input_z.write(
-                    f'STR_{result_pos} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
-                )
-        if len(included_strs) == 0:
-            pathlib.Path(f"{workdir}/finemap_output.snp").touch()
-            pathlib.Path(f"{workdir}/finemap_output.config").touch()
-            pathlib.Path(f"{workdir}/no_strs").touch()
-            readme.write(
-                "No nominally significant (p<=0.05) STRs were found in the region, "
-                "so finemapping is being skipped."
-            )
-            print(
-                "No nominally significant (p<=0.05) STRs were found in the region, "
-                "so finemapping is being skipped.",
-                flush = True
-            )
-            sys.exit()
-
         included_imputed_snps = []
-        with open(plink_results_fname) as plink_result_file:
-            plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
-            header = next(plink_results_reader)
-            cols = {
-                col: header.index(col) for col in
-                ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'BETA', 'SE', 'P', 'ERRCODE']
-            }
-
-            for result in plink_results_reader:
-                result_chrom = int(result[cols['#CHROM']])
-                result_pos = int(result[cols['POS']])
-                ref = result[cols['REF']]
-                alt = result[cols['ALT']]
-                if (result_chrom, result_pos) < (chrom, start_pos):
-                    continue
-                if (result_chrom, result_pos) > (chrom, end_pos):
-                    break
-                if result[cols['ERRCODE']] != '.' or float(result[cols['P']]) >= inclusion_threshold:
-                    continue
-                # snps can only be uniquely identified by pos, ref, alt
-                # some IDs are duplicate at the same or even different locations
-                # so those don't help
-                included_imputed_snps.append((result_pos, ref, alt))
-
-                beta = result[cols['BETA']]
-                se = result[cols['SE']]
-                finemap_input_z.write(
-                    f'SNP_{result_pos}_{ref}_{alt} {result_chrom:02} {result_pos} {ref} {alt} nan {beta} {se}\n'
-                )
+        next(finemap_input_z)
+        for line in finemap_input_z:
+            _id = line.split()[0]
+            if _id[:4] == 'STR_':
+                splits = _id.split('_')
+                assert len(splits) == 2
+                included_strs.append(int(splits[1]))
+            elif _id[:4] == 'SNP_':
+                splits = _id.split('_')
+                assert len(splits) == 4
+                pos, ref, alt = splits[1:]
+                pos = int(pos)
+                included_imputed_snps.append((pos, ref, alt))
+            else:
+                raise ValueError(f"ID with unknown variant type {_id}")
 
     n_snps = len(included_imputed_snps)
     n_strs = len(included_strs)
@@ -255,8 +177,7 @@ def main():
 
     workdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
-    with open(f'{workdir}/README.txt', 'w') as readme:
-        load_gts(workdir, readme, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
+    load_gts(workdir, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
 
 if __name__ == '__main__':
     main()
