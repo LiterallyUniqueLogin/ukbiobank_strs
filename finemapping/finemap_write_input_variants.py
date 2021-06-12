@@ -30,8 +30,9 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
     with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
         finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
 
-        included_strs = []
+        any_strs = False
         prev_str_pos = None
+        # load STRs
         with open(str_results_fname) as str_results_file:
             str_results_reader = csv.reader(str_results_file, delimiter='\t')
             header = next(str_results_reader)
@@ -53,7 +54,7 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 if result_pos == prev_str_pos:
                     raise ValueError(f"Two STR poses at the same location {result_pos}!")
                 prev_str_pos = result_pos
-                included_strs.append(result_pos)
+                any_strs = True
 
                 beta = result[cols[f'coeff_{phenotype}']]
                 se = result[cols[f'se_{phenotype}']]
@@ -63,7 +64,7 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 finemap_input_z.write(
                     f'STR_{result_pos} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
                 )
-        if len(included_strs) == 0:
+        if not any_strs:
             pathlib.Path(f"{workdir}/no_strs").touch()
             readme.write(
                 "No nominally significant (p<=0.05) STRs were found in the region, "
@@ -76,7 +77,15 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
             )
             sys.exit()
 
-        included_imputed_snps = []
+
+        # load SNPs
+        snps_to_filter = set()
+        any_snps_filtered = False
+        with open(f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab') as filter_file:
+            next(filter_file) # skip header
+            for line in filter_file:
+                snps_to_filter.add(tuple(line.split('\t')[3:6]))
+
         with open(plink_results_fname) as plink_result_file:
             plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
             header = next(plink_results_reader)
@@ -94,18 +103,21 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                     continue
                 if (result_chrom, result_pos) > (chrom, end_pos):
                     break
+                if (result_pos, ref, alt) in snps_to_filter:
+                    any_snps_filtered = True
+                    continue
                 if result[cols['ERRCODE']] != '.' or float(result[cols['P']]) >= inclusion_threshold:
                     continue
                 # snps can only be uniquely identified by pos, ref, alt
                 # some IDs are duplicate at the same or even different locations
                 # so those don't help
-                included_imputed_snps.append((result_pos, ref, alt))
 
                 beta = result[cols['BETA']]
                 se = result[cols['SE']]
                 finemap_input_z.write(
                     f'SNP_{result_pos}_{ref}_{alt} {result_chrom:02} {result_pos} {ref} {alt} nan {beta} {se}\n'
                 )
+        assert any_snps_filtered
 
 def main():
     parser = argparse.ArgumentParser()

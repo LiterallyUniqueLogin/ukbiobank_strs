@@ -31,9 +31,6 @@ def generate_clumps(iters, spacing=250000):
         next_chrom, next_pos = min(curr_items)
         if next_chrom < curr_chrom:
             raise ValueError("Chroms out of order")
-        if next_chrom == 6 and 25e6 <= next_pos <= 33.5e6:
-            # skip MHC
-            continue
         if next_chrom == np.inf:
             if curr_pos_min != np.inf:
                 yield curr_chrom, curr_pos_min, min(curr_pos + spacing//2, chr_lens[int(curr_chrom) - 1])
@@ -76,6 +73,12 @@ def my_str_output_itr(phenotype, thresh):
     for linenum in range(csv.shape[0]):
         yield tuple(csv[linenum, :2])
 
+def filter_MHC_itr(itr):
+    for chrom, pos in itr:
+        if chrom == 6 and 25e6 <= pos <= 33.5e6:
+            continue
+        yield (chrom, pos)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
@@ -83,6 +86,7 @@ def main():
     phenotype = args.phenotype
     pthresh = 5e-8
     itrs = [plink_snp_output_itr(phenotype, pthresh), my_str_output_itr(phenotype, pthresh)]
+    itrs = [filter_MHC_itr(itr) for itr in itrs]
     with open(f'{ukb}/finemapping/signal_clumps/{phenotype}_README.txt', 'w') as readme:
         readme.write(
             f'Clumping results from my_str and plink_snp runs for phenotype {phenotype} '

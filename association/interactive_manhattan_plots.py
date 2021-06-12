@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
+import ast
 import copy
+import math
 import os
 import os.path
+import json
 import time
 from typing import Dict, Tuple, Optional, Set
 
@@ -87,7 +90,6 @@ def create_source_dict(
             assert merged_data.shape[1] == len(chrs_to_var_signals[chrom].columns)
             assert merged_data.shape[0] == merge_cols.shape[0]
             sources[chrom].data['FINEMAP_pcausal'] = merged_data['p']
-            sources[chrom].data['FINEMAP_pcausal_color'] = np.exp(sources[chrom].data['FINEMAP_pcausal'])
 
     copy_source = bokeh.models.ColumnDataSource(copy.deepcopy(sources[start_chrom].data))
 
@@ -127,8 +129,7 @@ def make_manhattan_plots(
         'coeff_intercept',
         'R^2',
         'total_hardcall_genotypes',
-        'subset_total_hardcall_genotypes',
-        'FINEMAP_pcausal_color'
+        'subset_total_hardcall_genotypes'
     }
 
     sources = []
@@ -620,7 +621,7 @@ def make_manhattan_plots(
             options=finemap_regions[use_chrom]
         )
         if chrom is None:
-            finemap_region_select.js_on_change(bokeh.models.CustomJS(
+            finemap_region_select.js_on_change('value', bokeh.models.CustomJS(
                 args = dict(
                     x_range=manhattan_plot.x_range,
                     chr_lens=chr_lens,
@@ -634,7 +635,7 @@ def make_manhattan_plots(
                     x_range.change.emit();
                 """
             ))
-            chrom_select.js_on_change(bokeh.models.CustomJS(
+            chrom_select.js_on_change('value', bokeh.models.CustomJS(
                 args=dict(
                     region_select=finemap_region_select,
                     regions=finemap_regions
@@ -753,6 +754,20 @@ def load_my_str_results(phenotype, condition):
         names[idx] = name
     for idx, name in my_str_results_rename.items():
         names[idx] = name
+    for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',
+                'subset_total_per_allele_dosages', 'subset_total_hardcall_alleles',
+                'subset_allele_dosage_r2'):
+        # convert allele lens from strings to floats, in addition round allele lens and values, but not NaN values
+        new_col = np.array(list(map(
+            lambda dict_str: {round(float(allele_len), 2): (round(val, 2) if val != 'NaN' else val) for allele_len, val in ast.literal_eval(dict_str).items()},
+            my_str_results[colname]
+        )))
+        # convert allele_lens to ints if they are close enough
+        new_col = np.array(list(map(
+            lambda d: str({(int(key) if key == int(key) else key) : val for key, val in d.items()}),
+            new_col
+        )))
+        my_str_results[colname] = new_col
     my_str_results.dtype.names = names
     my_str_results['p_val'] = -np.log10(my_str_results['p_val'])
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
@@ -1015,8 +1030,7 @@ def main():
         gwas_catalog_ids,
         my_snp_results,
         my_snp_run_date,
-        chrom = 21,
-        #chrom = chrom,
+        chrom = chrom,
         start = start,
         end = end,
         snp_finemap_signals = snp_finemap_signals,
