@@ -15,7 +15,7 @@ def load_covars():
     Load the sex and population PC covariates. Loads ages at various
     assessments into a separate array
 
-    Only columns that may be nan are the assessment ages 
+    Only columns that may be nan are the assessment ages
 
     Notes
     -----
@@ -85,7 +85,7 @@ def load_covars():
         # As such, each measured dependent variable needs to specify which assessments
         # the age should be drawn from for each participant.
         # because of that, ages are saved as a separate file
-        age_file_name = f'{ukb}/main_dataset/extracted_data/assessment_age.csv'
+        age_file_name = f'{ukb}/main_dataset/extracted_data/assessment_ages_21003.txt'
         readme.write(
             f"Loading ages at assessments into assessment_ages.npy from file: {age_file_name}\n"
         )
@@ -95,7 +95,7 @@ def load_covars():
                 age_file,
                 skip_header=1,
                 delimiter='\t'
-            )
+            )[:, 1:-1]
 
         np.save(f'{ukb}/traits/shared_covars/assessment_ages.npy', assessment_age)
 

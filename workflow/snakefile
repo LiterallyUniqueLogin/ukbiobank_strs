@@ -70,7 +70,8 @@ rule load_shared_covars:
         protected("traits/shared_covars/README.txt"),
         protected("traits/shared_covars/covar_names.txt")
     resources:
-        time='00:05:00'
+        time='00:15:00',
+        mem_gb=10
     shell:
         "traits/load_shared_covars.py"
 

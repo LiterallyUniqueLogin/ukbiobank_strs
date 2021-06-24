@@ -7,7 +7,7 @@
 #SBATCH --time=47:30:00
 #SBATCH --output=/expanse/projects/gymreklab/jmargoli/ukbiobank/workflow/logs/%x_%j.out
 #SBATCH --mail-type=FAIL
-#SBATCH --mail-user=jbmargoliash@ucsd.edu
+#SBATCH --mail-user=jonathan.margoliash@gmail.com
 #SBATCH --export=ALL
 
 if [ -z "$TARGET" ] ; then echo "TARGET variable is unset" ; exit 1 ; fi
