@@ -30,7 +30,7 @@ cd "$OUT_DIR" || {
 }
 
 if [ -z "$CONDITIONAL" ] ; then
-	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/plink_snp/input/rin_phenotype_and_covars.tab 
+	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/plink_snp/input/transformed_phenotype_and_covars.tab 
 	mkdir -p ../../logs
 	LOG_OUT=../../logs/chr"$CHROM".plink.stdout 
 	LOG_ERR=../../logs/chr"$CHROM".plink.stderr

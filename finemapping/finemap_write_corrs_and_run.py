@@ -17,8 +17,8 @@ def write_corrs_and_run(workdir):
     '''
 
     with open(f'{workdir}/all_variants.ld', 'w') as ld_file, \
-            h5py.File('{workdir}/lds.h5') as ldsh5:
-        lds = ldsh5['lds']
+            h5py.File(f'{workdir}/lds.h5') as ldsh5:
+        lds = ldsh5['ld']
         n_variants = lds.shape[0]
         for i in range(n_variants):
             ld_file.write(f'{lds[i, 0]:.10f}')

@@ -21,7 +21,7 @@ def enc_filename(data_request_id):
     return f'{ukb}/main_dataset/raw_data/fields{data_request_id}.ukb'
 
 data_request_id = None
-for data_request_id_attempt in {29170, 41414}:
+for data_request_id_attempt in {46781, 46782}:
     with open(enc_filename(data_request_id_attempt)) as fields_file:
         fields = ' '.join(fields_file.readlines()).replace('\n', ' ')
         if f' {data_field_id} ' in fields:

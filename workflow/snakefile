@@ -62,6 +62,8 @@ pheno_args = {
 }
 
 rule load_shared_covars:
+    input:
+        "main_dataset/extracted_data/assessment_ages_21003.txt"
     output:
         protected("traits/shared_covars/shared_covars.npy"),
         protected("traits/shared_covars/assessment_ages.npy"),
@@ -95,7 +97,7 @@ def input_fields_for_phenotype(wildcards):
 
 rule load_phenotype:
     input:
-        "traits/shared_covars/shared_covars.npy",
+        "traits/shared_covars/assessment_ages.npy",
         input_fields_for_phenotype
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
@@ -169,23 +171,23 @@ rule subset_samples_for_phenotype:
         'sample_qc/scripts/unrelated_individuals.py {wildcards.phenotype} && '
         'sample_qc/scripts/verify_unrelatedness.py {wildcards.phenotype}'
 
-rule rank_inverse_normalize_phenotype_subset:
+rule transform_phenotype_subset:
     input:
         "traits/phenotypes/{phenotype}.npy",
         "sample_qc/runs/{phenotype}/combined_unrelated.sample"
     output:
-        protected("traits/subset_rin_phenotypes/{phenotype}_README.txt"),
-        protected("traits/subset_rin_phenotypes/{phenotype}.npy")
+        protected("traits/subset_transformed_phenotypes/{phenotype}_README.txt"),
+        protected("traits/subset_transformed_phenotypes/{phenotype}.npy")
     resources:
         time='00:05:00'
     shell:
-        'traits/rank_inverse_normalize.py {wildcards.phenotype}'
+        'traits/transform_traits.py {wildcards.phenotype}'
 
 rule plot_str_locus:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
         'traits/phenotypes/{phenotype}.npy',
-        'traits/subset_rin_phenotypes/{phenotype}.npy'
+        'traits/subset_transformed_phenotypes/{phenotype}.npy'
     output:
         'association/locus_plots/{phenotype}/{chrom}_{pos,[0-9]+}{transform,(_.*)?}.png',
         'association/locus_plots/{phenotype}/{chrom}_{pos,[0-9]+}{transform,(_.*)?}.csv'
@@ -248,7 +250,7 @@ rule run_regional_my_imputed_snp_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_imputed_snp/time.stamp',
-        "traits/subset_rin_phenotypes/{phenotype}.npy"
+        "traits/subset_transformed_phenotypes/{phenotype}.npy"
     output:
         "association/results/{phenotype}/my_imputed_snp/batches/chr{chr}_{start}_{end}.tab"
     resources:
@@ -286,9 +288,10 @@ rule write_my_str_gwas_readme:
 
 rule run_regional_my_str_gwas:
     input:
+        "traits/shared_covars/shared_covars.npy",
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_str/time.stamp',
-        "traits/subset_rin_phenotypes/{phenotype}.npy",
+        "traits/subset_transformed_phenotypes/{phenotype}.npy",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi"
     output:
@@ -318,10 +321,10 @@ rule prep_plink_input:
     input:
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        'traits/subset_rin_phenotypes/{phenotype}.npy',
+        'traits/subset_transformed_phenotypes/{phenotype}.npy',
         'traits/phenotypes/{phenotype}_covar_names.txt'
     output:
-        'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab'
+        'association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab'
     resources:
         time='00:30:00'
     shell:
@@ -337,14 +340,14 @@ rule timestamp_plink_run:
 
 rule run_plink_gwas:
     input:
-        'association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab',
+        'association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab',
         'association/results/{phenotype}/plink_snp/time.stamp'
     output:
         'association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done'
     resources:
         time='47:30:00',
         threads=28,
-        mem=110
+        mem_gb=110
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
 
@@ -380,7 +383,7 @@ rule prep_conditional_input:
 rule run_conditional_my_str_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
-        "traits/subset_rin_phenotypes/{phenotype}.npy",
+        "traits/subset_transformed_phenotypes/{phenotype}.npy",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi",
         'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
@@ -402,7 +405,7 @@ rule prep_conditional_plink_input:
         'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        'traits/subset_rin_phenotypes/{phenotype}.npy',
+        'traits/subset_transformed_phenotypes/{phenotype}.npy',
         'traits/phenotypes/{phenotype}_covar_names.txt'
     output:
         'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
@@ -418,7 +421,7 @@ rule run_conditional_plink_gwas:
         'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
     resources:
         time='24:00:00',
-        mem=110,
+        mem_gb=110,
         threads=28
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
@@ -526,7 +529,7 @@ rule compare_my_to_plink_gwas:
         'association/plots/height_my_imputed_snp_vs_plink.html'
     resources:
         time='00:30:00',
-        mem=50
+        mem_gb=50
     shell:
         'association/interactive_manhattan_plots.py --my-plink-comparison'
 
@@ -539,7 +542,7 @@ rule interactive_manhattan:
         'association/plots/{phenotype}_interactive_manhattan.html'
     resources:
         time='00:30:00',
-        mem=50
+        mem_gb=50
     shell:
         'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype}'
 
@@ -549,10 +552,10 @@ rule interactive_manhattan_conditional:
         'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy',
         'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
     output:
-        'association/plots/{phenotype}_interactive_manhattan_{condition}.html'
+        'association/plots/{phenotype}_interactive_manhattan_c_{condition}.html'
     resources:
         time='00:30:00',
-        mem=50
+        mem_gb=50
     shell:
         'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} '
         '--condition {wildcards.condition} '
@@ -580,7 +583,7 @@ rule finemap_write_input_variants:
     resources:
         time = '00:30:00'
     shell:
-        'finemapping/finemap_write_input_z.py '
+        'finemapping/finemap_write_input_variants.py '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
@@ -600,11 +603,11 @@ checkpoint finemap_input_variants_all_regions:
     input:
         collect_finemap_input_variants_per_region
     output:
-        protected('finemapping/finemap_results/{phenotype}/.input_variants_all_regions')
+        protected('finemapping/finemap_results/{phenotype}/loaded_input_variants_all_regions')
     resources:
         time='00:01:00'
     shell:
-        'touch finemapping/finemap_results/{wildcards.phenotype}/.input_variants_all_regions'
+        'touch finemapping/finemap_results/{wildcards.phenotype}/loaded_input_variants_all_regions'
 
 rule finemap_load_gts:
     input:
@@ -612,7 +615,7 @@ rule finemap_load_gts:
         'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
     output:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
+        temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
     resources:
         mem_gb = 4,
         time = '02:00:00'
@@ -632,7 +635,7 @@ rule finemap_calc_corrs:
     input:
         'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5'
     output:
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/lds.h5')
+        temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/lds.h5')
     resources:
         time = finemap_corrs_time,
         mem_gb = 4
@@ -648,6 +651,7 @@ rule finemap_write_corrs_and_run:
         'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master',
         'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/lds.h5'
     output:
+        temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/all_variants.ld'),
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.snp'),
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.config')
     resources:
@@ -683,15 +687,15 @@ rule run_finemap_phenotype:
     input:
         collect_finemap_output_per_region_with_strs
     output:
-        'finemapping/finemap_results/{phenotype}/.all_signals'
+        'finemapping/finemap_results/{phenotype}/all_signals_done'
     resources:
         time='00:01:00'
     shell:
-        'touch finemapping/finemap_results/{wildcards.phenotype}/.all_signals'
+        'touch finemapping/finemap_results/{wildcards.phenotype}/all_signals_done'
 
 rule summarize_finemap_output:
     input:
-        'finemapping/finemap_results/{phenotype}/.all_signals'
+        'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
         'finemapping/finemap_results/{phenotype}/summary/summary.txt'
     resources:
@@ -704,12 +708,12 @@ rule interactive_manhattan_finemap:
         "traits/phenotypes/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
-        'finemapping/finemap_results/.{phenotype}_all_signals'
+        'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
         'association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
     resources:
         time='00:30:00',
-        mem=50
+        mem_gb=50
     shell:
         'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} --finemap-signals'
 

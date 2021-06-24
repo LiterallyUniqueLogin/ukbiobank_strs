@@ -3,6 +3,7 @@
 import argparse
 import math
 import os
+import shutil
 
 import h5py
 import numpy as np
@@ -30,7 +31,7 @@ def calc_corrs(workdir):
     chunk_len = 2**6
 
     with h5py.File(f'{workdir}/gts.h5') as gtsh5, \
-            h5py.File(f'{workdir}/lds.h5', 'w') as ldh5:
+            h5py.File(f'{workdir}/temp_lds.h5', 'w') as ldh5:
         gts = gtsh5['gts']
         n_variants = gts.shape[0]
         n_chunks = math.ceil(n_variants/chunk_len)
@@ -39,6 +40,8 @@ def calc_corrs(workdir):
         for i in range(n_chunks):
             for j in range(i, n_chunks):
                 correlate_chunks(gts, lds, n_variants, chunk_len, i, j)
+    
+    shutil.move(f'{workdir}/temp_lds.h5', f'{workdir}/lds.h5')
 
 def main():
     parser = argparse.ArgumentParser()

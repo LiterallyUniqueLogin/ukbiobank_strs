@@ -18,10 +18,10 @@ phenotype = args.phenotype
 
 shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
 
-subset_rin_phenotype = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')
+subset_transformed_phenotype = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{phenotype}.npy')
 
 data = utils.merge_arrays(
-    subset_rin_phenotype,
+    subset_transformed_phenotype,
     shared_covars
 )
 data = np.concatenate((data[:, 0:1], data), axis=1)
@@ -43,7 +43,7 @@ with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_names_file:
 
 if not args.conditional:
     np.savetxt(
-        f'{ukb}/association/results/{phenotype}/plink_snp/input/rin_phenotype_and_covars.tab',
+        f'{ukb}/association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab',
         data,
         delimiter='\t',
         header='\t'.join(col_names),

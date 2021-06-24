@@ -3,7 +3,6 @@
 import collections
 import os
 import sqlite3
-import sys
 import time
 
 import cyvcf2
@@ -16,27 +15,40 @@ print('Loading refs ... ', end ='', flush=True)
 start = time.time()
 refs = utils.load_reference(f'{ukb}/../../resources/dbase/human/hg19/hg19.fa')
 
-def get_next_strs(next_var, vcf):
+# vcf contains more strs than in the final snpstr set
+# so if we would return a group that only contains strs we're not interested in,
+# repeat (specifically, don't filter SNPs that overlap those STRs)
+def get_next_strs(next_var, vcf, final_snpstr_str_ids):
+    while True:
+        try:
+            curr_STRs, curr_range, next_var = get_next_strs_helper(
+                next_var, vcf
+            )
+        except StopIteration:
+            return (None, None, None)
+        for STR in curr_STRs:
+            if STR[3] in final_snpstr_str_ids:
+                return (curr_STRs, curr_range, next_var)
+
+def get_next_strs_helper(next_var, vcf):
+    min_border = 3
+    period_mult = 2
+
     if next_var is None:
-        for var in vcf:
-            if var.ID not in str_ids:
-                continue
-            next_var = var
-            break
+        next_var = next(vcf)
 
     pos = next_var.INFO['START']
     border = max(min_border, next_var.INFO['PERIOD']*period_mult)
     curr_STRs = [(
         pos,
         next_var.REF[(pos-next_var.POS):(next_var.INFO['END']-next_var.POS+1)],
-        next_var.INFO['PERIOD']
+        next_var.INFO['PERIOD'],
+        next_var.ID
     )]
     curr_range = range(pos - border, next_var.INFO['END'] + 1 + border)
     del next_var
 
     for var in vcf:
-        if var.ID not in str_ids:
-            continue
         # filter duplicate STRs
         if var.INFO['START'] == curr_STRs[-1][0]:
             continue
@@ -48,7 +60,8 @@ def get_next_strs(next_var, vcf):
             curr_STRs.append((
                 pos,
                 var.REF[(pos-var.POS):(var.INFO['END']-var.POS+1)],
-                var.INFO['PERIOD']
+                var.INFO['PERIOD'],
+                var.ID
             ))
             curr_range = range(curr_range.start, var.INFO['END'] + 1 + border)
 
@@ -60,7 +73,7 @@ def standardize(kmer):
         options.add(kmer[i:] + kmer[:i])
     return min(options)
 
-def infer_repeat_unit(seq, period, pos):
+def infer_repeat_unit(seq, period):
     kmer_counts = collections.Counter()
     for i in range(len(seq) - period + 1):
         kmer = standardize(seq[i:(i+period)])
@@ -86,13 +99,13 @@ def is_pure_repeats(seq, repeat_unit):
             return True
     return False
 
-for chrom in range(1, 23):
+def process_chrom(chrom):
     ref_chrom = refs[chrom].upper()
     print(f'done. Time {time.time() - start}sec', flush=True)
 
     with open(f'{ukb}/snpstr/str_ids.txt') as str_ids_file:
         lines = str_ids_file.readlines()
-    str_ids = set(line.strip() for line in lines)
+    final_snpstr_str_ids = set(line.strip() for line in lines)
 
     vcf = cyvcf2.VCF(f'{ukb}/snpstr/info_field/chr{chrom}.vcf.gz')
     snp_itr = sqlite3.connect(
@@ -101,15 +114,7 @@ for chrom in range(1, 23):
         "SELECT position, allele1, allele2 FROM Variant"
     )
 
-    min_border = 3
-    period_mult = 2
-
-
-    comp_dict = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
-    # don't handle reverse complement because all SNPs
-    # are written according to the forward strand
-
-    curr_STRs, curr_range, next_cyvcf2_str_var = get_next_strs(None, vcf)
+    curr_STRs, curr_range, next_cyvcf2_str_var = get_next_strs(None, vcf, final_snpstr_str_ids)
 
     with open(f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_examine.tab', 'w') as to_examine, \
             open(f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab', 'w') as to_filter, \
@@ -126,7 +131,10 @@ for chrom in range(1, 23):
                 if next_cyvcf2_str_var is None:
                     chrom_done = True
                     break
-                curr_STRs, curr_range, next_cyvcf2_str_var = get_next_strs(next_cyvcf2_str_var, vcf)
+                curr_STRs, curr_range, next_cyvcf2_str_var = get_next_strs(next_cyvcf2_str_var, vcf, final_snpstr_str_ids)
+                if curr_STRs is None:
+                    chrom_done = True
+                    break
             if chrom_done:
                 break
             end_pos_incl = pos + len(a1) - 1
@@ -138,7 +146,7 @@ for chrom in range(1, 23):
             # values I will print
             print_STRs = []
             for STR in curr_STRs:
-                repeat_unit = infer_repeat_unit(STR[1], STR[2], STR[0])
+                repeat_unit = infer_repeat_unit(STR[1], STR[2])
                 if repeat_unit is not None:
                     print_STRs.append((STR[0], repeat_unit))
                 else:
@@ -220,3 +228,13 @@ for chrom in range(1, 23):
 
             # TODO: maybe don't filter partial contraction or insertion in the middle?
             # either full contraction/insertion in the middle or partial at the edges?
+            # TODO: consider filtering SNPs that don't change length but do create repeats
+            # where there were none before
+            # (i.e. CtCACACACA -> CaCACACACA)
+
+def main():
+    for chrom in range(1, 23):
+        process_chrom(chrom)
+
+if __name__ == '__main__':
+    main()

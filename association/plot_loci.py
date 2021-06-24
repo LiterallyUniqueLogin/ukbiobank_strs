@@ -33,7 +33,7 @@ def main():
             unit = next(unit_file).strip()
     elif args.transform_step == 'rin':
         transform = '_rin'
-        phenotypes = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')[:, :2]
+        phenotypes = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{phenotype}.npy')[:, :2]
         unit = 'rank inverse normalized values'
     else:
         raise ValueError()

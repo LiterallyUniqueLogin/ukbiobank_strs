@@ -680,7 +680,8 @@ Manually loaded gts - seems like there are nonzero gts so corr should not be NaN
 
 TODOs:
 recalculate mafs, hardcall-mac, HWEp, entropy etc for plink snps
-review SNPs that overlap STRs / find two-allele STRs that are indentical to indels
+review SNPs that overlap STRs / find two-allele STRs that are indentical to indels # ask for some review of this
 finish pipeline for loading categorical covariates for regressions
-find a gwas postdoc mentor in another lab?
+Find a gwas postdoc mentor in another lab? - contacted Dr. Gutierrez in Abe Palmer's lab. Two other postdocs
+there, both with potential for contact.
 compile list of papers I want to read, forward to Melissa for journal club.

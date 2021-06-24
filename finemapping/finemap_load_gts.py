@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import shutil
 import time
 
 import bgen_reader
@@ -83,7 +84,7 @@ def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_n
     print(f'Num snps: {n_snps}, num strs: {n_strs}, total: {n_variants}', flush=True)
 
     chunk_len = 2**6
-    with h5py.File(f'{workdir}/gts.h5', 'w') as h5file:
+    with h5py.File(f'{workdir}/temp_gts.h5', 'w') as h5file:
         if n_variants >= chunk_len:
             gts = h5file.create_dataset("gts", (n_variants, n_samples), chunks=(chunk_len, n_samples))
         else:
@@ -155,6 +156,8 @@ def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_n
             except StopIteration:
                 break
         print(f'Done loading SNPs. Time: {time.time() - start}sec', flush=True)
+
+    shutil.move(f'{workdir}/temp_gts.h5', f'{workdir}/gts.h5')
 
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for

@@ -12,16 +12,9 @@ ukb = os.environ['UKB']
 
 def load_covars():
     """
-    Load the sex and population PC covariates.
+    Load the sex and population PC covariates. Loads ages at various
+    assessments into a separate array
 
-    Saves the following numpy array into $UKB/traits/shared_covars/shared_covars.npy:
-        A 2D float array with one row per sample and columns in the following order:
-        id,
-        sex with M = 1 and F = 2,
-        pc1 ... pc40 for the population structure pcs<
-        age_assess_init (age at initial assessment),
-        age_assess_repeat,
-        age_assess_image
     Only columns that may be nan are the assessment ages 
 
     Notes
@@ -73,7 +66,13 @@ def load_covars():
         data = data[data[:, 0] >= 0, :]
         # assert sex is either 1 (male) or 2 (female)
         assert np.all((data[:, 1] == 1) | (data[:, 1] == 2))
-        
+
+        readme.write('Standardizing covariates (subtracting mean, then dividing by standard deviation)\n')
+
+        covars = data[:, 1:]
+        covars = (covars - covars.mean(axis=0))/covars.std(axis=0)
+        data[:, 1:] = covars
+
         np.save(f'{ukb}/traits/shared_covars/shared_covars.npy', data)
 
         # Age will be included as a covariate for all dependent variables
@@ -93,9 +92,9 @@ def load_covars():
         readme.flush()
         with open(age_file_name) as age_file:
             assessment_age = np.genfromtxt(
-                (line.replace('"', '') for line in age_file),
+                age_file,
                 skip_header=1,
-                delimiter=','
+                delimiter='\t'
             )
 
         np.save(f'{ukb}/traits/shared_covars/assessment_ages.npy', assessment_age)

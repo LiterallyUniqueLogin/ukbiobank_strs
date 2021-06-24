@@ -493,11 +493,11 @@ def make_manhattan_plots(
                 x_range.start = x_min - 0.05*(x_max - x_min);
                 x_range.end = x_max + 0.05*(x_max - x_min);
                 x_range.change.emit();
-                for (idx=0; idx<gts.length; idx++) {{
-                    CI5e_2_lower.push(CI5e_2_dict[str_gts[idx]][0]); 
-                    CI5e_2_upper.push(CI5e_2_dict[str_gts[idx]][1]); 
-                    CI5e_8_lower.push(CI5e_8_dict[str_gts[idx]][0]); 
-                    CI5e_8_upper.push(CI5e_8_dict[str_gts[idx]][1]); 
+                for (var i=0; i<gts.length; i++) {{
+                    CI5e_2_lower.push(CI5e_2_dict[str_gts[i]][0]); 
+                    CI5e_2_upper.push(CI5e_2_dict[str_gts[i]][1]); 
+                    CI5e_8_lower.push(CI5e_8_dict[str_gts[i]][0]); 
+                    CI5e_8_upper.push(CI5e_8_dict[str_gts[i]][1]); 
                 }}
                 
                 console.log(
@@ -979,7 +979,7 @@ def main():
             chrom = int(chrom[3:])
             start = int(start)
             end = int(end)
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_{args.condition}.html'
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_c_{args.condition}.html'
 
         if args.finemap_signals:
             # change the output file

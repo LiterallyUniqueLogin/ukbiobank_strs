@@ -12,6 +12,7 @@ UKB STR GWAS documentation
    workflow 
    associations
    exome_qc
+   finemapping
    environment
    citations
 

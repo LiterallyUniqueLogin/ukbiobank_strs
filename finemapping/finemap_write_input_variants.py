@@ -2,9 +2,10 @@
 
 import argparse
 import csv
+import datetime
 import os
 import pathlib
-import sys
+import shutil
 
 ukb = os.environ['UKB']
 
@@ -18,16 +19,20 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
     '''
     plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
     str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
+    filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
 
+    today = datetime.datetime.now().strftime("%Y_%M_%D")
     readme.write(
-        'Manually generating variant-variant LD for each imputed SNP  each STR in the region '
+        f'Run date: {today}\n'
+        'Manually generating variant-variant LD for each imputed SNP each STR in the region '
         'where an association was successfully '
-        f'performed and had p < {inclusion_threshold}\n'
+        f'performed and had p < {inclusion_threshold} and the SNP was not in the filter set\n'
+        f'(Filter set at {filter_set_fname})\n'
         'Correlation is STR length dosage vs SNP dosage.\n'
         'Running FINEMAP with that list of imputed SNPs and STRs.\n'
     )
 
-    with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
+    with open(f'{workdir}/temp_finemap_input.z', 'w') as finemap_input_z:
         finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
 
         any_strs = False
@@ -75,16 +80,15 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 "so finemapping is being skipped.",
                 flush = True
             )
-            sys.exit()
-
+            return
 
         # load SNPs
         snps_to_filter = set()
-        any_snps_filtered = False
-        with open(f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab') as filter_file:
+        with open(filter_set_fname) as filter_file:
             next(filter_file) # skip header
             for line in filter_file:
-                snps_to_filter.add(tuple(line.split('\t')[3:6]))
+                pos, ref, alt = line.strip().split('\t')[3:6]
+                snps_to_filter.add((int(pos), ref, alt))
 
         with open(plink_results_fname) as plink_result_file:
             plink_results_reader = csv.reader(plink_result_file, delimiter='\t')
@@ -104,7 +108,6 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 if (result_chrom, result_pos) > (chrom, end_pos):
                     break
                 if (result_pos, ref, alt) in snps_to_filter:
-                    any_snps_filtered = True
                     continue
                 if result[cols['ERRCODE']] != '.' or float(result[cols['P']]) >= inclusion_threshold:
                     continue
@@ -117,7 +120,6 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 finemap_input_z.write(
                     f'SNP_{result_pos}_{ref}_{alt} {result_chrom:02} {result_pos} {ref} {alt} nan {beta} {se}\n'
                 )
-        assert any_snps_filtered
 
 def main():
     parser = argparse.ArgumentParser()
@@ -137,6 +139,8 @@ def main():
 
     with open(f'{workdir}/README.txt', 'w') as readme:
         write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos)
+    
+    shutil.move(f'{workdir}/temp_finemap_input.z', f'{workdir}/finemap_input.z')
 
 if __name__ == '__main__':
     main()

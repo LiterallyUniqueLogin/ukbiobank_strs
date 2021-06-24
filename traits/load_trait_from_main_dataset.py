@@ -96,7 +96,7 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
         readme.write(
             f"Choosing age for each participant corresponding to the visit "
             f"'{args.age}'. This is being loaded from the shared_covars file "
-            f"{ukb}/traits/shared_covars/shared_covars.npy\n"
+            f"{ukb}/traits/shared_covars/assessment_ages.npy\n"
         )
         # assuming data was only taken at that assessment, not that it was
         # taken at multiple and we only want one
@@ -104,8 +104,6 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
         assess_aligned_covar_datas = covar_datas
 
         col = assessment_dict[args.age]
-        if col >= 3:
-            raise Exception("Doesn't support col == 3 right now")
 
         data = utils.merge_arrays(data, ages[:, [0, col + 1]])
 
@@ -117,7 +115,7 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
             "had this phenotype measured at multiple visits, only the phenotype value and age "
             "at the first visit are being used. The age "
             "is being loaded from the shared_covars file "
-            f"{ukb}/traits/shared_covars/shared_covars.npy . An additional "
+            f"{ukb}/traits/shared_covars/asssessment_ages.npy . An additional "
             "dummy covariate indicating visit number is being added "
             "for each visit whose data is used beyond the first.\n"
         )
@@ -132,13 +130,6 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
             assert col_name.startswith(field_id)
             assert col_name.endswith('.0')
             assess_num = int(col_name[-3])
-            # temporarily skip assess_num == 3 because we need to refresh the data basket to get
-            # ages for that assessment
-            # TODO change this to 4 when dataset is refreshed
-            if assess_num >= 3:
-                assert idx != 0
-                assert idx == len(col_names) - 2
-                break
             assess_nums.append(assess_num)
 
         assess_aligned_covar_datas = []

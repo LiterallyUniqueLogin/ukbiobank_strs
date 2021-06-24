@@ -27,8 +27,8 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     batch_size = 50
     total_time = 0
 
-    pheno_specific_covars = np.load(f'{ukb}/traits/subset_rin_phenotypes/{phenotype}.npy')
-    shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')[:, :-3]
+    pheno_specific_covars = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{phenotype}.npy')
+    shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
     covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
 
     if conditional:

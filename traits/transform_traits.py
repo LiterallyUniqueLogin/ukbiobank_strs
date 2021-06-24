@@ -23,7 +23,6 @@ def rank_phenotypes(readme, data):
     ranks[sort] = np.arange(data.shape[0])
     return ranks
 
-
 def inverse_normalize_ranks(readme, ranks):
     readme.write("Inverse normalizing phenotype ranks to the standard normal distribution "
                  "via the transformation rank -> normal_quantile((rank + 0.5)/nsamples).\n")
@@ -52,9 +51,23 @@ def main():  # noqa: D103
 
         ranks = rank_phenotypes(readme, data)
         rin_ranks = inverse_normalize_ranks(readme, ranks)
+
+        readme.write(
+            "Standardizing covariates (subtracting mean, then dividing by standard deviation)\n"
+        )
+        readme.flush()
+        covariates = data[:, 2:]
+        standardized_covariates = \
+                (covariates - covariates.mean(axis=0))/covariates.std(axis=0)
+
+        transformed_data = np.concatenate(
+            (samples, rin_ranks.reshape(-1, 1), standardized_covariates),
+            axis=1
+        )
+
         np.save(
-            f'{ukb}/traits/subset_rin_phenotypes/{args.phenotype}.npy',
-            np.concatenate((samples, rin_ranks.reshape(-1, 1), data[:, 2:]), axis=1)
+            f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}.npy',
+            transformed_data
         )
 
 if __name__ == "__main__":
