@@ -25,6 +25,10 @@ sys.path.insert(0, f'{ukb}/../trtools/repo')
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
 
+allele_len_precision = 2
+dosage_precision = 2
+r2_precision = 2
+
 def dict_str(d):
     out = '{'
     first = True
@@ -38,6 +42,29 @@ def dict_str(d):
         out += f'{repr(str(key))}: {repr(d[key])}'
     out += '}'
     return out.replace("'", '"').replace('(', '[').replace(')', ']').replace('nan', '"NaN"')
+
+def clean_len_alleles(d):
+    new_d = {}
+    for key, val in d.items():
+        new_key = round(key, allele_len_precision)
+        if new_key not in new_d:
+            new_d[new_key] = val
+        else:
+            new_d[new_key] += val
+    return new_d
+
+def clean_len_allele_pairs(d):
+    new_d = {}
+    for (k1, k2), val in d.items():
+        new_key = (round(k1, allele_len_precision), round(k2, allele_len_precision))
+        if new_key not in new_d:
+            new_d[new_key] = val
+        else:
+            new_d[new_key] += val
+    return new_d
+
+def round_vals(d, precision):
+    return {key: round(val, precision) for key, val in d.items()}
 
 def load_strs(imputation_run_name: str,
               region: str,
@@ -116,6 +143,7 @@ def load_strs(imputation_run_name: str,
         trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
 
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
+        len_alleles = [round(allele_len, allele_len_precision) for allele_len in len_alleles]
 
         total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
         for p in (1, 2):
@@ -124,8 +152,8 @@ def load_strs(imputation_run_name: str,
             for i in range(ap.shape[1]):
                 total_dosages[len_alleles[i+1]] += np.sum(ap[:, i])
 
-        total_hardcall_alleles = trrecord.GetAlleleCounts()
-        total_hardcall_genotypes = trrecord.GetGenotypeCounts()
+        total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts())
+        total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts())
 
         if isinstance(samples, slice):
             assert samples == slice(None)
@@ -147,9 +175,9 @@ def load_strs(imputation_run_name: str,
             _len: np.sum(subset_dosage_gts[_len]) for _len in subset_dosage_gts
         }
 
-        subset_total_hardcall_alleles = trrecord.GetAlleleCounts(samples)
-        subset_total_hardcall_genotypes = trrecord.GetGenotypeCounts(samples)
-        subset_hardcall_allele_freqs = trrecord.GetAlleleFreqs(samples)
+        subset_total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts(samples))
+        subset_total_hardcall_genotypes = clean_len_alleles(trrecord.GetGenotypeCounts(samples))
+        subset_hardcall_allele_freqs = clean_len_alleles(trrecord.GetAlleleFreqs(samples))
 
         subset_het = utils.GetHeterozygosity(subset_hardcall_allele_freqs)
         subset_entropy = utils.GetEntropy(subset_hardcall_allele_freqs)
@@ -163,9 +191,8 @@ def load_strs(imputation_run_name: str,
         # appendix 1
         subset_allele_dosage_r2 = {}
 
-        allele_lens = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
-        subset_hardcalls = trrecord.GetLengthGenotypes()[samples, :-1]
-        for length in allele_lens:
+        subset_hardcalls = np.around(trrecord.GetLengthGenotypes()[samples, :-1], allele_len_precision)
+        for length in len_alleles:
             # calculate allele dosage r**2 for this length
             if length in subset_allele_dosage_r2:
                 continue
@@ -179,17 +206,17 @@ def load_strs(imputation_run_name: str,
         locus_details = (
             trrecord.motif,
             str(len(trrecord.motif)),
-            str(trrecord.ref_allele_length),
-            dict_str(total_dosages),
+            str(round(trrecord.ref_allele_length, allele_len_precision)),
+            dict_str(round_vals(total_dosages, dosage_precision)),
             dict_str(total_hardcall_alleles),
             dict_str(total_hardcall_genotypes),
-            dict_str(subset_total_dosages),
+            dict_str(round_vals(subset_total_dosages, dosage_precision)),
             dict_str(subset_total_hardcall_alleles),
             dict_str(subset_total_hardcall_genotypes),
             str(subset_het),
             str(subset_entropy),
             str(subset_hwep),
-            dict_str(subset_allele_dosage_r2)
+            dict_str(round_vals(subset_allele_dosage_r2, r2_precision))
         )
 
         mac = list(subset_total_hardcall_alleles.values())

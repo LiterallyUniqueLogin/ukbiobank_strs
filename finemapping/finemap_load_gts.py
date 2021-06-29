@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import shutil
 import time
 
 import bgen_reader
@@ -11,13 +10,14 @@ import h5py
 import numpy as np
 
 import python_array_utils as utils
+import python_file_utils as file_utils
 import load_and_filter_genotypes as lfg
 
 ukb = os.environ['UKB']
 
 inclusion_threshold = 0.05
 
-def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
+def load_gts(workdir, outdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
     '''
     write finemap_input.master
     write gts.h5 - dataset 'gts'
@@ -48,16 +48,16 @@ def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_n
     with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
         finemap_master.write(
             'z;ld;snp;config;cred;log;n_samples\n'
-            f'{workdir}/finemap_input.z;'
-            f'{workdir}/all_variants.ld;'
-            f'{workdir}/finemap_output.snp;'
-            f'{workdir}/finemap_output.config;'
-            f'{workdir}/finemap_output.cred;'
-            f'{workdir}/finemap_output.log;'
+            f'{outdir}/finemap_input.z;'
+            f'{outdir}/all_variants.ld;'
+            f'{outdir}/finemap_output.snp;'
+            f'{outdir}/finemap_output.config;'
+            f'{outdir}/finemap_output.cred;'
+            f'{outdir}/finemap_output.log;'
             f'{n_samples}'
         )
 
-    with open(f'{workdir}/finemap_input.z') as finemap_input_z:
+    with open(f'{outdir}/finemap_input.z') as finemap_input_z:
         included_strs = []
         included_imputed_snps = []
         next(finemap_input_z)
@@ -84,7 +84,7 @@ def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_n
     print(f'Num snps: {n_snps}, num strs: {n_strs}, total: {n_variants}', flush=True)
 
     chunk_len = 2**6
-    with h5py.File(f'{workdir}/temp_gts.h5', 'w') as h5file:
+    with h5py.File(f'{workdir}/gts.h5', 'w') as h5file:
         if n_variants >= chunk_len:
             gts = h5file.create_dataset("gts", (n_variants, n_samples), chunks=(chunk_len, n_samples))
         else:
@@ -157,8 +157,6 @@ def load_gts(workdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_n
                 break
         print(f'Done loading SNPs. Time: {time.time() - start}sec', flush=True)
 
-    shutil.move(f'{workdir}/temp_gts.h5', f'{workdir}/gts.h5')
-
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for
                    _len, dosages in str_dosages_dict.items()], axis=0)
@@ -178,9 +176,11 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    workdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
+    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
-    load_gts(workdir, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
+    with file_utils.temp_dir('finemap_load_gts', args) as tempdir:
+        load_gts(tempdir, outdir, phenotype, chrom, start_pos, end_pos, args.str_imputation_run_name)
+        file_utils.move_files(tempdir, outdir)
 
 if __name__ == '__main__':
     main()

@@ -34,7 +34,7 @@ def main():  # noqa: D103
     parser.add_argument('phenotype')
     args = parser.parse_args()
 
-    with open(f'{ukb}/traits/subset_rin_phenotypes/{args.phenotype}_README.txt', 'w') as readme:
+    with open(f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}_README.txt', 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
         sample_fname = f'{ukb}/sample_qc/runs/{args.phenotype}/combined_unrelated.sample'

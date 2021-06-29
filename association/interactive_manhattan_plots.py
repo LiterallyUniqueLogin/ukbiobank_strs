@@ -3,10 +3,8 @@
 import argparse
 import ast
 import copy
-import math
 import os
 import os.path
-import json
 import time
 from typing import Dict, Tuple, Optional, Set
 
@@ -700,7 +698,7 @@ def make_manhattan_plots(
 
     manhattan_plot.legend.click_policy="mute"
 
-    html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'Manhattan plot test')
+    html = bokeh.embed.file_html(layout, bokeh.resources.CDN, f'Manhattan plot {phenotype}')
     with open(outfname, 'w') as outfile:
         outfile.write(html)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)

@@ -60,7 +60,7 @@ fi
     2> "$LOG_ERR"
 
 # give filesystem time to register the file plink has written
-sleep 60 
+sleep 180 
 
 mv "$OUT_DIR"/plink2.rin_"$PHENOTYPE".glm.linear \
    "$OUT_DIR"/plink2.rin_"$PHENOTYPE".glm.linear.done

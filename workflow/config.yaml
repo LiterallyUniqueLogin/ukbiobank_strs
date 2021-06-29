@@ -34,9 +34,9 @@ default-resources:
   - mem_gb=2
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
 restart-times: 1
-max-jobs-per-second: 100 #too many?
+max-jobs-per-second: 30 #too many?
 max-status-checks-per-second: 10
-latency-wait: 60
+latency-wait: 180
 jobs: 500
 keep-going: True
 rerun-incomplete: True # https://groups.google.com/g/snakemake/c/fbQbnD8yYkQ?pli=1

@@ -296,7 +296,7 @@ rule run_regional_my_str_gwas:
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi"
     output:
-        "association/results/{phenotype}/my_str/batches/chr{chr}_{start}_{end}.tab"
+        temporary("association/results/{phenotype}/my_str/batches/chr{chr}_{start}_{end}.tab")
     resources:
         time='12:00:00',
         mem_gb=9,
@@ -344,7 +344,7 @@ rule run_plink_gwas:
         'association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab',
         'association/results/{phenotype}/plink_snp/time.stamp'
     output:
-        'association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done'
+        temporary('association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done')
     resources:
         time='47:30:00',
         threads=28,
@@ -479,7 +479,8 @@ rule append_mfi_to_subsetted_plink_results:
     output:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     resources:
-        time='01:00:00'
+        time='01:00:00',
+        mem_gb = 50
     shell:
         'association/append_mfi_to_plink_snp.py {input[0]}'
 
@@ -569,7 +570,8 @@ checkpoint clump_results:
         protected('finemapping/signal_clumps/{phenotype}.tab'),
         protected('finemapping/signal_clumps/{phenotype}_README.txt')
     resources:
-        time='00:30:00'
+        time='00:30:00',
+        mem_gb = 10
     shell:
         'finemapping/clump.py {wildcards.phenotype}'
 
@@ -696,13 +698,26 @@ rule run_finemap_phenotype:
 
 rule summarize_finemap_output:
     input:
-        'finemapping/finemap_results/{phenotype}/all_signals_done'
+        #'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
-        'finemapping/finemap_results/{phenotype}/summary/summary.txt'
+        'finemapping/finemap_results/{phenotype}/summary/summary.txt',
+        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
     resources:
         time='00:30:00'
     shell:
-        'finemapping/summarize_finemap_output.py {wildcards.phenotype} --signals {input}'
+        'finemapping/summarize_finemap_output.py {wildcards.phenotype} '
+
+rule graph_finemap_output:
+    input:
+        #'association/results/{phenotype}/my_str/results.tab',
+        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
+    output:
+        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html'
+    resources:
+        time='00:30:00',
+        mem_gb = 50
+    shell:
+        'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
 
 rule interactive_manhattan_finemap:
     input:

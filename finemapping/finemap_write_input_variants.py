@@ -5,7 +5,8 @@ import csv
 import datetime
 import os
 import pathlib
-import shutil
+
+import python_file_utils as file_utils
 
 ukb = os.environ['UKB']
 
@@ -32,7 +33,7 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
         'Running FINEMAP with that list of imputed SNPs and STRs.\n'
     )
 
-    with open(f'{workdir}/temp_finemap_input.z', 'w') as finemap_input_z:
+    with open(f'{workdir}/finemap_input.z', 'w') as finemap_input_z:
         finemap_input_z.write('rsid chromosome position allele1 allele2 maf beta se\n')
 
         any_strs = False
@@ -135,12 +136,12 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    workdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
+    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
-    with open(f'{workdir}/README.txt', 'w') as readme:
-        write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos)
-    
-    shutil.move(f'{workdir}/temp_finemap_input.z', f'{workdir}/finemap_input.z')
+    with file_utils.temp_dir('finemap_write_input_variants', args) as tempdir:
+        with open(f'{tempdir}/README.txt', 'w') as readme:
+            write_input_variants(tempdir, readme, phenotype, chrom, start_pos, end_pos)
+        file_utils.move_files(tempdir, outdir)
 
 if __name__ == '__main__':
     main()

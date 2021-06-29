@@ -17,8 +17,7 @@ parser.add_argument('phenotype')
 args = parser.parse_args()
 phenotype = args.phenotype
 
-#finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
-finemap_loc = f'{ukb}/finemapping/finemap_results/overlapping_{phenotype}'
+finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
 summary_dir = f'{finemap_loc}/summary'
 n_signals_no_strs = len([
     True for d in os.listdir(finemap_loc)

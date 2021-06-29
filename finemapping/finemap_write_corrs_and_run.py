@@ -7,9 +7,11 @@ import sys
 
 import h5py
 
+import python_file_utils as file_utils
+
 ukb = os.environ['UKB']
 
-def write_corrs_and_run(workdir):
+def write_corrs(workdir, outdir):
     '''
     write all_variants.ld
     run finemap
@@ -17,7 +19,7 @@ def write_corrs_and_run(workdir):
     '''
 
     with open(f'{workdir}/all_variants.ld', 'w') as ld_file, \
-            h5py.File(f'{workdir}/lds.h5') as ldsh5:
+            h5py.File(f'{outdir}/lds.h5') as ldsh5:
         lds = ldsh5['ld']
         n_variants = lds.shape[0]
         for i in range(n_variants):
@@ -26,9 +28,10 @@ def write_corrs_and_run(workdir):
                 ld_file.write(f' {lds[i, j]:.10f}')
             ld_file.write('\n')
 
+def run_finemap(outdir):
     out = sp.run(
         f'{ukb}/utilities/finemap/finemap_v1.4_x86_64 --sss '
-        f'--in-files {workdir}/finemap_input.master '
+        f'--in-files {outdir}/finemap_input.master '
         '--log '
         '--n-configs-top 100 '
         '--n-threads 2 '
@@ -55,9 +58,12 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    workdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
+    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
-    write_corrs_and_run(workdir)
+    with file_utils.temp_dir('finemap_write_corrs_and_run', args) as tempdir:
+        write_corrs(tempdir, outdir)
+        file_utils.move_files(tempdir, outdir)
+    run_finemap(outdir)
 
 if __name__ == '__main__':
     main()

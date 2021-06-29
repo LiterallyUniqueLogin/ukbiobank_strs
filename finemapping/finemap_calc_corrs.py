@@ -3,10 +3,11 @@
 import argparse
 import math
 import os
-import shutil
 
 import h5py
 import numpy as np
+
+import python_file_utils as file_utils
 
 ukb = os.environ['UKB']
 
@@ -23,15 +24,15 @@ def correlate_chunks(gts, lds, n_variants, chunk_len, chunk_idx1, chunk_idx2):
     assert not np.any(np.isnan(corrs))
 
 
-def calc_corrs(workdir):
+def calc_corrs(workdir, outdir):
     '''
     write lds.h5 - dataset 'lds'
     '''
 
     chunk_len = 2**6
 
-    with h5py.File(f'{workdir}/gts.h5') as gtsh5, \
-            h5py.File(f'{workdir}/temp_lds.h5', 'w') as ldh5:
+    with h5py.File(f'{outdir}/gts.h5') as gtsh5, \
+            h5py.File(f'{workdir}/lds.h5', 'w') as ldh5:
         gts = gtsh5['gts']
         n_variants = gts.shape[0]
         n_chunks = math.ceil(n_variants/chunk_len)
@@ -40,8 +41,6 @@ def calc_corrs(workdir):
         for i in range(n_chunks):
             for j in range(i, n_chunks):
                 correlate_chunks(gts, lds, n_variants, chunk_len, i, j)
-    
-    shutil.move(f'{workdir}/temp_lds.h5', f'{workdir}/lds.h5')
 
 def main():
     parser = argparse.ArgumentParser()
@@ -57,9 +56,11 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    workdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
+    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
-    calc_corrs(workdir)
+    with file_utils.temp_dir('finemap_calc_corrs', args) as tempdir:
+        calc_corrs(tempdir, outdir)
+        file_utils.move_files(tempdir, outdir)
 
 if __name__ == '__main__':
     main()
