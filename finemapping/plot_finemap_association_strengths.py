@@ -53,7 +53,7 @@ def main():
         on=['chrom', 'pos'],
         how='inner'
     )
-    signals = signals[signals['p_height'] < 5e-8]
+    signals = signals[signals[f'p_{phenotype}'] < 5e-8]
     nrows = signals.shape[0]
     data_dict = {}
     cols = {

@@ -2,7 +2,10 @@ import collections
 import csv
 
 import numpy as np
+import pandas as pd
 import shutil
+
+import python_array_utils as utils
 
 chr_lens = np.genfromtxt(
     'misc_data/genome/chr_lens.txt',
@@ -12,23 +15,36 @@ chr_lens = np.genfromtxt(
 )
 
 class PhenotypeLoadingArg:
-    def __init__(self, data_field_id, age, *, unit = 'binary', categorical_covars = []):
+    def __init__(
+            self,
+            data_field_id,
+            age,
+            *,
+            unit = 'binary',
+            categorical_covars = [],
+            previous_STR_findings = [], # format "chr:pos"
+            previous_SNP_findings = []): # unsure of format yet
         self.data_field_id = data_field_id
         self.age = age
         self.unit = unit
         self.categorical_covars = categorical_covars
+        self.previous_STR_findings = previous_STR_findings
+        self.previous_SNP_findings = previous_SNP_findings
 
 pheno_args = {
     'height': PhenotypeLoadingArg(
         '50',
         'first-available',
-        unit = 'cm'
+        unit = 'cm',
+        previous_STR_findings = ["3:53128363"]
     ),
     'total_bilirubin': PhenotypeLoadingArg(
         '30840',
         'first-available',
-        unit = 'umol/L'
+        unit = 'umol/L',
+        previous_STR_findings = ["2:234668880"]
     ),
+    '''
     'education_score_england': PhenotypeLoadingArg(
         '26414',
         'init-assessment',
@@ -53,11 +69,18 @@ pheno_args = {
         'init-assessment',
         unit = 'Words Produced'
     ),
+    '''
     'white_blood_cell_count': PhenotypeLoadingArg(
         '30000',
         'first-available',
         unit = '10^9 cells/Liter',
         categorical_covars = [('white_blood_cell_count_device_id', '30003')]
+    ),
+    # blood pressure - combine 4079, 94, 4080, 93,  with covars 36,37 - all category 100011
+    'ldl_cholesterol_direct': PhenotypeLoadingArg(
+        '30780',
+       'first-available',
+        unit = 'mmol/L'
     )
 }
 
@@ -447,15 +470,15 @@ def subset_gwas_results(
 
 rule subset_my_gwas_results:
     input:
-        'association/results/{phenotype}/my_{gwas_type}/{chr_prefix}results.tab'
+        'association/results/{phenotype}/my_{gwas_type}/results.tab'
     output:
-        'association/plots/input/{phenotype}/my_{gwas_type}_{chr_prefix,.*}results.tab'
+        'association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
     resources:
         time='01:00:00'
     run:
         subset_gwas_results(
-             f"association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/{wildcards.chr_prefix}results.tab",
-             f"association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_{wildcards.chr_prefix}results.tab",
+             f"association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab",
+             f"association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab",
              5
          )
 
@@ -467,9 +490,16 @@ rule subset_plink_gwas_results:
     resources:
         time='01:00:00'
     run:
+        out = shell(
+            "tail -f +2 {input[0]} | grep -v -P '\.$' | grep -v 'CONST_OMITTED_ALLELE'"
+        )
+        for line in out:
+            print(line)
+            raise ValueError("plink association failed with unexpected error code")
+
         subset_gwas_results(
-             f"association/results/{wildcards.phenotype}/plink_snp/results.tab",
-             f"association/plots/input/{wildcards.phenotype}/plink_snp_results.tab",
+             f'{input[0]}',
+             f'{output[0]}',
              14
         )
 
@@ -482,45 +512,17 @@ rule append_mfi_to_subsetted_plink_results:
         time='01:00:00',
         mem_gb = 50
     shell:
-        'association/append_mfi_to_plink_snp.py {input[0]}'
+        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
 
-rule subset_conditional_my_str_gwas_results:
-    input:
-        'association/results/{phenotype}/my_str_conditional/{condition}.tab'
-    output:
-        'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
-    resources:
-        time='01:00:00'
-    run:
-        subset_gwas_results(
-             f'association/results/{wildcards.phenotype}/my_str_conditional/{wildcards.condition}.tab',
-             f'association/plots/input/{wildcards.phenotype}/my_str_conditional_{wildcards.condition}_results.tab',
-             5
-         )
-
-rule subset_conditional_plink_gwas_results:
+rule append_mfi_to_conditional_plink_results:
     input:
         'association/results/{phenotype}/plink_snp_conditional/{condition}/plink2.rin_{phenotype}.glm.linear.done'
-    output:
-        'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
-    resources:
-        time='01:00:00'
-    run:
-        subset_gwas_results(
-             f'association/results/{wildcards.phenotype}/plink_snp_conditional/{wildcards.condition}/plink2.rin_{wildcards.phenotype}.glm.linear.done',
-             f'association/plots/input/{wildcards.phenotype}/plink_snp_conditional_{wildcards.condition}_results.tab',
-             14
-         )
-
-rule append_mfi_to_subsetted_conditional_plink_results:
-    input:
-        'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results.tab'
     output:
         'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy'
     resources:
         time='01:00:00'
     shell:
-        'association/append_mfi_to_plink_snp.py {input[0]}'
+        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
 
 rule compare_my_to_plink_gwas:
     input:
@@ -528,12 +530,12 @@ rule compare_my_to_plink_gwas:
         'association/plots/input/height/my_imputed_snp_chr21_results.tab',
         'association/plots/input/height/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/height_my_imputed_snp_vs_plink.html'
+        'association/plots/height_my_imputed_snp_vs_plink.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py --my-plink-comparison'
+        'association/interactive_manhattan_plots.py {wildcards.ext} --my-plink-comparison'
 
 rule interactive_manhattan:
     input:
@@ -541,26 +543,30 @@ rule interactive_manhattan:
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_interactive_manhattan.html'
+        'association/plots/{phenotype}_interactive_manhattan.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype}'
+        'association/interactive_manhattan_plots.py {wildcards.ext} '
+        '--phenotype {wildcards.phenotype}'
 
 rule interactive_manhattan_conditional:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
-        'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy',
-        'association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
+        'association/plots/input/{phenotype}/my_str_results.tab',
+        'association/results/{phenotype}/my_str_conditional/chr{condition}.tab',
+        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
+        'association/plots/input/{phenotype}/plink_snp_conditional_chr{condition}_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_interactive_manhattan_c_{condition}.html'
+        'association/plots/{phenotype}_interactive_manhattan_chr{condition}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} '
-        '--condition {wildcards.condition} '
+        'association/interactive_manhattan_plots.py {wildcards.ext} '
+        '--phenotype {wildcards.phenotype} '
+        '--condition chr{wildcards.condition} '
 
 checkpoint clump_results:
     input:
@@ -630,7 +636,7 @@ rule finemap_load_gts:
 
 def finemap_corrs_time(wildcards, attempt):
     if attempt == 1:
-        return '02:00:00'
+        return '01:00:00'
     else:
         return '47:30:00'
 
@@ -659,8 +665,8 @@ rule finemap_write_corrs_and_run:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_output.config')
     resources:
         time = finemap_corrs_time,
-        mem_gb = 4,
-        threads = 2
+        mem_gb = 8,
+        threads = 4
     shell:
         'finemapping/finemap_write_corrs_and_run.py '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
@@ -698,7 +704,7 @@ rule run_finemap_phenotype:
 
 rule summarize_finemap_output:
     input:
-        #'finemapping/finemap_results/{phenotype}/all_signals_done'
+        'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
         'finemapping/finemap_results/{phenotype}/summary/summary.txt',
         'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
@@ -709,7 +715,7 @@ rule summarize_finemap_output:
 
 rule graph_finemap_output:
     input:
-        #'association/results/{phenotype}/my_str/results.tab',
+        'association/results/{phenotype}/my_str/results.tab',
         'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
     output:
         'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html'
@@ -726,10 +732,67 @@ rule interactive_manhattan_finemap:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
-        'association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
+        'association/plots/{phenotype}_interactive_manhattan_FINEMAP.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py --phenotype {wildcards.phenotype} --finemap-signals'
+        'association/interactive_manhattan_plots.py {wildcards.ext} '
+        '--phenotype {wildcards.phenotype} --finemap-signals'
 
+checkpoint produce_summary_table:
+    input:
+        'traits/phenotypes/{phenotype}_unit.txt',
+        'association/results/{phenotype}/my_str/results.tab',
+        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
+    output:
+        'finemapping/summary/{phenotype}_table_README.txt',
+        'finemapping/summary/{phenotype}_table.tab'
+    resources:
+        time='00:30:00'
+    run:
+        STRs = ''
+        first = True
+        for STR in pheno_args[wildcards.phenotype].previous_STR_findings:
+            if not first:
+                STRs += ' '
+            first = False
+            STRs += STR
+        command = 'finemapping/collate_strong_associations.py ' + wildcards.phenotype
+        if STRs:
+            command += ' --previous-STR-findings ' + STRs
+        shell(command)
+
+def strs_to_condition_on(wildcards):
+    checkpoints.produce_summary_table.get(phenotype=phenotype)
+    phenotype = wildcards.phenotype
+    results = utils.df_to_recarray(pd.read_csv(
+        f'finemapping/summary/{phenotype}_table.tab',
+        header=0,
+        delimiter='\t'
+    ))
+    results = results[results['pcausal'] >= 0.5]
+    return[('association/plots/{phenotype}_interactive_manhattan_'
+            f'chr{result["signal"]}_STR{result["SNPSTR_start_pos"]}__ISNP__ASNP.svg')
+           for result in results]
+     
+rule generate_conditional_STR_manhattans:
+    input:
+        strs_to_condition_on
+    output:
+        'finemapping/summary/{phenotype}_conditional_STR_manhattans.done'
+    resources:
+        time='00:05:00'
+    shell:
+        'touch finemapping/summary/{phenotype}_conditional_STR_manhattans.done'
+
+'''
+rule gather_all_summaries:
+    input:
+        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
+        'association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
+    output:
+    resources:
+        time='00:05:00'
+    shell:
+'''

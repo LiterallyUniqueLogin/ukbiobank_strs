@@ -8,14 +8,12 @@ and then return yield them
 
 import os
 import os.path
-import time
-from typing import List, Optional, Tuple
+from typing import Optional
 import sys
 
 import bgen_reader
 import cyvcf2
 import numpy as np
-import numpy.ma
 import scipy
 
 ukb = os.environ['UKB']
@@ -176,7 +174,7 @@ def load_strs(imputation_run_name: str,
         }
 
         subset_total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts(samples))
-        subset_total_hardcall_genotypes = clean_len_alleles(trrecord.GetGenotypeCounts(samples))
+        subset_total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts(samples))
         subset_hardcall_allele_freqs = clean_len_alleles(trrecord.GetAlleleFreqs(samples))
 
         subset_het = utils.GetHeterozygosity(subset_hardcall_allele_freqs)

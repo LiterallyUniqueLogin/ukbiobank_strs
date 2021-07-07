@@ -39,7 +39,17 @@ chr_lens = np.genfromtxt(
 cum_lens = np.cumsum(chr_lens)
 
 start_p_val_cap = 30
-max_p_val = 350
+# python stops being able to distinguish between small numbers and zero at 1e-324 == 0
+# so cutoff a bit before then
+max_p_val = 300 # in -log10
+
+def get_conditioned_strs(condition):
+    splits = condition.split('_')
+    return [int(STR) for STR in splits[(splits.index('STR')+1):(splits.index('ISNP')-1)]]
+
+def get_conditioned_isnps(condition):
+    splits = condition.split('_')
+    return splits[(splits.index('ISNP')+1):(splits.index('ASNP')-1)]
 
 def create_source_dict(
         data: np.recarray,
@@ -59,9 +69,8 @@ def create_source_dict(
     for field in 'chr', 'pos', 'p_val':
         if field not in data.dtype.names:
             print(field, flush=True)
-            1/0
+            assert False
     for chrom in cds_range:
-        #print(f'Converting chrom {chrom} ...', end='\r')
         chrom_dict = {}
         idx = data['chr'] == chrom
         for name in data.dtype.names:
@@ -87,7 +96,7 @@ def create_source_dict(
             )
             assert merged_data.shape[1] == len(chrs_to_var_signals[chrom].columns)
             assert merged_data.shape[0] == merge_cols.shape[0]
-            sources[chrom].data['FINEMAP_pcausal'] = merged_data['p']
+            sources[chrom].data['FINEMAP_pcausal'] = merged_data['pcausal']
 
     copy_source = bokeh.models.ColumnDataSource(copy.deepcopy(sources[start_chrom].data))
 
@@ -110,7 +119,15 @@ def make_manhattan_plots(
         end,
         snp_finemap_signals,
         str_finemap_signals,
-        finemap_regions):
+        finemap_regions,
+        conditioned_strs,
+        conditioned_isnps):
+    ext = outfname.split('.')[-1]
+
+    conditioning = conditioned_strs or conditioned_isnps
+    if conditioned_isnps:
+        print("Can't handle conditioned_isnps at the moment")
+        exit()
 
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
@@ -179,7 +196,7 @@ def make_manhattan_plots(
         sources.append(catalog_source)
         source_dicts.append(catalog_sources)
 
-    if plot_my_str_data:
+    if plot_my_str_data and ext == 'html':
         locus_plot = bokeh.plotting.figure(
             width=400,
             height=400,
@@ -189,8 +206,11 @@ def make_manhattan_plots(
             tools='save',
             y_range=(-2, 5)
         )
+        subtext = "Phenotype values are unadjusted for covariates"
+        if conditioning:
+            subtext += " or genotypes that were conditioned on"
         locus_plot.add_layout(bokeh.models.Title(
-            text="Phenotype values are unadjusted for covariates or conditioned genotypes",
+            text=subtext,
             align='right'
         ), 'below')
 
@@ -223,6 +243,13 @@ def make_manhattan_plots(
     else:
         x_axis_label = f'Position (chr {chrom})'
 
+    if ext == 'html':
+        output_backend = 'webgl'
+    elif ext == 'svg':
+        output_backend = 'svg'
+    else:
+        raise ValueError("Unrecognized extension")
+
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
         height=900,
@@ -230,8 +257,8 @@ def make_manhattan_plots(
         x_axis_label=x_axis_label,
         y_axis_label='-log10(p-value)',
         tools='xzoom_in,xzoom_out,save',
-        y_range=(-.25, start_p_val_cap+.25),
-        output_backend="webgl"
+        y_range=(-0.025*start_p_val_cap, start_p_val_cap*1.025),
+        output_backend=output_backend
     )
 
     # add custom tools
@@ -309,13 +336,6 @@ def make_manhattan_plots(
         palette = colorcet.kr,
         nan_color = 'purple'
     )
-    ''' 
-        palette = [plink_snp_color],
-        nan_color = plink_snp_color,
-        low_color = plink_snp_color,
-        high_color = plink_snp_color
-    )
-    '''
     plink_snp_manhattan = manhattan_plot.circle(
         'pos',
         'display_p_val',
@@ -334,13 +354,6 @@ def make_manhattan_plots(
             palette = colorcet.kr,
             nan_color = 'purple'
         )
-        '''
-            palette = [my_str_color],
-            nan_color = my_str_color,
-            low_color = my_str_color,
-            high_color = my_str_color
-        )
-        '''
         my_str_manhattan = manhattan_plot.square_pin(
             'pos',
             'display_p_val',
@@ -367,6 +380,16 @@ def make_manhattan_plots(
             color=(213, 94, 0),
             size=7
         )
+    if conditioned_isnps:
+        pass #TODO
+    if conditioned_strs:
+        manhattan_plot.square_pin(
+            [int(STR) for STR in conditioned_strs],
+            [0]*len(conditioned_strs),
+            legend_label='Conditioned-on STRs',
+            color=(0, 158, 115),
+            size=20
+        )
 
     # add custom tick formatter. See FuncTickFormatter
     # here: https://docs.bokeh.org/en/latest/docs/user_guide/styling.html#userguide-styling-axes-tick-label-formats
@@ -385,6 +408,10 @@ def make_manhattan_plots(
             ('pos', '@pos'),
             ('-log10(p_val) my code', '@p_val')
         ]
+        if conditioning:
+            my_str_hover.tooltips.append(
+                ('-log10(unconditioned_p_val) my code', '@unconditioned_p')
+            )
         if str_finemap_signals:
             my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal{safe}'))
         str_means_start_idx = list(my_str_data.dtype.names).index(
@@ -421,10 +448,19 @@ def make_manhattan_plots(
         ('alleles:', '@alleles'),
         ('pos', '@pos'),
         ('ID', '@id'),
-        ('-log10(p_val) Plink', '@p_val'),
+        ('-log10(p_val) Plink', '@p_val')
+    ]
+    if conditioning:
+        plink_snp_hover.tooltips.append(
+            ('-log10(unconditioned_p_val) Plink', '@unconditioned_p')
+        )
+        plink_snp_hover.tooltips.append(
+            ('plink error code', '@error')
+        )
+    plink_snp_hover.tooltips.extend([
         ('Minor allele frequency', '@maf'),
         ('Imputation INFO', '@info')
-    ]
+    ])
     if snp_finemap_signals:
         plink_snp_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal' '{safe}'))
     manhattan_plot.add_tools(plink_snp_hover)
@@ -443,7 +479,7 @@ def make_manhattan_plots(
 
     manhattan_plot.toolbar.active_inspect = hover_tools
 
-    if plot_my_str_data:
+    if plot_my_str_data and ext == 'html':
         tap = bokeh.models.tools.TapTool()
         manhattan_plot.add_tools(tap)
         manhattan_plot.toolbar.active_tap = tap
@@ -549,8 +585,8 @@ def make_manhattan_plots(
         args=dict(height_slider=height_slider, y_range=manhattan_plot.y_range),
         code="""
             const new_max = height_slider.value;
-            y_range.start = -.25
-            y_range.end = new_max + 0.25;
+            y_range.start = -0.025*new_max
+            y_range.end = new_max*1.025;
             y_range.change.emit();
         """
     )
@@ -668,17 +704,18 @@ def make_manhattan_plots(
         chrom_layout_row.append(finemap_region_select)
         chrom_layout_row.append(finemap_toggle)
 
-    if plot_my_str_data:
-        layout = bokeh.layouts.grid([
-            locus_plot,
-            chrom_layout_row,
-            manhattan_plot
-        ])
-    else:
-        layout = bokeh.layouts.grid([
-            chrom_layout_row,
-            manhattan_plot
-        ])
+    if ext == 'html':
+        if plot_my_str_data:
+            layout = bokeh.layouts.grid([
+                locus_plot,
+                chrom_layout_row,
+                manhattan_plot
+            ])
+        else:
+            layout = bokeh.layouts.grid([
+                chrom_layout_row,
+                manhattan_plot
+            ])
 
     if my_str_run_date:
         manhattan_plot.add_layout(bokeh.models.Title(
@@ -698,9 +735,14 @@ def make_manhattan_plots(
 
     manhattan_plot.legend.click_policy="mute"
 
-    html = bokeh.embed.file_html(layout, bokeh.resources.CDN, f'Manhattan plot {phenotype}')
-    with open(outfname, 'w') as outfile:
-        outfile.write(html)
+    if ext == 'html':
+        html = bokeh.embed.file_html(layout, bokeh.resources.CDN, f'Manhattan plot {phenotype}')
+        with open(outfname, 'w') as outfile:
+            outfile.write(html)
+    elif ext == 'svg':
+        bokeh.io.export_svg(manhattan_plot, filename=outfile)
+    else:
+        raise ValueError("Unrecognized extension")
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
 my_results_rename = {
@@ -710,10 +752,10 @@ my_results_rename = {
     5: 'coeff_phenotype'
 }
 my_str_results_rename = {
-    -5: 'CI5e_2SingleDosagePhenotype',
-    -4: 'CI5e_8SingleDosagePhenotype',
-    -2: 'CI5e_2PairedDosagePhenotype',
-    -1: 'CI5e_8PairedDosagePhenotype'
+    -6: 'CI5e_2SingleDosagePhenotype',
+    -5: 'CI5e_8SingleDosagePhenotype',
+    -3: 'CI5e_2PairedDosagePhenotype',
+    -2: 'CI5e_8PairedDosagePhenotype'
 }
 
 def load_data(phenotype, condition):
@@ -734,42 +776,70 @@ def load_data(phenotype, condition):
 def load_my_str_results(phenotype, condition):
     print(f"Loading my STR results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
-    if not condition:
-        str_results_fname = \
-            f'{ukb}/association/plots/input/{phenotype}/my_str_results.tab'
-    else:
-        str_results_fname = \
-            f'{ukb}/association/plots/input/{phenotype}/my_str_conditional_{condition}_results.tab'
-    my_str_results = utils.df_to_recarray(pd.read_csv(
-        str_results_fname,
+    unconditioned_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_str_results.tab'
+    unconditioned_results = pd.read_csv(
+        unconditioned_results_fname,
         header=0,
         delimiter='\t',
         encoding='UTF-8',
-        dtype=utils.get_dtypes(str_results_fname, {'locus_filtered': str})
-    ))
-    names = list(my_str_results.dtype.names)
+        dtype=utils.get_dtypes(unconditioned_results_fname, {'locus_filtered': str})
+    )
+
+    if not condition:
+        results= unconditioned_results
+    else:
+        conditional_results_fname = \
+            f'{ukb}/association/results/{phenotype}/my_str_conditional/{condition}.tab'
+
+        results = pd.read_csv(
+            conditional_results_fname,
+            header=0,
+            delimiter='\t',
+            encoding='UTF-8',
+            dtype=utils.get_dtypes(conditional_results_fname, {'locus_filtered': str})
+        )
+
+        unconditioned_results[f'p_{phenotype}'] = np.maximum(unconditioned_results[f'p_{phenotype}'], 1 / 10**max_p_val)
+        unconditioned_results[f'p_{phenotype}'] = -np.log10(unconditioned_results[f'p_{phenotype}'])
+        unconditioned_results.rename(
+            columns = {f'p_{phenotype}': 'unconditioned_p'}, inplace=True
+        )
+        unconditioned_results = unconditioned_results[['chrom', 'pos', 'unconditioned_p']]
+
+        results = results.merge(
+            unconditioned_results,
+            on=['chrom', 'pos'],
+            how= 'inner'
+        ) # subsets to only those which passed the p-val threshold in the unconditioned run
+
+    rename_dict = {}
     for idx, name in my_results_rename.items():
-        names[idx] = name
+        rename_dict[results.columns[idx]] = name
     for idx, name in my_str_results_rename.items():
-        names[idx] = name
+        rename_dict[results.columns[idx]] = name
     for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',
                 'subset_total_per_allele_dosages', 'subset_total_hardcall_alleles',
                 'subset_allele_dosage_r2'):
         # convert allele lens from strings to floats, in addition round allele lens and values, but not NaN values
         new_col = np.array(list(map(
             lambda dict_str: {round(float(allele_len), 2): (round(val, 2) if val != 'NaN' else val) for allele_len, val in ast.literal_eval(dict_str).items()},
-            my_str_results[colname]
+            results[colname]
         )))
         # convert allele_lens to ints if they are close enough
         new_col = np.array(list(map(
             lambda d: str({(int(key) if key == int(key) else key) : val for key, val in d.items()}),
             new_col
         )))
-        my_str_results[colname] = new_col
-    my_str_results.dtype.names = names
-    my_str_results['p_val'] = -np.log10(my_str_results['p_val'])
+        results[colname] = new_col
+    results.rename(columns=rename_dict, inplace=True)
+    results = utils.df_to_recarray(results)
+    results['p_val'] = np.maximum(results['p_val'], 1 / 10**max_p_val)
+    results['p_val'] = -np.log10(results['p_val'])
+    if condition:
+        for STR in get_conditioned_strs(condition):
+            results = results[results['pos'] != STR]
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-    return my_str_results
+    return results
 
 def load_my_chr21_height_snp_results():
     print("Loading my chr21 height results ... ", end='', flush=True)
@@ -791,23 +861,49 @@ def load_my_chr21_height_snp_results():
     return my_snp_results
 
 def load_plink_results(phenotype, condition):
+    # TODO remove conditioned snps
     # Load plink SNP results
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
+
+    unconditioned_results = pd.DataFrame.from_records(np.load(
+        f'{ukb}/association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
+    ))
     if not condition:
-        plink_snp_fname = \
-            f'{ukb}/association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
+        results = unconditioned_results
     else:
-        plink_snp_fname = \
-            f'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_with_mfi.npy'
+        results = pd.DataFrame.from_records(np.load(
+            f'{ukb}/association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy'
+        ))
 
-    plink_results = np.load(plink_snp_fname)
-    plink_results['p_val'] = -np.log10(plink_results['p_val'])
+        unconditioned_results['p_val'] = np.maximum(unconditioned_results['p_val'], 1 / 10**max_p_val)
+        unconditioned_results['p_val'] = -np.log10(unconditioned_results['p_val'])
+        unconditioned_results.rename(
+            columns={'p_val': 'unconditioned_p'},
+            inplace=True
+        )
+        unconditioned_results = unconditioned_results[['chr', 'pos', 'unconditioned_p']]
 
-    assert np.all(plink_results['error'] == '.')
+        results = utils.df_to_recarray(results.merge(
+            unconditioned_results,
+            on=['chr', 'pos'],
+            how = 'inner'
+        )) # subsets to only those which passed the p-val threshold in the unconditioned run
+
+    results['p_val'] = np.maximum(results['p_val'], 1 / 10**max_p_val)
+    results['p_val'] = -np.log10(results['p_val'])
+
+    # we've already filtered all the spots that had errors in the unconditional run
+    # having a VIF_TOO_HIGH only in the conditional run just means that
+    # SNP is extremely correlated with the conditioning variants, which means
+    # its p-value should be very small, so this isn't an issue.
+    assert np.all((results['error'] == '.') | (results['error'] == 'VIF_TOO_HIGH'))
+    # rename for readability
+    results['error'][results['error'] == '.'] = 'none'
+    results['p_val'][results['error'] == 'VIF_TOO_HIGH'] = 0
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
-    return plink_results
+    return results
 
 def load_gwas_catalog(phenotype):
     # Load the NHGRI-EBI GWAS catalog
@@ -865,13 +961,8 @@ def load_finemap_signals(finemap_signals):
     chrs_to_str_signals = {}
     chrs_to_regions = {}
     for i in range(1, 23):
-        # TODO uncomment once I've fixed the overlapping interavls bug
-        '''
         chrs_to_snp_signals[i] = []
         chrs_to_str_signals[i] = []
-        '''
-        chrs_to_snp_signals[i] = {}
-        chrs_to_str_signals[i] = {}
         chrs_to_regions[i] = []
     for signal in finemap_signals:
         region = signal.split('/')[-2]
@@ -880,59 +971,38 @@ def load_finemap_signals(finemap_signals):
         with open(signal) as per_var_output:
             next(per_var_output)
             for line in per_var_output:
-                _id, pos, p = np.array(line.split())[[1, 3, 10]]
+                _id, pos, pcausal = np.array(line.split())[[1, 3, 10]]
                 pos = int(pos)
                 split = _id.split('_')
                 assert int(split[1]) == pos
-                if p == 'NA':
-                    p = np.nan
+                if pcausal == 'NA':
+                    pcausal = np.nan
                 else:
-                    p = float(p)
+                    pcausal = float(pcausal)
                 if _id[:4] == 'STR_':
-                    '''
-                    chrs_to_str_signals[chrom].append((pos, p))
-                    '''
-                    if pos not in chrs_to_str_signals[chrom] or chrs_to_str_signals[chrom][pos] > p:
-                        chrs_to_str_signals[chrom][pos] = p
+                    chrs_to_str_signals[chrom].append((pos, pcausal))
                 elif _id[:4] == 'SNP_':
-                    '''
                     chrs_to_snp_signals[chrom].append(
-                        (pos, split[2], split[3], p)
+                        (pos, split[2], split[3], pcausal)
                     )
-                    '''
-                    key = (pos, split[2], split[3])
-                    if key not in chrs_to_snp_signals[chrom] or chrs_to_snp_signals[chrom][key] > p:
-                        chrs_to_snp_signals[chrom][key] = p
                 else:
                     raise ValueError(f'Found uninterpretable id {_id}')
 
-    '''
     chrs_to_snp_signals = {
-        key: pd.DataFrame(np.stack(val), columns=('pos', 'ref', 'alt', 'p'))
+        key: (
+            pd.DataFrame(np.stack(val), columns=('pos', 'ref', 'alt', 'pcausal'))
+            if len(val) > 0
+            else pd.DataFrame(      [], columns=('pos', 'ref', 'alt', 'pcausal'))
+        )
         for key, val in chrs_to_snp_signals.items()
     }
     chrs_to_str_signals = {
-        key: pd.DataFrame(np.stack(val), columns=('pos', 'p'))
+        key: (
+            pd.DataFrame(np.stack(val), columns=('pos', 'pcausal'))
+            if len(val) > 0
+            else pd.DataFrame(      [], columns=('pos', 'pcausal'))
+        )
         for key, val in chrs_to_str_signals.items()
-    }
-    '''
-    chrs_to_snp_signals = {
-        key: pd.DataFrame.from_dict(val, orient='index', columns=['p'])
-        for key, val in chrs_to_snp_signals.items()
-    }
-    for key, df in chrs_to_snp_signals.items():
-        df.reset_index(inplace=True)
-        df[['pos', 'ref', 'alt']] = pd.DataFrame(df['index'].tolist(), index=df.index)
-        chrs_to_snp_signals[key] = df[['pos', 'ref', 'alt', 'p']]
-
-    chrs_to_str_signals = {
-        key: pd.DataFrame.from_dict(val, orient='index', columns=['p'])
-        for key, val in chrs_to_str_signals.items()
-    }
-    for key, df in chrs_to_str_signals.items():
-        df.reset_index(inplace=True)
-    chrs_to_str_signals = {
-        key: df.rename(columns={'index': 'pos'}) for key, df in chrs_to_str_signals.items()
     }
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
@@ -940,11 +1010,14 @@ def load_finemap_signals(finemap_signals):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('ext', help='file extension', choices=['svg', 'html'])
     parser.add_argument("--my-plink-comparison", action='store_true')
     parser.add_argument("--phenotype")
     parser.add_argument("--condition")
     parser.add_argument('--finemap-signals', action='store_true', default=False)
     args = parser.parse_args()
+    ext = args.ext
+
     assert args.finemap_signals + bool(args.my_plink_comparison) + bool(args.condition) <= 1
     if not bool(args.my_plink_comparison):
         assert bool(args.phenotype)
@@ -970,20 +1043,22 @@ def main():
             with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
                 date_line = next(README)
                 my_str_run_date = date_line.split(' ')[2]
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan.html'
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan.{ext}'
+            conditioned_isnps = conditioned_strs = None
         else:
             my_str_run_date = None
             chrom, start, end = args.condition.split('_')[:3]
             chrom = int(chrom[3:])
             start = int(start)
             end = int(end)
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_c_{args.condition}.html'
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_{args.condition}.{ext}'
+            conditioned_isnps = get_conditioned_isnps(args.condition)
+            conditioned_strs = get_conditioned_strs(args.condition)
 
         if args.finemap_signals:
             # change the output file
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
-            finemap_loc = f'{ukb}/finemapping/finemap_results/overlapping_{phenotype}'
-            #finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
+            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_FINEMAP.{ext}'
+            finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
             out_files = [f'{finemap_loc}/{d}/finemap_output.snp' for d in
                          os.listdir(finemap_loc) if d[0] in '0123456789']
             out_files = [f for f in out_files if os.path.exists(f) and os.path.getsize(f) > 0]
@@ -1001,8 +1076,9 @@ def main():
         plink_snp_results = plink_snp_results[plink_snp_results['chr'] == 21]
         gwas_catalog = gwas_catalog_ids = None
         my_str_results = my_str_run_date = None
+        conditioned_isnps = conditioned_strs = None
 
-        outfname = f'{ukb}/association/plots/height_my_imputed_snp_vs_plink.html'
+        outfname = f'{ukb}/association/plots/height_my_imputed_snp_vs_plink.{ext}'
         with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
             date_line = next(README)
             my_snp_run_date = date_line.split(' ')[2]
@@ -1033,7 +1109,9 @@ def main():
         end = end,
         snp_finemap_signals = snp_finemap_signals,
         str_finemap_signals = str_finemap_signals,
-        finemap_regions = finemap_regions
+        finemap_regions = finemap_regions,
+        conditioned_isnps = conditioned_isnps,
+        conditioned_strs = conditioned_strs
     )
 
 if __name__ == "__main__":

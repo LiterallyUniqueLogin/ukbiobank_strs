@@ -97,8 +97,10 @@ for signal in signals_with_strs:
             _id = splits[1]
             prob = float(splits[10])
             pcausals[-1]  += prob
+            '''
             if prob == 0:
                 break
+            '''
             if _id[:4] == 'SNP_':
                 continue
             elif _id[:4] != 'STR_':
@@ -109,11 +111,10 @@ for signal in signals_with_strs:
                 highest_single_str_pcausal.append(prob)
                 highest_str_rank.append(rank)
                 highest_str_id.append(_id)
-            if prob >= 0.05:
-                all_str_pcausal.append(prob)
-                all_str_id.append(_id)
-                all_str_rank.append(rank)
-                all_str_signal.append(signal_name)
+            all_str_pcausal.append(prob)
+            all_str_id.append(_id)
+            all_str_rank.append(rank)
+            all_str_signal.append(signal_name)
         if not any_strs:
             highest_single_str_pcausal.append(0)
             highest_str_rank.append(np.inf)
@@ -173,7 +174,7 @@ with open(f'{summary_dir}/best_STR_ranks.tab', 'w') as best_ranks:
 
 with open(f'{summary_dir}/all_STR_contribs.tab', 'w') as all_contribs:
     all_contribs.write('All STRs from all signals sorted by posterior probability of causality\n')
-    all_contribs.write('Cutoff is pcausal >= 0.05\n')
+    #all_contribs.write('Cutoff is pcausal >= 0.05\n')
     all_contribs.write('signal\tSTR\tpcausal\trank\n')
     all_str_order = np.argsort(all_str_pcausal, kind='stable')[::-1]
     for idx in all_str_order:

@@ -7,7 +7,6 @@ import shutil
 import tempfile
 import time
 
-import cyvcf2
 import numpy as np
 from statsmodels.regression.linear_model import OLS
 import statsmodels.stats.weightstats

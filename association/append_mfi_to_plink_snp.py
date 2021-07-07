@@ -12,14 +12,10 @@ import python_array_utils as utils
 
 ukb = os.environ['UKB']
 
-def append_mfi_to_plink(result_fname):
+def append_mfi_to_plink(result_fname, out_fname):
     # Load plink SNP results
     print(f"Loading plink SNP results at {result_fname}  ... ", end='', flush=True)
    
-    pieces = result_fname.split('.')
-    assert len(pieces) == 2
-    out_fname = pieces[0] + '_with_mfi.npy'
-
     start_time = time.time()
 
     plink_results = pd.read_csv(
@@ -65,9 +61,10 @@ def append_mfi_to_plink(result_fname):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result_fname")
+    parser.add_argument("out_fname")
     args = parser.parse_args()
 
-    append_mfi_to_plink(args.result_fname)
+    append_mfi_to_plink(args.result_fname, args.out_fname)
 
 if __name__ == "__main__":
     main()
