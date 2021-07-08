@@ -38,7 +38,6 @@ chr_lens = np.genfromtxt(
 
 cum_lens = np.cumsum(chr_lens)
 
-start_p_val_cap = 30
 # python stops being able to distinguish between small numbers and zero at 1e-324 == 0
 # so cutoff a bit before then
 max_p_val = 300 # in -log10
@@ -56,7 +55,8 @@ def create_source_dict(
         start_chrom: Optional[int],
         cols_to_skip: Set[str] = set(),
         cols_to_include: Set[str] = set(),
-        chrs_to_var_signals = None
+        chrs_to_var_signals = None,
+        start_p_val_cap = None
     ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
     if not start_chrom:
         cds_range = range(1, 23)
@@ -82,13 +82,17 @@ def create_source_dict(
                     continue
             chrom_dict[name] = data[name][idx]
         sources[chrom] = bokeh.models.ColumnDataSource(chrom_dict)
-        sources[chrom].data['display_p_val'] = np.minimum(
-            sources[chrom].data['p_val'], start_p_val_cap
-        )
+        if start_p_val_cap is not None:
+            sources[chrom].data['display_p_val'] = np.minimum(
+                sources[chrom].data['p_val'], start_p_val_cap
+            )
+        else:
+            sources[chrom].data['display_p_val'] = sources[chrom].data['p_val'].copy()
+
         if chrs_to_var_signals:
             colnames_to_merge_on = list(chrs_to_var_signals[chrom].columns)[:-1]
             merge_cols = pd.DataFrame(data[colnames_to_merge_on][idx])
-                
+
             merged_data = merge_cols.merge(
                 chrs_to_var_signals[chrom].astype({'pos': int}),
                 on=colnames_to_merge_on,
@@ -150,12 +154,18 @@ def make_manhattan_plots(
     sources = []
     source_dicts = []
 
+    if not conditioning and not start:
+        start_p_val_cap = 30
+    else:
+        start_p_val_cap = None
+
     if plot_my_str_data:
         my_str_source, my_str_sources = create_source_dict(
             my_str_data,
             chrom,
             cols_to_skip = cols_to_skip,
-            chrs_to_var_signals = str_finemap_signals
+            chrs_to_var_signals = str_finemap_signals,
+            start_p_val_cap = start_p_val_cap
         )
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
@@ -165,6 +175,7 @@ def make_manhattan_plots(
             my_snp_data,
             chrom,
             cols_to_skip = cols_to_skip,
+            start_p_val_cap = start_p_val_cap
         )
         sources.append(my_snp_source)
         source_dicts.append(my_snp_sources)
@@ -239,9 +250,9 @@ def make_manhattan_plots(
 
     # set up drawing canvas
     if chrom is None:
-        x_axis_label = 'Position'
+        x_axis_label = 'Position (bp)'
     else:
-        x_axis_label = f'Position (chr {chrom})'
+        x_axis_label = f'Position (bp chr{chrom})'
 
     if ext == 'html':
         output_backend = 'webgl'
@@ -250,6 +261,16 @@ def make_manhattan_plots(
     else:
         raise ValueError("Unrecognized extension")
 
+    if start_p_val_cap is not None:
+        start_height_cap = start_p_val_cap
+    else:
+        plink_data = plink_snp_source.data
+        str_data = my_str_source.data
+        start_height_cap = max(
+            np.max(plink_data['p_val'][(start <= plink_data['pos']) & (plink_data['pos'] <= end)]),
+            np.max(str_data['p_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]),
+        )
+
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
         height=900,
@@ -257,9 +278,12 @@ def make_manhattan_plots(
         x_axis_label=x_axis_label,
         y_axis_label='-log10(p-value)',
         tools='xzoom_in,xzoom_out,save',
-        y_range=(-0.025*start_p_val_cap, start_p_val_cap*1.025),
+        y_range=(-0.025*start_height_cap, start_height_cap*1.025),
         output_backend=output_backend
     )
+    if start:
+        x_width = end - start
+        manhattan_plot.x_range = bokeh.models.Range1d(start-0.025*x_width, end+0.025*x_width)
 
     # add custom tools
     wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")
@@ -561,7 +585,7 @@ def make_manhattan_plots(
     height_slider = bokeh.models.Slider(
         start = 8,
         end=max_p_val,
-        value=start_p_val_cap,
+        value=start_height_cap,
         step=1,
         title="p-value cap",
         sizing_mode = 'stretch_width'
@@ -729,7 +753,7 @@ def make_manhattan_plots(
         ), 'below')
     if plink_snp_run_date:
         manhattan_plot.add_layout(bokeh.models.Title(
-            text=f"New plink SNP run dat: {plink_snp_run_date}",
+            text=f"Plink SNP run date: {plink_snp_run_date}",
             align='right'
         ), 'below')
 
@@ -740,7 +764,7 @@ def make_manhattan_plots(
         with open(outfname, 'w') as outfile:
             outfile.write(html)
     elif ext == 'svg':
-        bokeh.io.export_svg(manhattan_plot, filename=outfile)
+        bokeh.io.export_svg(manhattan_plot, filename=outfname)
     else:
         raise ValueError("Unrecognized extension")
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
@@ -752,10 +776,10 @@ my_results_rename = {
     5: 'coeff_phenotype'
 }
 my_str_results_rename = {
-    -6: 'CI5e_2SingleDosagePhenotype',
-    -5: 'CI5e_8SingleDosagePhenotype',
-    -3: 'CI5e_2PairedDosagePhenotype',
-    -2: 'CI5e_8PairedDosagePhenotype'
+    -5: 'CI5e_2SingleDosagePhenotype',
+    -4: 'CI5e_8SingleDosagePhenotype',
+    -2: 'CI5e_2PairedDosagePhenotype',
+    -1: 'CI5e_8PairedDosagePhenotype'
 }
 
 def load_data(phenotype, condition):
@@ -786,7 +810,7 @@ def load_my_str_results(phenotype, condition):
     )
 
     if not condition:
-        results= unconditioned_results
+        results = unconditioned_results
     else:
         conditional_results_fname = \
             f'{ukb}/association/results/{phenotype}/my_str_conditional/{condition}.tab'
@@ -816,6 +840,8 @@ def load_my_str_results(phenotype, condition):
     for idx, name in my_results_rename.items():
         rename_dict[results.columns[idx]] = name
     for idx, name in my_str_results_rename.items():
+        if condition:
+            idx -=1
         rename_dict[results.columns[idx]] = name
     for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',
                 'subset_total_per_allele_dosages', 'subset_total_hardcall_alleles',
@@ -870,7 +896,7 @@ def load_plink_results(phenotype, condition):
         f'{ukb}/association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     ))
     if not condition:
-        results = unconditioned_results
+        results = utils.df_to_recarray(unconditioned_results)
     else:
         results = pd.DataFrame.from_records(np.load(
             f'{ukb}/association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy'
@@ -906,6 +932,8 @@ def load_plink_results(phenotype, condition):
     return results
 
 def load_gwas_catalog(phenotype):
+    if phenotype not in {'height', 'total_bilirubin'}:
+        return None, None
     # Load the NHGRI-EBI GWAS catalog
     print("Loading GWAS catalog results ... ", end='', flush=True)
     start_time = time.time()
@@ -1013,12 +1041,16 @@ def main():
     parser.add_argument('ext', help='file extension', choices=['svg', 'html'])
     parser.add_argument("--my-plink-comparison", action='store_true')
     parser.add_argument("--phenotype")
+    parser.add_argument("--chrom")
+    parser.add_argument("--start")
+    parser.add_argument("--end")
     parser.add_argument("--condition")
     parser.add_argument('--finemap-signals', action='store_true', default=False)
     args = parser.parse_args()
     ext = args.ext
 
-    assert args.finemap_signals + bool(args.my_plink_comparison) + bool(args.condition) <= 1
+    assert args.finemap_signals + bool(args.my_plink_comparison) + bool(args.condition) + bool(args.chrom) <= 1
+    assert bool(args.chrom) == bool(args.start) == bool(args.end)
     if not bool(args.my_plink_comparison):
         assert bool(args.phenotype)
     else:
@@ -1036,14 +1068,23 @@ def main():
         )
         my_snp_results = None
         my_snp_run_date = None
-        if not args.condition:
+        if not args.condition and not args.chrom:
             chrom = None
             start = None
             end = None
             with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
                 date_line = next(README)
                 my_str_run_date = date_line.split(' ')[2]
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan.{ext}'
+            outfname = f'{ukb}/association/plots/{phenotype}_manhattan.{ext}'
+            conditioned_isnps = conditioned_strs = None
+        elif args.chrom:
+            chrom = int(args.chrom)
+            start = int(args.start)
+            end = int(args.end)
+            with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
+                date_line = next(README)
+                my_str_run_date = date_line.split(' ')[2]
+            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_chr{chrom}_{start}_{end}.{ext}'
             conditioned_isnps = conditioned_strs = None
         else:
             my_str_run_date = None
@@ -1051,13 +1092,13 @@ def main():
             chrom = int(chrom[3:])
             start = int(start)
             end = int(end)
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_{args.condition}.{ext}'
+            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_{args.condition}.{ext}'
             conditioned_isnps = get_conditioned_isnps(args.condition)
             conditioned_strs = get_conditioned_strs(args.condition)
 
         if args.finemap_signals:
             # change the output file
-            outfname = f'{ukb}/association/plots/{phenotype}_interactive_manhattan_FINEMAP.{ext}'
+            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_FINEMAP.{ext}'
             finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
             out_files = [f'{finemap_loc}/{d}/finemap_output.snp' for d in
                          os.listdir(finemap_loc) if d[0] in '0123456789']

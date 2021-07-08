@@ -15,6 +15,7 @@ import load_and_filter_genotypes
 import python_array_utils as utils
 
 ukb = os.environ['UKB']
+project_temp = os.environ['PROJECT_TEMP']
 
 def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_name, region, conditional):
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
@@ -223,7 +224,7 @@ def perform_regional_gwas(phenotype, region, runtype, imputation_run_name, condi
     elif runtype == 'imputed-snps':
         dirname = 'imputed_snp'
 
-    with tempfile.NamedTemporaryFile(mode='w+') as outfile:
+    with tempfile.NamedTemporaryFile(dir=project_temp, mode='w+') as outfile:
         print(f"Writing output to temp file {outfile.name}", flush=True)
         perform_regional_gwas_helper(
             phenotype, outfile, runtype, imputation_run_name, region, conditional

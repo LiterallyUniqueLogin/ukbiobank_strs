@@ -24,8 +24,15 @@ else
 	OUT_DIR="$OUT_DIR"/chr"$CHROM"_"$START"_"$END"_"$CONDITIONAL"
 fi
 
-cd "$OUT_DIR" || {
-	echo "Failed to move to the output directory $OUT_DIR" ;
+cd "$PROJECT_TEMP" || {
+	echo "Failed to move to the temp directory $PROJECT_TEMP" ;
+	exit 1 ;
+}
+
+temp_name=plink_snp_conditional/chr"$CHROM"_"$START"_"$END"_"$CONDITIONAL"
+mkdir -p "$temp_name"
+cd "$temp_name" || {
+	echo "Failed to move to $temp_name"
 	exit 1 ;
 }
 
@@ -60,7 +67,9 @@ fi
     2> "$LOG_ERR"
 
 # give filesystem time to register the file plink has written
-sleep 180 
+# sleep 180 
+
+mv ./* "$OUT_DIR"
 
 mv "$OUT_DIR"/plink2.rin_"$PHENOTYPE".glm.linear \
    "$OUT_DIR"/plink2.rin_"$PHENOTYPE".glm.linear.done

@@ -82,6 +82,16 @@ pheno_args = {
        'first-available',
         unit = 'mmol/L'
     )
+    # could study FEV and FVC z-scores (20257, 20256)
+    # but those are just z-scores for those values regressed on
+    # age, height and gender among lifelong non-smokers with no history of lung disease
+    # we can compute that ourselves, so I don't see any reason to study these separately
+    # maybe we should study lung function separately in smokers and nonsmokers
+    # probably using direct question 20116 over derived field 20160
+    # Spirometry: device number 3132, device id 42
+    # 3062Forced vital capacity (FVC)
+    # 3063Forced expiratory volume in 1-second (FEV1)
+    # should I remove 3088,89,90? or 3159?
 }
 
 rule load_shared_covars:
@@ -520,7 +530,8 @@ rule append_mfi_to_conditional_plink_results:
     output:
         'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy'
     resources:
-        time='01:00:00'
+        time='01:00:00',
+        mem_gb = 50
     shell:
         'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
 
@@ -537,13 +548,13 @@ rule compare_my_to_plink_gwas:
     shell:
         'association/interactive_manhattan_plots.py {wildcards.ext} --my-plink-comparison'
 
-rule interactive_manhattan:
+rule manhattan:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_interactive_manhattan.{ext}'
+        'association/plots/{phenotype}_manhattan.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -551,7 +562,24 @@ rule interactive_manhattan:
         'association/interactive_manhattan_plots.py {wildcards.ext} '
         '--phenotype {wildcards.phenotype}'
 
-rule interactive_manhattan_conditional:
+rule region_manhattan:
+    input:
+        "traits/phenotypes/{phenotype}_unit.txt",
+        'association/plots/input/{phenotype}/my_str_results.tab',
+        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
+    output:
+        'association/plots/{phenotype}_manhattan_chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'association/interactive_manhattan_plots.py {wildcards.ext} '
+        '--phenotype {wildcards.phenotype} '
+        '--chrom {wildcards.chrom} '
+        '--start {wildcards.start} '
+        '--end {wildcards.end} '
+
+rule manhattan_conditional:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
@@ -559,7 +587,7 @@ rule interactive_manhattan_conditional:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'association/plots/input/{phenotype}/plink_snp_conditional_chr{condition}_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_interactive_manhattan_chr{condition}.{ext}'
+        'association/plots/{phenotype}_manhattan_chr{condition}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -713,26 +741,14 @@ rule summarize_finemap_output:
     shell:
         'finemapping/summarize_finemap_output.py {wildcards.phenotype} '
 
-rule graph_finemap_output:
-    input:
-        'association/results/{phenotype}/my_str/results.tab',
-        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
-    output:
-        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html'
-    resources:
-        time='00:30:00',
-        mem_gb = 50
-    shell:
-        'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
-
-rule interactive_manhattan_finemap:
+rule manhattan_finemap:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
-        'association/plots/{phenotype}_interactive_manhattan_FINEMAP.{ext}'
+        'association/plots/{phenotype}_manhattan_FINEMAP.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -749,7 +765,8 @@ checkpoint produce_summary_table:
         'finemapping/summary/{phenotype}_table_README.txt',
         'finemapping/summary/{phenotype}_table.tab'
     resources:
-        time='00:30:00'
+        time='00:30:00',
+        mem_gb = 20
     run:
         STRs = ''
         first = True
@@ -763,36 +780,67 @@ checkpoint produce_summary_table:
             command += ' --previous-STR-findings ' + STRs
         shell(command)
 
-def strs_to_condition_on(wildcards):
-    checkpoints.produce_summary_table.get(phenotype=phenotype)
+rule graph_finemap_output:
+    input:
+        'finemapping/summary/{phenotype}_table.tab'
+    output:
+        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html'
+    resources:
+        time='00:30:00',
+        mem_gb = 50
+    shell:
+        'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
+
+def conditional_plots_sig_strs(wildcards):
+    checkpoints.produce_summary_table.get(phenotype=wildcards.phenotype)
     phenotype = wildcards.phenotype
     results = utils.df_to_recarray(pd.read_csv(
         f'finemapping/summary/{phenotype}_table.tab',
         header=0,
         delimiter='\t'
     ))
-    results = results[results['pcausal'] >= 0.5]
-    return[('association/plots/{phenotype}_interactive_manhattan_'
-            f'chr{result["signal"]}_STR{result["SNPSTR_start_pos"]}__ISNP__ASNP.svg')
-           for result in results]
+    results = results[(results['pcausal'] >= 0.5) | results['previously_reported_association']]
+    outfiles = []
+    for result in results:
+        outfiles.append(
+            f'association/plots/{phenotype}_manhattan_chr{result["signal_region"]}.svg'
+        )
+        outfiles.append(
+            'association/plots/{phenotype}_manhattan_'
+            f'chr{result["signal_region"]}_STR_{result["SNPSTR_start_pos"]}__ISNP__ASNP.svg'
+        )
+    return outfiles
      
-rule generate_conditional_STR_manhattans:
+rule generate_unconditional_and_conditional_STR_manhattans:
     input:
-        strs_to_condition_on
+        conditional_plots_sig_strs
     output:
         'finemapping/summary/{phenotype}_conditional_STR_manhattans.done'
     resources:
         time='00:05:00'
     shell:
-        'touch finemapping/summary/{phenotype}_conditional_STR_manhattans.done'
+        'touch finemapping/summary/{wildcards.phenotype}_conditional_STR_manhattans.done'
 
-'''
 rule gather_all_summaries:
     input:
-        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
-        'association/plots/{phenotype}_interactive_manhattan_FINEMAP.html'
+        table_readme='finemapping/summary/{phenotype}_table_README.txt',
+        table='finemapping/summary/{phenotype}_table.tab',
+        signal_strengths='finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
+        manhattan='association/plots/{phenotype}_manhattan_FINEMAP.html',
+        conditional_plots=conditional_plots_sig_strs
     output:
+        directory('export/{phenotype}')
     resources:
-        time='00:05:00'
+        time='00:10:00'
     shell:
-'''
+        'mkdir -p {output[0]} ; '
+        'cd export/{wildcards.phenotype} ; '
+        'for file in {input.manhattan} {input.signal_strengths} {input.table} {input.table_readme} ; do '
+        '    ln -s ../../$file ; '
+        'done ; '
+        'mkdir region_plots ; '
+        'cd region_plots ; '
+        'for file in {input.conditional_plots} ; do '
+        '    ln -s ../../../$file ; '
+        'done '
+

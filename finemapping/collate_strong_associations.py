@@ -158,11 +158,13 @@ def main(readme, phenotype, previous_STRs):
             previous_STR_rows = new_rows
         else:
             previous_STR_rows |= new_rows
+    if previous_STR_rows is None:
+        previous_STR_rows = np.full((signals.shape[0]), False, dtype=bool)
 
     signals['previously_reported_association'] = previous_STR_rows
     signals = signals[
         previous_STR_rows | (
-            ~np.isnan(signals['pcausal']) & (signals['pcausal'] >= 0.05)
+            ~np.isnan(signals['pcausal'].to_numpy()) & (signals['pcausal'] >= 0.05)
     )]
 
     signals = signals[signals['association_p_value'] < 5e-8]

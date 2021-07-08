@@ -56,8 +56,12 @@ for STR in args.STRs:
         raise ValueError(f"Expected only one STR at position {STR}")
 
     variant_names.append(f"STR_{STR}")
-    gts.append(np.sum([_len*np.sum(dosages, axis=1) for
-                       _len, dosages in dosage_dict.items()], axis=0))
+    this_var_gts = np.sum(
+        [_len*np.sum(dosages, axis=1) for _len, dosages in dosage_dict.items()],
+        axis=0
+    )
+    this_var_gts = (this_var_gts - np.mean(this_var_gts))/np.std(this_var_gts)
+    gts.append(this_var_gts)
 
 for iSNP in args.imputed_SNPs:
     itr = lfg.load_imputed_snps(f'{args.chr}:{iSNP}-{iSNP}', slice(None))
@@ -79,7 +83,9 @@ for iSNP in args.imputed_SNPs:
         raise ValueError(f"Expected only one imputed SNP at position {iSNP}")
 
     variant_names.append(f"imputed_SNP_{iSNP}")
-    gts.append(dosages[:, 1] + 2*dosages[:, 2])
+    this_var_gts = dosages[:, 1] + 2*dosages[:, 2]
+    this_var_gts = (this_var_gts - np.mean(this_var_gts))/np.std(this_var_gts)
+    gts.append(this_var_gts)
 
 STR_string = '_'.join(args.STRs)
 if len(STR_string) > 0:
