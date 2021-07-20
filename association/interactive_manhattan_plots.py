@@ -265,11 +265,14 @@ def make_manhattan_plots(
         start_height_cap = start_p_val_cap
     else:
         plink_data = plink_snp_source.data
-        str_data = my_str_source.data
-        start_height_cap = max(
-            np.max(plink_data['p_val'][(start <= plink_data['pos']) & (plink_data['pos'] <= end)]),
-            np.max(str_data['p_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]),
+        start_height_cap = np.max(
+            plink_data['p_val'][(start <= plink_data['pos']) & (plink_data['pos'] <= end)]
         )
+
+        str_data = my_str_source.data
+        included_strs = str_data['p_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]
+        if included_strs.shape[0] > 0:
+            start_height_cap = max(start_height_cap, np.max(included_strs))
 
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
@@ -916,14 +919,22 @@ def load_plink_results(phenotype, condition):
             how = 'inner'
         )) # subsets to only those which passed the p-val threshold in the unconditioned run
 
+    results = results[results['error'] != 'CONST_OMITTED_ALLELE']
     results['p_val'] = np.maximum(results['p_val'], 1 / 10**max_p_val)
     results['p_val'] = -np.log10(results['p_val'])
 
     # we've already filtered all the spots that had errors in the unconditional run
-    # having a VIF_TOO_HIGH only in the conditional run just means that
+    # having a VIF_TOO_HIGH or CORR_TOO_HIGH only in the conditional run just means that
     # SNP is extremely correlated with the conditioning variants, which means
     # its p-value should be very small, so this isn't an issue.
-    assert np.all((results['error'] == '.') | (results['error'] == 'VIF_TOO_HIGH'))
+    if not condition:
+        assert np.all(results['error'] == '.')
+    else:
+        assert np.all(
+            (results['error'] == '.') |
+            (results['error'] == 'VIF_TOO_HIGH') |
+            (results['error'] == 'CORR_TOO_HIGH')
+        )
     # rename for readability
     results['error'][results['error'] == '.'] = 'none'
     results['p_val'][results['error'] == 'VIF_TOO_HIGH'] = 0
@@ -1125,8 +1136,12 @@ def main():
             my_snp_run_date = date_line.split(' ')[2]
 
     if not args.condition:
-        with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as README:
-            plink_snp_run_date = ' '.join(README.readlines()[-1].split(' ')[2:])
+        # TODO for future runs uncomment
+        '''
+        with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as outlog: 
+            plink_snp_run_date = ' '.join(outlog.readlines()[-1].split(' ')[2:])
+        '''
+        plink_snp_run_date = None
     else:
         plink_snp_run_date = None
 

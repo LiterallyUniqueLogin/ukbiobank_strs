@@ -41,3 +41,4 @@ twistd.pid
 .snakemake
 *.npy
 *Rplots.pdf
+*.gff3

@@ -79,8 +79,8 @@ def main(readme, phenotype, previous_STRs):
 
     readme.write(
         'table.tab contains one row for each variant that was not filtered prior to association '
-        'testing and either was previously reported as an association or both had'
-        'association p-value >= 5e-8 and'
+        'testing and either was previously reported as an association or both had '
+        'association p-value >= 5e-8 and '
         'FINEMAP posterior probability of causaility >= 0.05\n'
         '\n'
         'table.tab contains the following columns:\n'

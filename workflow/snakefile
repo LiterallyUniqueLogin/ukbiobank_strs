@@ -18,14 +18,12 @@ class PhenotypeLoadingArg:
     def __init__(
             self,
             data_field_id,
-            age,
             *,
             unit = 'binary',
             categorical_covars = [],
             previous_STR_findings = [], # format "chr:pos"
             previous_SNP_findings = []): # unsure of format yet
         self.data_field_id = data_field_id
-        self.age = age
         self.unit = unit
         self.categorical_covars = categorical_covars
         self.previous_STR_findings = previous_STR_findings
@@ -34,54 +32,100 @@ class PhenotypeLoadingArg:
 pheno_args = {
     'height': PhenotypeLoadingArg(
         '50',
-        'first-available',
         unit = 'cm',
         previous_STR_findings = ["3:53128363"]
     ),
+    # blood biochemistry phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=17518
+    # and related QC fields https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=18518
+    # Due to the companion doc, I think I'm going to include aliquot as a covariate
+    # (section 7.2)
+    # companion documents:
+    # https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=5636
+    # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/biomarker_issues.pdf
+    # (I've found this second one less useful)
+    # https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1227
+    # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/serum_biochemistry.pdf
     'total_bilirubin': PhenotypeLoadingArg(
         '30840',
-        'first-available',
         unit = 'umol/L',
         previous_STR_findings = ["2:234668880"]
     ),
-    '''
-    'education_score_england': PhenotypeLoadingArg(
-        '26414',
-        'init-assessment',
-        unit = 'English IMD Units'
+    'ldl_cholesterol_direct': PhenotypeLoadingArg(
+        '30780',
+        unit = 'mmol/L'
     ),
-    'fluid_intelligence_score': PhenotypeLoadingArg(
-        '20016',
-        'first-available',
-        unit = 'Correct Answers'
+    'hdl_cholesterol': PhenotypeLoadingArg(
+        '30760',
+        unit = 'mmol/L',
+        categorical_covars = [('hdl_cholesterol_aliquot', '30762')]
     ),
-    'inpatient_ICD10_main_diagnoses' : PhenotypeLoadingArg(
-        '41202',
-        'tbd'
-    ),
-    'tower_rearranging_correct' : PhenotypeLoadingArg(
-        '21004',
-        'first-available',
-        unit = 'Correct Answers'
-    ),
-    's_word_count_pilot' : PhenotypeLoadingArg(
-        '10612',
-        'init-assessment',
-        unit = 'Words Produced'
-    ),
-    '''
+    # blood count phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100081
+    # 'crit' values are percentage of blood volume occupied by that cell type
+    # overview here https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1453
+    # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/haematology.pdf
     'white_blood_cell_count': PhenotypeLoadingArg(
         '30000',
-        'first-available',
         unit = '10^9 cells/Liter',
         categorical_covars = [('white_blood_cell_count_device_id', '30003')]
     ),
+    'red_blood_cell_count': PhenotypeLoadingArg(
+        '30010',
+        unit = '10^12 cells/Liter',
+        categorical_covars = [('red_blood_cell_count_device_id', '30013')]
+    ),
+   'haematocrit': PhenotypeLoadingArg(
+        '30030',
+        unit = '%',
+        categorical_covars = [('hematocrit_device_id', '30033')]
+    ),
+   'haemoglobin_concentration': PhenotypeLoadingArg(
+       '30020',
+       unit = 'g/dL',
+       categorical_covars = [('haemoglobin_concentration_device_id', '30023')]
+   ),
+   'platelet_count': PhenotypeLoadingArg(
+        '30080',
+        unit = '10^9 cells/Litre',
+        categorical_covars = [('platelet_count_device_id', '30083')]
+    ),
+    'platelet_crit': PhenotypeLoadingArg(
+        '30090',
+        unit = '%',
+        categorical_covars = [('platelet_crit_device_id', '30093')]
+    ),
+    'lymphocyte_count': PhenotypeLoadingArg(
+        '30120',
+        unit = '10^9 cells/Litre',
+        categorical_covars = [('lymphocyte_count_device_id', '30123')]
+    ),
+    'lymphocyte_percent': PhenotypeLoadingArg(
+        '30180',
+        unit = '%',
+        categorical_covars = [('lymphocyte_percent_device_id', '30183')]
+    ),
+    'neutrophil_count': PhenotypeLoadingArg(
+        '30140',
+        unit = '10^9 cells/Litre',
+        categorical_covars = [('neutrophil_count_device_id', '30143')]
+    ),
+    'neutrophil_percent': PhenotypeLoadingArg(
+        '30200',
+        unit = '%',
+        categorical_covars = [('neutrophil_percent_device_id', '30203')]
+    ),
+    'eosinophil_count': PhenotypeLoadingArg(
+        '30150',
+        unit = '10^9 cells/Litre',
+        categorical_covars = [('eosinophil_count_device_id', '30153')]
+    ),
+    'eosinophil_percent': PhenotypeLoadingArg(
+        '30210',
+        unit = '%',
+        categorical_covars = [('eosinophil_percent_device_id', '30213')]
+    ),
+
     # blood pressure - combine 4079, 94, 4080, 93,  with covars 36,37 - all category 100011
-    'ldl_cholesterol_direct': PhenotypeLoadingArg(
-        '30780',
-       'first-available',
-        unit = 'mmol/L'
-    )
+    # --- Spirometry ---
     # could study FEV and FVC z-scores (20257, 20256)
     # but those are just z-scores for those values regressed on
     # age, height and gender among lifelong non-smokers with no history of lung disease
@@ -89,6 +133,9 @@ pheno_args = {
     # maybe we should study lung function separately in smokers and nonsmokers
     # probably using direct question 20116 over derived field 20160
     # Spirometry: device number 3132, device id 42
+    # lots of different devices used with only a few thousand per device
+    # so it doesn't make sense to add that as a categorical variable
+    # could add it as a random component if I was using a mixed effect model
     # 3062Forced vital capacity (FVC)
     # 3063Forced expiratory volume in 1-second (FEV1)
     # should I remove 3088,89,90? or 3159?
@@ -109,6 +156,9 @@ rule load_shared_covars:
         "traits/load_shared_covars.py"
 
 rule decompress_field:
+    input:
+        'main_dataset/raw_data/ukb46781.enc_ukb',
+        'main_dataset/raw_data/ukb46782.enc_ukb'
     output:
         protected("main_dataset/extracted_data/{field_name}_{field_id}.txt"),
         protected("main_dataset/extracted_data/{field_name}_{field_id}_README.txt")
@@ -147,7 +197,7 @@ rule load_phenotype:
             assert args.unit != 'binary'
             base_command = (
                 f"traits/load_trait_from_main_dataset.py "
-                f"{phenotype} {args.data_field_id} '{args.unit}' {args.age} "
+                f"{phenotype} {args.data_field_id} '{args.unit}' "
             )
             if not args.categorical_covars:
                 shell(base_command)
@@ -379,9 +429,9 @@ rule run_plink_gwas:
     output:
         temporary('association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done')
     resources:
-        time='47:30:00',
+        time='06:00:00',
         threads=28,
-        mem_gb=110
+        mem_gb=56
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
 
@@ -498,10 +548,12 @@ rule subset_plink_gwas_results:
     output:
         'association/plots/input/{phenotype}/plink_snp_results.tab'
     resources:
-        time='01:00:00'
+        time='08:00:00'
     run:
         out = shell(
-            "tail -f +2 {input[0]} | grep -v -P '\.$' | grep -v 'CONST_OMITTED_ALLELE'"
+            "tail -n +2 {input[0]} | grep -v -P '\.$' | grep -v 'CONST_OMITTED_ALLELE' ; "
+            'if (( $? > 1 )) ; then exit 1 ; fi ',
+            iterable=True
         )
         for line in out:
             print(line)
@@ -654,7 +706,7 @@ rule finemap_load_gts:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
         temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
     resources:
-        mem_gb = 4,
+        mem_gb = 6,
         time = '02:00:00'
     shell:
         'finemapping/finemap_load_gts.py '

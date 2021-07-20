@@ -17,6 +17,11 @@ if [[ -z "$CONDITIONAL" && ( -n "$START" || -n "$END" ) ]] ; then
 	exit 1
 fi
 
+if [[ -z "$PROJECT_TEMP" ]] ; then
+	echo "PROJECT_TEMP not defined. Exiting."
+	exit 1
+fi
+
 if [ -z "$CONDITIONAL" ] ; then
 	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp/chrs/chr"$CHROM"
 else
@@ -24,12 +29,14 @@ else
 	OUT_DIR="$OUT_DIR"/chr"$CHROM"_"$START"_"$END"_"$CONDITIONAL"
 fi
 
+mkdir -p "$OUT_DIR"
+
 cd "$PROJECT_TEMP" || {
 	echo "Failed to move to the temp directory $PROJECT_TEMP" ;
 	exit 1 ;
 }
 
-temp_name=plink_snp_conditional/chr"$CHROM"_"$START"_"$END"_"$CONDITIONAL"
+temp_name=plink_snp/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"_conditional_"$CONDITIONAL"
 mkdir -p "$temp_name"
 cd "$temp_name" || {
 	echo "Failed to move to $temp_name"
@@ -38,9 +45,9 @@ cd "$temp_name" || {
 
 if [ -z "$CONDITIONAL" ] ; then
 	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/plink_snp/input/transformed_phenotype_and_covars.tab 
-	mkdir -p ../../logs
-	LOG_OUT=../../logs/chr"$CHROM".plink.stdout 
-	LOG_ERR=../../logs/chr"$CHROM".plink.stderr
+	mkdir -p "$OUT_DIR"/../../logs
+	LOG_OUT="$OUT_DIR"/../../logs/chr"$CHROM".plink.stdout 
+	LOG_ERR="$OUT_DIR"/../../logs/chr"$CHROM".plink.stderr
 	BED_FILE_COMMAND=" "
 else
 	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/conditional_inputs/chr"$CHROM"_"$CONDITIONAL"_plink.tab
@@ -61,7 +68,7 @@ fi
     --mac 20 \
     --glm omit-ref pheno-ids hide-covar \
     --ci 0.99999995 \
-    --memory 108000 \
+    --memory 56000 \
     --threads 28 \
     > "$LOG_OUT" \
     2> "$LOG_ERR"

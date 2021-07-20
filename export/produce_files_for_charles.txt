@@ -1,0 +1,6 @@
+# from this directory
+for file in */*tab ; do
+	awk 'BEGIN { FS = "\t" } ; { if ( NR == 1 || $25 > .2 ) { print $0 } }' $file | \
+		cut -f 1,3 -d $'\t' \
+		> ../../20210719_for_charles/"$(echo $file | cut -f 2 -d / )"
+done
