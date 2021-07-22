@@ -53,15 +53,24 @@ def df_to_recarray(df):
 
     return rec_array
 
-def get_dtypes(fname, type_dict = {}):
+def get_dtypes(fname, type_dict = {}, colnames = None):
     import pandas as pd
-    df = pd.read_csv(
-        fname,
-        header=0,
-        delimiter='\t',
-        encoding='UTF-8',
-        nrows=1
-    )
+    if colnames is None:
+        df = pd.read_csv(
+            fname,
+            header=0,
+            delimiter='\t',
+            encoding='UTF-8',
+            nrows=1
+        )
+    else:
+        df = pd.read_csv(
+            fname,
+            delimiter='\t',
+            encoding='UTF-8',
+            nrows=1,
+            names=colnames
+        )
     dtypes = dict(df.dtypes)
     for key, val in type_dict.items():
         dtypes[key] = val

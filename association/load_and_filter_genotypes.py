@@ -112,7 +112,8 @@ def load_strs(imputation_run_name: str,
     corner cases will not correspond to the maximum likelihood unphased allele.
     """
 
-    chrom, _ = region.split(':')
+    chrom, region_poses = region.split(':')
+    region_start, _ = [int(pos) for pos in region_poses.split('-')]
     vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
@@ -133,6 +134,10 @@ def load_strs(imputation_run_name: str,
         'subset_allele_dosage_r2'
     )
     for record in vcf(region):
+        if record.POS < region_start:
+            # records that overlap this region but started before this region
+            # should be considered part of the pervious region and not returned here
+            continue
         if record.INFO.get('PERIOD') is None:
             # there are a few duplicate loci which I didn't handle
             # properly, this identifies and removes them

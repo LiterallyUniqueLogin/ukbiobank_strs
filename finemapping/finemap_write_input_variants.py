@@ -48,6 +48,7 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
             }
 
             # assumes ordered numeric chromosomes
+            prev_result = None
             for result in str_results_reader:
                 result_chrom = int(result[cols['chrom']])
                 result_pos = int(result[cols['pos']])
@@ -58,8 +59,12 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 if result[cols['locus_filtered']] != 'False' or float(result[cols[f'p_{phenotype}']]) >= inclusion_threshold:
                     continue
                 if result_pos == prev_str_pos:
+                    if result == prev_result:
+                        # duplicated row, just ignore
+                        continue
                     raise ValueError(f"Two STR poses at the same location {result_pos}!")
                 prev_str_pos = result_pos
+                prev_result = result
                 any_strs = True
 
                 beta = result[cols[f'coeff_{phenotype}']]

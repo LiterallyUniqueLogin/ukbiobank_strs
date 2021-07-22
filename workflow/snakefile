@@ -196,7 +196,7 @@ rule load_phenotype:
             args = pheno_args[phenotype]
             assert args.unit != 'binary'
             base_command = (
-                f"traits/load_trait_from_main_dataset.py "
+                f"traits/load_phenotype_from_main_dataset.py "
                 f"{phenotype} {args.data_field_id} '{args.unit}' "
             )
             if not args.categorical_covars:
@@ -661,7 +661,7 @@ checkpoint clump_results:
     shell:
         'finemapping/clump.py {wildcards.phenotype}'
 
-rule finemap_write_input_variants:
+checkpoint finemap_write_input_variants:
     input:
         'association/results/{phenotype}/my_str/results.tab',
         'association/results/{phenotype}/plink_snp/results.tab',
@@ -675,28 +675,6 @@ rule finemap_write_input_variants:
         'finemapping/finemap_write_input_variants.py '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
-
-def collect_finemap_input_variants_per_region(wildcards):
-    phenotype = wildcards.phenotype
-    files = []
-    with checkpoints.clump_results.get(**wildcards).output[0].open() as signal_file:
-        reader = csv.reader(signal_file, delimiter='\t')
-        next(reader) # skip header
-        for line in reader:
-            files.append(
-                    f'finemapping/finemap_results/{phenotype}/{line[0]}_{line[1]}_{line[2]}/finemap_input.z'
-            )
-    return files
-
-checkpoint finemap_input_variants_all_regions:
-    input:
-        collect_finemap_input_variants_per_region
-    output:
-        protected('finemapping/finemap_results/{phenotype}/loaded_input_variants_all_regions')
-    resources:
-        time='00:01:00'
-    shell:
-        'touch finemapping/finemap_results/{wildcards.phenotype}/loaded_input_variants_all_regions'
 
 rule finemap_load_gts:
     input:
@@ -756,21 +734,26 @@ def collect_finemap_output_per_region_with_strs(wildcards):
     phenotype = wildcards.phenotype
     files = []
     # make sure we've loaded all input variants for all regions
-    checkpoints.finemap_input_variants_all_regions.get(phenotype=phenotype)
-    regions = glob_wildcards(
-        f'finemapping/finemap_results/{phenotype}/'
-        '{region}/finemap_input.z'         
-    ).region
-    regions_without_strs = glob_wildcards(
-        f'finemapping/finemap_results/{phenotype}/'
-        '{region}/no_strs'         
-    ).region
-    regions_with_strs = [region for region in regions if region not in regions_without_strs]
-    return expand(
-        f'finemapping/finemap_results/{phenotype}/'
-        '{region}/finemap_output.snp',
-        region=regions_with_strs
-    )
+    checkpoints.clump_results.get(phenotype=phenotype)
+    signals = []
+    with open(f'finemapping/signal_clumps/{phenotype}.tab') as signal_file:
+        next(signal_file)
+        for line in signal_file:
+            chrom, start, stop = line.split()
+            signals.append((chrom, start, stop))
+
+    target_files = [] 
+    for chrom, start, end in signals:
+        checkpoints.finemap_write_input_variants.get(
+            phenotype=phenotype, chrom=chrom, start=start, end=end
+        )
+        region_dir = \
+            f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}'
+        if os.path.exists(f'{region_dir}/no_strs'):
+            continue
+        else:
+            target_files.append(f'{region_dir}/finemap_output.snp')
+    return target_files
 
 rule run_finemap_phenotype:
     input:
@@ -808,17 +791,97 @@ rule manhattan_finemap:
         'association/interactive_manhattan_plots.py {wildcards.ext} '
         '--phenotype {wildcards.phenotype} --finemap-signals'
 
+rule sort_gencode:
+    input:
+        'misc_data/gencode/gencode.v38lift37.annotation.gff3'
+    output:
+        temporary('misc_data/gencode/gencode.v38lift37.annotation.without_chr.gff3'),
+        'misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gff3'
+    resources:
+        time='00:30:00'
+    shell:
+        "sed -e 's/^chr//' {input[0]} > {output[0]} ; "
+        'bedtools sort -i {output[0]} > {output[1]} '
+
+rule gencode_extract_feature:
+    input:
+        'misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gff3'
+    output:
+        'misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.{feature_type}.gff3'
+    resources:
+        time='00:30:00'
+    shell:
+        "awk '{{ if ($3 == \"{wildcards.feature_type}\") {{ print $0 ; }} }}' {input[0]} > {output[0]} "
+
+cut_str_genocde_command = "cut -d $'\\t' -f 1-3,11-13,15- "
+
+rule str_closest_feature:
+    input:
+        vcf='snpstr/info_field/chr{chrom}.vcf.gz',
+        index_file='snpstr/info_field/chr{chrom}.vcf.gz.tbi',
+        gencode_feature='misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.{feature_type}.gff3'
+    output:
+        'side_analyses/str_annotations/closest_{feature_type}/chr{chrom}.tab'
+    resources:
+        time='00:30:00'
+    shell:
+        ('bedtools closest -d -a {input.vcf} -b {input.gencode_feature} | ' +
+         cut_str_genocde_command +
+         '> {output[0]}')
+
+rule str_nearby_features:
+    input:
+        vcf='snpstr/info_field/chr{chrom}.vcf.gz',
+        index_file='snpstr/info_field/chr{chrom}.vcf.gz.tbi',
+        gencode_feature='misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.{feature_type}.gff3'
+    output:
+        'side_analyses/str_annotations/nearby_{feature_type}_d_{distance}/chr{chrom}.tab'
+    resources:
+        time='00:30:00'
+    shell:
+        ('bedtools window -w {wildcards.distance} -a {input.vcf} -b {input.gencode_feature} | ' +
+         cut_str_genocde_command +
+         '> {output[0]}')
+
+rule str_intersect_features:
+    input:
+        vcf='snpstr/info_field/chr{chrom}.vcf.gz',
+        index_file='snpstr/info_field/chr{chrom}.vcf.gz.tbi',
+        gencode_feature='misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.{feature_type}.gff3'
+    output:
+        'side_analyses/str_annotations/intersects_{feature_type}/chr{chrom}.tab'
+    resources:
+        time='00:30:00'
+    shell:
+        ('bedtools intersect -wo -a {input.vcf} -b {input.gencode_feature} | ' +
+        cut_str_genocde_command + 
+        '> {output[0]}')
+
+def chr_expand(string):
+    return [string.replace('CHR', str(chrom)) for chrom in range(1, 23)]
+
 checkpoint produce_summary_table:
     input:
-        'traits/phenotypes/{phenotype}_unit.txt',
         'association/results/{phenotype}/my_str/results.tab',
-        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
+        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab',
+        chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
+        #chr_expand('side_analyses/str_annotations/closest_transcript/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/nearby_gene_d_1000000/chrCHR.tab'),
+        #chr_expand('side_analyses/str_annotations/nearby_transcript_d_1000000/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_gene/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_exon/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_CDS/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_five_prime_UTR/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_three_prime_UTR/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_UTR/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/intersects_transcript/chrCHR.tab')
     output:
         'finemapping/summary/{phenotype}_table_README.txt',
         'finemapping/summary/{phenotype}_table.tab'
     resources:
-        time='00:30:00',
-        mem_gb = 20
+        time='01:00:00',
+        mem_gb = 50
     run:
         STRs = ''
         first = True
