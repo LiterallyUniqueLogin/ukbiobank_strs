@@ -867,7 +867,7 @@ checkpoint produce_summary_table:
         chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
         #chr_expand('side_analyses/str_annotations/closest_transcript/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
-        chr_expand('side_analyses/str_annotations/nearby_gene_d_1000000/chrCHR.tab'),
+        chr_expand('side_analyses/str_annotations/nearby_gene_d_100000/chrCHR.tab'),
         #chr_expand('side_analyses/str_annotations/nearby_transcript_d_1000000/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_exon/chrCHR.tab'),

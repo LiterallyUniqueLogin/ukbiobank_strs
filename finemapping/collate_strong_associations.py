@@ -26,7 +26,7 @@ def get_relation(str_start, str_end, feature_start, feature_end, feature_directi
     if feature_start <= str_start and str_end <= feature_end:
         return 'inside'
     if str_start <= feature_start and feature_end <= str_end:
-        raise ValueError('STR spans feature {str_start} {str_end} {feature_start} {feature_end}')
+        raise ValueError(f'STR spans feature {str_start} {str_end} {feature_start} {feature_end}')
     if str_start <= feature_start:
         if feature_direction == '+':
             return 'upstream'
@@ -50,17 +50,9 @@ def get_merged_annotations(signals, annotation_dir, distance=False, bp_overlap=F
         'chrom',
         'STR_pos',
         'STR_ID',
-        #'STR_REF',
-        #'STR_ALT',
-        #'STR_QUAL_na',
-        #'STR_FILTER',
-        #'STR_INFO',
-        #'chrom_again',
-        #'annotation_source',
         'annotation_feature_type',
         'annotation_pos',
         'annotation_end_pos',
-        #'annotation_score_na',
         'annotation_strand',
         'annotation_phase',
         'annotation_info'
@@ -110,8 +102,8 @@ def main(readme, phenotype, previous_STRs):
         ('chrom', None),
         ('signal_region', '{start bp}_{end bp} of region of association the STR resides in, '
          '1-based, inclusive'),
-        ('start_pos', '1-based, inclusive'), #
-        ('end_pos', '1-based, inclusive'), #
+        ('start_pos', '1-based, inclusive'),
+        ('end_pos', '1-based, inclusive'),
         ('SNPSTR_start_pos', 'the start position of the STR in the SNP-STR reference panel '
          '(may be smaller that start_pos if HipSTR called this STR with a physically phased '
          'SNP upstream of the STR)'),
@@ -151,8 +143,9 @@ def main(readme, phenotype, previous_STRs):
         (col_dphen_sd, 'linear regression on raw phenotypes vs repeat length on '
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
         ('pcausal', 'FINEMAP posterior probability causality'),
-        ('previously_reported_association', 'Whether or not this row was included in the table '
-         'because it was reported previously in the literature'),
+        ('included_from_literature', 'Whether or not this row was included in the table '
+         'because it was reported previously in the literature. False here means we have '
+         'not checked whether or not this is reported in the literature, not that it has not.'),
         ('nearby_exons', "A comma separated list of distance:'upstream'/'downstream'/'inside':"
          "exon-start:exon-end:gene-name:gene-type, where upstream means upstream of "
          "the exon in that gene's direction. All exons within a 1000bp radius, or 'none'. (See "
@@ -161,15 +154,7 @@ def main(readme, phenotype, previous_STRs):
          'separated list if multiple genes are tied by distance. '
          "(See https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.)"),
         ('nearby_genes', 'A comma separated list of entries like that in closest_gene. '
-         "All genes within a 1mbp radius, or 'none'."),
-        ('closest_transcript', "distance:'upstream'/'downstream'/'inside':transcript-name:"
-         'transcript-type:transcript-support-level '
-         'Possibly a comma separated list if multiple transcripts are tied by distance. '
-         "(See https://www.gencodegenes.org/pages/biotypes.html for transcript-type meanings "
-         "and https://www.gencodegenes.org/pages/data_format.html for transcript-support-level "
-         "meanings.)"),
-        ('nearby_transcripts', 'A comma separated list of entries like that in closest_transcript. '
-         "All transcripts within a 1mbp radius, or 'none'."),
+         "All genes within a 100kbp radius, or 'none'."),
         ('relation_to_gene', "If this STR intersects a single gene with a single category, then "
          "'CDS'/'5_prime_UTR'/'3_prime_UTR'/'unannotated_UTR'/'exon_other'/'intron':gene-name:gene-type. "
          "If it intersects multiple categories of the same gene, then those categories are "
@@ -278,7 +263,7 @@ def main(readme, phenotype, previous_STRs):
     if previous_STR_rows is None:
         previous_STR_rows = np.full((signals.shape[0]), False, dtype=bool)
 
-    signals['previously_reported_association'] = previous_STR_rows
+    signals['included_from_literature'] = previous_STR_rows
     signals = signals[
         previous_STR_rows | (
             ~np.isnan(signals['pcausal'].to_numpy()) & (signals['pcausal'] >= 0.05)
@@ -383,12 +368,7 @@ def main(readme, phenotype, previous_STRs):
     print("Loading gene and transcript annotations ...", flush=True)
     nearby_exon_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_exon_d_1000')
     closest_gene_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
-    nearby_gene_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_1000000')
-
-    '''
-    closest_transcript_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_transcript', distance=True)
-    nearby_transcript_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_transcript_d_1000000')
-    '''
+    nearby_gene_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_100000')
 
     print("Loading high level intersections...", flush=True)
     transcript_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_transcript', bp_overlap=True)
@@ -408,9 +388,7 @@ def main(readme, phenotype, previous_STRs):
     nearby_exons = ['none']*nrows
     closest_gene = [None]*nrows
     nearby_genes = ['none']*nrows
-    #closest_transcript = [None]*nrows
-    #nearby_transcripts = ['none']*nrows
-    relation_to_gene = [None]*nrows
+    relation_to_gene = ['']*nrows
     transcribed = ['untranscribed']*nrows
 
     print("Handling gene and transcript annotations ...", flush=True)
@@ -467,67 +445,35 @@ def main(readme, phenotype, previous_STRs):
             nearby_genes[idx] += get_gff_kvp(line.annotation_info, 'gene_name') + ":"
             nearby_genes[idx] += get_gff_kvp(line.annotation_info, 'gene_type')
 
-        '''
-        for line in closest_transcript_merge[
-            (closest_transcript_merge['chrom'] == chrom) & (closest_transcript_merge['STR_pos'] == snpstr_pos)
-        ].itertuples():
-            if closest_transcript[idx] is not None:
-                closest_transcript[idx] += ','
-            closest_transcript[idx] += line.annotation_distance + ":"
-            closest_transcript[idx] += get_relation(
-                start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-            ) + ":"
-            closest_transcript[idx] += get_gff_kvp(line.annotation_info, 'transcript_name') + ":"
-            closest_transcript[idx] += get_gff_kvp(line.annotation_info, 'transcript_type') + ":"
-            closest_transcript[idx] += get_gff_kvp(line.annotation_info, 'transcript_support_level')
-
-        for line in nearby_transcript_merge[
-            (nearby_transcript_merge['chrom'] == chrom) & (nearby_transcript_merge['STR_pos'] == snpstr_pos)
-        ].itertuples():
-            if nearby_transcripts[idx] == 'none':
-                nearby_transcripts[idx] = ''
-            else:
-                nearby_transcripts[idx] += ','
-            nearby_transcripts[idx] += distance(
-                start_pos, end_pos, line.annotation_pos, line.annotation_end_pos
-            ) + ":"
-            nearby_transcripts[idx] += get_relation(
-                start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-            ) + ":"
-            nearby_transcripts[idx] += get_gff_kvp(line.annotation_info, 'transcript_name') + ":"
-            nearby_transcripts[idx] += get_gff_kvp(line.annotation_info, 'transcript_type') + ":"
-            nearby_transcripts[idx] += get_gff_kvp(line.annotation_info, 'transcript_support_level')
-        '''
-
         # dict from gene to types of intersections
         gene_intersections = {}
         partial_overlap = False
         for line in gene_intersect_merge[
             (gene_intersect_merge['chrom'] == chrom) & (gene_intersect_merge['STR_pos'] == snpstr_pos)
         ].itertuples():
-            if get_relation(
-                start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-            ) != 'inside':
-                partial_overlap = True
             gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
             gene_type = get_gff_kvp(line.annotation_info, 'gene_type')
             assert gene_name not in gene_intersections
             gene_intersections[gene_name] = [
                 gene_type,
-                False, # is exonic
-                [], # types of intersections
+                {p: False for p in range(start_pos, end_pos+1)}, # bps covered by gene annotation
+                {p: False for p in range(start_pos, end_pos+1)}, # bps covered by exon annotations
+                set(), # types of sub-exon intersections
                 {p: False for p in range(start_pos, end_pos+1)} # bps covered by sub-exon annotations
             ]
+            for p in gene_intersections[gene_name][1]:
+                if line.annotation_pos <= p <= line.annotation_end_pos:
+                    gene_intersections[gene_name][1][p] = True
+                else:
+                    partial_overlap = True
 
         if len(gene_intersections) == 0:
             relation_to_gene[idx] = 'intergenic'
 
         if partial_overlap:
             relation_to_gene[idx] = 'intergenic;'
-        else:
-            relation_to_gene[idx] = ''
 
-        if len(gene_intersections) >= 1:
+        if len(gene_intersections) > 1:
             relation_to_gene[idx] += 'multigene;'
 
         for line in exon_intersect_merge[
@@ -536,13 +482,9 @@ def main(readme, phenotype, previous_STRs):
             gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
             if gene_name not in gene_intersections:
                 raise ValueError(f"STR {chrom} {start_pos} gene name {gene_name} not in list of overlapping genes {set(gene_intersections.keys())}")
-            relation = get_relation(
-                start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-            )
-            if relation != 'inside':
-                gene_intersections[gene_name][1] = 'both'
-            elif gene_intersections[gene_name][1] != 'both':
-                gene_intersections[gene_name][1] = True
+            for p in gene_intersections[gene_name][2]:
+                if line.annotation_pos <= p <= line.annotation_end_pos:
+                    gene_intersections[gene_name][2][p] = True
 
         for line in sub_exon_types[
             (sub_exon_types['chrom'] == chrom) & (sub_exon_types['STR_pos'] == snpstr_pos)
@@ -550,24 +492,29 @@ def main(readme, phenotype, previous_STRs):
             gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
             if gene_name not in gene_intersections:
                 raise ValueError(f"STR {chrom} {start_pos} gene name {gene_name} not in list of overlapping genes {set(gene_intersections.keys())}")
-            if not gene_intersections[gene_name][1]:
-                raise ValueError("STR {chrom} {start_pos} intersects an exon type but isn't in an exon!")
-            gene_intersections[gene_name][2].append(line.annotation_feature_type)
-            for p in gene_intersections[gene_name][3]:
+            if gene_intersections[gene_name][2] == False:
+                raise ValueError(f"STR {chrom} {start_pos} intersects an exon type but isn't in an exon!")
+            gene_intersections[gene_name][3].add(line.annotation_feature_type)
+            for p in gene_intersections[gene_name][4]:
                 if line.annotation_pos <= p <= line.annotation_end_pos:
-                    gene_intersections[gene_name][3][p] = True
+                    if not gene_intersections[gene_name][2][p]:
+                        raise ValueError(f"STR {chrom} {start_pos} at position {p} has sub-exon type {line.annotation_feature_type} but is not exonic!")
+                    gene_intersections[gene_name][4][p] = True
 
         first = True
         for gene_name, gene_data in gene_intersections.items():
             if not first:
                 relation_to_gene[idx] += ';'
             first = False
-            types = gene_data[2]
-            if gene_data[1] != True:
-                types.append('intron')
-            # missing possibility of exon_other when 'both'
-            if gene_data[1] == True and not np.all(gene_data[3]):
-                types.append('exon_other')
+            types = gene_data[3]
+            for p, is_gene in gene_data[1].items():
+                if is_gene and not gene_data[2][p]:
+                    types.add('intron')
+                    break
+            for p, is_gene in gene_data[2].items():
+                if is_gene and not gene_data[4][p]:
+                    types.add('exon_other')
+                    break
             relation_to_gene[idx] += ','.join(types) + ":"
             relation_to_gene[idx] += gene_name + ":" + gene_data[0]
 
@@ -585,8 +532,6 @@ def main(readme, phenotype, previous_STRs):
     signals['nearby_exons'] = nearby_exons
     signals['closest_gene'] = closest_gene
     signals['nearby_genes'] = nearby_genes
-    #signals['closest_transcript'] = closest_transcript
-    #signals['nearby_transcripts'] = nearby_transcripts
     signals['relation_to_gene'] = relation_to_gene
     signals['transcribed'] = transcribed
 
