@@ -26,9 +26,6 @@ parser.add_argument('phenotype_name')
 parser.add_argument('phenotype_field_id')
 parser.add_argument('unit')
 parser.add_argument(
-    '--instance-id'
-)
-parser.add_argument(
     '--categorical-covars',
     nargs='+',
     default=[]

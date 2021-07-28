@@ -30,6 +30,7 @@ class PhenotypeLoadingArg:
         self.previous_SNP_findings = previous_SNP_findings
 
 pheno_args = {
+    # ---------------- Continuous phenotypes ------------------------
     'height': PhenotypeLoadingArg(
         '50',
         unit = 'cm',
@@ -139,6 +140,12 @@ pheno_args = {
     # 3062Forced vital capacity (FVC)
     # 3063Forced expiratory volume in 1-second (FEV1)
     # should I remove 3088,89,90? or 3159?
+
+    # ------------------------------ Binary Phenotypes --------------------------------
+    'afib_and_flutter_I48': PhenotypeLoadingArg(
+        '131350',
+        unit = 'binary_date_first_reported',
+    )
 }
 
 rule load_shared_covars:
@@ -182,6 +189,9 @@ def input_fields_for_phenotype(wildcards):
 rule load_phenotype:
     input:
         "traits/shared_covars/assessment_ages.npy",
+        # used for binary data of diagnosis traits
+        "main_dataset/extracted_data/year_of_birth_34.txt",
+        "main_dataset/extracted_data/month_of_birth_52.txt",
         input_fields_for_phenotype
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
@@ -194,18 +204,25 @@ rule load_phenotype:
         phenotype = wildcards.phenotype
         if phenotype in pheno_args:
             args = pheno_args[phenotype]
-            assert args.unit != 'binary'
-            base_command = (
-                f"traits/load_phenotype_from_main_dataset.py "
-                f"{phenotype} {args.data_field_id} '{args.unit}' "
-            )
-            if not args.categorical_covars:
-                shell(base_command)
-            else:
+            if 'binary' in args.unit:
+                if args.unit != 'binary_date_first_reported':
+                    raise ValueError("Only type of binary field understood is binary_date_first_reported")
                 shell(
-                    base_command + " --categorical-covars "
-                    + " ".join(f'{name},{ID}' for name, ID in args.categorical_covars) + " "
+                    'traits/load_binary_phenotype_from_main_dataset.py '
+                    f'{phenotype} {args.data_field_id}'
                 )
+            else:
+                base_command = (
+                    "traits/load_continuous_phenotype_from_main_dataset.py "
+                    f"{phenotype} {args.data_field_id} '{args.unit}' "
+                )
+                if not args.categorical_covars:
+                    shell(base_command)
+                else:
+                    shell(
+                        base_command + " --categorical-covars "
+                        + " ".join(f'{name},{ID}' for name, ID in args.categorical_covars) + " "
+                    )
         else:
             raise ValueError(f"Couldn't identify phenotype {phenotype}")
 
