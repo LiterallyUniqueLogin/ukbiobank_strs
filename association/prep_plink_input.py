@@ -12,7 +12,11 @@ ukb = os.environ['UKB']
 parser = argparse.ArgumentParser()
 parser.add_argument('phenotype')
 parser.add_argument('--conditional')
+parser.add_argument('--binary', default=False, choices={'logistic', 'linear'})
 args = parser.parse_args()
+
+# no reason to do a conditional analysis with linear ...
+assert not args.conditional and args.binary == 'linear'
 
 phenotype = args.phenotype
 
@@ -26,7 +30,23 @@ data = utils.merge_arrays(
 )
 data = np.concatenate((data[:, 0:1], data), axis=1)
 
-col_names = ['FID', 'IID', f'rin_{phenotype}']
+col_names = ['FID', 'IID']
+if not args.binary:
+    col_names.append(f'rin_{phenotype}')
+else:
+    col_names.append(phenotype)
+    if args.binary == 'logistic':
+        # plink expects and ouptuts a 1=control, 2=case encoding
+        # instead of the 0=control, 1=case encoding we use elsewhere
+        # (from: https://www.cog-genomics.org/plink/2.0/input
+        # under the `--1` section)
+        data[:, 2] += 1
+    else:
+        # standardize the binary trait so that
+        # (a) plink treats it as a continuous trait and does a linear regression and
+        # (b) plink doesn't have numeric instabilities
+        data[:, 2] = (data[:, 2] - data[:,2].mean())/data[:, 2].std()
+
 with open(f'{ukb}/traits/phenotypes/{phenotype}_covar_names.txt') as pheno_names_file:
     for line in pheno_names_file:
         line = line.strip()
@@ -41,9 +61,14 @@ with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_names_file:
             continue
         col_names.append(line)
 
+if not args.binary or args.binary == 'linear':
+    prefix = 'continuous'
+else:
+    prefix = 'binary'
+
 if not args.conditional:
     np.savetxt(
-        f'{ukb}/association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab',
+        f'{ukb}/association/results/{phenotype}/plink_snp/input/transformed_{prefix}_phenotype_and_covars.tab',
         data,
         delimiter='\t',
         header='\t'.join(col_names),
@@ -72,3 +97,4 @@ else:
         comments='',
         fmt='%.16g'
     )
+

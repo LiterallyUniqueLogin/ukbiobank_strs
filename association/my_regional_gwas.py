@@ -8,18 +8,31 @@ import tempfile
 import time
 
 import numpy as np
+import statsmodels.api as sm
 from statsmodels.regression.linear_model import OLS
 import statsmodels.stats.weightstats
 
 import load_and_filter_genotypes
 import python_array_utils as utils
+import weighted_binom_conf
 
 ukb = os.environ['UKB']
 project_temp = os.environ['PROJECT_TEMP']
 
-def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_name, region, conditional):
+def perform_regional_gwas_helper(
+        phenotype,
+        binary,
+        outfile,
+        runtype,
+        imputation_run_name,
+        region,
+        conditional):
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
-                  f"p_{phenotype}\tcoeff_{phenotype}\tse_{phenotype}\tR^2\t")
+                  f"p_{phenotype}\tcoeff_{phenotype}\tse_{phenotype}\t")
+    if binary != 'logistic':
+        outfile.write('R^2\t')
+    else:
+        outfile.write("firth?\t")
     outfile.flush()
 
     n_loci = 0
@@ -73,12 +86,18 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
     # first yield is special
     extra_detail_fields = next(genotype_iter)
     outfile.write('\t'.join(extra_detail_fields) + '\t')
-    outfile.write(f'mean_{phenotype}_per_single_dosage\t'
+
+    if not binary:
+        stat = 'mean'
+    else:
+        stat = 'fraction'
+
+    outfile.write(f'{stat}_{phenotype}_per_single_dosage\t'
                   '0.05_significance_CI\t'
                   '5e-8_significance_CI')
 
     if runtype == 'strs':
-        outfile.write(f'\tmean_{phenotype}_per_paired_dosage\t'
+        outfile.write(f'\t{stat}_{phenotype}_per_paired_dosage\t'
                       '0.05_significance_CI\t'
                       '5e-8_significance_CI')
     outfile.write('\n')
@@ -95,6 +114,8 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
         outfile.write(f"{chrom}\t{pos}\t{allele_names}\t")
         if locus_filtered:
             outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\t')
+            if binary:
+                outfile.write('nan\t')
             outfile.write('\t'.join(locus_details))
             if runtype == 'strs':
                 outfile.write('\tnan'*6 + '\n')
@@ -112,18 +133,48 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
             gts = dosage_gts[:, 1] + 2*dosage_gts[:, 2]
         covars[:, 0] = gts
 
-        #do da regression
-        model = OLS(
-            outcome,
-            covars,
-            missing='drop'
-        )
-        reg_result = model.fit()
-        pval = reg_result.pvalues[0]
-        coef = reg_result.params[0]
-        se = reg_result.bse[0]
-        rsquared = reg_result.rsquared
-        outfile.write(f"{pval:.2e}\t{coef}\t{se}\t{rsquared}\t")
+        if not binary or binary == 'linear':
+            #do da regression
+            model = OLS(
+                outcome,
+                covars,
+                missing='drop'
+            )
+            reg_result = model.fit()
+            pval = reg_result.pvalues[0]
+            coef = reg_result.params[0]
+            se = reg_result.bse[0]
+            rsquared = reg_result.rsquared
+            outfile.write(f"{pval:.2e}\t{coef}\t{se}\t{rsquared}\t")
+        else:
+            # use firth regression when there are less than 400 nonmajor allele copies
+            # see https://www.cog-genomics.org/plink/2.0/assoc#glm_footnote4_from
+            # in one of the firth footnontes
+            if runtype == 'strs':
+                per_allele_dosage_list = [np.sum(dosages) for dosages in dosage_gts.values()]
+                firth = \
+                    np.sum(np.sort(per_allele_dosage_list)[:-1]) < 400
+            else:
+                firth = (
+                    2 * np.sum(dosage_gts[:, 0]) + np.sum(dosage_gts[:, 1]) < 400 or
+                    2 * np.sum(dosage_gts[:, 2]) + np.sum(dosage_gts[:, 1]) < 400
+                )
+
+            if not firth:
+                model = sm.GLM(
+                    outcome,
+                    covars,
+                    missing='drop',
+                    family=sm.families.Binomial()
+                )
+                reg_result = model.fit()
+                pval = reg_result.pvalues[0]
+                coef = reg_result.params[0]
+                se = reg_result.bse[0]
+                outfile.write(f'{pval:.2e}\t{coef}\t{se}\tFalse\t')
+            else:
+                # do da firth
+
         outfile.write('\t'.join(locus_details) + '\t')
 
         if runtype == 'strs':
@@ -144,51 +195,89 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
                     minlen = min(len1, len2)
                     maxlen = max(len1, len2)
                     paired_dosages[(minlen, maxlen)] = dosages
-            single_dosage_means = {}
+            single_dosage_stat = {}
             single_dosage_95_CI = {}
             single_dosage_GWAS_CI= {}
-            for _len, dosages in single_dosages.items():
-                if len(np.unique(ori_phenotypes[dosages != 0])) <= 1:
-                    continue
-                mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                    ori_phenotypes,
-                    weights = dosages
-                )
-                single_dosage_means[_len] = mean_stats.mean
-                single_dosage_95_CI[_len] = mean_stats.tconfint_mean()
-                single_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
-            paired_dosage_means = {}
+            paired_dosage_stat = {}
             paired_dosage_95_CI = {}
             paired_dosage_GWAS_CI= {}
-            for _len, dosages in paired_dosages.items():
-                if len(np.unique(ori_phenotypes[dosages != 0])) <= 1:
-                    continue
-                mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                    ori_phenotypes,
-                    weights = dosages
-                )
-                paired_dosage_means[_len] = mean_stats.mean
-                paired_dosage_95_CI[_len] = mean_stats.tconfint_mean()
-                paired_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
+            if not binary:
+                for _len, dosages in single_dosages.items():
+                    if len(np.unique(ori_phenotypes[dosages != 0])) <= 1:
+                        continue
+                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                        ori_phenotypes,
+                        weights = dosages
+                    )
+                    single_dosage_stat[_len] = mean_stats.mean
+                    single_dosage_95_CI[_len] = mean_stats.tconfint_mean()
+                    single_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
+                for _len, dosages in paired_dosages.items():
+                    if len(np.unique(ori_phenotypes[dosages != 0])) <= 1:
+                        continue
+                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                        ori_phenotypes,
+                        weights = dosages
+                    )
+                    paired_dosage_stat[_len] = mean_stats.mean
+                    paired_dosage_95_CI[_len] = mean_stats.tconfint_mean()
+                    paired_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
+            else:
+                for _len, dosages in single_dosages.items():
+                    if not np.any(dosages != 0):
+                        continue
+                    p, lower, upper = weighted_binom_conf.weighted_binom_conf(
+                        dosages, ori_phenotypes, 0.05
+                    )
+                    single_dosage_stat[_len] = p
+                    single_dosage_95_CI[_len] = (lower, upper)
+                    _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
+                        dosages, ori_phenotypes, 5e-8
+                    )
+                    single_dosage_GWAS_CI[_len] = (lower_gwas, upper_gwas)
+                for _len, dosages in paired_dosages.items():
+                    if not np.any(dosages != 0):
+                        continue
+                    p, lower, upper = weighted_binom_conf.weighted_binom_conf(
+                        dosages, ori_phenotypes, 0.05
+                    )
+                    paired_dosage_stat[_len] = p
+                    paired_dosage_95_CI[_len] = (lower, upper)
+                    _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
+                        dosages, ori_phenotypes, 5e-8
+                    )
+                    paired_dosage_GWAS_CI[_len] = (lower_gwas, upper_gwas)
+            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_stat) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_means) + '\t')
+            outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_stat) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_95_CI) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_GWAS_CI) + '\n')
         else:
-            single_dosage_means = {}
+            single_dosage_stat = {}
             single_dosage_95_CI = {}
             single_dosage_GWAS_CI= {}
-            for alt_count in range(3):
-                mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                    ori_phenotypes,
-                    weights = dosage_gts[:, alt_count]
-                )
-                single_dosage_means[alt_count] = mean_stats.mean
-                single_dosage_95_CI[alt_count] = mean_stats.tconfint_mean()
-                single_dosage_GWAS_CI[alt_count] = mean_stats.tconfint_mean(5e-8)
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_means) + '\t')
+            if not binary:
+                for alt_count in range(3):
+                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                        ori_phenotypes,
+                        weights = dosage_gts[:, alt_count]
+                    )
+                    single_dosage_stat[alt_count] = mean_stats.mean
+                    single_dosage_95_CI[alt_count] = mean_stats.tconfint_mean()
+                    single_dosage_GWAS_CI[alt_count] = mean_stats.tconfint_mean(5e-8)
+            else:
+                for alt_count in range(3):
+                    p, lower, upper = weighted_binom_conf.weighted_binom_conf(
+                        dosage_gts[:, alt_count], ori_phenotypes, 0.05
+                    )
+                    single_dosage_stat[_len] = p
+                    single_dosage_95_CI[_len] = (lower, upper)
+                    _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
+                        dosage_gts[:, alt_count], ori_phenotypes, 5e-8
+                    )
+                    single_dosage_GWAS_CI[_len] = (lower_gwas, upper_gwas)
+            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_stat) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\n')
 
@@ -215,7 +304,7 @@ def perform_regional_gwas_helper(phenotype, outfile, runtype, imputation_run_nam
         print(f"No variants found in the region {region}\n", flush=True)
 
 
-def perform_regional_gwas(phenotype, region, runtype, imputation_run_name, conditional):
+def perform_regional_gwas(phenotype, binary, region, runtype, imputation_run_name, conditional):
     chrom, poses = region.split(':')
     start, end = poses.split('-')
     region_str = f'{chrom}_{start}_{end}'
@@ -227,11 +316,16 @@ def perform_regional_gwas(phenotype, region, runtype, imputation_run_name, condi
     with tempfile.NamedTemporaryFile(dir=project_temp, mode='w+') as outfile:
         print(f"Writing output to temp file {outfile.name}", flush=True)
         perform_regional_gwas_helper(
-            phenotype, outfile, runtype, imputation_run_name, region, conditional
+            phenotype, binary, outfile, runtype, imputation_run_name, region, conditional
         )
         if not conditional:
+            if not binary:
+                suffix = ''
+            else:
+                suffix = '_' + binary
+
             permanent_loc = \
-                f'{ukb}/association/results/{phenotype}/my_{dirname}/batches/chr{region_str}.tab'
+                f'{ukb}/association/results/{phenotype}/my_{dirname}{suffix}/batches/chr{region_str}.tab'
         else:
             permanent_loc = (
                 f'{ukb}/association/results/{phenotype}/my_{dirname}_conditional/'
@@ -245,7 +339,7 @@ def perform_regional_gwas(phenotype, region, runtype, imputation_run_name, condi
         )
         print("Done.")
 
-def write_str_readme(phenotype, imputation_run_name):
+def write_str_readme(phenotype, imputation_run_name, binary):
     with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt', 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
@@ -256,9 +350,17 @@ def write_str_readme(phenotype, imputation_run_name):
         readme.write("(Note: hardcalls mentioned in locus details are phased hardcalls,"
                      " and in rare cases will not correspond to the maximum likelihood "
                      "unphased allele)\n")
-        readme.flush()
 
-def write_imputed_snp_readme(phenotype):
+        if not binary:
+            readme.write('Doing linear regressions against the continuous phenotype\n')
+        elif binary == 'linear':
+            readme.write('Doing linear regressions against the binary phenotype\n')
+        else:
+            readme.write('Doing logistic regressions against the binary phenotype. Using '
+                         'Frith penalized logistic regression when MAC <= 400, '
+                         'standard logistic regression otherwise.\n')
+
+def write_imputed_snp_readme(phenotype, binary):
     with open(f'{ukb}/association/results/{phenotype}/my_imputed_snp/README.txt', 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
@@ -266,7 +368,15 @@ def write_imputed_snp_readme(phenotype):
         readme.write("Working with dosages of alternate allele, no call level filters ")
         readme.write("(so allele 0 corresponds to reference, 1 to alternate).\n")
         readme.write("Filtering loci with fewer than 20 minor allele hardcalls.\n")
-        readme.flush()
+
+        if not binary:
+            readme.write('Doing linear regressions against the continuous phenotype\n')
+        elif binary == 'linear':
+            readme.write('Doing linear regressions against the binary phenotype\n')
+        else:
+            readme.write('Doing logistic regressions against the binary phenotype. Using '
+                         'Frith penalized logistic regression when MAC <= 400, '
+                         'standard logistic regression otherwise.\n')
 
 def main():
     parser = argparse.ArgumentParser()
@@ -279,6 +389,7 @@ def main():
     parser.add_argument('--region')
     parser.add_argument('--imputation-run-name')
     parser.add_argument('--conditional')
+    parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
 
     assert args.readme == (args.region is None)
@@ -286,15 +397,20 @@ def main():
 
     if args.readme:
         if args.runtype == 'strs':
-            write_str_readme(args.phenotype, args.imputation_run_name)
+            write_str_readme(args.phenotype, args.imputation_run_name, args.binary)
         elif args.runtype == 'imputed-snps':
-            write_imputed_snp_readme(args.phenotype)
+            write_imputed_snp_readme(args.phenotype, args.binary)
         else:
             raise ValueError("Readme not implemented for this runtype")
         return
     else:
         perform_regional_gwas(
-            args.phenotype, args.region, args.runtype, args.imputation_run_name, args.conditional
+            args.phenotype,
+            args.binary,
+            args.region,
+            args.runtype,
+            args.imputation_run_name,
+            args.conditional
         )
 
 

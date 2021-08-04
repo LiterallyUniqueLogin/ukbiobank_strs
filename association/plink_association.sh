@@ -57,24 +57,29 @@ else
 	BED_FILE_COMMAND=" --extract bed1 region.bed"
 fi
 
+if [ -z "$BINARY" ] ;  then
+	PHENO_NAME=rin_"$PHENOTYPE"
+	COLS=""
+else
+	PHENO_NAME="$PHENOTYPE"
+	COLS="cols=+a1countcc,-tz,-nobs,-test"
+fi
+
 "$UKB"/utilities/plink2 \
     --pheno "$PHENO_FILE" \
     --no-psam-pheno \
-    --pheno-name rin_"$PHENOTYPE" \
+    --pheno-name "$PHENO_NAME" \
     --covar-name $(head -n 1 "$PHENO_FILE" | cut -f 4-) \
     --pfile "$UKB"/array_imputed/pfile_converted/chr"$CHROM" \
     --chr "$CHROM" \
     $BED_FILE_COMMAND \
     --mac 20 \
-    --glm omit-ref pheno-ids hide-covar \
+    --glm omit-ref pheno-ids hide-covar $COLS \
     --ci 0.99999995 \
     --memory 56000 \
     --threads 28 \
     > "$LOG_OUT" \
     2> "$LOG_ERR"
-
-# give filesystem time to register the file plink has written
-# sleep 180 
 
 mv ./* "$OUT_DIR"
 
