@@ -252,7 +252,7 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
             f'Dropping {np.sum(~has_all_covars)} samples that are missing '
             'covariates. Data:\n'
         )
-        with np.set_printoptions(threshold=sys.maxsize):
+        with np.printoptions(threshold=sys.maxsize):
             readme.write(str(data[~has_all_covars, :]))
         data = data[has_all_covars, :]
     else:

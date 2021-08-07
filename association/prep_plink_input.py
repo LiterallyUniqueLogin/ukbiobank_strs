@@ -15,9 +15,6 @@ parser.add_argument('--conditional')
 parser.add_argument('--binary', default=False, choices={'logistic', 'linear'})
 args = parser.parse_args()
 
-# no reason to do a conditional analysis with linear ...
-assert not args.conditional and args.binary == 'linear'
-
 phenotype = args.phenotype
 
 shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
@@ -61,14 +58,14 @@ with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_names_file:
             continue
         col_names.append(line)
 
-if not args.binary or args.binary == 'linear':
-    prefix = 'continuous'
+if not args.binary:
+    suffix = ''
 else:
-    prefix = 'binary'
+    suffix = '_' + args.binary
 
 if not args.conditional:
     np.savetxt(
-        f'{ukb}/association/results/{phenotype}/plink_snp/input/transformed_{prefix}_phenotype_and_covars.tab',
+        f'{ukb}/association/results/{phenotype}/plink_snp{suffix}/input/transformed_phenotype_and_covars.tab',
         data,
         delimiter='\t',
         header='\t'.join(col_names),
@@ -90,7 +87,7 @@ else:
             col_names.append(word)
 
     np.savetxt(
-        f'{conditional_loc}_plink.tab',
+        f'{conditional_loc}_plink{suffix}.tab',
         data,
         delimiter='\t',
         header='\t'.join(col_names),

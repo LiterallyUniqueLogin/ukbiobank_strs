@@ -7,26 +7,41 @@ Writes the file
 """
 
 import argparse
-import datetime
-import logging
 import os
+import shutil
 import subprocess as sp
-import sys
+
+import numpy as np
+
+ukb = os.environ['UKB']
+
+def primus_command(infile, outdir):
+    # FYI, The PRIMUS command produces an ungodly amount of auxiliary files when
+    # running - enough so that rm'ing them all takes a while
+    return (
+        f"{os.environ['SOURCE']}/PRIMUS_v1.9.0/bin/run_PRIMUS.pl "
+        f"-i FILE={infile} FID1=1 IID1=1 FID2=2 IID2=2 PI_HAT=5 "
+        f"--no_PR -t 0.04419417382 -o {outdir}"
+    )
+    # the -t threshold equal to 1/2^(9/2) as described in the UKB nature paper
 
 parser = argparse.ArgumentParser()
 parser.add_argument('run_name',
                     help='name of the run to look for combined.sample in')
+parser.add_argument('--binary',
+                    default=False,
+                    action='store_true')
+parser.add_argument('--phenotype',
+                    default=None)
 args = parser.parse_args()
-ukb = os.environ['UKB']
+assert bool(args.binary) == bool(args.phenotype)
 
-output_dir = f'{ukb}/sample_qc/runs/{args.run_name}/primus_output/'
+output_dir = f'{ukb}/sample_qc/runs/{args.run_name}/primus_output'
 os.makedirs(output_dir, exist_ok=True)
-logging.basicConfig(filename=f"{output_dir}/script_log.log",
-                    level=logging.DEBUG)
 
 all_samples = set()
-combined_floc = f'{ukb}/sample_qc/runs/{args.run_name}/combined.sample'
-with open(combined_floc) as sample_file:
+combined_fname = f'{ukb}/sample_qc/runs/{args.run_name}/combined.sample'
+with open(combined_fname) as sample_file:
     header = True
     for line in sample_file:
         if header:
@@ -34,23 +49,93 @@ with open(combined_floc) as sample_file:
             continue
         sample_id = line.strip()
         all_samples.add(sample_id)
-logging.info(f"Done reading original sample file. Total num samples: "
-             f"{len(all_samples)}")
+print(f"Done reading original sample file. Total num samples: {len(all_samples)}")
+
+kinship_subset_fname = f'{output_dir}/kinship_subset.dat'
+original_kinship_fname = (f'{ukb}/misc_data/ukbgene/ukb46122_rel_s488282.dat')
+
+if args.binary:
+    # for case control data, prioritize cases over controls
+    # and prioritize maximizing number of cases over maximizing
+    # total number of cases and controls
+    data = np.load(f'{ukb}/traits/phenotypes/{args.phenotype}.npy')
+    # assert that cases are a low enough percentage of total samples
+    # so that this type of prioritization makes sense
+    assert np.sum(data[:, 1]) <= .2*data.shape[0]
+    cases = set(str(int(ID)) for ID in data[data[:, 1] == 1, 0])
+    print(f'N_cases: {len(cases)}')
+
+    kinship_only_cases_fname = f'{output_dir}/cases_kinship_subset.dat'
+
+    # collect all related cases
+    any_lines = False
+    related_cases = set()
+    with open(original_kinship_fname) as original_kinship_file, \
+            open(kinship_only_cases_fname, 'w') as kinship_only_cases_file:
+        kinship_only_cases_file.write(next(original_kinship_file))
+
+        for line in original_kinship_file:
+            sample1, sample2 = line.split()[0:2]
+            if (
+                sample1 in all_samples and sample1 in cases and
+                sample2 in all_samples and sample2 in cases
+            ):
+                kinship_only_cases_file.write(line)
+                related_cases.add(sample1)
+                related_cases.add(sample2)
+
+    if not related_cases:
+        print("No related cases")
+    else:
+        print(f"Done writing out cases_only relatedness file {kinship_only_cases_fname}.")
+        print(f"N_related_cases: {len(related_cases)}")
+        # get a maximal set of unrelated cases
+        old_cases_primus_out = f'{output_dir}/case_PRIMUS_OLD'
+        if os.path.exists(old_cases_primus_out):
+            shutil.rmtree(old_cases_primus_out)
+        cases_command_string = primus_command(kinship_only_cases_fname, f'{output_dir}/case_PRIMUS')
+
+        output = sp.run(cases_command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE,
+                        check=True)
+        print("Done running case PRIMUS")
+        print("Case PRIMUS output: " + output.stdout.decode())
+        print("Case PRIMUS error (if any): " + output.stderr.decode())
+
+        unrelated_cases = set()
+        unrelated_case_fname = \
+            f'{output_dir}/case_PRIMUS/cases_kinship_subset.dat_maximum_independent_set'
+        with open(unrelated_case_fname) as unrelated_case_file:
+            next(unrelated_case_file) # skip header
+            for line in unrelated_case_file:
+                unrelated_cases.add(line.strip())
+        print(f'N_unrelated_cases: {len(unrelated_cases)}')
+
+        # remove all the cases that aren't in the unrelated cases set
+        all_samples = all_samples.difference(related_cases.difference(unrelated_cases))
+        print(f'N controls + unrelated cases: {len(all_samples)}')
+
+    # remove all the controls that are related to remaining cases
+    with open(original_kinship_fname) as original_kinship_file:
+        next(original_kinship_file) # skip header
+
+        for line in original_kinship_file:
+            sample1, sample2 = line.split()[0:2]
+            if   sample1 in all_samples and sample1 in cases and sample2 in all_samples:
+                all_samples.remove(sample2)
+            elif sample2 in all_samples and sample2 in cases and sample1 in all_samples:
+                all_samples.remove(sample1)
+
+    print(f'N unrelated cases and all controls unrelated to them: {len(all_samples)}')
+    print("Done handling case/control specially.")
 
 # all sample numbers that appear in the related samples file
 related_samples = set()
 
-kinship_subset_floc = output_dir + "/kinship_subset.dat"
-original_kinship_floc = (f'{ukb}/misc_data/ukbgene/ukb46122_rel_s488282.dat')
-with open(original_kinship_floc) as original_kinship_file, \
-        open(kinship_subset_floc, 'w') as kinship_subset_file:
-    first = True
-    for line in original_kinship_file:
-        if first:
-            first = False
-            kinship_subset_file.write(line)
-            continue
+with open(original_kinship_fname) as original_kinship_file, \
+        open(kinship_subset_fname, 'w') as kinship_subset_file:
+    kinship_subset_file.write(next(original_kinship_file)) # copy header
 
+    for line in original_kinship_file:
         sample1, sample2 = line.split()[0:2]
         if not (sample1 in all_samples and sample2 in all_samples):
             continue
@@ -58,29 +143,24 @@ with open(original_kinship_floc) as original_kinship_file, \
         related_samples.add(sample2)
         kinship_subset_file.write(line)
 
-logging.info(f"Done creating subset kinship file. Num samples with relations: "
-             f"{len(related_samples)}")
+print(f"Done creating subset kinship file. Num samples with relations: {len(related_samples)}")
 
-# FYI, The PRIMUS command produces an ungodly amount of auxiliary files when
-# running - enough so that rm'ing them all takes a while
-commandString = (
-    f"{os.environ['SOURCE']}/PRIMUS_v1.9.0/bin/run_PRIMUS.pl "
-    f"-i FILE={kinship_subset_floc} FID1=1 IID1=1 FID2=2 IID2=2 PI_HAT=5 "
-    f"--no_PR -t 0.04419417382 -o {output_dir}/PRIMUS"
-)
-# the -t threshold equal to 1/2^(9/2) as described in the UKB nature paper
+primus_out_old = f'{output_dir}/PRIMUS_OLD'
+if os.path.exists(primus_out_old):
+    shutil.rmtree(primus_out_old)
+command_string = primus_command(kinship_subset_fname, f'{output_dir}/PRIMUS')
 
-logging.info("PRIMUS command: " + commandString)
+print("PRIMUS command: " + command_string)
 
-output = sp.run(commandString, shell=True, stdout=sp.PIPE, stderr=sp.PIPE,
+output = sp.run(command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE,
                 check=True)
-logging.info("Done running PRIMUS")
-logging.info("PRIMUS output: " + output.stdout.decode())
-logging.info("PRIMUS error (if any): " + output.stderr.decode())
+print("Done running PRIMUS")
+print("PRIMUS output: " + output.stdout.decode())
+print("PRIMUS error (if any): " + output.stderr.decode())
 
-output_floc = (f"{ukb}/sample_qc/runs/{args.run_name}/"
+output_fname = (f"{ukb}/sample_qc/runs/{args.run_name}/"
                f"combined_unrelated.sample")
-with open(output_floc, 'w') as output_file:
+with open(output_fname, 'w') as output_file:
     output_file.write("ID\n")
     # write out all the samples that aren't related to anyone
     for sample in all_samples:
@@ -88,9 +168,9 @@ with open(output_floc, 'w') as output_file:
             output_file.write(sample + '\n')
 
     # write out all the samples that were selected among the related ones
-    unrelated_floc = \
+    unrelated_fname = \
         f'{output_dir}/PRIMUS/kinship_subset.dat_maximum_independent_set'
-    with open(unrelated_floc) as unrelated_file:
+    with open(unrelated_fname) as unrelated_file:
         first = True
         for line in unrelated_file:
             if first:

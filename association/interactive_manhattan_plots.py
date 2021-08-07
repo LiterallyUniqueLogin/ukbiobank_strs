@@ -785,25 +785,27 @@ my_str_results_rename = {
     -1: 'CI5e_8PairedDosagePhenotype'
 }
 
-def load_data(phenotype, condition):
+def load_data(phenotype, binary, condition):
     if not condition:
         return (
-            load_my_str_results(phenotype, None),
-            load_plink_results(phenotype, None),
+            load_my_str_results(phenotype, binary, None),
+            load_plink_results(phenotype, binary, None),
             *load_gwas_catalog(phenotype)
         )
     else:
         return (
-            load_my_str_results(phenotype, condition),
-            load_plink_results(phenotype, condition),
+            load_my_str_results(phenotype, binary, condition),
+            load_plink_results(phenotype, binary, condition),
             None,
             None
         )
 
-def load_my_str_results(phenotype, condition):
+def load_my_str_results(phenotype, binary, condition):
     print(f"Loading my STR results for {phenotype} ... ", end='', flush=True)
+    if binary:
+        binary = '_' + binary
     start_time = time.time()
-    unconditioned_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_str_results.tab'
+    unconditioned_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_str{binary if binary else ""}_results.tab'
     unconditioned_results = pd.read_csv(
         unconditioned_results_fname,
         header=0,
@@ -816,7 +818,7 @@ def load_my_str_results(phenotype, condition):
         results = unconditioned_results
     else:
         conditional_results_fname = \
-            f'{ukb}/association/results/{phenotype}/my_str_conditional/{condition}.tab'
+            f'{ukb}/association/results/{phenotype}/my_str{binary if binary else ""}_conditional/{condition}.tab'
 
         results = pd.read_csv(
             conditional_results_fname,
@@ -870,10 +872,17 @@ def load_my_str_results(phenotype, condition):
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return results
 
-def load_my_chr21_height_snp_results():
-    print("Loading my chr21 height results ... ", end='', flush=True)
+def load_my_snp_results(phenotype, binary, chrom, start, end):
+    print(f"Loading my {phenotype} snp results chrom={chrom} start={start} end={end} ... ", end='', flush=True)
     start_time = time.time()
-    snp_results_fname = f'{ukb}/association/plots/input/height/my_imputed_snp_chr21_results.tab'
+
+    snp_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_imputed_snp'
+    if binary:
+        snp_results_fname += '_' + binary
+    snp_results_fname += f'_chr{chrom}'
+    if start:
+        snp_results_fname += f'_{start}_{end}'
+    snp_results_fname += '_results.tab'
     my_snp_results = utils.df_to_recarray(pd.read_csv(
         snp_results_fname,
         header=0,
@@ -889,20 +898,23 @@ def load_my_chr21_height_snp_results():
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_snp_results
 
-def load_plink_results(phenotype, condition):
+def load_plink_results(phenotype, binary, condition):
     # TODO remove conditioned snps
     # Load plink SNP results
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
 
+    if binary:
+        binary = '_' + binary
+
     unconditioned_results = pd.DataFrame.from_records(np.load(
-        f'{ukb}/association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
+        f'{ukb}/association/plots/input/{phenotype}/plink_snp{binary if binary else ""}_results_with_mfi.npy'
     ))
     if not condition:
         results = utils.df_to_recarray(unconditioned_results)
     else:
         results = pd.DataFrame.from_records(np.load(
-            f'{ukb}/association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy'
+            f'{ukb}/association/plots/input/{phenotype}/plink_snp{binary if binary else ""}_conditional_{condition}_results_with_mfi.npy'
         ))
 
         unconditioned_results['p_val'] = np.maximum(unconditioned_results['p_val'], 1 / 10**max_p_val)
@@ -1049,23 +1061,24 @@ def load_finemap_signals(finemap_signals):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('phenotype')
     parser.add_argument('ext', help='file extension', choices=['svg', 'html'])
     parser.add_argument("--my-plink-comparison", action='store_true')
-    parser.add_argument("--phenotype")
     parser.add_argument("--chrom")
     parser.add_argument("--start")
     parser.add_argument("--end")
     parser.add_argument("--condition")
     parser.add_argument('--finemap-signals', action='store_true', default=False)
+    parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
-    ext = args.ext
 
-    assert args.finemap_signals + bool(args.my_plink_comparison) + bool(args.condition) + bool(args.chrom) <= 1
+    phenotype = args.phenotype
+    ext = args.ext
+    binary = args.binary
+    condition = args.condition
+
+    assert args.finemap_signals + bool(args.my_plink_comparison) + bool(condition) <= 1
     assert bool(args.chrom) == bool(args.start) == bool(args.end)
-    if not bool(args.my_plink_comparison):
-        assert bool(args.phenotype)
-    else:
-        assert bool(args.phenotype)
 
     if not args.finemap_signals:
         snp_finemap_signals = None
@@ -1073,13 +1086,12 @@ def main():
         finemap_regions = None
 
     if not bool(args.my_plink_comparison):
-        phenotype = args.phenotype
         my_str_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
-            phenotype, args.condition
+            phenotype, binary, condition
         )
         my_snp_results = None
         my_snp_run_date = None
-        if not args.condition and not args.chrom:
+        if not condition and not args.chrom:
             chrom = None
             start = None
             end = None
@@ -1099,13 +1111,13 @@ def main():
             conditioned_isnps = conditioned_strs = None
         else:
             my_str_run_date = None
-            chrom, start, end = args.condition.split('_')[:3]
+            chrom, start, end = condition.split('_')[:3]
             chrom = int(chrom[3:])
             start = int(start)
             end = int(end)
-            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_{args.condition}.{ext}'
-            conditioned_isnps = get_conditioned_isnps(args.condition)
-            conditioned_strs = get_conditioned_strs(args.condition)
+            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_{condition}.{ext}'
+            conditioned_isnps = get_conditioned_isnps(condition)
+            conditioned_strs = get_conditioned_strs(condition)
 
         if args.finemap_signals:
             # change the output file
@@ -1119,12 +1131,8 @@ def main():
                 key=lambda dirname: [int(val) for val in dirname.split('/')[-2].split('_')]
             ))
     else:
-        phenotype = 'height'
-        chrom = 21
-        start = None
-        end = None
-        my_snp_results = load_my_chr21_height_snp_results()
-        plink_snp_results = load_plink_results(phenotype, None)
+        my_snp_results = load_my_snp_results(phenotype, binary, chrom, start, end)
+        plink_snp_results = load_plink_results(phenotype, binary, None)
         plink_snp_results = plink_snp_results[plink_snp_results['chr'] == 21]
         gwas_catalog = gwas_catalog_ids = None
         my_str_results = my_str_run_date = None
@@ -1135,10 +1143,10 @@ def main():
             date_line = next(README)
             my_snp_run_date = date_line.split(' ')[2]
 
-    if not args.condition:
+    if not condition:
         # TODO for future runs uncomment
         '''
-        with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as outlog: 
+        with open(f'{ukb}/association/results/{phenotype}/plink_snp/logs/chr21.plink.stdout') as outlog:
             plink_snp_run_date = ' '.join(outlog.readlines()[-1].split(' ')[2:])
         '''
         plink_snp_run_date = None

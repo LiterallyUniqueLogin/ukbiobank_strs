@@ -19,15 +19,15 @@ class PhenotypeLoadingArg:
             self,
             data_field_id,
             *,
-            unit = 'binary',
+            unit,
             categorical_covars = [],
             previous_STR_findings = [], # format "chr:pos"
             previous_SNP_findings = []): # unsure of format yet
         self.data_field_id = data_field_id
         self.unit = unit
-        self.categorical_covars = categorical_covars
-        self.previous_STR_findings = previous_STR_findings
-        self.previous_SNP_findings = previous_SNP_findings
+        self.categorical_covars = categorical_covars.copy()
+        self.previous_STR_findings = previous_STR_findings.copy()
+        self.previous_SNP_findings = previous_SNP_findings.copy()
 
 pheno_args = {
     # ---------------- Continuous phenotypes ------------------------
@@ -35,30 +35,6 @@ pheno_args = {
         '50',
         unit = 'cm',
         previous_STR_findings = ["3:53128363"]
-    ),
-    # blood biochemistry phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=17518
-    # and related QC fields https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=18518
-    # Due to the companion doc, I think I'm going to include aliquot as a covariate
-    # (section 7.2)
-    # companion documents:
-    # https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=5636
-    # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/biomarker_issues.pdf
-    # (I've found this second one less useful)
-    # https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1227
-    # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/serum_biochemistry.pdf
-    'total_bilirubin': PhenotypeLoadingArg(
-        '30840',
-        unit = 'umol/L',
-        previous_STR_findings = ["2:234668880"]
-    ),
-    'ldl_cholesterol_direct': PhenotypeLoadingArg(
-        '30780',
-        unit = 'mmol/L'
-    ),
-    'hdl_cholesterol': PhenotypeLoadingArg(
-        '30760',
-        unit = 'mmol/L',
-        categorical_covars = [('hdl_cholesterol_aliquot', '30762')]
     ),
     # blood count phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100081
     # 'crit' values are percentage of blood volume occupied by that cell type
@@ -148,6 +124,164 @@ pheno_args = {
     )
 }
 
+# blood biochemistry phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=17518
+# and related QC fields https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=18518
+# See related QC fields _2 for aliquot and _5, _6 for missingness reasons
+# Due to the companion doc, I'm including aliquot as a covariate (see code below)
+# (section 7.2)
+# companion documents:
+# This one for understanding the dilution/timing issues and correcting:
+# https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=5636
+# https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/biomarker_issues.pdf
+# This one for understanding the limits of the machine's analyzing range
+# https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1227
+# https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/serum_biochemistry.pdf
+# units of U are probably the enzyme unit https://en.wikipedia.org/wiki/Enzyme_unit
+blood_biochemistry_args = {
+    'albumin': PhenotypeLoadingArg(
+        '30600',
+        unit = 'g/L'
+    ),
+    'alkaline_phosphatase': PhenotypeLoadingArg(
+        '30610',
+        unit = 'U/L'
+    ),
+    'alanine_aminotransferase': PhenotypeLoadingArg(
+        '30620',
+        unit = 'U/L'
+    ),
+
+    # 1.8k samples discarded due to too high values (>2.5)
+    'apolipoprotein_a': PhenotypeLoadingArg(
+        '30630',
+        unit = 'g/L'
+    ),
+
+    # 1.2k samples discarded (both < 0.4 and > 2)
+    'apolipoprotein_b': PhenotypeLoadingArg(
+        '30640',
+        unit = 'g/L'
+    ),
+    'aspartate_aminotransferase': PhenotypeLoadingArg(
+        '30650',
+        unit = 'U/L'
+    ),
+    # skipping direct bilirubin 30660, 70k values are too low
+    'urea': PhenotypeLoadingArg(
+        '30670',
+        unit = 'mmol/L'
+    ),
+    'calcium': PhenotypeLoadingArg(
+        '30680',
+        unit = 'mmol/L'
+    ),
+    'cholesterol': PhenotypeLoadingArg(
+        '30690',
+        unit = 'mmol/L'
+    ),
+    'creatinine': PhenotypeLoadingArg(
+        '30700',
+        unit = 'umol/L'
+    ),
+    'c_reactive_protein': PhenotypeLoadingArg(
+        '30710',
+        unit = 'mg/L'
+    ),
+    'cystatin_c': PhenotypeLoadingArg(
+        '30720',
+        unit = 'mg/L'
+    ),
+    'gamma_glutamyltransferase': PhenotypeLoadingArg(
+        '30730',
+        unit = 'U/L'
+    ),
+    'glucose': PhenotypeLoadingArg(
+        '30740',
+        unit = 'mmol/L'
+    ),
+    'glycated_haemoglobin': PhenotypeLoadingArg(
+        '30750',
+        unit = 'mmol/mol'
+    ),
+    'hdl_cholesterol': PhenotypeLoadingArg(
+        '30760',
+        unit = 'mmol/L',
+    ),
+    'igf_1': PhenotypeLoadingArg(
+        '30770',
+        unit = 'nmol/L'
+    ),
+    'ldl_cholesterol_direct': PhenotypeLoadingArg(
+        '30780',
+        unit = 'mmol/L'
+    ),
+
+    #48k < 3.8 , 34k > 189
+    'lipoprotein_a': PhenotypeLoadingArg(
+        '30790',
+        unit = 'nmol/L'
+    ),
+
+    # 375k < 175
+    'oestradiol': PhenotypeLoadingArg(
+        '30800',
+        unit = 'pmol/L'
+    ),
+    'phosphate': PhenotypeLoadingArg(
+        '30810',
+        unit = 'mmol/L'
+    ),
+
+    # 444k < 10, 2k > 120
+    'rheumatoid_factor': PhenotypeLoadingArg(
+        '30820',
+        unit = 'IU/mL'
+    ),
+
+    # 750 > 226-242
+    'shbg': PhenotypeLoadingArg(
+        '30830',
+        unit = 'nmol/L'
+    ),
+    'total_bilirubin': PhenotypeLoadingArg(
+        '30840',
+        unit = 'umol/L',
+        previous_STR_findings = ["2:234668880"]
+    ),
+
+    # 800 < 0.35,  41k > 55.48
+    'testosterone': PhenotypeLoadingArg(
+        '30850',
+        unit = 'nmol/L'
+    ),
+    'total_protein': PhenotypeLoadingArg(
+        '30860',
+        unit = 'g/L'
+    ),
+    'triglycerides': PhenotypeLoadingArg(
+        '30870',
+        unit = 'mmol/L'
+    ),
+    'urate': PhenotypeLoadingArg(
+        '30880',
+        unit = 'umol/L'
+    ),
+
+    # 2.6k < 10
+    'vitamin_d': PhenotypeLoadingArg(
+        '30890',
+        unit = 'nmol/L'
+    )
+}
+
+for pheno, args in blood_biochemistry_args.items():
+    args.categorical_covars.append([(pheno + '_aliquot', str(int(args.data_field_id) + 2))])
+
+pheno_args.update(blood_biochemistry_args)
+
+def is_binary(phenotype):
+    return 'binary' in pheno_args[phenotype].unit
+
 rule load_shared_covars:
     input:
         "main_dataset/extracted_data/assessment_ages_21003.txt"
@@ -180,18 +314,22 @@ def input_fields_for_phenotype(wildcards):
         args = pheno_args[phenotype]
     else:
         raise ValueError(f"Couldn't identify phenotype {phenotype}")
-    return [
+    fields = [
         f"main_dataset/extracted_data/{wildcards.phenotype}_{args.data_field_id}.txt",
         *[f"main_dataset/extracted_data/{covar_field_name}_{covar_field_id}.txt" for
           covar_field_name, covar_field_id in args.categorical_covars]
     ]
+    if is_binary(phenotype):
+        fields.extend([
+            "main_dataset/extracted_data/year_of_birth_34.txt",
+            "main_dataset/extracted_data/month_of_birth_52.txt",
+            "main_dataset/extracted_data/date_of_death_40000.txt",
+        ])
+    return fields
 
 rule load_phenotype:
     input:
         "traits/shared_covars/assessment_ages.npy",
-        # used for binary data of diagnosis traits
-        "main_dataset/extracted_data/year_of_birth_34.txt",
-        "main_dataset/extracted_data/month_of_birth_52.txt",
         input_fields_for_phenotype
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
@@ -265,12 +403,17 @@ rule subset_samples_for_phenotype:
     shadow: 'minimal'
     resources:
         time='24:00:00'
-    shell:
-        'shadow_dir=$(pwd) ; cd $UKB ; export UKB=${{shadow_dir}} ; '
-        'sample_qc/scripts/combine.py {wildcards.phenotype} && '
-        'PHEN={wildcards.phenotype} sample_qc/scripts/test_combine.sh && '
-        'sample_qc/scripts/unrelated_individuals.py {wildcards.phenotype} && '
-        'sample_qc/scripts/verify_unrelatedness.py {wildcards.phenotype}'
+    run:
+        cmd = (
+            'shadow_dir=$(pwd) ; cd $UKB ; export UKB=${{shadow_dir}} ; '
+            'sample_qc/scripts/combine.py {wildcards.phenotype} && '
+            'PHEN={wildcards.phenotype} sample_qc/scripts/test_combine.sh && '
+            'sample_qc/scripts/unrelated_individuals.py {wildcards.phenotype} '
+        )
+        if is_binary(wildcards.phenotype):
+            cmd += '--binary --phenotype {wildcards.phenotype} '
+        cmd += '&& sample_qc/scripts/verify_unrelatedness.py {wildcards.phenotype}'
+        shell(cmd)
 
 rule transform_phenotype_subset:
     input:
@@ -281,8 +424,11 @@ rule transform_phenotype_subset:
         protected("traits/subset_transformed_phenotypes/{phenotype}.npy")
     resources:
         time='00:05:00'
-    shell:
-        'traits/transform_traits.py {wildcards.phenotype}'
+    run:
+        cmd = 'traits/transform_traits.py {wildcards.phenotype} '
+        if is_binary(wildcards.phenotype):
+            cmd += '--binary '
+        shell(cmd)
 
 rule plot_str_locus:
     input:
@@ -295,12 +441,16 @@ rule plot_str_locus:
     resources:
         time='00:30:00'
     run:
+        if is_binary(wildcards.phenotype):
+            raise ValueError("Plotting loci doesn't make sense for binary phenotypes "
+                             'unless I was to account for covariates, which this does not do '
+                             'at the moment')
         if wildcards.transform == '':
             transform_step = 'original'
         elif wildcards.transform == '_rin':
             transform_step = 'rin'
         else:
-            raise ValueError()
+            raise ValueError("Unrecognized transform")
         shell(
             f'association/plot_loci.py {str_imputation_run_name} '
             f'{wildcards.phenotype} {transform_step} '
@@ -337,132 +487,393 @@ def regions(region_len):
             regions.append(f'{chrom}_{start}_{end}')
     return regions
 
-rule write_my_imputed_snp_gwas_readme:
+str_imputation_run_name = 'first_pass'
+
+rule write_my_gwas_readme:
     output:
-        protected('association/results/{phenotype}/my_imputed_snp/README.txt'),
-        protected('association/results/{phenotype}/my_imputed_snp/time.stamp')
+        protected('association/results/{phenotype}/my_{run_type}/README.txt'),
+        protected('association/results/{phenotype}/my_{run_type}/time.stamp')
     resources:
         time='00:05:00'
-    shell:
-        'touch association/results/{wildcards.phenotype}/my_imputed_snp/time.stamp && '
-        'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} --readme'
+    run:
+        cmd = (
+            'touch association/results/{wildcards.phenotype}/my_{wildcards.run_type}/time.stamp && '
+            'association/my_regional_gwas.py '
+        )
+
+        run_type = wildcards.run_type
+        if run_type.startswith('imputed_snp'):
+            cmd += 'imputed-snps {wildcards.phenotype} '
+            suffix = run_type[len('imputed_snp'):]
+        else:
+            assert run_type.startswith('str')
+            cmd += 'strs {wildcards.phenotype} '
+            cmd += f'--imputation-run-name {str_imputation_run_name} '
+            suffix = run_type[len('str'):]
+
+        cmd += '--readme '
+
+        if suffix == '':
+            assert not is_binary(wildcards.phenotype)
+        elif suffix == '_linear':
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary linear '
+        else:
+            assert suffix == '_logistic'
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary logistic '
+
+        shell(cmd)
+
+def my_regional_gwas_mem_gb_req(wildcards, attempt):
+    if wildcards.suffix != '_logistic':
+        return 9
+    else:
+        return 40
 
 rule run_regional_my_imputed_snp_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
-        'association/results/{phenotype}/my_imputed_snp/time.stamp',
+        'association/results/{phenotype}/my_imputed_snp{suffix}/time.stamp',
         "traits/subset_transformed_phenotypes/{phenotype}.npy"
     output:
-        "association/results/{phenotype}/my_imputed_snp/batches/chr{chr}_{start}_{end}.tab"
+        "association/results/{phenotype}/my_imputed_snp{suffix,.*}/batches/chr{chr}_{start}_{end}.tab"
     resources:
         time='12:00:00',
-        mem_gb=9,
-        threads=4
-    shell:
-        'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
-        '--region {wildcards.chr}:{wildcards.start}-{wildcards.end}'
+        mem_gb=my_regional_gwas_mem_gb_req
+    run:
+        cmd = (
+            'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
+            '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
+        )
+        if wildcards.suffix == '':
+            assert not is_binary(wildcards.phenotype)
+        elif wildcards.suffix == '_linear':
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary linear '
+        else:
+            assert wildcards.suffix == '_logistic'
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary logistic '
 
-rule concatenate_my_imputed_snp_gwas_chr21:
+        shell(cmd)
+
+rule concatenate_and_move_my_imputed_snp_continuous_gwas_chr21:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_imputed_snp/batches/chr{region}.tab' for
              region in regions(int(1e5)) if region[:3] == '21_']
     output:
-        protected('association/results/{phenotype}/my_imputed_snp/chr21_results.tab')
+        protected('association/plots/input/{phenotype}/my_imputed_snp_chr21_results.tab')
     resources:
         time='04:00:00'
     run:
         concatenate_csvs(output[0], input)
 
-str_imputation_run_name = 'first_pass'
-
-rule write_my_str_gwas_readme:
+rule copy_my_imputed_snp_binary_linear_gwas_chr21_10000001_11000000:
+    input:
+        'association/results/{phenotype}/my_imputed_snp_linear/batches/chr21_10000001_11000000.tab'
     output:
-        protected('association/results/{phenotype}/my_str/README.txt'),
-        protected('association/results/{phenotype}/my_str/time.stamp')
+        protected('association/plots/input/{phenotype}/my_imputed_snp_linear_chr21_10000001_11000000_results.tab')
     resources:
         time='00:05:00'
     shell:
-        'touch association/results/{wildcards.phenotype}/my_str/time.stamp && '
-        'association/my_regional_gwas.py strs {wildcards.phenotype} --readme '
-        f'--imputation-run-name {str_imputation_run_name} '
+        'cp {input[0]} {output[0]}'
+
+rule move_my_imputed_snp_binary_logistic_gwas_chr21_10000001_11000000:
+    input:
+        'association/results/{phenotype}/my_imputed_snp_logistic/batches/chr21_10000001_11000000.tab'
+    output:
+        protected('association/plots/input/{phenotype}/my_imputed_snp_logistic_chr21_10000001_11000000_results.tab')
+    resources:
+        time='00:05:00'
+    run:
+        shutil.move(input[0], output[0])
 
 rule run_regional_my_str_gwas:
     input:
         "traits/shared_covars/shared_covars.npy",
         "traits/phenotypes/{phenotype}.npy",
-        'association/results/{phenotype}/my_str/time.stamp',
+        'association/results/{phenotype}/my_str{suffix}/time.stamp',
         "traits/subset_transformed_phenotypes/{phenotype}.npy",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
         f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi"
     output:
-        temporary("association/results/{phenotype}/my_str/batches/chr{chr}_{start}_{end}.tab")
+        temporary("association/results/{phenotype}/my_str{suffix,.*}/batches/chr{chr}_{start}_{end}.tab")
     resources:
         time='12:00:00',
-        mem_gb=9,
-        threads=4
-    shell:
-        'association/my_regional_gwas.py strs {wildcards.phenotype} '
-        '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
-        f'--imputation-run-name {str_imputation_run_name} '
+        mem_gb=my_regional_gwas_mem_gb_req
+    run:
+        cmd = (
+            'association/my_regional_gwas.py strs {wildcards.phenotype} '
+            '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
+            f'--imputation-run-name {str_imputation_run_name} '
+        )
 
-rule concatenate_my_str_gwas:
+        if wildcards.suffix == '':
+            assert not is_binary(wildcards.phenotype)
+        elif wildcards.suffix == '_linear':
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary linear '
+        else:
+            assert wildcards.suffix == '_logistic'
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary logistic '
+
+        shell(cmd)
+
+rule concatenate_whole_gnome_my_str_gwas:
     input:
         lambda wildcards:
-            [f'association/results/{wildcards.phenotype}/my_str/batches/chr{region}.tab' for
+            [f'association/results/{wildcards.phenotype}/my_str{wildcards.suffix}/batches/chr{region}.tab' for
              region in regions(int(1e7))]
     output:
-        protected('association/results/{phenotype}/my_str/results.tab')
+        protected('association/results/{phenotype}/my_str{suffix,.*}/results.tab')
     resources:
         time='04:00:00'
     run:
         concatenate_csvs(output[0], input)
 
-rule prep_plink_input:
+rule prep_continuous_plink_input:
     input:
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
         'traits/subset_transformed_phenotypes/{phenotype}.npy',
         'traits/phenotypes/{phenotype}_covar_names.txt'
     output:
-        'association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab'
+        'association/results/{phenotype}/plink_snp{suffix,|_linear}/input/transformed_phenotype_and_covars.tab'
+    resources:
+        time='00:30:00'
+    run:
+        cmd = 'association/prep_plink_input.py {wildcards.phenotype} '
+        if is_binary(wildcards.phenotype):
+            assert wildcards.suffix == '_linear'
+            cmd += '--binary linear '
+        else:
+            assert wildcards.suffix == ''
+
+        shell(cmd)
+
+rule prep_binary_plink_input:
+    input:
+        'traits/shared_covars/shared_covars.npy',
+        'traits/shared_covars/covar_names.txt',
+        'traits/subset_transformed_phenotypes/{phenotype}.npy',
+        'traits/phenotypes/{phenotype}_covar_names.txt'
+    output:
+        'association/results/{phenotype}/plink_snp_logistic/input/transformed_phenotype_and_covars.tab'
     resources:
         time='00:30:00'
     shell:
-        'association/prep_plink_input.py {wildcards.phenotype}'
+        'association/prep_plink_input.py {wildcards.phenotype} --binary logistic '
 
 rule timestamp_plink_run:
     output:
-        'association/results/{phenotype}/plink_snp/time.stamp'
+        'association/results/{phenotype}/plink_snp{suffix,.*}/time.stamp'
     resources:
         time='00:05:00'
     shell:
-        'touch association/results/{wildcards.phenotype}/plink_snp/time.stamp'
+        'touch association/results/{wildcards.phenotype}/plink_snp{wildcards.suffix}/time.stamp'
 
-rule run_plink_gwas:
+rule run_linear_plink_gwas:
     input:
-        'association/results/{phenotype}/plink_snp/input/transformed_phenotype_and_covars.tab',
-        'association/results/{phenotype}/plink_snp/time.stamp'
+        'association/results/{phenotype}/plink_snp{suffix}/input/transformed_phenotype_and_covars.tab',
+        'association/results/{phenotype}/plink_snp{suffix}/time.stamp'
     output:
-        temporary('association/results/{phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done')
+        temporary('association/results/{phenotype}/plink_snp{suffix,.*}/chrs/chr{chrom}/plink2.{rin,(rin_)?}{phenotype}.glm.linear.done')
     resources:
         time='06:00:00',
         threads=28,
         mem_gb=56
-    shell:
-        'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} association/plink_association.sh'
+    run:
+        if wildcards.suffix == '':
+            assert wildcards.rin == 'rin_'
+            assert not is_binary(wildcards.phenotype)
+        else:
+            assert wildcards.rin == ''
+            assert wildcards.suffix == '_linear'
+            assert is_binary(wildcards.phenotype)
 
-rule concatenate_plink_gwas:
+        shell('PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} SUFFIX={wildcards.suffix} association/plink_association.sh')
+
+rule run_logistic_plink_gwas:
     input:
-        lambda wildcards:
-            [f'association/results/{wildcards.phenotype}/plink_snp/chrs/chr{chrom}/plink2.rin_{wildcards.phenotype}.glm.linear.done' for
-             chrom in range(1, 23)]
+        'association/results/{phenotype}/plink_snp_logistic/input/transformed_phenotype_and_covars.tab',
+        'association/results/{phenotype}/plink_snp_logistic/time.stamp'
     output:
-        protected('association/results/{phenotype}/plink_snp/results.tab')
+        temporary('association/results/{phenotype}/plink_snp_logistic/batches/chr{chrom}_{start}_{end}/plink2.{phenotype}.glm.logistic.hybrid.done')
+    resources:
+        time='12:00:00',
+        threads=28,
+        mem_gb=56
+    shell:
+        'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} START={wildcards.start} '
+        'END={wildcards.end} SUFFIX=_logistic association/plink_association.sh'
+
+def concatenate_whole_genome_plink_gwas_input(wildcards):
+    if not wildcards.suffix:
+        rin = '_rin'
+    else:
+        assert is_binary(wildcards.phenotype)
+        assert wildcards.suffix == '_linear'
+        rin = ''
+
+    return [
+        f'association/results/{wildcards.phenotype}/plink_snp{wildcards.suffix}/chrs/chr{chrom}/plink2.{rin}{wildcards.phenotype}.glm.linear.done' for
+        chrom in range(1, 23)
+    ]
+
+rule concatenate_linear_plink_gwas:
+    input:
+        concatenate_whole_genome_plink_gwas_input
+    output:
+        protected('association/results/{phenotype}/plink_snp{suffix,.*}/results.tab')
+    resources:
+        time='04:00:00'
+    run:
+        if wildcards.suffix == '':
+            assert not is_binary(wildcards.phenotype)
+        else:
+            assert wildcards.suffix == '_linear'
+            assert is_binary(wildcards.phenotype)
+
+        concatenate_csvs(output[0], input)
+
+rule append_mfi_to_comparison_logistic_plink_run:
+    input:
+        'association/results/{phenotype}/plink_snp_logistic/batches/chr{chrom}_{start}_{end}/plink2.{phenotype}.glm.logistic.hybrid.done'
+    output:
+        'association/plots/input/{phenotype}/plink_snp_logistic_chr{chrom}_{start}_{end}_results_with_mfi.npy'
+    resources:
+        time='00:30:00',
+        mem_gb = 10
+    shell:
+        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
+
+'''
+TODO don't want whoel genome
+rule concatenate_logistic_plink_gwas:
+    input:
+        concatenate_whole_genome_plink_gwas_input(True)
+    output:
+        protected('association/results/{phenotype}/plink_snp_logistic/results.tab')
     resources:
         time='04:00:00'
     run:
         concatenate_csvs(output[0], input)
+'''
+
+INTERACTIVE_MANHATTAN_GWAS_THRESHOLD = 0.00005
+
+def subset_gwas_results(
+        input_file,
+        output_file,
+        p_val_col,
+        threshold = INTERACTIVE_MANHATTAN_GWAS_THRESHOLD):
+    shell(
+        f"head -n 1 {input_file} > {output_file}.temp && "
+        "awk '{{ if ($" + str(p_val_col) + " < " + str(threshold) + ") {{ print }} }}' "
+        f"{input_file} >> {output_file}.temp && "
+        f"mv {output_file}.temp {output_file} "
+    )
+
+rule subset_my_gwas_results:
+    input:
+        'association/results/{phenotype}/my_{gwas_type}/results.tab'
+    output:
+        'association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
+    resources:
+        time='01:00:00'
+    run:
+        subset_gwas_results(
+             f"association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab",
+             f"association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab",
+             5
+         )
+
+rule subset_plink_gwas_results:
+    input:
+        'association/results/{phenotype}/plink_snp{suffix}/results.tab'
+    output:
+        'association/plots/input/{phenotype}/plink_snp{suffix,.*}_results.tab'
+    resources:
+        time='08:00:00'
+    run:
+        if wildcards.suffix == '':
+            assert not is_binary(wildcards.phenotype)
+        else:
+            assert is_binary(wildcards.phenotype)
+            if wildcards.suffix == '_logistic':
+                raise ValueError("Check which plink columns mean what for logistic")
+
+        out = shell(
+            "tail -n +2 {input[0]} | grep -v -P '\.$' | grep -v 'CONST_OMITTED_ALLELE' ; "
+            'if (( $? > 1 )) ; then exit 1 ; fi ',
+            iterable=True
+        )
+        for line in out:
+            print(line)
+            raise ValueError("plink association failed with unexpected error code")
+
+        subset_gwas_results(
+             f'{input[0]}',
+             f'{output[0]}',
+             14
+        )
+
+rule append_mfi_to_subsetted_plink_results:
+    input:
+        'association/plots/input/{phenotype}/plink_snp{suffix}_results.tab'
+    output:
+        'association/plots/input/{phenotype}/plink_snp{suffix,.*}_results_with_mfi.npy'
+    resources:
+        time='01:00:00',
+        mem_gb = 50
+    shell:
+        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
+
+rule compare_my_to_plink_continuous_gwas:
+    input:
+        "traits/phenotypes/height_unit.txt",
+        'association/plots/input/height/my_imputed_snp_chr21_results.tab',
+        # it's okay to ask for plink snp for the entire genome because we'll want that anyway
+        'association/plots/input/height/plink_snp_results_with_mfi.npy'
+    output:
+        'association/plots/continuous_my_imputed_snp_vs_plink.html'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'association/interactive_manhattan_plots.py height html --my-plink-comparison --chrom 21 '
+
+rule compare_my_to_plink_binary_linear_gwas:
+    input:
+        "traits/phenotypes/afib_and_flutter_I48_unit.txt",
+        'association/plots/input/afib_and_flutter_I48/my_imputed_snp_linear_chr21_10000001_11000000_results.tab',
+        # it's okay to ask for plink snp for the entire genome because we'll want that anyway
+        'association/plots/input/afib_and_flutter_I48/plink_snp_linear_results_with_mfi.npy'
+    output:
+        'association/plots/binary_linear_my_imputed_snp_vs_plink.html'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'association/interactive_manhattan_plots.py afib_and_flutter_I48 html --my-plink-comparison --binary linear '
+        '--chrom 21 --start 10000001 --end 11000000 '
+
+rule compare_my_to_plink_binary_logistic_gwas:
+    input:
+        "traits/phenotypes/afib_and_flutter_I48_unit.txt",
+        'association/plots/input/afib_and_flutter_I48/my_imputed_snp_logistic_chr21_10000001_11000000_results.tab',
+        'association/plots/input/afib_and_flutter_I48/plink_snp_logistic_chr21_10000001_11000000_results_with_mfi.npy'
+    output:
+        'association/plots/binary_logistic_my_imputed_snp_vs_plink.html'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'association/interactive_manhattan_plots.py afib_and_flutter_I48 html --my-plink-comparison --binary logistic '
+        '--chrom 21 --start 10000001 --end 11000000 '
 
 rule prep_conditional_input:
     output:
@@ -481,6 +892,7 @@ rule prep_conditional_input:
             command += wildcards.imputed_SNPs.replace('_', ' ') + ' '
         shell(command)
 
+ #TODO binary for all conditional commands (including ones that had an attempt at supporting binary)
 rule run_conditional_my_str_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
@@ -512,10 +924,16 @@ rule prep_conditional_plink_input:
         'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
     resources:
         time='00:30:00'
-    shell:
-        'association/prep_plink_input.py {wildcards.phenotype} --conditional chr{wildcards.chr}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
+    run:
+        cmd = (
+            'association/prep_plink_input.py {wildcards.phenotype} '
+            '--conditional chr{wildcards.chr}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP '
+        )
+        if is_binary(wildcards.phenotype):
+            cmd += '--binary '
+        shell(cmd)
 
-rule run_conditional_plink_gwas:
+rule run_continuous_conditional_plink_gwas:
     input:
         'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{ISNPs}__ASNP_plink.tab'
     output:
@@ -530,68 +948,21 @@ rule run_conditional_plink_gwas:
         'START={wildcards.start} END={wildcards.end} '
         'association/plink_association.sh'
 
-INTERACTIVE_MANHATTAN_GWAS_THRESHOLD = 0.00005
-
-def subset_gwas_results(
-        input_file,
-        output_file,
-        p_val_col,
-        threshold = INTERACTIVE_MANHATTAN_GWAS_THRESHOLD):
-    shell(
-        f"head -n 1 {input_file} > {output_file}.temp && "
-        "awk '{{ if ($" + str(p_val_col) + " < " + str(threshold) + ") {{ print }} }}' "
-        f"{input_file} >> {output_file}.temp && "
-        f"mv {output_file}.temp {output_file} "
-    )
-
-
-rule subset_my_gwas_results:
+rule run_binary_conditional_plink_gwas:
     input:
-        'association/results/{phenotype}/my_{gwas_type}/results.tab'
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{ISNPs}__ASNP_plink.tab'
     output:
-        'association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.logistic.hybrid.done'
     resources:
-        time='01:00:00'
-    run:
-        subset_gwas_results(
-             f"association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab",
-             f"association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab",
-             5
-         )
-
-rule subset_plink_gwas_results:
-    input:
-        'association/results/{phenotype}/plink_snp/results.tab'
-    output:
-        'association/plots/input/{phenotype}/plink_snp_results.tab'
-    resources:
-        time='08:00:00'
-    run:
-        out = shell(
-            "tail -n +2 {input[0]} | grep -v -P '\.$' | grep -v 'CONST_OMITTED_ALLELE' ; "
-            'if (( $? > 1 )) ; then exit 1 ; fi ',
-            iterable=True
-        )
-        for line in out:
-            print(line)
-            raise ValueError("plink association failed with unexpected error code")
-
-        subset_gwas_results(
-             f'{input[0]}',
-             f'{output[0]}',
-             14
-        )
-
-rule append_mfi_to_subsetted_plink_results:
-    input:
-        'association/plots/input/{phenotype}/plink_snp_results.tab'
-    output:
-        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
-    resources:
-        time='01:00:00',
-        mem_gb = 50
+        time='24:00:00',
+        mem_gb=110,
+        threads=28
     shell:
-        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
+        'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
+        'CONDITIONAL=STR{wildcards.STRs}__ISNP{wildcards.ISNPs}__ASNP '
+        'START={wildcards.start} END={wildcards.end} '
+        'BINARY=set '
+        'association/plink_association.sh'
 
 rule append_mfi_to_conditional_plink_results:
     input:
@@ -604,32 +975,24 @@ rule append_mfi_to_conditional_plink_results:
     shell:
         'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
 
-rule compare_my_to_plink_gwas:
-    input:
-        "traits/phenotypes/height_unit.txt",
-        'association/plots/input/height/my_imputed_snp_chr21_results.tab',
-        'association/plots/input/height/plink_snp_results_with_mfi.npy'
-    output:
-        'association/plots/height_my_imputed_snp_vs_plink.{ext}'
-    resources:
-        time='00:30:00',
-        mem_gb=50
-    shell:
-        'association/interactive_manhattan_plots.py {wildcards.ext} --my-plink-comparison'
-
 rule manhattan:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_manhattan.{ext}'
+        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
-    shell:
-        'association/interactive_manhattan_plots.py {wildcards.ext} '
-        '--phenotype {wildcards.phenotype}'
+    run:
+        cmd = 'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
 
 rule region_manhattan:
     input:
@@ -637,16 +1000,24 @@ rule region_manhattan:
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_manhattan_chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
+        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan_chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
-    shell:
-        'association/interactive_manhattan_plots.py {wildcards.ext} '
-        '--phenotype {wildcards.phenotype} '
-        '--chrom {wildcards.chrom} '
-        '--start {wildcards.start} '
-        '--end {wildcards.end} '
+    run:
+        cmd = (
+            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            '--chrom {wildcards.chrom} '
+            '--start {wildcards.start} '
+            '--end {wildcards.end} '
+        )
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
+
 
 rule manhattan_conditional:
     input:
@@ -661,8 +1032,7 @@ rule manhattan_conditional:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py {wildcards.ext} '
-        '--phenotype {wildcards.phenotype} '
+        'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
         '--condition chr{wildcards.condition} '
 
 checkpoint clump_results:
@@ -800,13 +1170,21 @@ rule manhattan_finemap:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
-        'association/plots/{phenotype}_manhattan_FINEMAP.{ext}'
+        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan_FINEMAP.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
-    shell:
-        'association/interactive_manhattan_plots.py {wildcards.ext} '
-        '--phenotype {wildcards.phenotype} --finemap-signals'
+    run:
+        cmd = (
+            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            '--finemap-signals '
+        )
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
 
 rule sort_gencode:
     input:

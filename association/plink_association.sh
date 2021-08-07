@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 
+set -exo pipefail
+
 if [ -z "$PHENOTYPE" ] ; then echo "PHENOTYPE is unset" ; exit 1 ; fi
 if [ -z "$CHROM" ] ; then echo "CHROM is unset" ; exit 1 ; fi
-echo "PHENOTYPE $PHENOTYPE CHROM $CHROM CONDITIONAL $CONDITIONAL START $START END $END"
-echo "PHENOTYPE $PHENOTYPE CHROM $CHROM CONDITIONAL $CONDITIONAL START $START END $END" >&2
+echo "PHENOTYPE $PHENOTYPE SUFFIX $SUFFIX CHROM $CHROM CONDITIONAL $CONDITIONAL START $START END $END"
+echo "PHENOTYPE $PHENOTYPE SUFFIX $SUFFIX CHROM $CHROM CONDITIONAL $CONDITIONAL START $START END $END" >&2
 # conditional should look like 'STR{STRs}__ISNP{ISNPs}__ASNP{ASNPs}'
 
-
-if [[ -n "$CONDITIONAL" && ( -z "$START" || -z "$END" ) ]] ; then
-	echo "Conditional input, but not start or end. Exiting."
+if [[ -n "$CONDITIONAL" && -z "$START" ]] ; then
+	echo "Conditional input, but not start. Exiting."
 	exit 1
 fi
 
-if [[ -z "$CONDITIONAL" && ( -n "$START" || -n "$END" ) ]] ; then
-	echo "No conditional input, but start or end. Exiting."
+if [[ ( -n "$START" && -z "$END" ) || ( -z "$START" && -n "$END" ) ]] ; then
+	echo "Start but not end or end but not start. Exiting."
 	exit 1
 fi
 
@@ -22,10 +23,12 @@ if [[ -z "$PROJECT_TEMP" ]] ; then
 	exit 1
 fi
 
-if [ -z "$CONDITIONAL" ] ; then
-	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp/chrs/chr"$CHROM"
+if [ -z "$START" ] ; then
+	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"/chrs/chr"$CHROM"
+elif [ -z "$CONDITIONAL" ] ; then
+	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"/batches/chr"$CHROM"_"$START"_"$END"
 else
-	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp_conditional
+	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"_conditional
 	OUT_DIR="$OUT_DIR"/chr"$CHROM"_"$START"_"$END"_"$CONDITIONAL"
 fi
 
@@ -36,7 +39,7 @@ cd "$PROJECT_TEMP" || {
 	exit 1 ;
 }
 
-temp_name=plink_snp/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"_conditional_"$CONDITIONAL"
+temp_name=plink_snp"$SUFFIX"/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"_conditional_"$CONDITIONAL"
 mkdir -p "$temp_name"
 cd "$temp_name" || {
 	echo "Failed to move to $temp_name"
@@ -44,20 +47,19 @@ cd "$temp_name" || {
 }
 
 if [ -z "$CONDITIONAL" ] ; then
-	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/plink_snp/input/transformed_phenotype_and_covars.tab 
-	mkdir -p "$OUT_DIR"/../../logs
-	LOG_OUT="$OUT_DIR"/../../logs/chr"$CHROM".plink.stdout 
-	LOG_ERR="$OUT_DIR"/../../logs/chr"$CHROM".plink.stderr
+	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"/input/transformed_phenotype_and_covars.tab 
+else
+	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/conditional_inputs/chr"$CHROM"_"$CONDITIONAL"_plink"$SUFFIX".tab
+fi
+
+if [ -z "$START" ] ; then
 	BED_FILE_COMMAND=" "
 else
-	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/conditional_inputs/chr"$CHROM"_"$CONDITIONAL"_plink.tab
-	LOG_OUT=plink.stdout
-	LOG_ERR=plink.stderr
 	echo -e chr"$CHROM""\t""$START""\t""$((END + 1))" > region.bed
 	BED_FILE_COMMAND=" --extract bed1 region.bed"
 fi
 
-if [ -z "$BINARY" ] ;  then
+if [ -z "$SUFFIX" ] ;  then
 	PHENO_NAME=rin_"$PHENOTYPE"
 	COLS=""
 else
@@ -78,10 +80,23 @@ fi
     --ci 0.99999995 \
     --memory 56000 \
     --threads 28 \
-    > "$LOG_OUT" \
-    2> "$LOG_ERR"
+    > plink.stderr \
+    2> plink.stdout
 
 mv ./* "$OUT_DIR"
 
-mv "$OUT_DIR"/plink2.rin_"$PHENOTYPE".glm.linear \
-   "$OUT_DIR"/plink2.rin_"$PHENOTYPE".glm.linear.done
+if [ -z "$SUFFIX" ] ; then
+	RIN=rin_
+else
+	RIN=''
+fi
+
+if [ "$SUFFIX" == "_logistic" ] ; then
+	RUNTYPE="logistic.hybrid"
+else
+	RUNTYPE="linear"
+fi
+
+mv "$OUT_DIR"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE" \
+   "$OUT_DIR"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE".done
+

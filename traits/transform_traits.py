@@ -32,6 +32,7 @@ def inverse_normalize_ranks(readme, ranks):
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
+    parser.add_argument('--binary', default=False, action='store_true')
     args = parser.parse_args()
 
     with open(f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}_README.txt', 'w') as readme:
@@ -49,8 +50,6 @@ def main():  # noqa: D103
         samples = samples.reshape(-1, 1)
         data = utils.merge_arrays(samples, data)
 
-        ranks = rank_phenotypes(readme, data)
-        rin_ranks = inverse_normalize_ranks(readme, ranks)
 
         readme.write(
             "Standardizing covariates (subtracting mean, then dividing by standard deviation)\n"
@@ -60,10 +59,22 @@ def main():  # noqa: D103
         standardized_covariates = \
                 (covariates - covariates.mean(axis=0))/covariates.std(axis=0)
 
-        transformed_data = np.concatenate(
-            (samples, rin_ranks.reshape(-1, 1), standardized_covariates),
-            axis=1
-        )
+        if not args.binary:
+            ranks = rank_phenotypes(readme, data)
+            rin_ranks = inverse_normalize_ranks(readme, ranks)
+            transformed_data = np.concatenate(
+                (samples, rin_ranks.reshape(-1, 1), standardized_covariates),
+                axis=1
+            )
+        else:
+            readme.write(
+                "Binary outcome is left untransformed (0=case, 1=control)\n"
+            )
+            phenotype = data[:, 1:2]
+            transformed_data = np.concatenate(
+                (samples, phenotype, standardized_covariates),
+                axis=1
+            )
 
         np.save(
             f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}.npy',
