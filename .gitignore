@@ -42,3 +42,4 @@ twistd.pid
 *.npy
 *Rplots.pdf
 *.gff3
+dag.svg

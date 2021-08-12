@@ -100,7 +100,7 @@ def load_strs(imputation_run_name: str,
     locus_filtered:
         None if the locus is not filtered, otherwise
         a string explaining why.
-        'MAC<20' if there are fewer than 20 minor allele hardcalls
+        'MAC<20' if the minor allele dosage is less than 20
         after sample subsetting, per plink's standard
     locus_details:
         tuple of strings with the same length as the first yield
@@ -222,11 +222,10 @@ def load_strs(imputation_run_name: str,
             dict_str(round_vals(subset_allele_dosage_r2, r2_precision))
         )
 
-        mac = list(subset_total_hardcall_alleles.values())
+        mac = list(subset_total_dosages.values())
         mac.pop(np.argmax(mac))
-        mac_lt_20 = np.sum(mac) < 20
 
-        if mac_lt_20:
+        if np.sum(mac) < 20:
             yield (
                 None,
                 np.unique(len_alleles),
@@ -349,7 +348,7 @@ def load_imputed_snps(region: str,
         a string explaining why.
         'MAF=0' if there is only one allele present
         in the calls at this locus.
-        'MAC<20' if there are fewer than 20 minor allele hardcalls
+        'MAC<20' if the minor allele dosage is less than 20
         after sample subsetting, per plink's standard
         'info<{thresh}' if an info thresh
         is set and this locus is under that
@@ -459,8 +458,7 @@ def load_imputed_snps(region: str,
                 f'{subset_hwep}'
             )
 
-            if (subset_n_ref_alleles < 20 or
-                    subset_n_ref_alleles > subset_hardcalls.shape[0]*2 - 20):
+            if (subset_total_alt_dosage < 20 or subset_total_ref_dosage < 20):
                 yield (
                     None,
                     alleles,

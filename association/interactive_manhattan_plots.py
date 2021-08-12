@@ -109,6 +109,7 @@ def create_source_dict(
 def make_manhattan_plots(
         outfname,
         phenotype,
+        binary,
         unit,
         my_str_data,
         my_str_run_date,
@@ -128,6 +129,11 @@ def make_manhattan_plots(
         conditioned_isnps):
     ext = outfname.split('.')[-1]
 
+    if not binary:
+        stat = 'mean'
+    else:
+        stat = 'fraction'
+
     conditioning = conditioned_strs or conditioned_isnps
     if conditioned_isnps:
         print("Can't handle conditioned_isnps at the moment")
@@ -136,6 +142,7 @@ def make_manhattan_plots(
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
     plot_gwas_catalog = gwas_catalog is not None
+    plot_peaks = 'is_peak' in my_str_data.dtype.names
 
     assert bool(snp_finemap_signals) + bool(str_finemap_signals) + bool(finemap_regions) in {0, 3}
 
@@ -269,10 +276,11 @@ def make_manhattan_plots(
             plink_data['p_val'][(start <= plink_data['pos']) & (plink_data['pos'] <= end)]
         )
 
-        str_data = my_str_source.data
-        included_strs = str_data['p_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]
-        if included_strs.shape[0] > 0:
-            start_height_cap = max(start_height_cap, np.max(included_strs))
+        if plot_my_str_data:
+            str_data = my_str_source.data
+            included_strs = str_data['p_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]
+            if included_strs.shape[0] > 0:
+                start_height_cap = max(start_height_cap, np.max(included_strs))
 
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
@@ -363,13 +371,16 @@ def make_manhattan_plots(
         palette = colorcet.kr,
         nan_color = 'purple'
     )
+    plink_snp_source.data['size'] = np.full(plink_snp_source.data['pos'].shape, 5)
+    if plot_peaks:
+        plink_snp_source.data['size'][plink_snp_source.data['is_peak']] = 15
     plink_snp_manhattan = manhattan_plot.circle(
         'pos',
         'display_p_val',
         source=plink_snp_source,
         legend_label='SNPs Plink',
         color=plink_snp_color,
-        size=5,
+        size='size',
         muted_alpha=0.1
     )
     if plot_my_str_data:
@@ -381,13 +392,17 @@ def make_manhattan_plots(
             palette = colorcet.kr,
             nan_color = 'purple'
         )
+        my_str_source.data['size'] = np.full(my_str_source.data['pos'].shape, 6)
+        if plot_peaks:
+            my_str_source.data['size'][my_str_source.data['is_peak']] = 15
         my_str_manhattan = manhattan_plot.square_pin(
             'pos',
             'display_p_val',
             source=my_str_source,
             legend_label='STRs my code',
             color=my_str_color,
-            size=6
+            size='size',
+            muted_alpha=0.1
         )
     if plot_my_snp_data:
         my_snp_manhattan = manhattan_plot.circle(
@@ -396,7 +411,8 @@ def make_manhattan_plots(
             source=my_snp_source,
             legend_label='SNPs my code',
             color=(204, 121, 167),
-            size=5
+            size=5,
+            muted_alpha=0.1
         )
     if plot_gwas_catalog:
         catalog_manhattan = manhattan_plot.square(
@@ -405,7 +421,8 @@ def make_manhattan_plots(
             source=catalog_source,
             legend_label='GWAS Catalog Hits',
             color=(213, 94, 0),
-            size=7
+            size=7,
+            muted_alpha=0.1
         )
     if conditioned_isnps:
         pass #TODO
@@ -435,16 +452,20 @@ def make_manhattan_plots(
             ('pos', '@pos'),
             ('-log10(p_val) my code', '@p_val')
         ]
+        if plot_peaks:
+            my_str_hover.tooltips.append(
+                ('is there a nearby SNP in this peak?', '@tagged_by_other_variant_type')
+            )
         if conditioning:
             my_str_hover.tooltips.append(
                 ('-log10(unconditioned_p_val) my code', '@unconditioned_p')
             )
         if str_finemap_signals:
             my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal{safe}'))
-        str_means_start_idx = list(my_str_data.dtype.names).index(
-            f'mean_{phenotype}_per_single_dosage'
+        str_stats_start_idx = list(my_str_data.dtype.names).index(
+            f'{stat}_{phenotype}_per_single_dosage'
         )
-        for detail_name in my_str_data.dtype.names[7:str_means_start_idx]:
+        for detail_name in my_str_data.dtype.names[7:str_stats_start_idx]:
             if detail_name in cols_to_skip:
                 continue
             my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
@@ -459,10 +480,10 @@ def make_manhattan_plots(
             ('pos', '@pos'),
             ('-log10(p_val) my code', '@p_val')
         ]
-        snp_means_start_idx = list(my_snp_data.dtype.names).index(
-            f'mean_{phenotype}_per_single_dosage'
+        snp_stats_start_idx = list(my_snp_data.dtype.names).index(
+            f'{stat}_{phenotype}_per_single_dosage'
         )
-        for detail_name in my_snp_data.dtype.names[7:snp_means_start_idx]:
+        for detail_name in my_snp_data.dtype.names[7:snp_stats_start_idx]:
             if detail_name in cols_to_skip:
                 continue
             my_snp_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
@@ -477,6 +498,20 @@ def make_manhattan_plots(
         ('ID', '@id'),
         ('-log10(p_val) Plink', '@p_val')
     ]
+    if binary == 'logistic':
+        plink_snp_hover.tooltips.append(
+            ('alt_case_count', '@alt_case_count')
+        )
+        plink_snp_hover.tooltips.append(
+            ('alt_control_count', '@alt_control_count')
+        )
+        plink_snp_hover.tooltips.append(
+            ('Using Firth penalization during regression?', '@firth?')
+        )
+    if plot_peaks:
+        plink_snp_hover.tooltips.append(
+            ('is there a nearby STR in this peak?', '@tagged_by_other_variant_type')
+        )
     if conditioning:
         plink_snp_hover.tooltips.append(
             ('-log10(unconditioned_p_val) Plink', '@unconditioned_p')
@@ -525,7 +560,7 @@ def make_manhattan_plots(
                 }}
                 var idx = my_str_source.selected.indices[0];
                 var data = my_str_source.data;
-                var locus_dict = JSON.parse(data['mean_{phenotype}_per_single_dosage'][idx]);
+                var locus_dict = JSON.parse(data['{stat}_{phenotype}_per_single_dosage'][idx]);
                 var CI5e_2_str = data['CI5e_2SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
                 var CI5e_2_dict = JSON.parse(CI5e_2_str);
                 var CI5e_8_str = data['CI5e_8SingleDosagePhenotype'][idx].replaceAll('(', '[').replaceAll(')', ']').replaceAll('nan', '"NaN"');
@@ -888,7 +923,7 @@ def load_my_snp_results(phenotype, binary, chrom, start, end):
         header=0,
         delimiter='\t',
         encoding='UTF-8',
-        dtype=utils.get_dtypes(snp_results_fname, {'locus_filtered': str})
+        dtype=utils.get_dtypes(snp_results_fname, {'locus_filtered': str, 'unused_col': str, 'firth?': str})
     ))
     names = list(my_snp_results.dtype.names)
     for idx, name in my_results_rename.items():
@@ -898,18 +933,20 @@ def load_my_snp_results(phenotype, binary, chrom, start, end):
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_snp_results
 
-def load_plink_results(phenotype, binary, condition):
+def load_plink_results(phenotype, binary, condition, fname=None):
     # TODO remove conditioned snps
     # Load plink SNP results
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
 
-    if binary:
-        binary = '_' + binary
+    assert bool(condition) + bool(fname) <= 1
 
-    unconditioned_results = pd.DataFrame.from_records(np.load(
-        f'{ukb}/association/plots/input/{phenotype}/plink_snp{binary if binary else ""}_results_with_mfi.npy'
-    ))
+    if fname is None:
+        if binary:
+            binary = '_' + binary
+        fname = f'{ukb}/association/plots/input/{phenotype}/plink_snp{binary if binary else ""}_results_with_mfi.npy'
+
+    unconditioned_results = pd.DataFrame.from_records(np.load(fname))
     if not condition:
         results = utils.df_to_recarray(unconditioned_results)
     else:
@@ -932,6 +969,13 @@ def load_plink_results(phenotype, binary, condition):
         )) # subsets to only those which passed the p-val threshold in the unconditioned run
 
     results = results[results['error'] != 'CONST_OMITTED_ALLELE']
+    if binary == 'logistic':
+        # in theory could keep unfinished error codes and just note them,
+        # but easier to ignore
+        results = results[
+            (results['error'] != 'FIRTH_CONVERGE_FAIL') &
+            (results['error'] != 'UNFINISHED')
+        ]
     results['p_val'] = np.maximum(results['p_val'], 1 / 10**max_p_val)
     results['p_val'] = -np.log10(results['p_val'])
 
@@ -1063,13 +1107,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
     parser.add_argument('ext', help='file extension', choices=['svg', 'html'])
-    parser.add_argument("--my-plink-comparison", action='store_true')
-    parser.add_argument("--chrom")
-    parser.add_argument("--start")
-    parser.add_argument("--end")
+    parser.add_argument("--my-plink-comparison", action='store_true', default=False)
+    parser.add_argument("--chrom", type=int)
+    parser.add_argument("--start", type=int)
+    parser.add_argument("--end", type=int)
     parser.add_argument("--condition")
     parser.add_argument('--finemap-signals', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
+    parser.add_argument('--plink-snp-fname')
+    parser.add_argument('--peaks-spacing', type=int)
+    parser.add_argument('--peaks-thresh', type=str)
     args = parser.parse_args()
 
     phenotype = args.phenotype
@@ -1077,13 +1124,41 @@ def main():
     binary = args.binary
     condition = args.condition
 
-    assert args.finemap_signals + bool(args.my_plink_comparison) + bool(condition) <= 1
-    assert bool(args.chrom) == bool(args.start) == bool(args.end)
+    if not args.binary:
+        run_suffix = ''
+    else:
+        run_suffix = '.' + binary
+
+    assert args.finemap_signals + args.my_plink_comparison + bool(condition) + bool(args.peaks_spacing) <= 1
+
+    assert bool(args.peaks_spacing) == bool(args.peaks_thresh)
+
+    assert bool(args.start) == bool(args.end)
+    if bool(args.start):
+        assert bool(args.chrom)
+
+    if bool(args.condition):
+        # will parse chrom, start, end from the condition string itself
+        assert not bool(args.chrom)
+    else:
+        conditioned_isnps = conditioned_strs = None
+
+    if args.my_plink_comparison:
+        assert bool(args.chrom)
+    if bool(args.plink_snp_fname):
+        assert args.my_plink_comparison
 
     if not args.finemap_signals:
         snp_finemap_signals = None
         str_finemap_signals = None
         finemap_regions = None
+
+    if not args.my_plink_comparison and not args.condition:
+        with open(f'{ukb}/association/results/{phenotype}/my_str{run_suffix.replace(".", "_")}/README.txt') as README:
+            date_line = next(README)
+            my_str_run_date = date_line.split(' ')[2]
+    else:
+        my_str_run_date = None
 
     if not bool(args.my_plink_comparison):
         my_str_results, plink_snp_results, gwas_catalog, gwas_catalog_ids = load_data(
@@ -1095,33 +1170,66 @@ def main():
             chrom = None
             start = None
             end = None
-            with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
-                date_line = next(README)
-                my_str_run_date = date_line.split(' ')[2]
-            outfname = f'{ukb}/association/plots/{phenotype}_manhattan.{ext}'
-            conditioned_isnps = conditioned_strs = None
+            outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{ext}'
         elif args.chrom:
-            chrom = int(args.chrom)
-            start = int(args.start)
-            end = int(args.end)
-            with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
-                date_line = next(README)
-                my_str_run_date = date_line.split(' ')[2]
-            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_chr{chrom}_{start}_{end}.{ext}'
-            conditioned_isnps = conditioned_strs = None
+            chrom = args.chrom
+            if args.start:
+                start = args.start
+                end = args.end
+                outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.chr{chrom}_{start}_{end}.{ext}'
+            else:
+                start = None
+                end = None
+                outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.chr{chrom}.{ext}'
         else:
-            my_str_run_date = None
             chrom, start, end = condition.split('_')[:3]
             chrom = int(chrom[3:])
             start = int(start)
             end = int(end)
-            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_{condition}.{ext}'
+            outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{condition}.{ext}'
             conditioned_isnps = get_conditioned_isnps(condition)
             conditioned_strs = get_conditioned_strs(condition)
 
-        if args.finemap_signals:
+        if bool(args.peaks_spacing):
+            print("Adding peak data ... ", end='', flush=True)
+            start_time = time.time()
             # change the output file
-            outfname = f'{ukb}/association/plots/{phenotype}_manhattan_FINEMAP.{ext}'
+            outfname = '.'.join(outfname.split('.')[:-1]) + f'.peaks_{args.peaks_spacing}_{args.peaks_thresh}.{ext}'
+
+            peaks_fname = f'{ukb}/signals/peaks/{phenotype}_{args.peaks_spacing}_{args.peaks_thresh}.tab'
+            peaks = pd.read_csv(
+                peaks_fname,
+                delimiter='\t',
+                header=0,
+                dtype=utils.get_dtypes(peaks_fname)
+            )
+            peaks.rename(columns={'chrom': 'chr', 'ref_(snp_only)': 'ref', 'alt_(snp_only)': 'alt'}, inplace=True)
+            peaks['tagged_by_other_variant_type'] = peaks['tagged_by_other_variant_type'].astype(float)
+
+            str_peaks = peaks[peaks['variant_type'] == 'STR']
+            my_str_results = pd.DataFrame.from_records(my_str_results)
+            my_str_results = my_str_results.merge(
+                str_peaks[['chr', 'pos', 'tagged_by_other_variant_type']],
+                how='left',
+                on=['chr', 'pos']
+            )
+            my_str_results['is_peak'] = ~np.isnan(my_str_results['tagged_by_other_variant_type'])
+            my_str_results = utils.df_to_recarray(my_str_results)
+
+            snp_peaks = peaks[peaks['variant_type'] == 'SNP']
+            plink_snp_results = pd.DataFrame.from_records(plink_snp_results)
+            plink_snp_results = plink_snp_results.merge(
+                snp_peaks[['chr', 'pos', 'ref', 'alt', 'tagged_by_other_variant_type']],
+                how='left',
+                on=['chr', 'pos', 'ref', 'alt']
+            )
+            plink_snp_results['is_peak'] = ~np.isnan(plink_snp_results['tagged_by_other_variant_type'])
+            plink_snp_results = utils.df_to_recarray(plink_snp_results)
+            print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+           
+        elif args.finemap_signals:
+            # change the output file
+            outfname = '.'.join(outfname.split('.')[:-1]) + f'.FINEMAP.{ext}'
             finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
             out_files = [f'{finemap_loc}/{d}/finemap_output.snp' for d in
                          os.listdir(finemap_loc) if d[0] in '0123456789']
@@ -1131,15 +1239,24 @@ def main():
                 key=lambda dirname: [int(val) for val in dirname.split('/')[-2].split('_')]
             ))
     else:
+        chrom = args.chrom
+        start = args.start
+        end = args.end
         my_snp_results = load_my_snp_results(phenotype, binary, chrom, start, end)
-        plink_snp_results = load_plink_results(phenotype, binary, None)
-        plink_snp_results = plink_snp_results[plink_snp_results['chr'] == 21]
+        plink_snp_results = load_plink_results(phenotype, binary, None, fname=args.plink_snp_fname)
+        plink_snp_results = plink_snp_results[plink_snp_results['chr'] == chrom]
         gwas_catalog = gwas_catalog_ids = None
         my_str_results = my_str_run_date = None
-        conditioned_isnps = conditioned_strs = None
 
-        outfname = f'{ukb}/association/plots/height_my_imputed_snp_vs_plink.{ext}'
-        with open(f'{ukb}/association/results/{phenotype}/my_str/README.txt') as README:
+        if not binary:
+            out_runtype = 'continuous'
+            readme_suffix = ''
+        else:
+            out_runtype = 'binary_' + binary
+            readme_suffix = '_' + binary
+
+        outfname = f'{ukb}/association/plots/{out_runtype}_my_imputed_snp_vs_plink.{ext}'
+        with open(f'{ukb}/association/results/{phenotype}/my_imputed_snp{readme_suffix}/README.txt') as README:
             date_line = next(README)
             my_snp_run_date = date_line.split(' ')[2]
 
@@ -1159,6 +1276,7 @@ def main():
     make_manhattan_plots(
         outfname,
         phenotype,
+        binary,
         unit,
         my_str_results,
         my_str_run_date,

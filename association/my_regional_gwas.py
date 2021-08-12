@@ -53,7 +53,7 @@ def perform_regional_gwas_helper(
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
                   f"p_{phenotype}\tcoeff_{phenotype}\t")
     if binary != 'logistic':
-        outfile.write('se_{phenotype}\tR^2\t')
+        outfile.write(f'se_{phenotype}\tR^2\t')
     else:
         outfile.write("unused_col\tfirth?\t")
     outfile.flush()
@@ -142,8 +142,6 @@ def perform_regional_gwas_helper(
         outfile.write(f"{chrom}\t{pos}\t{allele_names}\t")
         if locus_filtered:
             outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\t')
-            if binary:
-                outfile.write('nan\t')
             outfile.write('\t'.join(locus_details))
             if runtype == 'strs':
                 outfile.write('\tnan'*6 + '\n')
@@ -200,7 +198,7 @@ def perform_regional_gwas_helper(
                 reg_result = model.fit()
                 pval = reg_result.pvalues[0]
                 coef = reg_result.params[0]
-                outfile.write(f'{pval:.2e}\t{coef}\tNA\tFalse\t')
+                outfile.write(f'{pval:.2e}\t{coef}\tnan\tFalse\t')
             else:
                 # automatically includes intercept, so can replace it with the outcomes
                 covars[:, 1] = outcome
@@ -387,10 +385,7 @@ def write_str_readme(phenotype, imputation_run_name, binary):
 
         readme.write(f"Working with strs from imputation run {imputation_run_name}\n")
         readme.write("Working with length dosages, no call level filters.\n")
-        readme.write("Filtering loci with fewer than 20 minor allele hardcalls.\n")
-        readme.write("(Note: hardcalls mentioned in locus details are phased hardcalls,"
-                     " and in rare cases will not correspond to the maximum likelihood "
-                     "unphased allele)\n")
+        readme.write("Filtering loci with total non-major allele doesage less than 20.\n")
 
         if not binary:
             readme.write('Doing linear regressions against the continuous phenotype\n')
@@ -408,7 +403,7 @@ def write_imputed_snp_readme(phenotype, binary):
 
         readme.write("Working with dosages of alternate allele, no call level filters ")
         readme.write("(so allele 0 corresponds to reference, 1 to alternate).\n")
-        readme.write("Filtering loci with fewer than 20 minor allele hardcalls.\n")
+        readme.write("Filtering loci with total minor allele dosage less than 20.\n")
 
         if not binary:
             readme.write('Doing linear regressions against the continuous phenotype\n')

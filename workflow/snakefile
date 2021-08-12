@@ -14,6 +14,8 @@ chr_lens = np.genfromtxt(
     dtype=int
 )
 
+#################### Input Phenotypes #################################
+
 class PhenotypeLoadingArg:
     def __init__(
             self,
@@ -282,6 +284,8 @@ pheno_args.update(blood_biochemistry_args)
 def is_binary(phenotype):
     return 'binary' in pheno_args[phenotype].unit
 
+################## Loading and collating data ############################
+
 rule load_shared_covars:
     input:
         "main_dataset/extracted_data/assessment_ages_21003.txt"
@@ -457,6 +461,8 @@ rule plot_str_locus:
             f'{wildcards.chrom}:{wildcards.pos} '
         )
 
+##################### Running and Plotting Associations ###########################
+
 def concatenate_csvs(output_file, input_files):
     with open(output_file + '.temp', 'w') as outfile:
         first = True
@@ -537,14 +543,14 @@ rule run_regional_my_imputed_snp_gwas:
         'association/results/{phenotype}/my_imputed_snp{suffix}/time.stamp',
         "traits/subset_transformed_phenotypes/{phenotype}.npy"
     output:
-        "association/results/{phenotype}/my_imputed_snp{suffix,.*}/batches/chr{chr}_{start}_{end}.tab"
+        "association/results/{phenotype}/my_imputed_snp{suffix,.*}/batches/chr{chrom}_{start}_{end}.tab"
     resources:
-        time='12:00:00',
+        time='24:00:00',
         mem_gb=my_regional_gwas_mem_gb_req
     run:
         cmd = (
             'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
-            '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
+            '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
         )
         if wildcards.suffix == '':
             assert not is_binary(wildcards.phenotype)
@@ -596,17 +602,17 @@ rule run_regional_my_str_gwas:
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_str{suffix}/time.stamp',
         "traits/subset_transformed_phenotypes/{phenotype}.npy",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi"
+        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
+        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        temporary("association/results/{phenotype}/my_str{suffix,.*}/batches/chr{chr}_{start}_{end}.tab")
+        temporary("association/results/{phenotype}/my_str{suffix,.*}/batches/chr{chrom}_{start}_{end}.tab")
     resources:
         time='12:00:00',
         mem_gb=my_regional_gwas_mem_gb_req
     run:
         cmd = (
             'association/my_regional_gwas.py strs {wildcards.phenotype} '
-            '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
+            '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
             f'--imputation-run-name {str_imputation_run_name} '
         )
 
@@ -622,13 +628,13 @@ rule run_regional_my_str_gwas:
 
         shell(cmd)
 
-rule concatenate_whole_gnome_my_str_gwas:
+rule concatenate_whole_genome_my_str_gwas:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_str{wildcards.suffix}/batches/chr{region}.tab' for
              region in regions(int(1e7))]
     output:
-        protected('association/results/{phenotype}/my_str{suffix,.*}/results.tab')
+        protected('association/results/{phenotype}/my_str{suffix,|_linear}/results.tab')
     resources:
         time='04:00:00'
     run:
@@ -712,7 +718,7 @@ rule run_logistic_plink_gwas:
 
 def concatenate_whole_genome_plink_gwas_input(wildcards):
     if not wildcards.suffix:
-        rin = '_rin'
+        rin = 'rin_'
     else:
         assert is_binary(wildcards.phenotype)
         assert wildcards.suffix == '_linear'
@@ -748,20 +754,7 @@ rule append_mfi_to_comparison_logistic_plink_run:
         time='00:30:00',
         mem_gb = 10
     shell:
-        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
-
-'''
-TODO don't want whoel genome
-rule concatenate_logistic_plink_gwas:
-    input:
-        concatenate_whole_genome_plink_gwas_input(True)
-    output:
-        protected('association/results/{phenotype}/plink_snp_logistic/results.tab')
-    resources:
-        time='04:00:00'
-    run:
-        concatenate_csvs(output[0], input)
-'''
+        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]} --binary logistic '
 
 INTERACTIVE_MANHATTAN_GWAS_THRESHOLD = 0.00005
 
@@ -772,8 +765,9 @@ def subset_gwas_results(
         threshold = INTERACTIVE_MANHATTAN_GWAS_THRESHOLD):
     shell(
         f"head -n 1 {input_file} > {output_file}.temp && "
+        f'tail -n +2 {input_file} | '
         "awk '{{ if ($" + str(p_val_col) + " < " + str(threshold) + ") {{ print }} }}' "
-        f"{input_file} >> {output_file}.temp && "
+        ">> {output_file}.temp && "
         f"mv {output_file}.temp {output_file} "
     )
 
@@ -803,22 +797,11 @@ rule subset_plink_gwas_results:
             assert not is_binary(wildcards.phenotype)
         else:
             assert is_binary(wildcards.phenotype)
-            if wildcards.suffix == '_logistic':
-                raise ValueError("Check which plink columns mean what for logistic")
-
-        out = shell(
-            "tail -n +2 {input[0]} | grep -v -P '\.$' | grep -v 'CONST_OMITTED_ALLELE' ; "
-            'if (( $? > 1 )) ; then exit 1 ; fi ',
-            iterable=True
-        )
-        for line in out:
-            print(line)
-            raise ValueError("plink association failed with unexpected error code")
 
         subset_gwas_results(
              f'{input[0]}',
              f'{output[0]}',
-             14
+             14 if not is_binary(wildcards.phenotype) else 11
         )
 
 rule append_mfi_to_subsetted_plink_results:
@@ -829,8 +812,18 @@ rule append_mfi_to_subsetted_plink_results:
     resources:
         time='01:00:00',
         mem_gb = 50
-    shell:
-        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
+    run:
+        cmd = 'association/append_mfi_to_plink_snp.py {input[0]} {output[0]} '
+        if wildcards.suffix == '':
+            assert not is_binary(wildcards.phenotype)
+        elif wildcards.suffix == '_linear':
+            assert is_binary(wildcards.phenotype)
+            cmd += '--binary linear '
+        else:
+            assert is_binary(wildcards.phenotype)
+            assert wildcards.wuffix == '_logistic'
+            cmd += '--binary logistic '
+        shell(cmd)
 
 rule compare_my_to_plink_continuous_gwas:
     input:
@@ -865,7 +858,7 @@ rule compare_my_to_plink_binary_logistic_gwas:
     input:
         "traits/phenotypes/afib_and_flutter_I48_unit.txt",
         'association/plots/input/afib_and_flutter_I48/my_imputed_snp_logistic_chr21_10000001_11000000_results.tab',
-        'association/plots/input/afib_and_flutter_I48/plink_snp_logistic_chr21_10000001_11000000_results_with_mfi.npy'
+        plink_snp_fname='association/plots/input/afib_and_flutter_I48/plink_snp_logistic_chr21_10000001_11000000_results_with_mfi.npy'
     output:
         'association/plots/binary_logistic_my_imputed_snp_vs_plink.html'
     resources:
@@ -873,17 +866,73 @@ rule compare_my_to_plink_binary_logistic_gwas:
         mem_gb=50
     shell:
         'association/interactive_manhattan_plots.py afib_and_flutter_I48 html --my-plink-comparison --binary logistic '
+        '--plink-snp-fname {input.plink_snp_fname} '
         '--chrom 21 --start 10000001 --end 11000000 '
+
+def manhattan_inputs(wildcards):
+    prefix = f'association/plots/input/{wildcards.phenotype}'
+    if wildcards.binary_type:
+        runtype = wildcards.binary_type.replace(".", "_")
+    else:
+        runtype = ""
+    return [
+        f'{prefix}/my_str{runtype}_results.tab',
+        f'{prefix}/plink_snp{runtype}_results_with_mfi.npy'
+    ]
+
+rule manhattan:
+    input:
+        "traits/phenotypes/{phenotype}_unit.txt",
+        manhattan_inputs
+    output:
+        'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.{ext,[^.]+}'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    run:
+        cmd = 'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
+
+rule region_manhattan:
+    input:
+        "traits/phenotypes/{phenotype}_unit.txt",
+        'association/plots/input/{phenotype}/my_str_results.tab',
+        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
+    output:
+        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan_chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    run:
+        cmd = (
+            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            '--chrom {wildcards.chrom} '
+            '--start {wildcards.start} '
+            '--end {wildcards.end} '
+        )
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
+
+################### Running and Plotting Conditional Associations ######################
 
 rule prep_conditional_input:
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.npy',
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_varnames.txt',
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_README.txt'
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.npy',
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_varnames.txt',
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_README.txt'
     resources:
         time='00:30:00'
     run:
-        command = 'association/prep_conditional_inputs.py {wildcards.phenotype} {wildcards.chr} '
+        command = 'association/prep_conditional_inputs.py {wildcards.phenotype} {wildcards.chrom} '
         if wildcards.STRs:
             command += f'--imputation-run-name {str_imputation_run_name} --STRs ' 
             command += wildcards.STRs.replace('_', ' ') + ' '
@@ -897,37 +946,37 @@ rule run_conditional_my_str_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
         "traits/subset_transformed_phenotypes/{phenotype}.npy",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chr}}.vcf.gz.tbi",
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
+        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
+        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi",
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
     output:
-        'association/results/{phenotype}/my_str_conditional/chr{chr}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.tab'
+        'association/results/{phenotype}/my_str_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.tab'
     resources:
         time='12:00:00',
         mem_gb=9,
         threads=4
     shell:
         'association/my_regional_gwas.py strs {wildcards.phenotype} '
-        '--region {wildcards.chr}:{wildcards.start}-{wildcards.end} '
+        '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
         f'--imputation-run-name {str_imputation_run_name} '
         '--conditional STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
 
 rule prep_conditional_plink_input:
     input:
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
         'traits/subset_transformed_phenotypes/{phenotype}.npy',
         'traits/phenotypes/{phenotype}_covar_names.txt'
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chr}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
+        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
     resources:
         time='00:30:00'
     run:
         cmd = (
             'association/prep_plink_input.py {wildcards.phenotype} '
-            '--conditional chr{wildcards.chr}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP '
+            '--conditional chr{wildcards.chrom}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP '
         )
         if is_binary(wildcards.phenotype):
             cmd += '--binary '
@@ -975,50 +1024,6 @@ rule append_mfi_to_conditional_plink_results:
     shell:
         'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
 
-rule manhattan:
-    input:
-        "traits/phenotypes/{phenotype}_unit.txt",
-        'association/plots/input/{phenotype}/my_str_results.tab',
-        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
-    output:
-        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan.{ext}'
-    resources:
-        time='00:30:00',
-        mem_gb=50
-    run:
-        cmd = 'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
-        if not is_binary(wildcards.phenotype):
-            assert wildcards.binary_type == ''
-        else:
-            assert wildcards.binary_type != ''
-            cmd += f'--binary {wildcards.binary_type[1:]} '
-        shell(cmd)
-
-rule region_manhattan:
-    input:
-        "traits/phenotypes/{phenotype}_unit.txt",
-        'association/plots/input/{phenotype}/my_str_results.tab',
-        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
-    output:
-        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan_chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
-    resources:
-        time='00:30:00',
-        mem_gb=50
-    run:
-        cmd = (
-            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
-            '--chrom {wildcards.chrom} '
-            '--start {wildcards.start} '
-            '--end {wildcards.end} '
-        )
-        if not is_binary(wildcards.phenotype):
-            assert wildcards.binary_type == ''
-        else:
-            assert wildcards.binary_type != ''
-            cmd += f'--binary {wildcards.binary_type[1:]} '
-        shell(cmd)
-
-
 rule manhattan_conditional:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
@@ -1035,18 +1040,172 @@ rule manhattan_conditional:
         'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
         '--condition chr{wildcards.condition} '
 
-checkpoint clump_results:
+###################### Extracting Association Signals #######################
+
+def generate_regions_input(wildcards):
+    phenotype = wildcards.phenotype
+    if not is_binary(phenotype):
+        return {
+            'strs': f'association/results/{phenotype}/my_str/results.tab',
+            'imputed_snps': f'association/results/{phenotype}/plink_snp/results.tab'
+        }
+    else:
+        return {
+            'strs': f'association/results/{phenotype}/my_str_linear/results.tab',
+            'imputed_snps': f'association/results/{phenotype}/plink_snp_linear/results.tab'
+        }
+
+checkpoint generate_regions:
     input:
-        'association/results/{phenotype}/my_str/results.tab',
-        'association/results/{phenotype}/plink_snp/results.tab'
+        unpack(generate_regions_input)
     output:
-        protected('finemapping/signal_clumps/{phenotype}.tab'),
-        protected('finemapping/signal_clumps/{phenotype}_README.txt')
+        protected('signals/regions/{phenotype}_README.txt'),
+        out=protected('signals/regions/{phenotype}.tab')
     resources:
         time='00:30:00',
         mem_gb = 10
     shell:
-        'finemapping/clump.py {wildcards.phenotype}'
+        'signals/regions.py {wildcards.phenotype} {input.strs} {input.imputed_snps} {output.out} '
+
+def peak_snp_input_inputs(wildcards):
+    if not is_binary(wildcards.phenotype):
+        runtype_suffix = ''
+    else:
+        runtype_suffix = '_logistic'
+    return f'association/results/{wildcards.phenotype}/plink_snp{runtype_suffix}/results.tab'
+
+rule peak_snp_inputs:
+    input:
+        peak_snp_input_inputs
+    output:
+        temporary('signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab')
+    resources:
+        time='01:00:00'
+    run:
+        subset_gwas_results(
+            input[0],
+            output[0],
+            14 if not is_binary(wildcards.phenotype) else 11,
+            threshold = float(wildcards.thresh)
+        )
+
+def peak_str_input_inputs(wildcards):
+    if not is_binary(wildcards.phenotype):
+        runtype_suffix = ''
+    else:
+        runtype_suffix = '_logistic'
+    return f'association/results/{wildcards.phenotype}/my_str{runtype_suffix}/results.tab'
+
+rule peak_str_inputs:
+    input:
+        peak_str_input_inputs
+    output:
+        temporary('signals/peak_inputs/{phenotype}_str_{thresh}.tab')
+    resources:
+        time='01:00:00'
+    run:
+        subset_gwas_results(
+            input[0],
+            output[0],
+            5,
+            threshold = float(wildcards.thresh)
+        )
+
+rule generate_peaks:
+    input:
+        strs='signals/peak_inputs/{phenotype}_str_{thresh}.tab',
+        imputed_snps='signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab'
+    output:
+        readme=protected('signals/peaks/{phenotype}_{spacing}_{thresh}_README.txt'),
+        out=protected('signals/peaks/{phenotype}_{spacing}_{thresh}.tab')
+    resources:
+        time='01:00:00'
+    shell:
+        'signals/peaks.py {wildcards.phenotype} {wildcards.spacing} {input.strs} {input.imputed_snps} '
+        '{output.readme} {output.out} '
+
+rule peak_manhattan:
+    input:
+        "traits/phenotypes/{phenotype}_unit.txt",
+        manhattan_inputs,
+        'signals/peaks/{phenotype}_{spacing}_{thresh}.tab'
+    output:
+        'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.peaks_{spacing}_{thresh}.{ext,[^.]+}'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    run:
+        cmd = (
+            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            '--peaks-spacing {wildcards.spacing} --peaks-thresh {wildcards.thresh} '
+        )
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
+
+# ----------- rerunning binary logistic regression associaiton on
+# ----------- binary linear regression association regions
+
+def regional_plink_imputed_snp_logistic_regressions(wildcards):
+    assert is_binary(wildcards.phenotype)
+
+    phenotype = wildcards.phenotype
+
+    checkpoints.generate_regions.get(phenotype=phenotype)
+
+    target_files = []
+    with open(f'signals/regions/{phenotype}.tab') as signal_file:
+        next(signal_file)
+        for line in signal_file:
+            chrom, start, stop = line.split()
+            target_files.append(
+                f'association/results/{phenotype}/plink_snp_logistic/batches/chr{chrom}_{start}_{stop}/plink2.{phenotype}.glm.logistic.hybrid.done'
+            )
+
+    return target_files
+
+rule concatenate_all_regions_plink_imputed_snp_logistic_gwas:
+    input:
+        regional_plink_imputed_snp_logistic_regressions
+    output:
+        protected('association/results/{phenotype}/plink_snp_logistic/results.tab')
+    resources:
+        time='04:00:00'
+    run:
+        concatenate_csvs(output[0], input)
+
+def regional_my_str_logistic_regressions(wildcards):
+    assert is_binary(wildcards.phenotype)
+
+    phenotype = wildcards.phenotype
+
+    checkpoints.generate_regions.get(phenotype=phenotype)
+
+    target_files = []
+    with open(f'signals/regions/{phenotype}.tab') as signal_file:
+        next(signal_file)
+        for line in signal_file:
+            chrom, start, stop = line.split()
+            target_files.append(
+                f"association/results/{phenotype}/my_str_logistic/batches/chr{chrom}_{start}_{stop}.tab"
+            )
+
+    return target_files
+
+rule concatenate_all_regions_my_str_logistic_gwas:
+    input:
+        regional_my_str_logistic_regressions
+    output:
+        protected('association/results/{phenotype}/my_str_logistic/results.tab')
+    resources:
+        time='04:00:00'
+    run:
+        concatenate_csvs(output[0], input)
+
+##################### Finemapping ##########################
 
 checkpoint finemap_write_input_variants:
     input:
@@ -1117,34 +1276,53 @@ rule finemap_write_corrs_and_run:
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
-def collect_finemap_output_per_region_with_strs(wildcards):
+def finemap_region_input(wildcards):
+    phenotype = wildcards.phenotype
+    chrom = wildcards.chrom
+    start = wildcards.start
+    end = wildcards.end
+    checkpoints.finemap_write_input_variants.get(
+        phenotype=phenotype, chrom=chrom, start=start, end=end
+    )
+    region_dir = \
+        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}'
+    if os.path.exists(f'{region_dir}/no_strs'):
+        # file already created, nothing to be done
+        return f'{region_dir}/no_strs'
+    else:
+        # ask for finemapping of this region
+        return f'{region_dir}/finemap_output.snp'
+
+rule finemap_region:
+    input:
+        finemap_region_input
+    output:
+        done='finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/done'
+    resources:
+        time='00:01:00'
+    shell:
+        'touch {output.done} '
+
+def collect_finemap_output_all_regions(wildcards):
+    assert not is_binary(wildcards.phenotype)
     phenotype = wildcards.phenotype
     files = []
     # make sure we've loaded all input variants for all regions
-    checkpoints.clump_results.get(phenotype=phenotype)
-    signals = []
-    with open(f'finemapping/signal_clumps/{phenotype}.tab') as signal_file:
+    checkpoints.generate_regions.get(phenotype=phenotype)
+    target_files = []
+    with open(f'signals/regions/{phenotype}.tab') as signal_file:
         next(signal_file)
         for line in signal_file:
             chrom, start, stop = line.split()
-            signals.append((chrom, start, stop))
+            target_files.append(
+                f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/done'
+            )
 
-    target_files = [] 
-    for chrom, start, end in signals:
-        checkpoints.finemap_write_input_variants.get(
-            phenotype=phenotype, chrom=chrom, start=start, end=end
-        )
-        region_dir = \
-            f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}'
-        if os.path.exists(f'{region_dir}/no_strs'):
-            continue
-        else:
-            target_files.append(f'{region_dir}/finemap_output.snp')
     return target_files
 
 rule run_finemap_phenotype:
     input:
-        collect_finemap_output_per_region_with_strs
+        collect_finemap_output_all_regions
     output:
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     resources:
@@ -1185,6 +1363,8 @@ rule manhattan_finemap:
             assert wildcards.binary_type != ''
             cmd += f'--binary {wildcards.binary_type[1:]} '
         shell(cmd)
+
+######################### Final Results Summary ########################
 
 rule sort_gencode:
     input:
@@ -1260,10 +1440,8 @@ checkpoint produce_summary_table:
         'association/results/{phenotype}/my_str/results.tab',
         'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab',
         chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
-        #chr_expand('side_analyses/str_annotations/closest_transcript/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_gene_d_100000/chrCHR.tab'),
-        #chr_expand('side_analyses/str_annotations/nearby_transcript_d_1000000/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_exon/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_CDS/chrCHR.tab'),

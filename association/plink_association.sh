@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -exo pipefail
+set -x
 
 if [ -z "$PHENOTYPE" ] ; then echo "PHENOTYPE is unset" ; exit 1 ; fi
 if [ -z "$CHROM" ] ; then echo "CHROM is unset" ; exit 1 ; fi
@@ -34,12 +34,7 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-cd "$PROJECT_TEMP" || {
-	echo "Failed to move to the temp directory $PROJECT_TEMP" ;
-	exit 1 ;
-}
-
-temp_name=plink_snp"$SUFFIX"/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"_conditional_"$CONDITIONAL"
+temp_name="$PROJECT_TEMP"/plink_snp"$SUFFIX"/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"_conditional_"$CONDITIONAL"
 mkdir -p "$temp_name"
 cd "$temp_name" || {
 	echo "Failed to move to $temp_name"
@@ -80,10 +75,10 @@ fi
     --ci 0.99999995 \
     --memory 56000 \
     --threads 28 \
-    > plink.stderr \
-    2> plink.stdout
+    > plink.stdout \
+    2> plink.stderr
 
-mv ./* "$OUT_DIR"
+mv "$temp_name"/* "$OUT_DIR"
 
 if [ -z "$SUFFIX" ] ; then
 	RIN=rin_

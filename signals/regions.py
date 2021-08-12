@@ -47,9 +47,9 @@ def generate_clumps(iters, spacing=250000):
             if val == (next_chrom, next_pos):
                 curr_items[idx] = next(iters[idx], (np.inf, np.inf))
 
-def plink_snp_output_itr(phenotype, thresh):
+def plink_snp_output_itr(plink_snp_fname, thresh):
     csv = pd.read_csv(
-        f'{ukb}/association/results/{phenotype}/plink_snp/results.tab',
+        plink_snp_fname,
         header=0,
         delimiter='\t',
         usecols=['#CHROM', 'POS', 'P']
@@ -60,9 +60,9 @@ def plink_snp_output_itr(phenotype, thresh):
     for linenum in range(csv.shape[0]):
         yield tuple(csv[linenum, :2])
 
-def my_str_output_itr(phenotype, thresh):
+def my_str_output_itr(phenotype, my_str_fname, thresh):
     csv = pd.read_csv(
-        f'{ukb}/association/results/{phenotype}/my_str/results.tab',
+        my_str_fname,
         header=0,
         delimiter='\t',
         usecols=['chrom', 'pos', f'p_{phenotype}']
@@ -82,19 +82,27 @@ def filter_MHC_itr(itr):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
+    parser.add_argument('my_str_fname')
+    parser.add_argument('plink_imputed_snp_fname')
+    parser.add_argument('out_fname')
     args = parser.parse_args()
+
     phenotype = args.phenotype
+
     pthresh = 5e-8
-    itrs = [plink_snp_output_itr(phenotype, pthresh), my_str_output_itr(phenotype, pthresh)]
+    itrs = [
+        plink_snp_output_itr(args.plink_imputed_snp_fname, pthresh),
+        my_str_output_itr(phenotype, args.my_str_fname, pthresh)
+    ]
     itrs = [filter_MHC_itr(itr) for itr in itrs]
-    with open(f'{ukb}/finemapping/signal_clumps/{phenotype}_README.txt', 'w') as readme:
+    with open(args.out_fname[:-4] + '_README.txt', 'w') as readme:
         readme.write(
             f'Clumping results from my_str and plink_snp runs for phenotype {phenotype} '
             'by cenetering a 250kb interval (125kb in each direction) around each variant '
             f'from either run that passes the {pthresh:g} threshold and then joining all '
             'overlapping intervals.\n'
         )
-    with open(f'{ukb}/finemapping/signal_clumps/{phenotype}.tab', 'w') as outfile:
+    with open(args.out_fname, 'w') as outfile:
         outfile.write('chrom\tstart\tend\n')
         outfile.flush()
         prev_clump = None

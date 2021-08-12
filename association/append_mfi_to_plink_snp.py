@@ -12,19 +12,30 @@ import python_array_utils as utils
 
 ukb = os.environ['UKB']
 
-def append_mfi_to_plink(result_fname, out_fname):
+def append_mfi_to_plink(result_fname, out_fname, binary):
     # Load plink SNP results
     print(f"Loading plink SNP results at {result_fname}  ... ", end='', flush=True)
    
     start_time = time.time()
 
+    if not binary:
+        cols = (0,1,2,3,4,13,14)
+        colnames = ('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
+    elif binary == 'linear':
+        cols = (0,1,2,3,4,10,11)
+        colnames = ('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
+    else:
+        assert binary == 'logistic'
+        cols = (0, 1, 2, 3, 4, 6, 7, 8, 13, 14)
+        colnames = ('chr', 'pos', 'id', 'ref', 'alt', 'alt_case_count', 'alt_control_count', 'firth?', 'p_val', 'error')
+    
     plink_results = pd.read_csv(
         result_fname,
         sep='\t',
-        usecols=(0,1,2,3,4,13,14),
+        usecols=cols,
         encoding='UTF-8',
         header=0,
-        names=('chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error')
+        names=colnames
     )
 
     print("and appending maf/info data ... ", end='', flush=True)
@@ -62,9 +73,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result_fname")
     parser.add_argument("out_fname")
+    parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
 
-    append_mfi_to_plink(args.result_fname, args.out_fname)
+    append_mfi_to_plink(args.result_fname, args.out_fname, args.binary)
 
 if __name__ == "__main__":
     main()
