@@ -1,0 +1,1 @@
+../../../finemapping/summary/eosinophil_percent_table_README.txt

@@ -1,5 +1,6 @@
 import collections
 import csv
+import glob
 
 import numpy as np
 import pandas as pd
@@ -277,7 +278,7 @@ blood_biochemistry_args = {
 }
 
 for pheno, args in blood_biochemistry_args.items():
-    args.categorical_covars.append([(pheno + '_aliquot', str(int(args.data_field_id) + 2))])
+    args.categorical_covars.append((pheno + '_aliquot', str(int(args.data_field_id) + 2)))
 
 pheno_args.update(blood_biochemistry_args)
 
@@ -398,8 +399,8 @@ rule plot_phenotype_by_age:
 rule subset_samples_for_phenotype:
     input:
         "traits/phenotypes/{phenotype}.npy",
-        expand("sample_qc/common_filters/keep"),
-        expand("sample_qc/common_filters/remove"),
+        glob.glob("sample_qc/common_filters/keep/*sample"),
+        glob.glob("sample_qc/common_filters/remove/*sample"),
         "misc_data/ukbgene/ukb46122_rel_s488282.dat"
     output:
         protected("sample_qc/runs/{phenotype}/README.txt"),
@@ -795,13 +796,19 @@ rule subset_plink_gwas_results:
     run:
         if wildcards.suffix == '':
             assert not is_binary(wildcards.phenotype)
+            p_val_col = 14
         else:
             assert is_binary(wildcards.phenotype)
+            if wildcards.suffix == '_linear':
+                p_val_col = 11
+            else:
+                assert wildcards.suffix == '_logistic'
+                p_val_col = 14
 
         subset_gwas_results(
              f'{input[0]}',
              f'{output[0]}',
-             14 if not is_binary(wildcards.phenotype) else 11
+             p_val_col
         )
 
 rule append_mfi_to_subsetted_plink_results:
@@ -821,23 +828,50 @@ rule append_mfi_to_subsetted_plink_results:
             cmd += '--binary linear '
         else:
             assert is_binary(wildcards.phenotype)
-            assert wildcards.wuffix == '_logistic'
+            assert wildcards.suffix == '_logistic'
             cmd += '--binary logistic '
         shell(cmd)
 
 rule compare_my_to_plink_continuous_gwas:
     input:
-        "traits/phenotypes/height_unit.txt",
-        'association/plots/input/height/my_imputed_snp_chr21_results.tab',
+        "traits/phenotypes/eosinophil_count_unit.txt",
+        'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
-        'association/plots/input/height/plink_snp_results_with_mfi.npy'
+        'association/plots/input/eosinophil_count/plink_snp_results_with_mfi.npy'
     output:
         'association/plots/continuous_my_imputed_snp_vs_plink.html'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py height html --my-plink-comparison --chrom 21 '
+        'association/interactive_manhattan_plots.py eosinophil_count html --my-plink-comparison --chrom 21 '
+
+rule compare_my_to_plink_continuous_gwas_figure_plink_only:
+    input:
+        "traits/phenotypes/eosinophil_count_unit.txt",
+        # it's okay to ask for plink snp for the entire genome because we'll want that anyway
+        'association/plots/input/eosinophil_count/plink_snp_results_with_mfi.npy'
+    output:
+        'association/plots/continuous_plink_snp.png'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'association/interactive_manhattan_plots.py eosinophil_count png '
+        '--my-plink-comparison --chrom 21 --only-plink '
+
+rule compare_my_to_plink_continuous_gwas_figure_mine_only:
+    input:
+        "traits/phenotypes/eosinophil_count_unit.txt",
+        'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
+    output:
+        'association/plots/continuous_my_imputed_snp.png'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'association/interactive_manhattan_plots.py eosinophil_count png '
+        '--my-plink-comparison --chrom 21 --only-mine'
 
 rule compare_my_to_plink_binary_linear_gwas:
     input:
@@ -904,7 +938,7 @@ rule region_manhattan:
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan_chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
+        'association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1032,7 +1066,7 @@ rule manhattan_conditional:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'association/plots/input/{phenotype}/plink_snp_conditional_chr{condition}_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}_manhattan_chr{condition}.{ext}'
+        'association/plots/{phenotype}.manhattan.chr{condition}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1138,6 +1172,27 @@ rule peak_manhattan:
         cmd = (
             'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
             '--peaks-spacing {wildcards.spacing} --peaks-thresh {wildcards.thresh} '
+        )
+        if not is_binary(wildcards.phenotype):
+            assert wildcards.binary_type == ''
+        else:
+            assert wildcards.binary_type != ''
+            cmd += f'--binary {wildcards.binary_type[1:]} '
+        shell(cmd)
+
+rule overview_manhattan:
+    input:
+        manhattan_inputs,
+        'signals/peaks/{phenotype}_10000000_5e-8.tab'
+    output:
+        'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.overview.manhattan.png'
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    run:
+        cmd = (
+            'association/interactive_manhattan_plots.py {wildcards.phenotype} png '
+            '--peaks-spacing 10000000 --peaks-thresh 5e-8 --overview '
         )
         if not is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
@@ -1348,7 +1403,7 @@ rule manhattan_finemap:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
-        'association/plots/{phenotype}{binary_type,|_linear|_logistic}_manhattan_FINEMAP.{ext}'
+        'association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.FINEMAP.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1468,6 +1523,7 @@ checkpoint produce_summary_table:
             command += ' --previous-STR-findings ' + STRs
         shell(command)
 
+
 rule graph_finemap_output:
     input:
         'finemapping/summary/{phenotype}_table.tab'
@@ -1487,15 +1543,15 @@ def conditional_plots_sig_strs(wildcards):
         header=0,
         delimiter='\t'
     ))
-    results = results[(results['pcausal'] >= 0.5) | results['previously_reported_association']]
+    results = results[(results['pcausal'] >= 0.5) | results['included_from_literature']]
     outfiles = []
     for result in results:
         outfiles.append(
-            f'association/plots/{phenotype}_manhattan_chr{result["signal_region"]}.svg'
+            f'association/plots/{phenotype}.manhattan.chr{result["signal_region"]}.png'
         )
         outfiles.append(
-            'association/plots/{phenotype}_manhattan_'
-            f'chr{result["signal_region"]}_STR_{result["SNPSTR_start_pos"]}__ISNP__ASNP.svg'
+            'association/plots/{phenotype}.manhattan.'
+            f'chr{result["signal_region"]}_STR_{result["SNPSTR_start_pos"]}__ISNP__ASNP.png'
         )
     return outfiles
      
@@ -1509,26 +1565,87 @@ rule generate_unconditional_and_conditional_STR_manhattans:
     shell:
         'touch finemapping/summary/{wildcards.phenotype}_conditional_STR_manhattans.done'
 
-rule gather_all_summaries:
+rule gather_phenotype_summaries:
     input:
+        peaks='signals/peaks/{phenotype}_500000_5e-8.tab',
+        peaks_README='signals/peaks/{phenotype}_500000_5e-8_README.txt',
+        peaks_coarser='signals/peaks/{phenotype}_2000000_5e-8.tab',
+        peaks_more_stringent='signals/peaks/{phenotype}_500000_5e-9.tab',
+        peaks_most_stringent='signals/peaks/{phenotype}_500000_5e-10.tab',
+        overview_manhattan='association/plots/{phenotype}.overview.manhattan.png',
         table_readme='finemapping/summary/{phenotype}_table_README.txt',
         table='finemapping/summary/{phenotype}_table.tab',
         signal_strengths='finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
-        manhattan='association/plots/{phenotype}_manhattan_FINEMAP.html',
+        interactive_manhattan='association/plots/{phenotype}.manhattan.FINEMAP.html',
         conditional_plots=conditional_plots_sig_strs
     output:
-        directory('export/{phenotype}')
+        directory('export/phenotypes/{phenotype}')
     resources:
         time='00:10:00'
     shell:
         'mkdir -p {output[0]} ; '
-        'cd export/{wildcards.phenotype} ; '
-        'for file in {input.manhattan} {input.signal_strengths} {input.table} {input.table_readme} ; do '
-        '    ln -s ../../$file ; '
+        'cd {output[0]} ; '
+        'for file in {input.peaks} {input.peaks_README} {input.peaks_coarser} {input.peaks_more_stringent} {input.peaks_most_stringent} '
+        ' {input.overview_manhattan} {input.table} {input.table_readme} {input.signal_strengths} {input.interactive_manhattan} ; do '
+        '    ln -s ../../../$file ; '
         'done ; '
         'mkdir region_plots ; '
         'cd region_plots ; '
         'for file in {input.conditional_plots} ; do '
-        '    ln -s ../../../$file ; '
+        '    ln -s ../../../../$file ; '
         'done '
 
+all_phenotypes = {
+    'eosinophil_count',
+    'eosinophil_percent',
+    'haematocrit',
+    'haemoglobin_concentration',
+    'hdl_cholesterol',
+    'ldl_cholesterol_direct',
+    'lymphocyte_count',
+    'lymphocyte_percent',
+    'neutrophil_count',
+    #'neutrophil_percent',
+    'platelet_count',
+    'platelet_crit',
+    'red_blood_cell_count',
+    'total_bilirubin',
+    'white_blood_cell_count',
+}
+
+# combined summaries
+
+rule concat_and_filter_summary_tables:
+    input:
+        [f'finemapping/summary/{phenotype}_table.tab' for phenotype in all_phenotypes]
+    output:
+        'export/combined/finemapped_loci.tab'
+    resources:
+        time='00:10:00'
+    run:
+        cmd = 'export_scripts/concat_and_filter_summary_tables.py '
+        for phenotype in all_phenotypes:
+            cmd += f'{phenotype} '
+        shell(cmd)
+
+# figures for paper
+
+rule assoc_figures:
+    input:
+        'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
+        'association/results/eosinophil_count/plink_snp/results.tab'
+    output:
+        'export/figures/validate_our_code.png',
+        'export/figures/panukbb_scatter.png',
+    resources:
+        time='00:10:00'
+    shell:
+        'export_scripts/assoc_figs.py'
+
+# aaand everything
+
+rule gather_all_exports:
+    input:
+        [f'export/phenotypes/{phenotype}' for phenotype in all_phenotypes],
+        'export/figures/',
+        'export/combined/finemapped_loci.tab'

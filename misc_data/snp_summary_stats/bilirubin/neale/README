@@ -1,0 +1,26 @@
+From https://docs.google.com/spreadsheets/d/1AeeADtT0U1AukliiNyiVzVRdLYPkTbruQSk38DeutU8/edit#gid=511623409
+as linked to from https://pan.ukbb.broadinstitute.org/
+
+wget https://pan-ukb-us-east-1.s3.amazonaws.com/sumstats_flat_files/biomarkers-30840-both_sexes-irnt.tsv.bgz
+wget https://pan-ukb-us-east-1.s3.amazonaws.com/sumstats_flat_files_tabix/biomarkers-30840-both_sexes-irnt.tsv.bgz.tbi
+
+Prepping igv input:
+Grab lines chr, pos, id = (chr_pos_ref_alt), pval
+Remove NA pvals
+Set pval 0 to 1e-300
+Tabix the file
+
+{ echo -e "chr\tpos\tsnp\tpval" ; 
+ zcat biomarkers-30840-both_sexes-irnt.tsv.bgz |
+ tail -n +2 | awk 'BEGIN {FS = "\t"} { print $1 "\t" $2 "\t" $1 "_" $2 "_" $3 "_" $4 "\t" $32}'
+; } | grep -v NA | sed -e 's/0.000e+00/1.000e-300/' > igv.input.gwas
+bgzip igv.input.gwas
+tabix -S 1 -b 2 -e 2 igv.input.gwas.gz
+
+Also extract signal regions for viewing in LocusZoom:
+zcat igv.input.gwas.gz |
+awk '{if ($4 <= 5e-8) { print $1 " " $2 } }' |
+python -c "import sys;
+  s = set((int(line.split()[0]), (int(line.strip().split()[1])//1000000)*1000000) for line in sys.stdin if line.split()[0] != 'X' and line.split()[0] != 'Y') ;
+  l = sorted(s) ; [print(f'{chr}:{pos+1}-{pos+1000000}') for (chr, po s) in l]" 
+> signal_regions.txt

@@ -1,1 +1,0 @@
-../../finemapping/summary/total_bilirubin_table_README.txt

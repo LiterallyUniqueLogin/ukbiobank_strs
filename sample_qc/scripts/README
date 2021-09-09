@@ -6,6 +6,13 @@ white_brits_list
 withdrawn_already
 These use list_from_sample_qc
 
+# low quality contains excessive PC-adjusted heterozygostiy, excessive (>200) relatives, and excessive missingess.
+# This is the excluded.from.kinship.inference column in the sqc file
+# The het.missing.outliers column in that file is a subset of this: the excess het, excess missing, and not the 9 excess relative samples
+# The excess.relatives column refers to >10 putative 3rd degree relatives which includes cousins,
+# and so doesn't seem excessive to me or warranting filtering. It is not the same as the 9 samples 
+# with > 200 3rd degree relatives
+
 Run combine.py to combine already created filters
 Run unrelated_individuals to subset a sample list to its maximally unrelated subset
 

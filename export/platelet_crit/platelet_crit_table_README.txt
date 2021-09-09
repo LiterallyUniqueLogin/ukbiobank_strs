@@ -1,1 +1,0 @@
-../../finemapping/summary/platelet_crit_table_README.txt

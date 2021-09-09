@@ -1,1 +1,0 @@
-../../finemapping/summary/platelet_count_table_README.txt

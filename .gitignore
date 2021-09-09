@@ -5,6 +5,7 @@
 *output/
 *.*out*
 *.gz
+*.bgz
 *.tbi
 *.zip
 *log
