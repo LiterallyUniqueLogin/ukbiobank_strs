@@ -17,88 +17,96 @@ chr_lens = np.genfromtxt(
 
 #################### Input Phenotypes #################################
 
-class PhenotypeLoadingArg:
+class PhenotypeDescription:
     def __init__(
             self,
             data_field_id,
             *,
             unit,
+            min_val = None,
+            max_val = None,
+            min_omit = None,
+            max_omit = None,
             categorical_covars = [],
             previous_STR_findings = [], # format "chr:pos"
             previous_SNP_findings = []): # unsure of format yet
         self.data_field_id = data_field_id
         self.unit = unit
+        self.min_val = min_val
+        self.max_val = max_val
+        self.min_omit = min_omit
+        self.max_omit = max_omit
         self.categorical_covars = categorical_covars.copy()
         self.previous_STR_findings = previous_STR_findings.copy()
         self.previous_SNP_findings = previous_SNP_findings.copy()
 
 pheno_args = {
     # ---------------- Continuous phenotypes ------------------------
-    'height': PhenotypeLoadingArg(
+    'height': PhenotypeDescription(
         '50',
         unit = 'cm',
         previous_STR_findings = ["3:53128363"]
     ),
-    # blood count phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100081
+    # haemotology phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100081
     # 'crit' values are percentage of blood volume occupied by that cell type
     # overview here https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1453
     # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/haematology.pdf
-    'white_blood_cell_count': PhenotypeLoadingArg(
+    'white_blood_cell_count': PhenotypeDescription(
         '30000',
         unit = '10^9 cells/Liter',
         categorical_covars = [('white_blood_cell_count_device_id', '30003')]
     ),
-    'red_blood_cell_count': PhenotypeLoadingArg(
+    'red_blood_cell_count': PhenotypeDescription(
         '30010',
         unit = '10^12 cells/Liter',
         categorical_covars = [('red_blood_cell_count_device_id', '30013')]
     ),
-   'haematocrit': PhenotypeLoadingArg(
+   'haematocrit': PhenotypeDescription(
         '30030',
         unit = '%',
         categorical_covars = [('hematocrit_device_id', '30033')]
     ),
-   'haemoglobin_concentration': PhenotypeLoadingArg(
+   'haemoglobin_concentration': PhenotypeDescription(
        '30020',
        unit = 'g/dL',
        categorical_covars = [('haemoglobin_concentration_device_id', '30023')]
    ),
-   'platelet_count': PhenotypeLoadingArg(
+   'platelet_count': PhenotypeDescription(
         '30080',
         unit = '10^9 cells/Litre',
         categorical_covars = [('platelet_count_device_id', '30083')]
     ),
-    'platelet_crit': PhenotypeLoadingArg(
+    'platelet_crit': PhenotypeDescription(
         '30090',
         unit = '%',
         categorical_covars = [('platelet_crit_device_id', '30093')]
     ),
-    'lymphocyte_count': PhenotypeLoadingArg(
+    'lymphocyte_count': PhenotypeDescription(
         '30120',
         unit = '10^9 cells/Litre',
         categorical_covars = [('lymphocyte_count_device_id', '30123')]
     ),
-    'lymphocyte_percent': PhenotypeLoadingArg(
+    'lymphocyte_percent': PhenotypeDescription(
         '30180',
         unit = '%',
         categorical_covars = [('lymphocyte_percent_device_id', '30183')]
     ),
-    'neutrophil_count': PhenotypeLoadingArg(
+    'neutrophil_count': PhenotypeDescription(
         '30140',
         unit = '10^9 cells/Litre',
         categorical_covars = [('neutrophil_count_device_id', '30143')]
     ),
-    'neutrophil_percent': PhenotypeLoadingArg(
+    'neutrophil_percent': PhenotypeDescription(
         '30200',
         unit = '%',
         categorical_covars = [('neutrophil_percent_device_id', '30203')]
     ),
-    'eosinophil_count': PhenotypeLoadingArg(
+    'eosinophil_count': PhenotypeDescription(
         '30150',
         unit = '10^9 cells/Litre',
         categorical_covars = [('eosinophil_count_device_id', '30153')]
     ),
-    'eosinophil_percent': PhenotypeLoadingArg(
+    'eosinophil_percent': PhenotypeDescription(
         '30210',
         unit = '%',
         categorical_covars = [('eosinophil_percent_device_id', '30213')]
@@ -121,7 +129,7 @@ pheno_args = {
     # should I remove 3088,89,90? or 3159?
 
     # ------------------------------ Binary Phenotypes --------------------------------
-    'afib_and_flutter_I48': PhenotypeLoadingArg(
+    'afib_and_flutter_I48': PhenotypeDescription(
         '131350',
         unit = 'binary_date_first_reported',
     )
@@ -140,147 +148,249 @@ pheno_args = {
 # https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1227
 # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/serum_biochemistry.pdf
 # units of U are probably the enzyme unit https://en.wikipedia.org/wiki/Enzyme_unit
-blood_biochemistry_args = {
-    'albumin': PhenotypeLoadingArg(
+serum_biomarker_args = {
+    'albumin': PhenotypeDescription(
         '30600',
-        unit = 'g/L'
+        unit = 'g/L',
+        min_val = 15,
+        max_val = 60,
+        min_omit=14,
+        max_omit=2
     ),
-    'alkaline_phosphatase': PhenotypeLoadingArg(
+    'alkaline_phosphatase': PhenotypeDescription(
         '30610',
-        unit = 'U/L'
+        unit = 'U/L',
+        min_val=3,
+        max_val=1500,
+        min_omit=46,
+        max_omit=3
     ),
-    'alanine_aminotransferase': PhenotypeLoadingArg(
+    'alanine_aminotransferase': PhenotypeDescription(
         '30620',
-        unit = 'U/L'
+        unit = 'U/L',
+        min_val=3,
+        max_val=500,
+        min_omit=45,
+        max_omit=22
     ),
 
     # 1.8k samples discarded due to too high values (>2.5)
-    'apolipoprotein_a': PhenotypeLoadingArg(
+    'apolipoprotein_a': PhenotypeDescription(
         '30630',
-        unit = 'g/L'
+        unit = 'g/L',
+        min_val=0.4,
+        max_val=2.5,
+        min_omit=20,
+        max_omit=1809
     ),
 
     # 1.2k samples discarded (both < 0.4 and > 2)
-    'apolipoprotein_b': PhenotypeLoadingArg(
+    'apolipoprotein_b': PhenotypeDescription(
         '30640',
-        unit = 'g/L'
+        unit = 'g/L',
+        min_val=0.4,
+        max_val=2,
+        max_omit=339,
+        min_omit=871
     ),
-    'aspartate_aminotransferase': PhenotypeLoadingArg(
+    'aspartate_aminotransferase': PhenotypeDescription(
         '30650',
-        unit = 'U/L'
+        unit = 'U/L',
+        min_val=3,
+        max_val=1000,
+        min_omit=11,
+        max_omit=3
     ),
     # skipping direct bilirubin 30660, 70k values are too low
-    'urea': PhenotypeLoadingArg(
+    'urea': PhenotypeDescription(
         '30670',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=0.8,
+        max_val=50,
+        min_omit=10,
+        max_omit=0
     ),
-    'calcium': PhenotypeLoadingArg(
+    'calcium': PhenotypeDescription(
         '30680',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=1,
+        max_val=5,
+        min_omit=61,
+        max_omit=0
     ),
-    'cholesterol': PhenotypeLoadingArg(
+    'cholesterol': PhenotypeDescription(
         '30690',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=0.5,
+        max_val=18,
+        min_omit=7,
+        max_omit=0
     ),
-    'creatinine': PhenotypeLoadingArg(
+    'creatinine': PhenotypeDescription(
         '30700',
-        unit = 'umol/L'
+        unit = 'umol/L',
+        min_val=4,
+        max_val=4420,
+        min_omit=0,
+        max_omit=0
     ),
-    'c_reactive_protein': PhenotypeLoadingArg(
+    'c_reactive_protein': PhenotypeDescription(
         '30710',
-        unit = 'mg/L'
+        unit = 'mg/L',
+        min_val=0.08,
+        max_val=80,
+        min_omit=119,
+        max_omit=324
     ),
-    'cystatin_c': PhenotypeLoadingArg(
+    'cystatin_c': PhenotypeDescription(
         '30720',
-        unit = 'mg/L'
+        unit = 'mg/L',
+        min_val=0.1,
+        max_val='(7.7-8.99)',
+        min_omit=6,
+        max_omit=9
     ),
-    'gamma_glutamyltransferase': PhenotypeLoadingArg(
+    'gamma_glutamyltransferase': PhenotypeDescription(
         '30730',
-        unit = 'U/L'
+        unit = 'U/L',
+        min_val=5,
+        max_val=1200,
+        min_omit=22,
+        max_omit=73
     ),
-    'glucose': PhenotypeLoadingArg(
+    'glucose': PhenotypeDescription(
         '30740',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=0.6,
+        max_val=45,
+        min_omit=7,
+        max_omit=1
     ),
-    'glycated_haemoglobin': PhenotypeLoadingArg(
+    'glycated_haemoglobin': PhenotypeDescription(
         '30750',
-        unit = 'mmol/mol'
+        unit = 'mmol/mol',
+        min_val='unknown',
+        max_val='unknown',
+        min_omit=190,
+        max_omit=0
     ),
-    'hdl_cholesterol': PhenotypeLoadingArg(
+    'hdl_cholesterol': PhenotypeDescription(
         '30760',
         unit = 'mmol/L',
+        min_val=0.05,
+        max_val=4.65,
+        min_omit=5,
+        max_omit=1
     ),
-    'igf_1': PhenotypeLoadingArg(
+    'igf_1': PhenotypeDescription(
         '30770',
-        unit = 'nmol/L'
+        unit = 'nmol/L',
+        min_val=1.30,
+        max_val=195,
+        min_omit=6,
+        max_omit=0
     ),
-    'ldl_cholesterol_direct': PhenotypeLoadingArg(
+    'ldl_cholesterol_direct': PhenotypeDescription(
         '30780',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=0.26,
+        max_val=10.3,
+        min_omit=7,
+        max_omit=0
     ),
 
-    #48k < 3.8 , 34k > 189
-    'lipoprotein_a': PhenotypeLoadingArg(
-        '30790',
-        unit = 'nmol/L'
-    ),
-
-    # 375k < 175
-    'oestradiol': PhenotypeLoadingArg(
-        '30800',
-        unit = 'pmol/L'
-    ),
-    'phosphate': PhenotypeLoadingArg(
+#    #48k < 3.8 , 34k > 189
+#    'lipoprotein_a': PhenotypeDescription(
+#        '30790',
+#        unit = 'nmol/L',
+#        min_val=3.8,
+#        max_val=189
+#    ),
+#
+#    # 375k < 175
+#    'oestradiol': PhenotypeDescription(
+#        '30800',
+#        unit = 'pmol/L'
+#    ),
+    'phosphate': PhenotypeDescription(
         '30810',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=0.32,
+        max_val=6.4,
+        min_omit=12,
+        max_omit=0
     ),
 
-    # 444k < 10, 2k > 120
-    'rheumatoid_factor': PhenotypeLoadingArg(
-        '30820',
-        unit = 'IU/mL'
-    ),
+#    # 444k < 10, 2k > 120
+#    'rheumatoid_factor': PhenotypeDescription(
+#        '30820',
+#        unit = 'IU/mL'
+#    ),
 
     # 750 > 226-242
-    'shbg': PhenotypeLoadingArg(
+    'shbg': PhenotypeDescription(
         '30830',
-        unit = 'nmol/L'
+        unit = 'nmol/L',
+        min_val=0.33,
+        max_val='(226-242)',
+        min_omit=10,
+        max_omit=745
     ),
-    'total_bilirubin': PhenotypeLoadingArg(
+    'total_bilirubin': PhenotypeDescription(
         '30840',
         unit = 'umol/L',
-        previous_STR_findings = ["2:234668880"]
+        previous_STR_findings = ["2:234668880"],
+        min_val=1,
+        max_val=513,
+        min_omit=18,
+        max_omit=0
     ),
 
-    # 800 < 0.35,  41k > 55.48
-    'testosterone': PhenotypeLoadingArg(
-        '30850',
-        unit = 'nmol/L'
-    ),
-    'total_protein': PhenotypeLoadingArg(
+#    # 800 < 0.35,  41k > 55.48
+#    'testosterone': PhenotypeDescription(
+#        '30850',
+#        unit = 'nmol/L'
+#    ),
+    'total_protein': PhenotypeDescription(
         '30860',
-        unit = 'g/L'
+        unit = 'g/L',
+        min_val=30,
+        max_val=120,
+        min_omit=16,
+        max_omit=1
     ),
-    'triglycerides': PhenotypeLoadingArg(
+    'triglycerides': PhenotypeDescription(
         '30870',
-        unit = 'mmol/L'
+        unit = 'mmol/L',
+        min_val=0.1,
+        max_val=11.3,
+        min_omit=6,
+        max_omit=136
     ),
-    'urate': PhenotypeLoadingArg(
+    'urate': PhenotypeDescription(
         '30880',
-        unit = 'umol/L'
+        unit = 'umol/L',
+        min_val='unknown',
+        max_val='unknown',
+        min_omit=135,
+        max_omit=0
     ),
 
     # 2.6k < 10
-    'vitamin_d': PhenotypeLoadingArg(
+    'vitamin_d': PhenotypeDescription(
         '30890',
-        unit = 'nmol/L'
+        unit = 'nmol/L',
+        min_val=10,
+        max_val=375,
+        min_omit=2655,
+        max_omit=2
     )
 }
 
-for pheno, args in blood_biochemistry_args.items():
+for pheno, args in serum_biomarker_args.items():
     args.categorical_covars.append((pheno + '_aliquot', str(int(args.data_field_id) + 2)))
 
-pheno_args.update(blood_biochemistry_args)
+pheno_args.update(serum_biomarker_args)
 
 def is_binary(phenotype):
     return 'binary' in pheno_args[phenotype].unit
@@ -1615,7 +1725,90 @@ all_phenotypes = {
 
 # combined summaries
 
-rule concat_and_filter_summary_tables:
+def na_check(obj):
+    if obj is None:
+        return 'NA'
+    else:
+        return obj
+
+def generate_phenotypes_table():
+    with open(f'export/combined/phenotypes.tab', 'w') as outfile:
+        outfile.write(
+            'phenotype\t'
+            'data_field_ID\t'
+            'measurement_units\t'
+            'minimum_reportable_value\t'
+            'n_samples_omitted_below_reportable_range\t'
+            'maximum_reportable_value\t'
+            'n_samples_omitted_above_reportable_range\t'
+            'n_individuals_tested\t'
+            'association_testing_categorical_covariates\t'
+            'n_association_peaks\n'
+        )
+        for phenotype in all_phenotypes:
+            desc = pheno_args[phenotype]
+            outfile.write(
+                f'{phenotype}\t{desc.data_field_id}\t{desc.unit}\t'
+                f'{na_check(desc.min_val)}\t{na_check(desc.min_omit)}\t'
+                f'{na_check(desc.max_val)}\t{na_check(desc.max_omit)}\t'
+            )
+            with open(f"sample_qc/runs/{phenotype}/combined_unrelated.sample") as samp_file:
+                n_samps = len(samp_file.readlines()) - 1 
+            outfile.write(f'{n_samps}\t')
+            if len(desc.categorical_covars) == 0:
+                outfile.write('None')
+            else:
+                outfile.write(','.join([str(covar_pair) for covar_pair in desc.categorical_covars]))
+                outfile.write('\t')
+            with open(f'signals/peaks/{phenotype}_500000_5e-8.tab') as peaks_file:
+                n_peaks = len(peaks_file.readlines()) - 1
+                outfile.write(f'{n_peaks}\n')
+
+    with open(f'export/combined/phenotypes_README.txt', 'w') as readme:
+        readme.write('phenotype: the name of the phenotype\n')
+        readme.write('data_field_ID: the ID of the data field of this phenotype in the UKB data showcase\n')
+        readme.write('measurement_units\n')
+        readme.write(
+            'minimum_reportable_value: for machines which had a threshold below which readings could not '
+            'be taken, causing the corresponding individuals to be excluded from this phenotype\n'
+        )
+        readme.write('n_samples_omitted_below_reportable_range: the number of samples omitted that way\n')
+        readme.write(
+            'maximum_reportable_value: for machines which had a threshold above which readings could not '
+            'be taken, causing the corresponding individuals to be excluded from this phenotype\n'
+        )
+        readme.write('n_samples_omitted_above_reportable_range: the number of samples omitted that way\n')
+        readme.write(
+            'n_individuals_tested: the number of individuals included in the association testing '
+            'i.e. unrelated high-quality white brit samples with the phenotype\n'
+        )
+        readme.write(
+            'association_testing_categorical_covariates: categorical covariates included in the '
+            'association tests for specifically this phenotype. Pairs (covariate name, '
+            'covariate data field ID)\n'
+        )
+        readme.write(
+            'n_association_peaks: the number of peaks generated by the GWAS, using spacing=500kb and '
+            'threshold=5e-8\n'
+        )
+        readme.write('TODO: is it important to report the number of individuals before '
+                     'subsetting to unrelated ones?\n')
+
+
+rule create_phenotypes_table:
+    input:
+        [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in all_phenotypes],
+        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in all_phenotypes]
+    output:
+        'export/combined/phenotypes.tab',
+        'export/combined/phenotypes_README.txt'
+    resources:
+        time='00:10:00'
+    run:
+        generate_phenotypes_table()
+        
+
+rule concat_and_filter_finemapping_summary_tables:
     input:
         [f'finemapping/summary/{phenotype}_table.tab' for phenotype in all_phenotypes]
     output:

@@ -17,8 +17,12 @@
 *.vcf
 *.dat
 *.sample
-*tmp*
-*temp*
+*tmp.*
+*temp.*
+*tmp
+*temp
+Temp*
+Tmp*
 *.swo
 *.stderr
 *.bim

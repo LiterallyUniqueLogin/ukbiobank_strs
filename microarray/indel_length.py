@@ -15,7 +15,7 @@ snp_count = 0
 
 var_count = 0
 for chrom in range(1, 23):
-    index = sqlite3.connect(f"ukb_imp_chr{chrom}_v3.bgen.bgi")
+    index = sqlite3.connect(f"ukb_hap_chr{chrom}_v2.bgen.bgi")
     cursor = index.execute("select allele1, allele2, position from Variant")
     for a1, a2, pos in cursor:
         var_count += 1
