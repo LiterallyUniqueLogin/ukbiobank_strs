@@ -33,7 +33,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-assert args.unit != 'binary'
+assert 'binary' not in args.unit
 
 phenotype = args.phenotype_name
 
@@ -58,6 +58,19 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
     # drop first and last rows which because of the way data is extracted
     # and then read by numpy are always nans
 
+    readme.write("Subsetting to white British qc'ed samples\n")
+    # load samples that have passed qc
+    samples = np.genfromtxt(
+        f'{ukb}/sample_qc/runs/no_phenotype/combined.sample',
+        skip_header=1
+    )
+
+    # subset to those samples
+    data = utils.merge_arrays(
+        samples.reshape(-1, 1),
+        data
+    )
+
     # number of sample with this phenotype at any assessment
     num_samples = np.sum(np.any(~np.isnan(data[:, 1:]), axis=1))
 
@@ -81,6 +94,7 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
             delimiter='\t',
             dtype=object
         )[:, 1:-1]
+        assert len(obj_covar_data.shape) == len(data.shape)
 
         # do some work to hash the array so it's faster to merge
         # (object arrays are slow to work with)
@@ -202,7 +216,7 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
     for covar, covar_data, reverse_covar_hash in \
             zip(args.categorical_covars, visit_aligned_covars, reverse_covar_hashes):
         assert covar_data.shape[1] == 1
-        covar_name = covar.split(',')
+        covar_name = covar.split(',')[0]
         categories, counts = np.unique(covar_data[~np.isnan(covar_data)], return_counts=True)
         cat_names = [reverse_covar_hash[cat] for cat in categories]
         max_cat_idx = np.argmax(counts)
@@ -229,16 +243,16 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
                 )
                 continue
             using_covar = True
-            covar_names.write(f"{covar_name[0]}_is_{cat_name}\n")
-            data = np.concatenate((data, covar_data[:, 1] == cat), axis=1)
+            covar_names.write(f"{covar_name}_is_{cat_name}\n")
+            data = np.concatenate((data, covar_data == cat), axis=1)
         if using_covar:
             readme.write(
-                f'Using categorical covar {covar_name[0]}, default category when all dummy '
-                f'variables are False is {reverse_covar_hash[categories[0]]}\n'
+                f'Using categorical covar {covar_name}, default category when all dummy '
+                f'variables are False is {cat_names[max_cat_idx]}\n'
             )
         else:
             readme.write(
-                f'Excluding categorical covar {covar_name[0]} '
+                f'Excluding categorical covar {covar_name} '
                 '- all categories after the first were '
                 'already excluded due to small sizes\n'
             )

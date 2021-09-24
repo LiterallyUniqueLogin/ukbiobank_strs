@@ -50,7 +50,6 @@ def append_mfi_to_plink(result_fname, out_fname, binary):
             f'{ukb}/array_imputed/ukb_mfi_chr{chrom}_v3.txt',
             sep='\t',
             usecols=(1,2,3,4,5,7),
-            header=0,
             names=('id', 'pos', 'ref', 'alt', 'maf', 'info')
         )
         df['chr'] = chrom

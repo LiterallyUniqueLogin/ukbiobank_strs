@@ -7,7 +7,7 @@ sample data (which again, I should not have access to)
 for chr in $(seq 1 22); do
   bcftools view -G -Ou /storage/mgymrek/ssc-imputation/filtered_vcfs/hipstr.chr${chr}.allfilters.vcf.gz | \
   	bcftools annotate -x FORMAT \
-			  -x INFO/AN,INFO/NSKIP,INFO/NFILT,INFO/DP,INFO/DSNP,INFO/DSTUTTER,INFO/DFLANKINDEL,INFO/AN \
+			  -x INFO/AN,INFO/NSKIP,INFO/NFILT,INFO/DP,INFO/DSNP,INFO/DSTUTTER,INFO/DFLANKINDEL,INFO/AN,INFO/AC,INFO/REFAC \
                           -Oz \
                           -o /gymreklab-tscc/jmargoli_ukbiobank_snpstr_info_field_chr${chr}.vcf.gz &
 done

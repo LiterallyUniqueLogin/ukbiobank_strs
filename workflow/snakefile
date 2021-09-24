@@ -7,6 +7,7 @@ import pandas as pd
 import shutil
 
 import python_array_utils as utils
+import phenotypes
 
 chr_lens = np.genfromtxt(
     'misc_data/genome/chr_lens.txt',
@@ -15,387 +16,21 @@ chr_lens = np.genfromtxt(
     dtype=int
 )
 
-#################### Input Phenotypes #################################
-
-class PhenotypeDescription:
-    def __init__(
-            self,
-            data_field_id,
-            *,
-            unit,
-            min_val = None,
-            max_val = None,
-            min_omit = None,
-            max_omit = None,
-            categorical_covars = [],
-            previous_STR_findings = [], # format "chr:pos"
-            previous_SNP_findings = []): # unsure of format yet
-        self.data_field_id = data_field_id
-        self.unit = unit
-        self.min_val = min_val
-        self.max_val = max_val
-        self.min_omit = min_omit
-        self.max_omit = max_omit
-        self.categorical_covars = categorical_covars.copy()
-        self.previous_STR_findings = previous_STR_findings.copy()
-        self.previous_SNP_findings = previous_SNP_findings.copy()
-
-pheno_args = {
-    # ---------------- Continuous phenotypes ------------------------
-    'height': PhenotypeDescription(
-        '50',
-        unit = 'cm',
-        previous_STR_findings = ["3:53128363"]
-    ),
-    # haemotology phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100081
-    # 'crit' values are percentage of blood volume occupied by that cell type
-    # overview here https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1453
-    # https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/haematology.pdf
-    'white_blood_cell_count': PhenotypeDescription(
-        '30000',
-        unit = '10^9 cells/Liter',
-        categorical_covars = [('white_blood_cell_count_device_id', '30003')]
-    ),
-    'red_blood_cell_count': PhenotypeDescription(
-        '30010',
-        unit = '10^12 cells/Liter',
-        categorical_covars = [('red_blood_cell_count_device_id', '30013')]
-    ),
-   'haematocrit': PhenotypeDescription(
-        '30030',
-        unit = '%',
-        categorical_covars = [('hematocrit_device_id', '30033')]
-    ),
-   'haemoglobin_concentration': PhenotypeDescription(
-       '30020',
-       unit = 'g/dL',
-       categorical_covars = [('haemoglobin_concentration_device_id', '30023')]
-   ),
-   'platelet_count': PhenotypeDescription(
-        '30080',
-        unit = '10^9 cells/Litre',
-        categorical_covars = [('platelet_count_device_id', '30083')]
-    ),
-    'platelet_crit': PhenotypeDescription(
-        '30090',
-        unit = '%',
-        categorical_covars = [('platelet_crit_device_id', '30093')]
-    ),
-    'lymphocyte_count': PhenotypeDescription(
-        '30120',
-        unit = '10^9 cells/Litre',
-        categorical_covars = [('lymphocyte_count_device_id', '30123')]
-    ),
-    'lymphocyte_percent': PhenotypeDescription(
-        '30180',
-        unit = '%',
-        categorical_covars = [('lymphocyte_percent_device_id', '30183')]
-    ),
-    'neutrophil_count': PhenotypeDescription(
-        '30140',
-        unit = '10^9 cells/Litre',
-        categorical_covars = [('neutrophil_count_device_id', '30143')]
-    ),
-    'neutrophil_percent': PhenotypeDescription(
-        '30200',
-        unit = '%',
-        categorical_covars = [('neutrophil_percent_device_id', '30203')]
-    ),
-    'eosinophil_count': PhenotypeDescription(
-        '30150',
-        unit = '10^9 cells/Litre',
-        categorical_covars = [('eosinophil_count_device_id', '30153')]
-    ),
-    'eosinophil_percent': PhenotypeDescription(
-        '30210',
-        unit = '%',
-        categorical_covars = [('eosinophil_percent_device_id', '30213')]
-    ),
-
-    # blood pressure - combine 4079, 94, 4080, 93,  with covars 36,37 - all category 100011
-    # --- Spirometry ---
-    # could study FEV and FVC z-scores (20257, 20256)
-    # but those are just z-scores for those values regressed on
-    # age, height and gender among lifelong non-smokers with no history of lung disease
-    # we can compute that ourselves, so I don't see any reason to study these separately
-    # maybe we should study lung function separately in smokers and nonsmokers
-    # probably using direct question 20116 over derived field 20160
-    # Spirometry: device number 3132, device id 42
-    # lots of different devices used with only a few thousand per device
-    # so it doesn't make sense to add that as a categorical variable
-    # could add it as a random component if I was using a mixed effect model
-    # 3062Forced vital capacity (FVC)
-    # 3063Forced expiratory volume in 1-second (FEV1)
-    # should I remove 3088,89,90? or 3159?
-
-    # ------------------------------ Binary Phenotypes --------------------------------
-    'afib_and_flutter_I48': PhenotypeDescription(
-        '131350',
-        unit = 'binary_date_first_reported',
-    )
-}
-
-# blood biochemistry phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=17518
-# and related QC fields https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=18518
-# See related QC fields _2 for aliquot and _5, _6 for missingness reasons
-# Due to the companion doc, I'm including aliquot as a covariate (see code below)
-# (section 7.2)
-# companion documents:
-# This one for understanding the dilution/timing issues and correcting:
-# https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=5636
-# https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/biomarker_issues.pdf
-# This one for understanding the limits of the machine's analyzing range
-# https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=1227
-# https://biobank.ndph.ox.ac.uk/showcase/ukb/docs/serum_biochemistry.pdf
-# units of U are probably the enzyme unit https://en.wikipedia.org/wiki/Enzyme_unit
-serum_biomarker_args = {
-    'albumin': PhenotypeDescription(
-        '30600',
-        unit = 'g/L',
-        min_val = 15,
-        max_val = 60,
-        min_omit=14,
-        max_omit=2
-    ),
-    'alkaline_phosphatase': PhenotypeDescription(
-        '30610',
-        unit = 'U/L',
-        min_val=3,
-        max_val=1500,
-        min_omit=46,
-        max_omit=3
-    ),
-    'alanine_aminotransferase': PhenotypeDescription(
-        '30620',
-        unit = 'U/L',
-        min_val=3,
-        max_val=500,
-        min_omit=45,
-        max_omit=22
-    ),
-
-    # 1.8k samples discarded due to too high values (>2.5)
-    'apolipoprotein_a': PhenotypeDescription(
-        '30630',
-        unit = 'g/L',
-        min_val=0.4,
-        max_val=2.5,
-        min_omit=20,
-        max_omit=1809
-    ),
-
-    # 1.2k samples discarded (both < 0.4 and > 2)
-    'apolipoprotein_b': PhenotypeDescription(
-        '30640',
-        unit = 'g/L',
-        min_val=0.4,
-        max_val=2,
-        max_omit=339,
-        min_omit=871
-    ),
-    'aspartate_aminotransferase': PhenotypeDescription(
-        '30650',
-        unit = 'U/L',
-        min_val=3,
-        max_val=1000,
-        min_omit=11,
-        max_omit=3
-    ),
-    # skipping direct bilirubin 30660, 70k values are too low
-    'urea': PhenotypeDescription(
-        '30670',
-        unit = 'mmol/L',
-        min_val=0.8,
-        max_val=50,
-        min_omit=10,
-        max_omit=0
-    ),
-    'calcium': PhenotypeDescription(
-        '30680',
-        unit = 'mmol/L',
-        min_val=1,
-        max_val=5,
-        min_omit=61,
-        max_omit=0
-    ),
-    'cholesterol': PhenotypeDescription(
-        '30690',
-        unit = 'mmol/L',
-        min_val=0.5,
-        max_val=18,
-        min_omit=7,
-        max_omit=0
-    ),
-    'creatinine': PhenotypeDescription(
-        '30700',
-        unit = 'umol/L',
-        min_val=4,
-        max_val=4420,
-        min_omit=0,
-        max_omit=0
-    ),
-    'c_reactive_protein': PhenotypeDescription(
-        '30710',
-        unit = 'mg/L',
-        min_val=0.08,
-        max_val=80,
-        min_omit=119,
-        max_omit=324
-    ),
-    'cystatin_c': PhenotypeDescription(
-        '30720',
-        unit = 'mg/L',
-        min_val=0.1,
-        max_val='(7.7-8.99)',
-        min_omit=6,
-        max_omit=9
-    ),
-    'gamma_glutamyltransferase': PhenotypeDescription(
-        '30730',
-        unit = 'U/L',
-        min_val=5,
-        max_val=1200,
-        min_omit=22,
-        max_omit=73
-    ),
-    'glucose': PhenotypeDescription(
-        '30740',
-        unit = 'mmol/L',
-        min_val=0.6,
-        max_val=45,
-        min_omit=7,
-        max_omit=1
-    ),
-    'glycated_haemoglobin': PhenotypeDescription(
-        '30750',
-        unit = 'mmol/mol',
-        min_val='unknown',
-        max_val='unknown',
-        min_omit=190,
-        max_omit=0
-    ),
-    'hdl_cholesterol': PhenotypeDescription(
-        '30760',
-        unit = 'mmol/L',
-        min_val=0.05,
-        max_val=4.65,
-        min_omit=5,
-        max_omit=1
-    ),
-    'igf_1': PhenotypeDescription(
-        '30770',
-        unit = 'nmol/L',
-        min_val=1.30,
-        max_val=195,
-        min_omit=6,
-        max_omit=0
-    ),
-    'ldl_cholesterol_direct': PhenotypeDescription(
-        '30780',
-        unit = 'mmol/L',
-        min_val=0.26,
-        max_val=10.3,
-        min_omit=7,
-        max_omit=0
-    ),
-
-#    #48k < 3.8 , 34k > 189
-#    'lipoprotein_a': PhenotypeDescription(
-#        '30790',
-#        unit = 'nmol/L',
-#        min_val=3.8,
-#        max_val=189
-#    ),
-#
-#    # 375k < 175
-#    'oestradiol': PhenotypeDescription(
-#        '30800',
-#        unit = 'pmol/L'
-#    ),
-    'phosphate': PhenotypeDescription(
-        '30810',
-        unit = 'mmol/L',
-        min_val=0.32,
-        max_val=6.4,
-        min_omit=12,
-        max_omit=0
-    ),
-
-#    # 444k < 10, 2k > 120
-#    'rheumatoid_factor': PhenotypeDescription(
-#        '30820',
-#        unit = 'IU/mL'
-#    ),
-
-    # 750 > 226-242
-    'shbg': PhenotypeDescription(
-        '30830',
-        unit = 'nmol/L',
-        min_val=0.33,
-        max_val='(226-242)',
-        min_omit=10,
-        max_omit=745
-    ),
-    'total_bilirubin': PhenotypeDescription(
-        '30840',
-        unit = 'umol/L',
-        previous_STR_findings = ["2:234668880"],
-        min_val=1,
-        max_val=513,
-        min_omit=18,
-        max_omit=0
-    ),
-
-#    # 800 < 0.35,  41k > 55.48
-#    'testosterone': PhenotypeDescription(
-#        '30850',
-#        unit = 'nmol/L'
-#    ),
-    'total_protein': PhenotypeDescription(
-        '30860',
-        unit = 'g/L',
-        min_val=30,
-        max_val=120,
-        min_omit=16,
-        max_omit=1
-    ),
-    'triglycerides': PhenotypeDescription(
-        '30870',
-        unit = 'mmol/L',
-        min_val=0.1,
-        max_val=11.3,
-        min_omit=6,
-        max_omit=136
-    ),
-    'urate': PhenotypeDescription(
-        '30880',
-        unit = 'umol/L',
-        min_val='unknown',
-        max_val='unknown',
-        min_omit=135,
-        max_omit=0
-    ),
-
-    # 2.6k < 10
-    'vitamin_d': PhenotypeDescription(
-        '30890',
-        unit = 'nmol/L',
-        min_val=10,
-        max_val=375,
-        min_omit=2655,
-        max_omit=2
-    )
-}
-
-for pheno, args in serum_biomarker_args.items():
-    args.categorical_covars.append((pheno + '_aliquot', str(int(args.data_field_id) + 2)))
-
-pheno_args.update(serum_biomarker_args)
-
-def is_binary(phenotype):
-    return 'binary' in pheno_args[phenotype].unit
+str_imputation_run_name = 'first_pass'
 
 ################## Loading and collating data ############################
+
+rule possible_samples:
+    input:
+        glob.glob("sample_qc/common_filters/keep/*sample"),
+        glob.glob("sample_qc/common_filters/remove/*sample")
+    output:
+        'sample_qc/runs/no_phenotype/combined.sample',
+        'sample_qc/runs/no_phenotype/README.txt'
+    resources:
+        time='00:05:00',
+    shell:
+        'sample_qc/scripts/combine.py '
 
 rule load_shared_covars:
     input:
@@ -425,8 +60,8 @@ rule decompress_field:
 
 def input_fields_for_phenotype(wildcards):
     phenotype = wildcards.phenotype
-    if phenotype in pheno_args:
-        args = pheno_args[phenotype]
+    if phenotype in phenotypes.pheno_descs:
+        args = phenotypes.pheno_descs[phenotype]
     else:
         raise ValueError(f"Couldn't identify phenotype {phenotype}")
     fields = [
@@ -434,7 +69,7 @@ def input_fields_for_phenotype(wildcards):
         *[f"main_dataset/extracted_data/{covar_field_name}_{covar_field_id}.txt" for
           covar_field_name, covar_field_id in args.categorical_covars]
     ]
-    if is_binary(phenotype):
+    if phenotypes.is_binary(phenotype):
         fields.extend([
             "main_dataset/extracted_data/year_of_birth_34.txt",
             "main_dataset/extracted_data/month_of_birth_52.txt",
@@ -445,6 +80,7 @@ def input_fields_for_phenotype(wildcards):
 rule load_phenotype:
     input:
         "traits/shared_covars/assessment_ages.npy",
+        'sample_qc/runs/no_phenotype/combined.sample',
         input_fields_for_phenotype
     output:
         protected("traits/phenotypes/{phenotype}.npy"),
@@ -455,8 +91,8 @@ rule load_phenotype:
         time='00:05:00'
     run:
         phenotype = wildcards.phenotype
-        if phenotype in pheno_args:
-            args = pheno_args[phenotype]
+        if phenotype in phenotypes.pheno_descs:
+            args = phenotypes.pheno_descs[phenotype]
             if 'binary' in args.unit:
                 if args.unit != 'binary_date_first_reported':
                     raise ValueError("Only type of binary field understood is binary_date_first_reported")
@@ -521,11 +157,11 @@ rule subset_samples_for_phenotype:
     run:
         cmd = (
             'shadow_dir=$(pwd) ; cd $UKB ; export UKB=${{shadow_dir}} ; '
-            'sample_qc/scripts/combine.py {wildcards.phenotype} && '
+            'sample_qc/scripts/combine.py --phenotype {wildcards.phenotype} && '
             'PHEN={wildcards.phenotype} sample_qc/scripts/test_combine.sh && '
             'sample_qc/scripts/unrelated_individuals.py {wildcards.phenotype} '
         )
-        if is_binary(wildcards.phenotype):
+        if phenotypes.is_binary(wildcards.phenotype):
             cmd += '--binary --phenotype {wildcards.phenotype} '
         cmd += '&& sample_qc/scripts/verify_unrelatedness.py {wildcards.phenotype}'
         shell(cmd)
@@ -541,7 +177,7 @@ rule transform_phenotype_subset:
         time='00:05:00'
     run:
         cmd = 'traits/transform_traits.py {wildcards.phenotype} '
-        if is_binary(wildcards.phenotype):
+        if phenotypes.is_binary(wildcards.phenotype):
             cmd += '--binary '
         shell(cmd)
 
@@ -556,7 +192,7 @@ rule plot_str_locus:
     resources:
         time='00:30:00'
     run:
-        if is_binary(wildcards.phenotype):
+        if phenotypes.is_binary(wildcards.phenotype):
             raise ValueError("Plotting loci doesn't make sense for binary phenotypes "
                              'unless I was to account for covariates, which this does not do '
                              'at the moment')
@@ -570,6 +206,24 @@ rule plot_str_locus:
             f'association/plot_loci.py {str_imputation_run_name} '
             f'{wildcards.phenotype} {transform_step} '
             f'{wildcards.chrom}:{wildcards.pos} '
+        )
+
+rule plot_str_locus2:
+    input:
+        f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
+        'association/results/{phenotype}/my_str/results.tab',
+        'traits/subset_transformed_phenotypes/{phenotype}.npy'
+    output:
+        'export/figures/cool_loci/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg'
+    resources:
+        time='00:30:00'
+    run:
+        unit = phenotypes.pheno_descs[wildcards.phenotype].unit
+        shell(
+            f'association/plot_locus2.py {str_imputation_run_name} '
+            '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
+            f"'{unit}' "
+            '{wildcards.dosage_fraction_threshold} '
         )
 
 ##################### Running and Plotting Associations ###########################
@@ -604,8 +258,6 @@ def regions(region_len):
             regions.append(f'{chrom}_{start}_{end}')
     return regions
 
-str_imputation_run_name = 'first_pass'
-
 rule write_my_gwas_readme:
     output:
         protected('association/results/{phenotype}/my_{run_type}/README.txt'),
@@ -631,13 +283,13 @@ rule write_my_gwas_readme:
         cmd += '--readme '
 
         if suffix == '':
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
         elif suffix == '_linear':
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary linear '
         else:
             assert suffix == '_logistic'
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary logistic '
 
         shell(cmd)
@@ -664,13 +316,13 @@ rule run_regional_my_imputed_snp_gwas:
             '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
         )
         if wildcards.suffix == '':
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
         elif wildcards.suffix == '_linear':
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary linear '
         else:
             assert wildcards.suffix == '_logistic'
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary logistic '
 
         shell(cmd)
@@ -728,13 +380,13 @@ rule run_regional_my_str_gwas:
         )
 
         if wildcards.suffix == '':
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
         elif wildcards.suffix == '_linear':
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary linear '
         else:
             assert wildcards.suffix == '_logistic'
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary logistic '
 
         shell(cmd)
@@ -763,7 +415,7 @@ rule prep_continuous_plink_input:
         time='00:30:00'
     run:
         cmd = 'association/prep_plink_input.py {wildcards.phenotype} '
-        if is_binary(wildcards.phenotype):
+        if phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.suffix == '_linear'
             cmd += '--binary linear '
         else:
@@ -805,11 +457,11 @@ rule run_linear_plink_gwas:
     run:
         if wildcards.suffix == '':
             assert wildcards.rin == 'rin_'
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
         else:
             assert wildcards.rin == ''
             assert wildcards.suffix == '_linear'
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
 
         shell('PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} SUFFIX={wildcards.suffix} association/plink_association.sh')
 
@@ -831,7 +483,7 @@ def concatenate_whole_genome_plink_gwas_input(wildcards):
     if not wildcards.suffix:
         rin = 'rin_'
     else:
-        assert is_binary(wildcards.phenotype)
+        assert phenotypes.is_binary(wildcards.phenotype)
         assert wildcards.suffix == '_linear'
         rin = ''
 
@@ -849,10 +501,10 @@ rule concatenate_linear_plink_gwas:
         time='04:00:00'
     run:
         if wildcards.suffix == '':
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
         else:
             assert wildcards.suffix == '_linear'
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
 
         concatenate_csvs(output[0], input)
 
@@ -905,10 +557,10 @@ rule subset_plink_gwas_results:
         time='08:00:00'
     run:
         if wildcards.suffix == '':
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
             p_val_col = 14
         else:
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             if wildcards.suffix == '_linear':
                 p_val_col = 11
             else:
@@ -932,12 +584,12 @@ rule append_mfi_to_subsetted_plink_results:
     run:
         cmd = 'association/append_mfi_to_plink_snp.py {input[0]} {output[0]} '
         if wildcards.suffix == '':
-            assert not is_binary(wildcards.phenotype)
+            assert not phenotypes.is_binary(wildcards.phenotype)
         elif wildcards.suffix == '_linear':
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             cmd += '--binary linear '
         else:
-            assert is_binary(wildcards.phenotype)
+            assert phenotypes.is_binary(wildcards.phenotype)
             assert wildcards.suffix == '_logistic'
             cmd += '--binary logistic '
         shell(cmd)
@@ -1035,7 +687,7 @@ rule manhattan:
         mem_gb=50
     run:
         cmd = 'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
-        if not is_binary(wildcards.phenotype):
+        if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
             assert wildcards.binary_type != ''
@@ -1059,7 +711,7 @@ rule region_manhattan:
             '--start {wildcards.start} '
             '--end {wildcards.end} '
         )
-        if not is_binary(wildcards.phenotype):
+        if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
             assert wildcards.binary_type != ''
@@ -1122,7 +774,7 @@ rule prep_conditional_plink_input:
             'association/prep_plink_input.py {wildcards.phenotype} '
             '--conditional chr{wildcards.chrom}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP '
         )
-        if is_binary(wildcards.phenotype):
+        if phenotypes.is_binary(wildcards.phenotype):
             cmd += '--binary '
         shell(cmd)
 
@@ -1188,7 +840,7 @@ rule manhattan_conditional:
 
 def generate_regions_input(wildcards):
     phenotype = wildcards.phenotype
-    if not is_binary(phenotype):
+    if not phenotypes.is_binary(phenotype):
         return {
             'strs': f'association/results/{phenotype}/my_str/results.tab',
             'imputed_snps': f'association/results/{phenotype}/plink_snp/results.tab'
@@ -1212,7 +864,7 @@ checkpoint generate_regions:
         'signals/regions.py {wildcards.phenotype} {input.strs} {input.imputed_snps} {output.out} '
 
 def peak_snp_input_inputs(wildcards):
-    if not is_binary(wildcards.phenotype):
+    if not phenotypes.is_binary(wildcards.phenotype):
         runtype_suffix = ''
     else:
         runtype_suffix = '_logistic'
@@ -1229,12 +881,12 @@ rule peak_snp_inputs:
         subset_gwas_results(
             input[0],
             output[0],
-            14 if not is_binary(wildcards.phenotype) else 11,
+            14 if not phenotypes.is_binary(wildcards.phenotype) else 11,
             threshold = float(wildcards.thresh)
         )
 
 def peak_str_input_inputs(wildcards):
-    if not is_binary(wildcards.phenotype):
+    if not phenotypes.is_binary(wildcards.phenotype):
         runtype_suffix = ''
     else:
         runtype_suffix = '_logistic'
@@ -1283,7 +935,7 @@ rule peak_manhattan:
             'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
             '--peaks-spacing {wildcards.spacing} --peaks-thresh {wildcards.thresh} '
         )
-        if not is_binary(wildcards.phenotype):
+        if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
             assert wildcards.binary_type != ''
@@ -1304,7 +956,7 @@ rule overview_manhattan:
             'association/interactive_manhattan_plots.py {wildcards.phenotype} png '
             '--peaks-spacing 10000000 --peaks-thresh 5e-8 --overview '
         )
-        if not is_binary(wildcards.phenotype):
+        if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
             assert wildcards.binary_type != ''
@@ -1315,7 +967,7 @@ rule overview_manhattan:
 # ----------- binary linear regression association regions
 
 def regional_plink_imputed_snp_logistic_regressions(wildcards):
-    assert is_binary(wildcards.phenotype)
+    assert phenotypes.is_binary(wildcards.phenotype)
 
     phenotype = wildcards.phenotype
 
@@ -1343,7 +995,7 @@ rule concatenate_all_regions_plink_imputed_snp_logistic_gwas:
         concatenate_csvs(output[0], input)
 
 def regional_my_str_logistic_regressions(wildcards):
-    assert is_binary(wildcards.phenotype)
+    assert phenotypes.is_binary(wildcards.phenotype)
 
     phenotype = wildcards.phenotype
 
@@ -1371,6 +1023,8 @@ rule concatenate_all_regions_my_str_logistic_gwas:
         concatenate_csvs(output[0], input)
 
 ##################### Finemapping ##########################
+
+#--------------FINEMAP-----------------
 
 checkpoint finemap_write_input_variants:
     input:
@@ -1469,7 +1123,7 @@ rule finemap_region:
         'touch {output.done} '
 
 def collect_finemap_output_all_regions(wildcards):
-    assert not is_binary(wildcards.phenotype)
+    assert not phenotypes.is_binary(wildcards.phenotype)
     phenotype = wildcards.phenotype
     files = []
     # make sure we've loaded all input variants for all regions
@@ -1522,12 +1176,15 @@ rule manhattan_finemap:
             'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
             '--finemap-signals '
         )
-        if not is_binary(wildcards.phenotype):
+        if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
             assert wildcards.binary_type != ''
             cmd += f'--binary {wildcards.binary_type[1:]} '
         shell(cmd)
+
+#-------------------SuSiE----------------
+
 
 ######################### Final Results Summary ########################
 
@@ -1623,7 +1280,7 @@ checkpoint produce_summary_table:
     run:
         STRs = ''
         first = True
-        for STR in pheno_args[wildcards.phenotype].previous_STR_findings:
+        for STR in phenotypes.pheno_descs[wildcards.phenotype].previous_STR_findings:
             if not first:
                 STRs += ' '
             first = False
@@ -1657,9 +1314,6 @@ def conditional_plots_sig_strs(wildcards):
     outfiles = []
     for result in results:
         outfiles.append(
-            f'association/plots/{phenotype}.manhattan.chr{result["signal_region"]}.png'
-        )
-        outfiles.append(
             'association/plots/{phenotype}.manhattan.'
             f'chr{result["signal_region"]}_STR_{result["SNPSTR_start_pos"]}__ISNP__ASNP.png'
         )
@@ -1687,9 +1341,14 @@ rule gather_phenotype_summaries:
         table='finemapping/summary/{phenotype}_table.tab',
         signal_strengths='finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
         interactive_manhattan='association/plots/{phenotype}.manhattan.FINEMAP.html',
-        conditional_plots=conditional_plots_sig_strs
+        conditional_plots=conditional_plots_sig_strs,
+        exciting_locus_plots = lambda wildcards: [
+            'export/figures/cool_loci/{phenotype}_' + loc.replace(":", "_") + '_0.01.svg'
+            for loc in phenotypes.pheno_descs[wildcards.phenotype].exciting_STR_hits
+        ]
     output:
-        directory('export/phenotypes/{phenotype}')
+        # TODO output directories don't work well
+        directory('export/phenotypes/{phenotype,[^/]+}')
     resources:
         time='00:10:00'
     shell:
@@ -1705,119 +1364,46 @@ rule gather_phenotype_summaries:
         '    ln -s ../../../../$file ; '
         'done '
 
-all_phenotypes = {
-    'eosinophil_count',
-    'eosinophil_percent',
-    'haematocrit',
-    'haemoglobin_concentration',
-    'hdl_cholesterol',
-    'ldl_cholesterol_direct',
-    'lymphocyte_count',
-    'lymphocyte_percent',
-    'neutrophil_count',
-    #'neutrophil_percent',
-    'platelet_count',
-    'platelet_crit',
-    'red_blood_cell_count',
-    'total_bilirubin',
-    'white_blood_cell_count',
-}
-
 # combined summaries
 
-def na_check(obj):
-    if obj is None:
-        return 'NA'
-    else:
-        return obj
-
-def generate_phenotypes_table():
-    with open(f'export/combined/phenotypes.tab', 'w') as outfile:
-        outfile.write(
-            'phenotype\t'
-            'data_field_ID\t'
-            'measurement_units\t'
-            'minimum_reportable_value\t'
-            'n_samples_omitted_below_reportable_range\t'
-            'maximum_reportable_value\t'
-            'n_samples_omitted_above_reportable_range\t'
-            'n_individuals_tested\t'
-            'association_testing_categorical_covariates\t'
-            'n_association_peaks\n'
-        )
-        for phenotype in all_phenotypes:
-            desc = pheno_args[phenotype]
-            outfile.write(
-                f'{phenotype}\t{desc.data_field_id}\t{desc.unit}\t'
-                f'{na_check(desc.min_val)}\t{na_check(desc.min_omit)}\t'
-                f'{na_check(desc.max_val)}\t{na_check(desc.max_omit)}\t'
-            )
-            with open(f"sample_qc/runs/{phenotype}/combined_unrelated.sample") as samp_file:
-                n_samps = len(samp_file.readlines()) - 1 
-            outfile.write(f'{n_samps}\t')
-            if len(desc.categorical_covars) == 0:
-                outfile.write('None')
-            else:
-                outfile.write(','.join([str(covar_pair) for covar_pair in desc.categorical_covars]))
-                outfile.write('\t')
-            with open(f'signals/peaks/{phenotype}_500000_5e-8.tab') as peaks_file:
-                n_peaks = len(peaks_file.readlines()) - 1
-                outfile.write(f'{n_peaks}\n')
-
-    with open(f'export/combined/phenotypes_README.txt', 'w') as readme:
-        readme.write('phenotype: the name of the phenotype\n')
-        readme.write('data_field_ID: the ID of the data field of this phenotype in the UKB data showcase\n')
-        readme.write('measurement_units\n')
-        readme.write(
-            'minimum_reportable_value: for machines which had a threshold below which readings could not '
-            'be taken, causing the corresponding individuals to be excluded from this phenotype\n'
-        )
-        readme.write('n_samples_omitted_below_reportable_range: the number of samples omitted that way\n')
-        readme.write(
-            'maximum_reportable_value: for machines which had a threshold above which readings could not '
-            'be taken, causing the corresponding individuals to be excluded from this phenotype\n'
-        )
-        readme.write('n_samples_omitted_above_reportable_range: the number of samples omitted that way\n')
-        readme.write(
-            'n_individuals_tested: the number of individuals included in the association testing '
-            'i.e. unrelated high-quality white brit samples with the phenotype\n'
-        )
-        readme.write(
-            'association_testing_categorical_covariates: categorical covariates included in the '
-            'association tests for specifically this phenotype. Pairs (covariate name, '
-            'covariate data field ID)\n'
-        )
-        readme.write(
-            'n_association_peaks: the number of peaks generated by the GWAS, using spacing=500kb and '
-            'threshold=5e-8\n'
-        )
-        readme.write('TODO: is it important to report the number of individuals before '
-                     'subsetting to unrelated ones?\n')
-
+rule peak_stats:
+    input:
+        [fname for phenotype in phenotypes.phenotypes_in_use
+         for fname in 
+         (f'signals/peaks/{phenotype}_500000_5e-8.tab',
+          f'signals/peaks/{phenotype}_500000_5e-9.tab',
+          f'signals/peaks/{phenotype}_500000_5e-10.tab',
+          f'signals/peaks/{phenotype}_2000000_5e-8.tab')]
+    output:
+        'signals/peak_stats_summary.txt',
+        'export/combined/peak_stats_summary.txt'
+    shell:
+        'signals/peak_stats.py > signals/peak_stats_summary.txt ; '
+        'ln -s ../../signals/peak_stats_summary.txt export/combined '
 
 rule create_phenotypes_table:
     input:
-        [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in all_phenotypes],
-        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in all_phenotypes]
+        [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in phenotypes.phenotypes_in_use],
+        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
     output:
         'export/combined/phenotypes.tab',
         'export/combined/phenotypes_README.txt'
     resources:
         time='00:10:00'
     run:
-        generate_phenotypes_table()
+        'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
         
 
 rule concat_and_filter_finemapping_summary_tables:
     input:
-        [f'finemapping/summary/{phenotype}_table.tab' for phenotype in all_phenotypes]
+        [f'finemapping/summary/{phenotype}_table.tab' for phenotype in phenotypes.phenotypes_in_use]
     output:
         'export/combined/finemapped_loci.tab'
     resources:
         time='00:10:00'
     run:
         cmd = 'export_scripts/concat_and_filter_summary_tables.py '
-        for phenotype in all_phenotypes:
+        for phenotype in phenotypes.phenotypes_in_use:
             cmd += f'{phenotype} '
         shell(cmd)
 
@@ -1839,6 +1425,6 @@ rule assoc_figures:
 
 rule gather_all_exports:
     input:
-        [f'export/phenotypes/{phenotype}' for phenotype in all_phenotypes],
+        [f'export/phenotypes/{phenotype}' for phenotype in phenotypes.phenotypes_in_use],
         'export/figures/',
         'export/combined/finemapped_loci.tab'

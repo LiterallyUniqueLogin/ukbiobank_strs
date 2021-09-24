@@ -294,7 +294,9 @@ def make_manhattan_plots(
         str_finemap_signals,
         finemap_regions,
         conditioned_strs,
-        conditioned_isnps):
+        conditioned_isnps,
+        *,
+        return_figure = False):
     ext = outfname.split('.')[-1]
 
     if not binary:
@@ -307,11 +309,15 @@ def make_manhattan_plots(
         print("Can't handle conditioned_isnps at the moment")
         exit()
 
+    if return_figure:
+        assert outfname[0] == '.'
+        assert ext != 'html'
+
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
     plot_plink_snp_data = plink_snp_data is not None
     plot_gwas_catalog = gwas_catalog is not None
-    if my_str_data:
+    if plot_my_str_data:
         plot_peaks = 'is_peak' in my_str_data.dtype.names
     else:
         plot_peaks = False
@@ -974,6 +980,9 @@ def make_manhattan_plots(
 
     manhattan_plot.legend.click_policy="mute"
 
+    if return_figure:
+        return manhattan_plot
+
     if ext == 'html':
         html = bokeh.embed.file_html(layout, bokeh.resources.CDN, f'Manhattan plot {phenotype}')
         with open(outfname, 'w') as outfile:
@@ -1359,6 +1368,7 @@ def main():
     if bool(args.condition):
         # will parse chrom, start, end from the condition string itself
         assert not bool(args.chrom)
+        assert ext == 'png'
     else:
         conditioned_isnps = conditioned_strs = None
 
@@ -1409,6 +1419,10 @@ def main():
             outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{condition}.{ext}'
             conditioned_isnps = get_conditioned_isnps(condition)
             conditioned_strs = get_conditioned_strs(condition)
+
+            unconditioned_str_results, unconditioned_snp_results, _, _ = load_data(
+                phenotype, binary, None
+            )
 
         if bool(args.peaks_spacing):
             print("Adding peak data ... ", end='', flush=True)
@@ -1504,7 +1518,7 @@ def main():
     with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unit_file:
         unit = next(unit_file).strip()
 
-    if not args.overview:
+    if not args.overview and not condition:
         make_manhattan_plots(
             outfname,
             phenotype,
@@ -1527,13 +1541,67 @@ def main():
             conditioned_isnps = conditioned_isnps,
             conditioned_strs = conditioned_strs
         )
-    else:
+    elif args.overview:
         make_overview_manhattan(
             f'{ukb}/association/plots/{phenotype}.overview.manhattan.png',
             phenotype,
             my_str_results,
             plink_snp_results
         )
+    else:
+        conditioned_man = make_manhattan_plots(
+            '.png',
+            phenotype,
+            binary,
+            unit,
+            my_str_results,
+            my_str_run_date,
+            plink_snp_results,
+            plink_snp_run_date,
+            gwas_catalog,
+            gwas_catalog_ids,
+            my_snp_results,
+            my_snp_run_date,
+            chrom = chrom,
+            start = start,
+            end = end,
+            snp_finemap_signals = snp_finemap_signals,
+            str_finemap_signals = str_finemap_signals,
+            finemap_regions = finemap_regions,
+            conditioned_isnps = conditioned_isnps,
+            conditioned_strs = conditioned_strs,
+            return_figure = True
+        )
+        unconditioned_man = make_manhattan_plots(
+            '.png',
+            phenotype,
+            binary,
+            unit,
+            unconditioned_str_results,
+            None,
+            unconditioned_snp_results,
+            None,
+            gwas_catalog,
+            gwas_catalog_ids,
+            my_snp_results,
+            my_snp_run_date,
+            chrom = chrom,
+            start = start,
+            end = end,
+            snp_finemap_signals = snp_finemap_signals,
+            str_finemap_signals = str_finemap_signals,
+            finemap_regions = finemap_regions,
+            conditioned_isnps = None,
+            conditioned_strs = None,
+            return_figure = True
+        )
+        layout = bokeh.layouts.grid([unconditioned_man, conditioned_man])
+        conditioned_man.y_range = unconditioned_man.y_range
+        conditioned_man.title.text = 'Conditional ' + conditioned_man.title.text
+        for man in (unconditioned_man, conditioned_man):
+            man.background_fill_color = None
+            man.border_fill_color = None
+        bokeh.io.export_png(layout, filename=outfname)
 
 if __name__ == "__main__":
     main()

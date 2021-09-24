@@ -168,6 +168,7 @@ def load_strs(imputation_run_name: str,
             _len: np.zeros((n_subset_samples, 2)) for _len in np.unique(len_alleles)
         }
         for p in (1, 2):
+            # todo genotype dosages
             ap = trrecord.format[f'AP{p}']
             subset_dosage_gts[len_alleles[0]][:, (p-1)] += \
                     np.maximum(0, 1 - np.sum(ap[samples, :], axis=1))

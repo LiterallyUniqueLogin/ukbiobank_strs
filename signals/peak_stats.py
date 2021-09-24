@@ -117,6 +117,7 @@ def main():
         all_peaks[get_pheno(fname)] = load_peaks(fname)
     n_phenos = len(all_peaks)
     print(f'# phenos: {n_phenos}')
+    print(f'# peaks total: {sum(len(pheno_peaks) for pheno_peaks in all_peaks.values())}')
     print_stats(all_peaks, 'regular', display_largest_peaks=True)
 
     str_peak_ranks_skip_shared_max_phenos = {}

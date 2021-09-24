@@ -1,15 +1,15 @@
 phenotype	data_field_ID	measurement_units	minimum_reportable_value	n_samples_omitted_below_reportable_range	maximum_reportable_value	n_samples_omitted_above_reportable_range	n_individuals_tested	association_testing_categorical_covariates	n_association_peaks
-total_bilirubin	30840	umol/L	1	18	513	0	329557	('total_bilirubin_aliquot', '30842')	154
-platelet_count	30080	10^9 cells/Litre	NA	NA	NA	NA	335585	('platelet_count_device_id', '30083')	634
-lymphocyte_count	30120	10^9 cells/Litre	NA	NA	NA	NA	335081	('lymphocyte_count_device_id', '30123')	480
-ldl_cholesterol_direct	30780	mmol/L	0.26	7	10.3	0	330188	('ldl_cholesterol_direct_aliquot', '30782')	182
-hdl_cholesterol	30760	mmol/L	0.05	5	4.65	1	307048	('hdl_cholesterol_aliquot', '30762')	366
 platelet_crit	30090	%	NA	NA	NA	NA	335441	('platelet_crit_device_id', '30093')	576
-haemoglobin_concentration	30020	g/dL	NA	NA	NA	NA	335585	('haemoglobin_concentration_device_id', '30023')	441
-red_blood_cell_count	30010	10^12 cells/Liter	NA	NA	NA	NA	335585	('red_blood_cell_count_device_id', '30013')	523
-white_blood_cell_count	30000	10^9 cells/Liter	NA	NA	NA	NA	335583	('white_blood_cell_count_device_id', '30003')	484
-haematocrit	30030	%	NA	NA	NA	NA	335585	('hematocrit_device_id', '30033')	427
-eosinophil_percent	30210	%	NA	NA	NA	NA	335084	('eosinophil_percent_device_id', '30213')	449
 lymphocyte_percent	30180	%	NA	NA	NA	NA	335084	('lymphocyte_percent_device_id', '30183')	384
-neutrophil_count	30140	10^9 cells/Litre	NA	NA	NA	NA	335081	('neutrophil_count_device_id', '30143')	396
+total_bilirubin	30840	umol/L	1	18	513	0	329557	('total_bilirubin_aliquot', '30842')	154
+white_blood_cell_count	30000	10^9 cells/Liter	NA	NA	NA	NA	335583	('white_blood_cell_count_device_id', '30003')	484
+platelet_count	30080	10^9 cells/Litre	NA	NA	NA	NA	335585	('platelet_count_device_id', '30083')	634
+haematocrit	30030	%	NA	NA	NA	NA	335585	('hematocrit_device_id', '30033')	427
+ldl_cholesterol_direct	30780	mmol/L	0.26	7	10.3	0	330188	('ldl_cholesterol_direct_aliquot', '30782')	182
+lymphocyte_count	30120	10^9 cells/Litre	NA	NA	NA	NA	335081	('lymphocyte_count_device_id', '30123')	480
 eosinophil_count	30150	10^9 cells/Litre	NA	NA	NA	NA	335081	('eosinophil_count_device_id', '30153')	444
+neutrophil_count	30140	10^9 cells/Litre	NA	NA	NA	NA	335081	('neutrophil_count_device_id', '30143')	396
+haemoglobin_concentration	30020	g/dL	NA	NA	NA	NA	335585	('haemoglobin_concentration_device_id', '30023')	441
+hdl_cholesterol	30760	mmol/L	0.05	5	4.65	1	307048	('hdl_cholesterol_aliquot', '30762')	366
+red_blood_cell_count	30010	10^12 cells/Liter	NA	NA	NA	NA	335585	('red_blood_cell_count_device_id', '30013')	523
+eosinophil_percent	30210	%	NA	NA	NA	NA	335084	('eosinophil_percent_device_id', '30213')	449

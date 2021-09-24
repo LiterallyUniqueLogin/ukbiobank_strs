@@ -34,7 +34,7 @@ def main():
     with open(f'{ukb}/export/combined/finemapped_loci.tab', 'w') as out:
         first_phen = True
         for phenotype in phenotypes:
-            with open(f'{ukb}/export/{phenotype}/{phenotype}_table.tab') as table:
+            with open(f'{ukb}/finemapping/summary/{phenotype}_table.tab') as table:
                 if first_phen:
                     header = next(table)
                     split = header.strip().split('\t')
@@ -49,11 +49,11 @@ def main():
                 for line in table:
                     split = line.strip().split('\t')
                     association_p_value = float(split[association_p_value_index])
-                    if association_p_value != 0 and -np.log10(association_p_value) < 15:
+                    if association_p_value != 0 and -np.log10(association_p_value) < 10:
                         continue
-                    if float(split[pcausal_index]) < .4:
+                    if float(split[pcausal_index]) < .8:
                         continue
-                    if float(split[subset_multiallelicness_index]) < .05:
+                    if float(split[subset_multiallelicness_index]) < .025:
                         continue
                     write_line(out, split, indices, phenotype)
             first_phen = False

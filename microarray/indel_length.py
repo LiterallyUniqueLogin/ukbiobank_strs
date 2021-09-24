@@ -58,11 +58,6 @@ for chrom in range(1, 23):
             print(chrom, pos, oria1, oria2)
             assert False
 
-        '''
-        if len(a1) > 1 and len(a2) > 1 and not a1.startswith(a2) and not a2.startswith(a1):
-            print(chrom, pos, a1, a2)
-            assert False
-        '''
         if len(a1) > len(a2):
             del_size = len(a1) - len(a2)
             del_sizes[del_size] += 1
