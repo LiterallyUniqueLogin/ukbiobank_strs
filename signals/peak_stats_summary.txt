@@ -1,174 +1,174 @@
-# phenos: 14
-# peaks total: 5940
+# phenos: 32
+# peaks total: 12634
 ----------regular----------
-# all peaks: 424.29 (126.00)
-min # all peaks: total_bilirubin, 154   max: platelet_count, 634
+# all peaks: 394.81 (132.11)
+min # all peaks: mean_corpuscular_haemoglobin_concentration, 128   max: platelet_count, 634
 
-# tagged by SNP variant: 417.14 (123.69)
-min # tagged by SNP variant: total_bilirubin, 151   max: platelet_count, 623
-% tagged by SNP variant out of all peaks: 98.36% (0.64%)
-min % tagged by SNP variant: haematocrit, 97.42%   max: ldl_cholesterol_direct, 100.00%
-total: 98.32%
+# tagged by SNP variant: 389.81 (130.49)
+min # tagged by SNP variant: mean_corpuscular_haemoglobin_concentration, 125   max: platelet_count, 623
+% tagged by SNP variant out of all peaks: 98.74% (0.71%)
+min % tagged by SNP variant: haematocrit, 97.42%   max: 2 phenos, 100.00%
+total: 98.73%
 
-# SNP peaks: 364.93 (104.45)
-min # SNP peaks: total_bilirubin, 133   max: platelet_count, 534
-% SNP peaks out of all peaks: 86.41% (2.16%)
+# SNP peaks: 342.56 (110.59)
+min # SNP peaks: mean_corpuscular_haemoglobin_concentration, 116   max: platelet_count, 534
+% SNP peaks out of all peaks: 87.22% (2.10%)
 min % SNP peaks: red_blood_cell_count, 82.60%   max: ldl_cholesterol_direct, 92.31%
-total: 86.01%
+total: 86.77%
 
-# unmatched SNP peaks: 112.29 (32.18)
-min # unmatched SNP peaks: total_bilirubin, 47   max: haemoglobin_concentration, 157
-% unmatched SNP peaks out of SNP peaks: 31.25% (4.61%)
+# unmatched SNP peaks: 104.56 (31.33)
+min # unmatched SNP peaks: mean_corpuscular_haemoglobin_concentration, 34   max: haemoglobin_concentration, 157
+% unmatched SNP peaks out of SNP peaks: 31.05% (4.06%)
 min % unmatched SNP peaks: eosinophil_percent, 24.68%   max: haemoglobin_concentration, 40.36%
-total: 30.77%
+total: 30.52%
 
-# tagged by STR variant: 312.00 (100.51)
-min # tagged by STR variant: total_bilirubin, 107   max: platelet_count, 487
-% tagged by STR variant out of all peaks: 72.96% (4.31%)
+# tagged by STR variant: 290.25 (105.25)
+min # tagged by STR variant: mean_corpuscular_haemoglobin_concentration, 94   max: platelet_count, 487
+% tagged by STR variant out of all peaks: 72.89% (3.79%)
 min % tagged by STR variant: haemoglobin_concentration, 64.40%   max: eosinophil_percent, 78.84%
-total: 73.54%
+total: 73.52%
 
-# STR peaks: 58.36 (23.00)
-min # STR peaks: ldl_cholesterol_direct, 12   max: platelet_count, 98
-% STR peaks out of all peaks: 13.23% (2.39%)
-min % STR peaks: ldl_cholesterol_direct, 6.59%   max: red_blood_cell_count, 17.21%
-total: 13.75%
+# STR peaks: 50.47 (22.33)
+min # STR peaks: 3 phenos, 12   max: platelet_count, 98
+% STR peaks out of all peaks: 12.27% (2.32%)
+min % STR peaks: apolipoprotein_b, 6.06%   max: red_blood_cell_count, 17.21%
+total: 12.78%
 
-# unmatched STR peaks: 7.14 (3.18)
-min # unmatched STR peaks: ldl_cholesterol_direct, 0   max: white_blood_cell_count, 12
-% unmatched STR peaks out of STR peaks: 12.06% (4.80%)
-min % unmatched STR peaks: ldl_cholesterol_direct, 0.00%   max: haematocrit, 19.30%
-total: 12.24%
+# unmatched STR peaks: 5.00 (3.16)
+min # unmatched STR peaks: 2 phenos, 0   max: white_blood_cell_count, 12
+% unmatched STR peaks out of STR peaks: 10.03% (5.79%)
+min % unmatched STR peaks: 2 phenos, 0.00%   max: mean_corpuscular_haemoglobin_concentration, 25.00%
+total: 9.91%
 
-# shared min_p peaks: 1.00 (1.13)
-min # shared min_p peaks: 7 phenos, 0   max: 2 phenos, 3
+# shared min_p peaks: 1.78 (2.00)
+min # shared min_p peaks: 13 phenos, 0   max: mean_platelet_volume, 8
 
-# STR min_p peaks: 0.07 (0.26)
-min # STR min_p peaks: 13 phenos, 0   max: white_blood_cell_count, 1
+# STR min_p peaks: 0.03 (0.17)
+min # STR min_p peaks: 31 phenos, 0   max: white_blood_cell_count, 1
 
-{'eosinophil_count': 5, 'lymphocyte_percent': 1, 'haematocrit': 18, 'eosinophil_percent': 4, 'lymphocyte_count': 2, 'white_blood_cell_count': 1, 'haemoglobin_concentration': 9}
-avg rank of best STR peak (phenos with shared max peaks skipped): 5.71 (5.65)
-best rank: 2 phenos, 1   worst rank: haematocrit, 18
-avg rank of best STR peak (ignore shared max peaks): 7.93 (5.78)
-best rank: 2 phenos, 1   worst rank: haematocrit, 18
+{'eosinophil_count': 5, 'lymphocyte_percent': 1, 'mean_corpuscular_haemoglobin_concentration': 18, 'alanine_aminotransferase': 22, 'haematocrit': 18, 'eosinophil_percent': 4, 'neutrophil_percent': 1, 'creatinine': 14, 'albumin': 48, 'lymphocyte_count': 2, 'aspartate_aminotransferase': 5, 'white_blood_cell_count': 1, 'haemoglobin_concentration': 9}
+avg rank of best STR peak (phenos with shared max peaks skipped): 11.38 (12.71)
+best rank: 3 phenos, 1   worst rank: albumin, 48
+avg rank of best STR peak (ignore shared max peaks): 11.19 (9.56)
+best rank: 3 phenos, 1   worst rank: albumin, 48
 
 ----------more sig----------
-# all peaks: 335.00 (105.83)
-min # all peaks: total_bilirubin, 119   max: platelet_count, 542
+# all peaks: 316.34 (111.15)
+min # all peaks: mean_corpuscular_haemoglobin_concentration, 98   max: platelet_count, 542
 
-# tagged by SNP variant: 331.07 (105.00)
-min # tagged by SNP variant: total_bilirubin, 118   max: platelet_count, 538
-% tagged by SNP variant out of all peaks: 98.82% (0.72%)
+# tagged by SNP variant: 312.84 (110.07)
+min # tagged by SNP variant: mean_corpuscular_haemoglobin_concentration, 96   max: platelet_count, 538
+% tagged by SNP variant out of all peaks: 98.88% (0.62%)
 min % tagged by SNP variant: haematocrit, 96.97%   max: neutrophil_count, 99.69%
-total: 98.83%
+total: 98.89%
 
-# SNP peaks: 288.86 (89.07)
-min # SNP peaks: total_bilirubin, 103   max: platelet_count, 465
-% SNP peaks out of all peaks: 86.56% (2.17%)
+# SNP peaks: 274.03 (93.50)
+min # SNP peaks: mean_corpuscular_haemoglobin_concentration, 88   max: platelet_count, 465
+% SNP peaks out of all peaks: 87.02% (2.02%)
 min % SNP peaks: red_blood_cell_count, 81.55%   max: ldl_cholesterol_direct, 92.21%
-total: 86.23%
+total: 86.62%
 
-# unmatched SNP peaks: 82.43 (23.20)
-min # unmatched SNP peaks: total_bilirubin, 33   max: platelet_count, 129
-% unmatched SNP peaks out of SNP peaks: 29.12% (3.43%)
-min % unmatched SNP peaks: eosinophil_percent, 22.40%   max: ldl_cholesterol_direct, 35.92%
-total: 28.54%
+# unmatched SNP peaks: 79.69 (23.44)
+min # unmatched SNP peaks: mean_corpuscular_haemoglobin_concentration, 19   max: platelet_count, 129
+% unmatched SNP peaks out of SNP peaks: 29.69% (4.00%)
+min % unmatched SNP peaks: mean_corpuscular_haemoglobin_concentration, 21.59%   max: ldl_cholesterol_direct, 35.92%
+total: 29.08%
 
-# tagged by STR variant: 252.57 (84.73)
-min # tagged by STR variant: total_bilirubin, 86   max: platelet_count, 413
-% tagged by STR variant out of all peaks: 74.74% (3.44%)
-min % tagged by STR variant: ldl_cholesterol_direct, 66.88%   max: eosinophil_percent, 80.91%
-total: 75.39%
+# tagged by STR variant: 236.66 (90.15)
+min # tagged by STR variant: mean_corpuscular_haemoglobin_concentration, 79   max: mean_platelet_volume, 425
+% tagged by STR variant out of all peaks: 74.14% (3.76%)
+min % tagged by STR variant: ldl_cholesterol_direct, 66.88%   max: mean_platelet_volume, 80.95%
+total: 74.81%
 
-# STR peaks: 45.14 (18.23)
-min # STR peaks: ldl_cholesterol_direct, 10   max: platelet_count, 75
-% STR peaks out of all peaks: 12.99% (2.50%)
+# STR peaks: 40.53 (18.22)
+min # STR peaks: 2 phenos, 10   max: mean_platelet_volume, 76
+% STR peaks out of all peaks: 12.36% (2.33%)
 min % STR peaks: ldl_cholesterol_direct, 6.49%   max: red_blood_cell_count, 18.20%
-total: 13.48%
+total: 12.81%
 
-# unmatched STR peaks: 3.93 (2.46)
-min # unmatched STR peaks: 3 phenos, 1   max: haematocrit, 9
-% unmatched STR peaks out of STR peaks: 8.96% (4.77%)
+# unmatched STR peaks: 3.50 (2.22)
+min # unmatched STR peaks: 6 phenos, 1   max: 2 phenos, 9
+% unmatched STR peaks out of STR peaks: 9.40% (5.32%)
 min % unmatched STR peaks: neutrophil_count, 2.50%   max: haematocrit, 21.43%
-total: 8.70%
+total: 8.64%
 
 ----------most sig----------
-# all peaks: 283.07 (94.14)
-min # all peaks: total_bilirubin, 96   max: platelet_count, 469
+# all peaks: 268.34 (100.07)
+min # all peaks: mean_corpuscular_haemoglobin_concentration, 80   max: mean_platelet_volume, 470
 
-# tagged by SNP variant: 280.21 (93.42)
-min # tagged by SNP variant: total_bilirubin, 95   max: platelet_count, 467
-% tagged by SNP variant out of all peaks: 99.00% (0.52%)
-min % tagged by SNP variant: haemoglobin_concentration, 97.96%   max: ldl_cholesterol_direct, 100.00%
-total: 98.99%
+# tagged by SNP variant: 265.59 (99.19)
+min # tagged by SNP variant: mean_corpuscular_haemoglobin_concentration, 79   max: platelet_count, 467
+% tagged by SNP variant out of all peaks: 98.98% (0.63%)
+min % tagged by SNP variant: albumin, 96.81%   max: 3 phenos, 100.00%
+total: 98.98%
 
-# SNP peaks: 243.71 (79.11)
-min # SNP peaks: total_bilirubin, 81   max: platelet_count, 400
-% SNP peaks out of all peaks: 86.41% (2.57%)
+# SNP peaks: 232.12 (84.32)
+min # SNP peaks: mean_corpuscular_haemoglobin_concentration, 71   max: platelet_count, 400
+% SNP peaks out of all peaks: 86.87% (2.20%)
 min % SNP peaks: red_blood_cell_count, 80.35%   max: ldl_cholesterol_direct, 92.68%
-total: 86.10%
+total: 86.50%
 
-# unmatched SNP peaks: 72.64 (21.87)
-min # unmatched SNP peaks: total_bilirubin, 24   max: platelet_count, 109
-% unmatched SNP peaks out of SNP peaks: 30.10% (2.97%)
-min % unmatched SNP peaks: eosinophil_percent, 25.35%   max: white_blood_cell_count, 36.09%
-total: 29.81%
+# unmatched SNP peaks: 68.59 (22.08)
+min # unmatched SNP peaks: mean_corpuscular_haemoglobin_concentration, 17   max: platelet_count, 109
+% unmatched SNP peaks out of SNP peaks: 30.02% (4.20%)
+min % unmatched SNP peaks: mean_platelet_volume, 21.88%   max: albumin, 38.37%
+total: 29.55%
 
-# tagged by STR variant: 210.43 (74.14)
-min # tagged by STR variant: total_bilirubin, 72   max: platelet_count, 360
-% tagged by STR variant out of all peaks: 73.97% (2.88%)
-min % tagged by STR variant: white_blood_cell_count, 68.21%   max: eosinophil_percent, 78.05%
-total: 74.34%
+# tagged by STR variant: 199.75 (80.60)
+min # tagged by STR variant: mean_corpuscular_haemoglobin_concentration, 63   max: mean_platelet_volume, 384
+% tagged by STR variant out of all peaks: 73.90% (3.88%)
+min % tagged by STR variant: albumin, 64.89%   max: mean_platelet_volume, 81.70%
+total: 74.44%
 
-# STR peaks: 38.36 (16.65)
-min # STR peaks: ldl_cholesterol_direct, 7   max: 2 phenos, 67
-% STR peaks out of all peaks: 13.05% (2.78%)
+# STR peaks: 34.44 (16.38)
+min # STR peaks: ldl_cholesterol_direct, 7   max: mean_platelet_volume, 69
+% STR peaks out of all peaks: 12.39% (2.49%)
 min % STR peaks: ldl_cholesterol_direct, 5.69%   max: red_blood_cell_count, 19.36%
-total: 13.55%
+total: 12.83%
 
-# unmatched STR peaks: 2.86 (1.55)
-min # unmatched STR peaks: ldl_cholesterol_direct, 0   max: 3 phenos, 5
-% unmatched STR peaks out of STR peaks: 7.36% (3.68%)
-min % unmatched STR peaks: ldl_cholesterol_direct, 0.00%   max: haemoglobin_concentration, 13.51%
-total: 7.45%
+# unmatched STR peaks: 2.75 (1.73)
+min # unmatched STR peaks: 3 phenos, 0   max: 2 phenos, 6
+% unmatched STR peaks out of STR peaks: 8.39% (6.49%)
+min % unmatched STR peaks: 3 phenos, 0.00%   max: albumin, 37.50%
+total: 7.99%
 
 ----------wider----------
-# all peaks: 282.07 (74.33)
-min # all peaks: total_bilirubin, 114   max: platelet_count, 380
+# all peaks: 261.03 (75.32)
+min # all peaks: mean_corpuscular_haemoglobin_concentration, 98   max: platelet_count, 380
 
-# tagged by SNP variant: 278.57 (73.70)
-min # tagged by SNP variant: total_bilirubin, 112   max: platelet_count, 377
-% tagged by SNP variant out of all peaks: 98.76% (0.85%)
-min % tagged by SNP variant: haematocrit, 97.32%   max: ldl_cholesterol_direct, 100.00%
-total: 98.76%
+# tagged by SNP variant: 258.75 (74.62)
+min # tagged by SNP variant: mean_corpuscular_haemoglobin_concentration, 97   max: platelet_count, 377
+% tagged by SNP variant out of all peaks: 99.15% (0.76%)
+min % tagged by SNP variant: haematocrit, 97.32%   max: 6 phenos, 100.00%
+total: 99.13%
 
-# SNP peaks: 242.00 (62.22)
-min # SNP peaks: total_bilirubin, 100   max: platelet_count, 325
-% SNP peaks out of all peaks: 86.16% (2.57%)
+# SNP peaks: 225.16 (62.54)
+min # SNP peaks: mean_corpuscular_haemoglobin_concentration, 89   max: platelet_count, 325
+% SNP peaks out of all peaks: 86.71% (2.43%)
 min % SNP peaks: red_blood_cell_count, 81.06%   max: ldl_cholesterol_direct, 92.97%
-total: 85.79%
+total: 86.26%
 
-# unmatched SNP peaks: 62.57 (16.96)
-min # unmatched SNP peaks: total_bilirubin, 37   max: haemoglobin_concentration, 101
-% unmatched SNP peaks out of SNP peaks: 26.84% (6.36%)
-min % unmatched SNP peaks: platelet_crit, 18.12%   max: haemoglobin_concentration, 37.83%
-total: 25.86%
+# unmatched SNP peaks: 57.59 (14.39)
+min # unmatched SNP peaks: mean_corpuscular_haemoglobin_concentration, 30   max: haemoglobin_concentration, 101
+% unmatched SNP peaks out of SNP peaks: 26.61% (5.59%)
+min % unmatched SNP peaks: mean_platelet_volume, 17.67%   max: haemoglobin_concentration, 37.83%
+total: 25.58%
 
-# tagged by STR variant: 219.50 (66.36)
-min # tagged by STR variant: total_bilirubin, 77   max: platelet_count, 315
-% tagged by STR variant out of all peaks: 76.81% (5.82%)
-min % tagged by STR variant: haemoglobin_concentration, 66.89%   max: platelet_crit, 84.37%
-total: 77.82%
+# tagged by STR variant: 203.44 (67.11)
+min # tagged by STR variant: mean_corpuscular_haemoglobin_concentration, 68   max: platelet_count, 315
+% tagged by STR variant out of all peaks: 76.86% (5.22%)
+min % tagged by STR variant: haemoglobin_concentration, 66.89%   max: mean_platelet_volume, 85.07%
+total: 77.94%
 
-# STR peaks: 39.14 (13.85)
+# STR peaks: 34.19 (13.63)
 min # STR peaks: ldl_cholesterol_direct, 7   max: red_blood_cell_count, 60
-% STR peaks out of all peaks: 13.39% (2.88%)
+% STR peaks out of all peaks: 12.59% (2.68%)
 min % STR peaks: ldl_cholesterol_direct, 5.47%   max: red_blood_cell_count, 18.63%
-total: 13.88%
+total: 13.10%
 
-# unmatched STR peaks: 3.50 (2.38)
-min # unmatched STR peaks: ldl_cholesterol_direct, 0   max: haematocrit, 8
-% unmatched STR peaks out of STR peaks: 9.12% (6.17%)
-min % unmatched STR peaks: ldl_cholesterol_direct, 0.00%   max: haematocrit, 18.60%
-total: 8.94%
+# unmatched STR peaks: 2.28 (2.11)
+min # unmatched STR peaks: 6 phenos, 0   max: haematocrit, 8
+% unmatched STR peaks out of STR peaks: 6.65% (5.94%)
+min % unmatched STR peaks: 6 phenos, 0.00%   max: c_reactive_protein, 20.00%
+total: 6.67%
 

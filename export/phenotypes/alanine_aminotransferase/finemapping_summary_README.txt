@@ -1,0 +1,1 @@
+../../../finemapping/summary/alanine_aminotransferase_table_README.txt

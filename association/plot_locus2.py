@@ -24,17 +24,25 @@ parser.add_argument('imputation_run_name')
 parser.add_argument('chrom', type=int)
 parser.add_argument('pos', type=int)
 parser.add_argument('phenotype')
-parser.add_argument('unit')
 parser.add_argument('dosage_fraction_threshold', type=float)
+parser.add_argument('--unit')
+parser.add_argument('--binary', action='store_true', default=False)
 args = parser.parse_args()
+
+assert bool(args.unit) or args.binary
 
 if args.dosage_fraction_threshold is not None:
     assert 0 <= args.dosage_fraction_threshold <= 1
 
+if not args.binary:
+    y_axis_label='Mean ' + args.phenotype.replace('_', ' ') + f' ({args.unit})'
+else:
+    y_axis_label='Fraction '+ args.phenotype.replace('_', ' ') + ' cases'
+
 figure = bokeh.plotting.figure(
     width = 600,
     height = 600,
-    y_axis_label='Mean ' + args.phenotype.replace('_', ' ') + f' ({args.unit})',
+    y_axis_label=y_axis_label,
     x_axis_label='Sum of allele lengths (repeat copies)'
 )
 figure.xgrid.grid_line_color = None
@@ -42,7 +50,11 @@ figure.ygrid.grid_line_color = None
 figure.background_fill_color = None
 figure.border_fill_color = None
 
-results_fname = f'{ukb}/association/results/{args.phenotype}/my_str/results.tab'
+if not args.binary:
+    run_type = 'my_str'
+else:
+    run_type = 'my_str_linear'
+results_fname = f'{ukb}/association/results/{args.phenotype}/{run_type}/results.tab'
 with open(results_fname) as results:
     header = next(results).strip().split('\t')
 
@@ -127,7 +139,11 @@ for allele in alleles_copy:
         alleles.remove(allele)
 alleles = sorted(alleles)
 
-mean_per_dosage = {float(allele): val for allele, val in ast.literal_eval(result[header.index(f'mean_{args.phenotype}_per_single_dosage')]).items()}
+if not args.binary:
+    stat_name = 'mean'
+else:
+    stat_name = 'fraction'
+mean_per_dosage = {float(allele): val for allele, val in ast.literal_eval(result[header.index(f'{stat_name}_{args.phenotype}_per_single_dosage')]).items()}
 ci5e_2 = {float(allele): val for allele, val in ast.literal_eval(result[header.index('0.05_significance_CI')]).items()}
 ci5e_8 = {float(allele): val for allele, val in ast.literal_eval(result[header.index('5e-8_significance_CI')]).items()}
 '''
@@ -161,4 +177,4 @@ figure.add_layout(bokeh.models.Title(text="People contribute to each genotype ba
 figure.add_layout(bokeh.models.Title(text="Only considers tested individuals", align="center"), "below")
 figure.add_layout(bokeh.models.Title(text=f"Genotypes with dosages less than {100*args.dosage_fraction_threshold}% of the population are omitted", align="center"), "below")
 
-bokeh.io.export_svg(figure, filename=f'{ukb}/export/figures/cool_loci/{args.phenotype}_{args.chrom}_{args.pos}_{args.dosage_fraction_threshold}.svg')
+bokeh.io.export_svg(figure, filename=f'{ukb}/association/locus_plots/{args.phenotype}_{args.chrom}_{args.pos}_{args.dosage_fraction_threshold}.svg')

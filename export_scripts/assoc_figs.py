@@ -3,6 +3,7 @@
 import os
 
 import matplotlib.cm
+import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -76,7 +77,7 @@ def validate_our_code():
         suggestiveline=False
     )
 
-    plt.savefig(f'{ukb}/export/figures/validate_our_code.png')
+    plt.savefig(f'{ukb}/export_scripts/results/validate_our_code.png')
 
 # currently unused, doesn't seem like a figure we want
 def compare_to_panukbb_b():
@@ -117,7 +118,7 @@ def scatter_with_panukbb():
 
     print('loading plink ... ', flush=True)
     my_pipeline_df = pd.read_csv(
-        f'{ukb}/association/results/eosinophil_count/plink_snp/results.tab',
+        f'{ukb}/association/results/total_bilirubin/plink_snp/results.tab',
         header=0,
         delimiter='\t',
         usecols=['#CHROM', 'POS', 'P', 'REF', 'ALT'],
@@ -136,20 +137,29 @@ def scatter_with_panukbb():
         suffixes=('_panukbb', '_mine')
     )
 
+    merged['p_panukbb'] = np.maximum(1e-300, merged['p_panukbb'])
+    merged['p_mine'] = np.maximum(1e-300, merged['p_mine'])
+
     merged['p_panukbb'] = -np.log10(merged['p_panukbb'])
     merged['p_mine'] = -np.log10(merged['p_mine'])
+
+    merged['p_panukbb'] = np.minimum(50, merged['p_panukbb'])
+    merged['p_mine'] = np.minimum(50, merged['p_mine'])
 
     print('plotting ... ', flush=True)
     figure, ax = plt.subplots(1, 1)
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlabel('p_panukbb')
-    ax.set_ylabel('p_our_pipeline')
-    hexbin = ax.hexbin(merged['p_panukbb'], merged['p_mine'], gridsize=100, cmap='inferno', bins='log')
+    ax.set_xlabel('-log10(p panukbb)')
+    ax.set_ylabel('-log10(p our pipeline)')
+    # From colorbrewer
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list(name='meh', colors=['#e5f5f9', '#99d8c9', '#2ca25f'])
+    hexbin = ax.hexbin(merged['p_panukbb'], merged['p_mine'], gridsize=100, cmap=cmap, bins='log')
     cb = figure.colorbar(hexbin, ax=ax)
     cb.set_label('counts')
+    figure.show()
 
-    plt.savefig(f'{ukb}/export/figures/panukbb_scatter.png')
+    plt.savefig(f'{ukb}/export_scripts/results/panukbb_scatter.png')
 
 if __name__ == '__main__':
-    #validate_our_code()
+    validate_our_code()
     scatter_with_panukbb()

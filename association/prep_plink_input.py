@@ -21,6 +21,8 @@ shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
 
 subset_transformed_phenotype = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{phenotype}.npy')
 
+# shared covars here aren't necessarily going to have exactly mean 0 and std 1
+# because they were standardized before subsetting, but that's okay
 data = utils.merge_arrays(
     subset_transformed_phenotype,
     shared_covars

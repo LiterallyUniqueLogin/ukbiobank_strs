@@ -447,6 +447,7 @@ pheno_descs.update(serum_biomarkers)
 def is_binary(phenotype):
     return 'binary' in pheno_descs[phenotype].unit
 
+'''
 phenotypes_in_use = {
     'eosinophil_count',
     'eosinophil_percent',
@@ -457,11 +458,35 @@ phenotypes_in_use = {
     'lymphocyte_count',
     'lymphocyte_percent',
     'neutrophil_count',
-    #'neutrophil_percent',
+    'neutrophil_percent',
     'platelet_count',
     'platelet_crit',
     'red_blood_cell_count',
     'total_bilirubin',
     'white_blood_cell_count',
 }
+'''
+phenotypes_in_use = set(
+    key for key in haematological_phenotypes if 'reticulocyte' not in key
+)
+phenotypes_in_use = phenotypes_in_use.union([
+    'ldl_cholesterol_direct',
+    'total_bilirubin',
+])
+phenotypes_in_use = phenotypes_in_use.union(sorted(serum_biomarkers)[:10])
+
+# temporary
+'''
+phenotypes_in_use = phenotypes_in_use.difference({
+    'alanine_aminotransferase',
+    'aspartate_aminotransferase',
+    'alkaline_phosphatase',
+    'apolipoprotein_b',
+    'c_reactive_protein',
+    'creatinine',
+    'calcium'
+})
+'''
+
 phenotypes_in_use = sorted(phenotypes_in_use)
+

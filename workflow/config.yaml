@@ -21,7 +21,7 @@ cluster:
     --partition shared
     --export ALL
     --nodes 1
-    --job-name={rule}
+    --job-name={rule}-{wildcards}
     --output=logs/{rule}/{rule}-{wildcards}-%j.out
     --mail-type FAIL
     --mail-user jbmargoliash@ucsd.edu

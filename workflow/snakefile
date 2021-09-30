@@ -214,7 +214,7 @@ rule plot_str_locus2:
         'association/results/{phenotype}/my_str/results.tab',
         'traits/subset_transformed_phenotypes/{phenotype}.npy'
     output:
-        'export/figures/cool_loci/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg'
+        'association/locus_plots/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg'
     resources:
         time='00:30:00'
     run:
@@ -222,8 +222,8 @@ rule plot_str_locus2:
         shell(
             f'association/plot_locus2.py {str_imputation_run_name} '
             '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
-            f"'{unit}' "
             '{wildcards.dosage_fraction_threshold} '
+            f"--unit '{unit}' "
         )
 
 ##################### Running and Plotting Associations ###########################
@@ -863,6 +863,14 @@ checkpoint generate_regions:
     shell:
         'signals/regions.py {wildcards.phenotype} {input.strs} {input.imputed_snps} {output.out} '
 
+def generated_regions(phenotype):
+    checkpoints.generate_regions.get(phenotype=phenotype)
+    with open(f'signals/regions/{phenotype}.tab') as signal_file:
+        next(signal_file)
+        for line in signal_file:
+            yield line.split()
+            # chrom, start, stop
+
 def peak_snp_input_inputs(wildcards):
     if not phenotypes.is_binary(wildcards.phenotype):
         runtype_suffix = ''
@@ -920,6 +928,22 @@ rule generate_peaks:
         'signals/peaks.py {wildcards.phenotype} {wildcards.spacing} {input.strs} {input.imputed_snps} '
         '{output.readme} {output.out} '
 
+rule peak_stats:
+    input:
+        'workflow/phenotypes.py',
+        [fname for phenotype in phenotypes.phenotypes_in_use
+         for fname in 
+         (f'signals/peaks/{phenotype}_500000_5e-8.tab',
+          f'signals/peaks/{phenotype}_500000_5e-9.tab',
+          f'signals/peaks/{phenotype}_500000_5e-10.tab',
+          f'signals/peaks/{phenotype}_2000000_5e-8.tab')]
+    output:
+        'signals/peak_stats_summary.txt',
+    resources:
+        time='00:05:00'
+    shell:
+        'signals/peak_stats.py > signals/peak_stats_summary.txt ; '
+
 rule peak_manhattan:
     input:
         "traits/phenotypes/{phenotype}_unit.txt",
@@ -971,16 +995,11 @@ def regional_plink_imputed_snp_logistic_regressions(wildcards):
 
     phenotype = wildcards.phenotype
 
-    checkpoints.generate_regions.get(phenotype=phenotype)
-
     target_files = []
-    with open(f'signals/regions/{phenotype}.tab') as signal_file:
-        next(signal_file)
-        for line in signal_file:
-            chrom, start, stop = line.split()
-            target_files.append(
-                f'association/results/{phenotype}/plink_snp_logistic/batches/chr{chrom}_{start}_{stop}/plink2.{phenotype}.glm.logistic.hybrid.done'
-            )
+    for chrom, start, stop in generated_regions(phenotype):
+        target_files.append(
+            f'association/results/{phenotype}/plink_snp_logistic/batches/chr{chrom}_{start}_{stop}/plink2.{phenotype}.glm.logistic.hybrid.done'
+        )
 
     return target_files
 
@@ -999,16 +1018,11 @@ def regional_my_str_logistic_regressions(wildcards):
 
     phenotype = wildcards.phenotype
 
-    checkpoints.generate_regions.get(phenotype=phenotype)
-
     target_files = []
-    with open(f'signals/regions/{phenotype}.tab') as signal_file:
-        next(signal_file)
-        for line in signal_file:
-            chrom, start, stop = line.split()
-            target_files.append(
-                f"association/results/{phenotype}/my_str_logistic/batches/chr{chrom}_{start}_{stop}.tab"
-            )
+    for chrom, start, stop in generated_regions(phenotype):
+        target_files.append(
+            f"association/results/{phenotype}/my_str_logistic/batches/chr{chrom}_{start}_{stop}.tab"
+        )
 
     return target_files
 
@@ -1127,15 +1141,11 @@ def collect_finemap_output_all_regions(wildcards):
     phenotype = wildcards.phenotype
     files = []
     # make sure we've loaded all input variants for all regions
-    checkpoints.generate_regions.get(phenotype=phenotype)
     target_files = []
-    with open(f'signals/regions/{phenotype}.tab') as signal_file:
-        next(signal_file)
-        for line in signal_file:
-            chrom, start, stop = line.split()
-            target_files.append(
-                f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/done'
-            )
+    for chrom, start, stop in generated_regions(phenotype):
+        target_files.append(
+            f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/done'
+        )
 
     return target_files
 
@@ -1185,8 +1195,91 @@ rule manhattan_finemap:
 
 #-------------------SuSiE----------------
 
+checkpoint susie_load_gts:
+    input:
+        f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
+        'association/results/{phenotype}/plink_snp/results.tab',
+        'association/results/{phenotype}/my_str/results.tab',
+        'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
+    output:
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
+    resources:
+        time = '02:00:00',
+        mem_gb = 20
+    shell:
+        'finemapping/susie_load_gts.py '
+        f'{str_imputation_run_name} '
+        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.end} '
 
-######################### Final Results Summary ########################
+rule susie_run:
+    input:
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt',
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
+    output:
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/susie_fit.RData'),
+    resources:
+        time = '01:00:00',
+        mem_gb = 40
+    conda:
+        'envs/ukb_susier.env.yml'
+    shell:
+        'Rscript finemapping/susie_run.r '
+        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.end} '
+
+def susie_run_region_input(wildcards):
+    phenotype = wildcards.phenotype
+    chrom = wildcards.chrom
+    start = wildcards.start
+    end = wildcards.end
+    checkpoints.susie_load_gts.get(
+        phenotype=phenotype, chrom=chrom, start=start, end=end
+    )
+    region_dir = \
+        f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}'
+    if os.path.exists(f'{region_dir}/no_strs'):
+        # file already created, nothing to be done
+        return f'{region_dir}/no_strs'
+    else:
+        # ask for finemapping of this region
+        return f'{region_dir}/susie_fit.RData'
+
+rule susie_run_region:
+    input:
+        susie_run_region_input
+    output:
+        done='finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/done'
+    resources:
+        time='00:01:00'
+    shell:
+        'touch {output.done} '
+
+def collect_susie_output_all_regions(wildcards):
+    assert not phenotypes.is_binary(wildcards.phenotype)
+    phenotype = wildcards.phenotype
+    files = []
+    # make sure we've loaded all input variants for all regions
+    target_files = []
+    for chrom, start, stop in generated_regions(phenotype):
+        target_files.append(
+            f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{stop}/done'
+        )
+
+    return target_files
+
+rule run_susie_phenotype:
+    input:
+        collect_susie_output_all_regions
+    output:
+        'finemapping/susie_results/{phenotype}/all_signals_done'
+    resources:
+        time='00:01:00'
+    shell:
+        'touch finemapping/susie_results/{wildcards.phenotype}/all_signals_done'
 
 rule sort_gencode:
     input:
@@ -1275,7 +1368,7 @@ checkpoint produce_summary_table:
         'finemapping/summary/{phenotype}_table_README.txt',
         'finemapping/summary/{phenotype}_table.tab'
     resources:
-        time='01:00:00',
+        time='05:00:00',
         mem_gb = 50
     run:
         STRs = ''
@@ -1290,7 +1383,6 @@ checkpoint produce_summary_table:
             command += ' --previous-STR-findings ' + STRs
         shell(command)
 
-
 rule graph_finemap_output:
     input:
         'finemapping/summary/{phenotype}_table.tab'
@@ -1301,6 +1393,101 @@ rule graph_finemap_output:
         mem_gb = 50
     shell:
         'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
+
+######################### Create Files to Export ########################
+
+rule create_phenotypes_table:
+    input:
+        'workflow/phenotypes.py',
+        [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in phenotypes.phenotypes_in_use],
+        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
+    output:
+        'export_scripts/results/phenotypes.tab',
+        'export_scripts/results/phenotypes_README.txt'
+    resources:
+        time='00:02:00'
+    shell:
+        'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
+ 
+rule concat_and_filter_finemapping_summary_tables:
+    input:
+        'workflow/phenotypes.py',
+        [f'finemapping/summary/{phenotype}_table.tab' for phenotype in phenotypes.phenotypes_in_use]
+    output:
+        'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
+        'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt'
+    resources:
+        time='00:10:00'
+    run:
+        cmd = 'export_scripts/concat_and_filter_summary_tables.py '
+        for phenotype in phenotypes.phenotypes_in_use:
+            cmd += f'{phenotype} '
+        shell(cmd)
+
+rule assoc_figures:
+    input:
+        'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
+        'association/results/eosinophil_count/plink_snp/results.tab'
+    output:
+        'export_scripts/results/validate_our_code.png',
+    resources:
+        time='00:10:00',
+        mem_gb=10
+    shell:
+        'export_scripts/assoc_figs.py'
+
+######################### Export Files ########################
+
+def link_files(inputs, outputs):
+    for _input, _output in zip(inputs, outputs):
+        _input = '../'*_output.count('/') + _input
+        shell(f"ln -s {_input} {_output}")
+
+rule export_phenotype_summaries:
+    input:
+        'signals/peaks/{phenotype}_500000_5e-8.tab',
+        'signals/peaks/{phenotype}_500000_5e-8_README.txt',
+        'signals/peaks/{phenotype}_2000000_5e-8.tab',
+        'signals/peaks/{phenotype}_500000_5e-9.tab',
+        'signals/peaks/{phenotype}_500000_5e-10.tab',
+        'finemapping/summary/{phenotype}_table_README.txt',
+        'finemapping/summary/{phenotype}_table.tab',
+        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
+        'association/plots/{phenotype}.manhattan.FINEMAP.html'
+    output:
+        'export/phenotypes/{phenotype}/peaks_500000_5e-8.tab',
+        'export/phenotypes/{phenotype}/peaks_500000_5e-8_README.txt',
+        'export/phenotypes/{phenotype}/peaks_2000000_5e-8.tab',
+        'export/phenotypes/{phenotype}/peaks_500000_5e-9.tab',
+        'export/phenotypes/{phenotype}/peaks_500000_5e-10.tab',
+        'export/phenotypes/{phenotype}/finemapping_summary_README.txt',
+        'export/phenotypes/{phenotype}/finemapping_summary.tab',
+        'export/phenotypes/{phenotype}/signal_strengths.html',
+        'export/phenotypes/{phenotype}/manhattan.FINEMAP.html'
+    resources:
+        time='00:05:00'
+    run:
+        link_files(input, output)
+
+rule export_phenotype_signal1:
+    input:
+        'association/plots/{phenotype}.manhattan.chr{chrom}_{start}_{end}_STR_{STR}__ISNP__ASNP.png'
+    output:
+        'export/phenotypes/{phenotype}/region_plots/manhattan.chr{chrom}_{start}_{end}_STR_{STR}__ISNP__ASNP.png'
+    resources:
+        time='00:05:00'
+    run:
+        link_files(input, output)
+
+rule export_phenotype_signal2:
+    input:
+        'association/locus_plots/{phenotype}_{chrom}_{STR}_0.001.svg'
+    output:
+        'export/phenotypes/{phenotype}/region_plots/{phenotype}_{chrom}_{STR}_0.001.svg'
+    resources:
+        time='00:05:00'
+    run:
+        link_files(input, output)
 
 def conditional_plots_sig_strs(wildcards):
     checkpoints.produce_summary_table.get(phenotype=wildcards.phenotype)
@@ -1319,112 +1506,96 @@ def conditional_plots_sig_strs(wildcards):
         )
     return outfiles
      
-rule generate_unconditional_and_conditional_STR_manhattans:
+rule export_phenotype_all_signals:
     input:
         conditional_plots_sig_strs
     output:
-        'finemapping/summary/{phenotype}_conditional_STR_manhattans.done'
+        'export/phenotypes/{phenotype}/region_plots/.exported'
     resources:
         time='00:05:00'
     shell:
-        'touch finemapping/summary/{wildcards.phenotype}_conditional_STR_manhattans.done'
+        'touch export/phenotypes/{wildcards.phenotype}/region_plots/.exported'
 
-rule gather_phenotype_summaries:
+rule export_cool_locus1:
     input:
-        peaks='signals/peaks/{phenotype}_500000_5e-8.tab',
-        peaks_README='signals/peaks/{phenotype}_500000_5e-8_README.txt',
-        peaks_coarser='signals/peaks/{phenotype}_2000000_5e-8.tab',
-        peaks_more_stringent='signals/peaks/{phenotype}_500000_5e-9.tab',
-        peaks_most_stringent='signals/peaks/{phenotype}_500000_5e-10.tab',
-        overview_manhattan='association/plots/{phenotype}.overview.manhattan.png',
-        table_readme='finemapping/summary/{phenotype}_table_README.txt',
-        table='finemapping/summary/{phenotype}_table.tab',
-        signal_strengths='finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
-        interactive_manhattan='association/plots/{phenotype}.manhattan.FINEMAP.html',
-        conditional_plots=conditional_plots_sig_strs,
-        exciting_locus_plots = lambda wildcards: [
-            'export/figures/cool_loci/{phenotype}_' + loc.replace(":", "_") + '_0.01.svg'
-            for loc in phenotypes.pheno_descs[wildcards.phenotype].exciting_STR_hits
-        ]
+        'export/phenotypes/{phenotype}/region_plots/manhattan.chr{chrom}_{start}_{end}_STR_{STR}__ISNP__ASNP.png',
     output:
-        # TODO output directories don't work well
-        directory('export/phenotypes/{phenotype,[^/]+}')
+        'export/combined/cool_loci/{phenotype}_{chrom}.manhattan.{start}_{end}_STR_{STR}__ISNP__ASNP.png',
     resources:
-        time='00:10:00'
-    shell:
-        'mkdir -p {output[0]} ; '
-        'cd {output[0]} ; '
-        'for file in {input.peaks} {input.peaks_README} {input.peaks_coarser} {input.peaks_more_stringent} {input.peaks_most_stringent} '
-        ' {input.overview_manhattan} {input.table} {input.table_readme} {input.signal_strengths} {input.interactive_manhattan} ; do '
-        '    ln -s ../../../$file ; '
-        'done ; '
-        'mkdir region_plots ; '
-        'cd region_plots ; '
-        'for file in {input.conditional_plots} ; do '
-        '    ln -s ../../../../$file ; '
-        'done '
+        time='00:05:00'
+    run:
+        link_files(input, output)
 
-# combined summaries
-
-rule peak_stats:
+rule export_cool_locus2:
     input:
-        [fname for phenotype in phenotypes.phenotypes_in_use
-         for fname in 
-         (f'signals/peaks/{phenotype}_500000_5e-8.tab',
-          f'signals/peaks/{phenotype}_500000_5e-9.tab',
-          f'signals/peaks/{phenotype}_500000_5e-10.tab',
-          f'signals/peaks/{phenotype}_2000000_5e-8.tab')]
+        'export/phenotypes/{phenotype}/region_plots/{phenotype}_{chrom}_{STR}_0.001.svg'
     output:
+        'export/combined/cool_loci/{phenotype}_{chrom}_{STR}_0.001.svg'
+    resources:
+        time='00:05:00'
+    run:
+        link_files(input, output)
+
+def export_cool_loci_input(wildcards):
+    files = []
+    for phenotype in phenotypes.phenotypes_in_use:
+        for loc in phenotypes.pheno_descs[phenotype].exciting_STR_hits:
+            chrom, str_pos = loc.split(':')
+            files.append(
+                f'export/combined/cool_loci/{phenotype}_{chrom}_{str_pos}_0.001.svg'
+            )
+            found_region = False
+            for region_chrom, region_start, region_stop, in generated_regions(phenotype):
+                if chrom == region_chrom and region_start <= str_pos <= region_stop:
+                    files.append(
+                        f'export/combined/cool_loci/{phenotype}_{chrom}.manhattan.{region_start}_{region_stop}_STR_{str_pos}__ISNP__ASNP.png',
+                    )
+                    found_region = True
+                    break
+            assert found_region
+    return files
+
+rule export_cool_loci:
+    input:
+        export_cool_loci_input
+    output:
+        'export/combined/cool_loci/.exported'
+    resources:
+        time='00:01:00'
+    shell:
+        'touch export/combined/cool_loci/.exported'
+
+rule export_combined_summaries_and_figures:
+    input:
         'signals/peak_stats_summary.txt',
-        'export/combined/peak_stats_summary.txt'
-    shell:
-        'signals/peak_stats.py > signals/peak_stats_summary.txt ; '
-        'ln -s ../../signals/peak_stats_summary.txt export/combined '
-
-rule create_phenotypes_table:
-    input:
-        [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in phenotypes.phenotypes_in_use],
-        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
+        'export_scripts/results/phenotypes.tab',
+        'export_scripts/results/phenotypes_README.txt',
+        'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
+        'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
+        'export_scripts/results/validate_our_code.png'
     output:
+        'export/combined/peak_stats_summary.txt',
         'export/combined/phenotypes.tab',
-        'export/combined/phenotypes_README.txt'
+        'export/combined/phenotypes_README.txt',
+        'export/combined/putatively_causal_multiallelic_STRs.tab',
+        'export/combined/putatively_causal_multiallelic_STRs_README.txt',
+        'export/combined/validate_our_code.png'
     resources:
-        time='00:10:00'
+        time='00:05:00'
     run:
-        'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
-        
-
-rule concat_and_filter_finemapping_summary_tables:
-    input:
-        [f'finemapping/summary/{phenotype}_table.tab' for phenotype in phenotypes.phenotypes_in_use]
-    output:
-        'export/combined/finemapped_loci.tab'
-    resources:
-        time='00:10:00'
-    run:
-        cmd = 'export_scripts/concat_and_filter_summary_tables.py '
-        for phenotype in phenotypes.phenotypes_in_use:
-            cmd += f'{phenotype} '
-        shell(cmd)
-
-# figures for paper
-
-rule assoc_figures:
-    input:
-        'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
-        'association/results/eosinophil_count/plink_snp/results.tab'
-    output:
-        'export/figures/validate_our_code.png',
-        'export/figures/panukbb_scatter.png',
-    resources:
-        time='00:10:00'
-    shell:
-        'export_scripts/assoc_figs.py'
-
-# aaand everything
+        link_files(input, output)
 
 rule gather_all_exports:
     input:
-        [f'export/phenotypes/{phenotype}' for phenotype in phenotypes.phenotypes_in_use],
-        'export/figures/',
-        'export/combined/finemapped_loci.tab'
+        'workflow/phenotypes.py',
+        # --- per phenotype ---
+        # stand in for summaries
+        [f'export/phenotypes/{phenotype}/manhattan.FINEMAP.html' for phenotype in phenotypes.phenotypes_in_use],
+        # stand in for region plots
+        [f'export/phenotypes/{phenotype}/region_plots/.exported' for phenotype in phenotypes.phenotypes_in_use],
+
+        # -- total ---
+        'export/combined/cool_loci/.exported',
+        # stand in for combined and figures 
+        [f'export/combined/peak_stats_summary.txt' for phenotype in phenotypes.phenotypes_in_use],
+        

@@ -142,7 +142,7 @@ def main(readme, phenotype, previous_STRs):
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
         (col_dphen_sd, 'linear regression on raw phenotypes vs repeat length on '
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
-        ('pcausal', 'FINEMAP posterior probability causality'),
+        ('pcausal', 'FINEMAP posterior probability of causality'),
         ('included_from_literature', 'Whether or not this row was included in the table '
          'because it was reported previously in the literature. False here means we have '
          'not checked whether or not this is reported in the literature, not that it has not.'),
@@ -453,7 +453,9 @@ def main(readme, phenotype, previous_STRs):
         ].itertuples():
             gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
             gene_type = get_gff_kvp(line.annotation_info, 'gene_type')
-            assert gene_name not in gene_intersections
+            if gene_name in gene_intersections:
+                # already described this gene, just hope the description is the same
+                continue
             gene_intersections[gene_name] = [
                 gene_type,
                 {p: False for p in range(start_pos, end_pos+1)}, # bps covered by gene annotation

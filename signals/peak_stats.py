@@ -136,7 +136,6 @@ def main():
         str_peak_ranks_ignore_shared_max[pheno] = rank
         if not shared_max:
             str_peak_ranks_skip_shared_max_phenos[pheno] = rank
-    assert len(str_peak_ranks_skip_shared_max_phenos) == 7
     assert len(str_peak_ranks_ignore_shared_max) == n_phenos
 
     print(str_peak_ranks_skip_shared_max_phenos)

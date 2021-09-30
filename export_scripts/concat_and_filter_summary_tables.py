@@ -9,8 +9,7 @@ ukb = os.environ['UKB']
 
 def write_line(out, split, indices, extra):
     out.write(
-        '\t'.join(split[idx] for idx in indices)
-        + '\t' + extra + '\n'
+        extra + '\t' + '\t'.join(split[idx] for idx in indices) + '\n'
     )
 
 def main():
@@ -19,6 +18,30 @@ def main():
     args = parser.parse_args()
 
     phenotypes = args.phenotypes
+
+    with open(f'{ukb}/export_scripts/results/putatively_causal_multiallelic_STRs_README.txt', 'w') as readme:
+        readme.write(
+            'Any STR x phenotype association that has p-value <= 1e-10 and '
+            'FINEMAP posterior probability of causality >= 0.8 '
+            'and multiallelicness >= 0.025\n'
+            'phenotype\n'
+            'chrom\n'
+            'start_pos - the start bp of the STR, 1-based\n'
+            'repeat_unit - as preliminarily inferred by TRTools from the reference STR '
+            'sequence and the repeat period stated in the SNPSTR reference panel\n'
+            'multiallelicness - amongst the population being tested for association, '
+            'this is the fraction of total allelic dosage at this locus '
+            'taken up by all alleles but the two most common alleles\n'
+            'association_p_value\n'
+            "pcausal - FINEMAP's posterior probability of causality\n"
+            'relation_to_gene - if this STR is transcribed, for each transcript '
+            'what is the GENCODE gene type of that transcript (i.e. protein coding, '
+            'lncRNA, etc.) and what is the GENCODE feature type of the region the STR '
+            'is in (i.e. intron, exon, etc.)\n'
+            "transcribed - each transcript this STR is in (if any), including the transcript's "
+            "GENCODE gene type (i.e. protein coding, lncRNA, etc.) and the transcript's "
+            'transcript support level (1-5 or missing)\n'
+        )
 
     cols = [
         'chrom',
@@ -31,7 +54,7 @@ def main():
         'transcribed'
     ]
 
-    with open(f'{ukb}/export/combined/finemapped_loci.tab', 'w') as out:
+    with open(f'{ukb}/export_scripts/results/putatively_causal_multiallelic_STRs.tab', 'w') as out:
         first_phen = True
         for phenotype in phenotypes:
             with open(f'{ukb}/finemapping/summary/{phenotype}_table.tab') as table:
@@ -42,6 +65,7 @@ def main():
                     association_p_value_index = split.index('association_p_value')
                     pcausal_index = split.index('pcausal')
                     subset_multiallelicness_index = split.index('subset_multiallelicness')
+                    split[subset_multiallelicness_index] = 'multiallelicness'
                     write_line(out, split, indices, 'phenotype')
                 else:
                     assert next(table) == header

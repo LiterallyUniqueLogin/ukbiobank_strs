@@ -1,0 +1,1 @@
+../../../finemapping/summary/albumin_table_README.txt
