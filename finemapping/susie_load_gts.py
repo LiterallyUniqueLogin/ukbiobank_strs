@@ -23,6 +23,8 @@ def get_str_dosages(str_dosages_dict):
 def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
     filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     outdir = f'{ukb}/finemapping/susie_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
+
+    p_cutoff = 5e-4
    
     today = datetime.datetime.now().strftime("%Y_%M_%D")
     with open(f"{outdir}/README.txt", 'w') as readme:
@@ -30,7 +32,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
             f'Run date: {today}\n'
             'Loading STR and SNP gts and the phenotype values, regressing out '
             'covariates from all of those, then running SuSiE. '
-            'Variants for which association tests were skipped or with p >= 0.05 are excluded. '
+            f'Variants for which association tests were skipped or with p >= {p_cutoff} are excluded. '
             'SNPs in the filter set are also skipped. '
             f'(Filter set at {filter_set_fname})\n'
         )
@@ -56,7 +58,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
     pheno_vals = covars[:, 1]
     covars = covars[:, 2:]
 
-    # first choose STRs and SNPs only with p < 0.05 to lessen memory burden
+    # first choose STRs and SNPs only with p < p_cutoff to lessen memory burden
     strs_to_include = set()
     snps_to_include = set()
 
@@ -67,7 +69,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
 
     out = sp.run(
         f"grep -P '^{chrom}\t' {str_results_fname} | "
-        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${str_p_idx + 1} < 0.05) "
+        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${str_p_idx + 1} < {p_cutoff}) "
         " { print $2 } }' ",
         shell=True,
         check = True,
@@ -90,7 +92,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
 
     out = sp.run(
         f"grep -P '^{chrom}\t' {snp_results_fname} | "
-        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${snp_p_idx + 1} != \"NA\" && ${snp_p_idx + 1} < 0.05) "
+        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${snp_p_idx + 1} != \"NA\" && ${snp_p_idx + 1} < {p_cutoff}) "
         " { print $2 \" \" $4 \" \" $5 } }' ",
         shell=True,
         check = True,
@@ -125,7 +127,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         # no strs, skip this locus
         with open(f"{outdir}/README.txt", 'w') as readme:
             readme.write(
-                "No nominally significant (p<=0.05) STRs were found in the region, "
+                f"No STRs were found in the region with p < {p_cutoff}, "
                 "so finemapping is being skipped.\n"
             )
         pathlib.Path(f'{outdir}/no_strs').touch()
@@ -151,6 +153,13 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
 
     gts = np.stack(gts, axis=1)
     assert gts.shape[1] == len(var_names)
+
+    # rearrange the variants so that they are in sorted bp order
+    # makes any subsequent visualizations useful
+    sort = sorted(enumerate(var_names), key=lambda tup: int(tup[1].split('_')[1]))
+    var_names = [tup[1] for tup in sort]
+    sort_idxs = [tup[0] for tup in sort]
+    gts = gts[:, sort_idxs]
 
     print("Regressing phentoypes ... ",  flush=True)
     pheno_residuals = pheno_vals - sklearn.linear_model.LinearRegression().fit(covars, pheno_vals).predict(covars)

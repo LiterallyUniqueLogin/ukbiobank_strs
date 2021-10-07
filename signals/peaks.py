@@ -2,10 +2,10 @@
 
 import argparse
 import os
-import sortedcontainers
 
 import numpy as np
 import pandas as pd
+import sortedcontainers
 
 import python_array_utils as utils
 
@@ -97,7 +97,7 @@ def main():
             'p-value threshold are marked as being tagged by the other type of variants.'
         )
 
-    print('Gathering peaks ... ', flush=True)
+    print('Gathering potential peaks ... ', flush=True)
     for locus in loci:
         potential_peak = (*locus[1:4], locus[0], *locus[4:])
         idx = peaks.bisect_left(potential_peak)
@@ -110,53 +110,77 @@ def main():
             if upper_peak[0] == potential_peak[0] and upper_peak[1] <= potential_peak[1] + spacing:
                 continue
         # add a new peak, mark as untagged for now
-        peaks[potential_peak] = False
+        peaks[potential_peak] = np.nan
 
-    print('Marking tagged peaks ... ', flush=True)
-    matched_min_p_peaks = set()
+    print('Removing slope elements, tagging peaks ... ', flush=True)
     for locus in loci:
         locus_p_val = locus[0]
         locus_as_peak = (*locus[1:4], locus[0], *locus[4:])
         idx = peaks.bisect_left(locus_as_peak)
+        del_lower = False
         if idx > 0:
             lower_peak, _ = peaks.peekitem(idx-1)
+            lower_peak_p_val = lower_peak[3]
             if (
+                # check for nearness
                 lower_peak[0] == locus_as_peak[0] and
-                lower_peak[1] >= locus_as_peak[1] - spacing and
-                lower_peak[2] != locus_as_peak[2]
+                lower_peak[1] >= locus_as_peak[1] - spacing
             ):
-                peaks[lower_peak] = True
-                if locus_p_val == 0 and lower_peak[3] == 0:
-                    matched_min_p_peaks.add(lower_peak)
+                if lower_peak_p_val > locus_p_val:
+                    print('del lower')
+                    # Remove slope element
+                    del_lower = True
+                elif lower_peak[2] != locus_as_peak[2]:
+                    # tag actual peaks
+                    if np.isnan(peaks[lower_peak]):
+                        peaks[lower_peak] = locus_p_val
+                    else:
+                        peaks[lower_peak] = min(peaks[lower_peak], locus_p_val)
 
+        del_upper = False
         if idx < len(peaks):
             upper_peak, _ = peaks.peekitem(idx)
+            upper_peak_p_val = upper_peak[3]
             if (
+                # check for nearness
                 upper_peak[0] == locus_as_peak[0] and
-                upper_peak[1] <= locus_as_peak[1] + spacing and
-                upper_peak[2] != locus_as_peak[2]
+                upper_peak[1] - spacing <= locus_as_peak[1]
             ):
-                peaks[upper_peak] = True
-                if locus_p_val == 0 and upper_peak[3] == 0:
-                    matched_min_p_peaks.add(upper_peak)
+                if upper_peak_p_val > locus_p_val:
+                    print('del upper')
+                    # Remove slope element
+                    del_upper = True
+                elif upper_peak[2] != locus_as_peak[2]:
+                    # tag actual peaks
+                    if np.isnan(peaks[upper_peak]):
+                        peaks[upper_peak] = locus_p_val
+                    else:
+                        peaks[upper_peak] = min(peaks[upper_peak], locus_p_val)
+
+        if del_lower:
+            del peaks[lower_peak]
+        if del_upper:
+            del peaks[upper_peak]
+
+
+    for peak, tag_p_val in peaks.items():
+        if not np.isnan(tag_p_val) and peak[3] > tag_p_val:
+            print(peak, tag_p_val)
+            assert False
 
     print('Done gathering peaks', flush=True)
     print('Writing out peaks ... ', flush=True, end='')
     with open(args.out_fname, 'w') as outfile:
-        outfile.write('chrom\tpos\tvariant_type\tp_value\ttagged_by_other_variant_type\tmatched_p_(min_p_only)\tref_(snp_only)\talt_(snp_only)\n')
+        outfile.write('chrom\tpos\tvariant_type\tp_value\tp_value_other_variant_type\tref_(snp_only)\talt_(snp_only)\n')
         outfile.flush()
         for peak, tagged in peaks.items():
+            if peak[1] == 1 and peak[2] == 9341128:
+                print('printing peak')
             str_peak = [str(item) for item in peak]
-            if peak in matched_min_p_peaks:
-                matched_min_p = 'True'
-            elif peak[3] == 0:
-                matched_min_p = 'False'
-            else:
-                matched_min_p = ''
             if len(str_peak) == 5:
                 str_peak.append('')
                 str_peak.append('')
-            outfile.write('\t'.join(str_peak[:4]) + '\t' + str(tagged) + '\t' + matched_min_p + '\t' + '\t'.join(str_peak[4:]) + '\n')
+            outfile.write('\t'.join(str_peak[:4]) + '\t' + str(tagged) + '\t' + '\t'.join(str_peak[4:]) + '\n')
             outfile.flush()
     print('done', flush=True)
 

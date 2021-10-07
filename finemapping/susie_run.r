@@ -18,6 +18,6 @@ sep='')
 pheno_residuals = np$load(paste(dir, '/pheno_residuals.npy', sep=''))
 gt_residuals = np$load(paste(dir, '/gt_residuals.npy', sep=''))
 
-fitted = susie(gt_residuals, pheno_residuals, L=10)
+fitted = susie(gt_residuals, pheno_residuals, L=10, scaled_prior_variance = 0.005)
 save(fitted, file = paste(dir, '/susie_fit.RData', sep=''))
 

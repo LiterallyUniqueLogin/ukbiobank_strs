@@ -1,1 +1,0 @@
-../../export_scripts/results/phenotypes_README.txt

@@ -48,3 +48,4 @@ twistd.pid
 *Rplots.pdf
 *.gff3
 dag.svg
+export/*

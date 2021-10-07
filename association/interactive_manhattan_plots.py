@@ -630,10 +630,6 @@ def make_manhattan_plots(
             ('pos', '@pos'),
             ('-log10(p_val) my code', '@p_val')
         ]
-        if plot_peaks:
-            my_str_hover.tooltips.append(
-                ('is there a nearby SNP in this peak?', '@tagged_by_other_variant_type')
-            )
         if binary:
             my_str_hover.tooltips.append(
                 ('Using Firth penalization during regression?', '@firth')
@@ -690,10 +686,6 @@ def make_manhattan_plots(
             )
             plink_snp_hover.tooltips.append(
                 ('Using Firth penalization during regression?', '@firth')
-            )
-        if plot_peaks:
-            plink_snp_hover.tooltips.append(
-                ('is there a nearby STR in this peak?', '@tagged_by_other_variant_type')
             )
         if conditioning:
             plink_snp_hover.tooltips.append(
@@ -1438,26 +1430,26 @@ def main():
                 dtype=utils.get_dtypes(peaks_fname, {'ref_(snp_only)': object, 'alt_(snp_only)': object})
             )
             peaks.rename(columns={'chrom': 'chr', 'ref_(snp_only)': 'ref', 'alt_(snp_only)': 'alt'}, inplace=True)
-            peaks['tagged_by_other_variant_type'] = peaks['tagged_by_other_variant_type'].astype(float)
+            peaks['marker'] = 1
 
             str_peaks = peaks[peaks['variant_type'] == 'STR']
             my_str_results = pd.DataFrame.from_records(my_str_results)
             my_str_results = my_str_results.merge(
-                str_peaks[['chr', 'pos', 'tagged_by_other_variant_type']],
+                str_peaks[['chr', 'pos', 'marker']],
                 how='left',
                 on=['chr', 'pos']
             )
-            my_str_results['is_peak'] = ~np.isnan(my_str_results['tagged_by_other_variant_type'])
+            my_str_results['is_peak'] = ~np.isnan(my_str_results['marker'])
             my_str_results = utils.df_to_recarray(my_str_results)
 
             snp_peaks = peaks[peaks['variant_type'] == 'SNP']
             plink_snp_results = pd.DataFrame.from_records(plink_snp_results)
             plink_snp_results = plink_snp_results.merge(
-                snp_peaks[['chr', 'pos', 'ref', 'alt', 'tagged_by_other_variant_type']],
+                snp_peaks[['chr', 'pos', 'ref', 'alt', 'marker']],
                 how='left',
                 on=['chr', 'pos', 'ref', 'alt']
             )
-            plink_snp_results['is_peak'] = ~np.isnan(plink_snp_results['tagged_by_other_variant_type'])
+            plink_snp_results['is_peak'] = ~np.isnan(plink_snp_results['marker'])
             plink_snp_results = utils.df_to_recarray(plink_snp_results)
             print(f"done ({time.time() - start_time:.2e}s)", flush=True)
         elif args.finemap_signals:

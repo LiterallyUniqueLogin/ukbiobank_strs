@@ -883,6 +883,7 @@ rule peak_snp_inputs:
         peak_snp_input_inputs
     output:
         temporary('signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab')
+        #'signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab'
     resources:
         time='01:00:00'
     run:
@@ -905,6 +906,7 @@ rule peak_str_inputs:
         peak_str_input_inputs
     output:
         temporary('signals/peak_inputs/{phenotype}_str_{thresh}.tab')
+        #'signals/peak_inputs/{phenotype}_str_{thresh}.tab'
     resources:
         time='01:00:00'
     run:
@@ -927,6 +929,17 @@ rule generate_peaks:
     shell:
         'signals/peaks.py {wildcards.phenotype} {wildcards.spacing} {input.strs} {input.imputed_snps} '
         '{output.readme} {output.out} '
+
+rule region_peak_comparison:
+    input:
+        'signals/regions/{phenotype}.tab',
+        'signals/peaks/{phenotype}_250000_5e-8.tab'
+    output:
+        'signals/comparison/{phenotype}.done'
+    resources:
+        time='00:01:00'
+    shell:
+        'signals/comp_peaks_to_regions.py {wildcards.phenotype} '
 
 rule peak_stats:
     input:
@@ -1396,11 +1409,29 @@ rule graph_finemap_output:
 
 ######################### Create Files to Export ########################
 
+rule locus_summary_inputs:
+    input:
+        f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
+        'sample_qc/runs/no_phenotype/combined.sample'
+    output:
+        'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab'
+    resources:
+        time = '23:45:00',
+        mem_gb=5
+    shell:
+        f'export_scripts/loci_stat_inputs.py {str_imputation_run_name} '
+        '{wildcards.chrom} '
+
+rule summarize_loci:
+    input:
+        [f'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab' for chrom in range(1, 23)]
+
 rule create_phenotypes_table:
     input:
         'workflow/phenotypes.py',
         [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in phenotypes.phenotypes_in_use],
-        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
+        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use],
+        [f'signals/comparison/{phenotype}.done' for phenotype in phenotypes.phenotypes_in_use]
     output:
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt'
@@ -1427,14 +1458,32 @@ rule concat_and_filter_finemapping_summary_tables:
 rule assoc_figures:
     input:
         'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
-        'association/results/eosinophil_count/plink_snp/results.tab'
+        'association/results/eosinophil_count/plink_snp/results.tab',
+        'association/results/total_bilirubin/plink_snp/results.tab'
     output:
         'export_scripts/results/validate_our_code.png',
+        'export_scripts/results/panukbb_scatter.svg',
+        'export_scripts/results/panukbb_scatter.png'
     resources:
         time='00:10:00',
-        mem_gb=10
+        mem_gb=20
     shell:
         'export_scripts/assoc_figs.py'
+
+rule peak_figs:
+    input:
+        'workflow/phenotypes.py',
+        [f'signals/peaks/{phenotype}_250000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
+    output:
+        'export_scripts/results/peaks_by_pheno.svg',
+        'export_scripts/results/peaks_by_pheno.png',
+        'export_scripts/results/str_tagging_peak_hist.png',
+        'export_scripts/results/str_tagging_peak_hist.svg'
+    resources:
+        time='01:00:00'
+    shell:
+        f'export_scripts/signal_summary_images.py {" ".join(phenotypes.phenotypes_in_use)} '
+
 
 ######################### Export Files ########################
 
@@ -1445,21 +1494,23 @@ def link_files(inputs, outputs):
 
 rule export_phenotype_summaries:
     input:
+        'signals/peaks/{phenotype}_250000_5e-8.tab',
+        'signals/peaks/{phenotype}_250000_5e-8_README.txt',
         'signals/peaks/{phenotype}_500000_5e-8.tab',
-        'signals/peaks/{phenotype}_500000_5e-8_README.txt',
         'signals/peaks/{phenotype}_2000000_5e-8.tab',
-        'signals/peaks/{phenotype}_500000_5e-9.tab',
-        'signals/peaks/{phenotype}_500000_5e-10.tab',
+        'signals/peaks/{phenotype}_250000_5e-9.tab',
+        'signals/peaks/{phenotype}_250000_5e-10.tab',
         'finemapping/summary/{phenotype}_table_README.txt',
         'finemapping/summary/{phenotype}_table.tab',
         'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
         'association/plots/{phenotype}.manhattan.FINEMAP.html'
     output:
+        'export/phenotypes/{phenotype}/peaks_250000_5e-8.tab',
+        'export/phenotypes/{phenotype}/peaks_250000_5e-8_README.txt',
         'export/phenotypes/{phenotype}/peaks_500000_5e-8.tab',
-        'export/phenotypes/{phenotype}/peaks_500000_5e-8_README.txt',
         'export/phenotypes/{phenotype}/peaks_2000000_5e-8.tab',
-        'export/phenotypes/{phenotype}/peaks_500000_5e-9.tab',
-        'export/phenotypes/{phenotype}/peaks_500000_5e-10.tab',
+        'export/phenotypes/{phenotype}/peaks_250000_5e-9.tab',
+        'export/phenotypes/{phenotype}/peaks_250000_5e-10.tab',
         'export/phenotypes/{phenotype}/finemapping_summary_README.txt',
         'export/phenotypes/{phenotype}/finemapping_summary.tab',
         'export/phenotypes/{phenotype}/signal_strengths.html',
@@ -1557,6 +1608,7 @@ def export_cool_loci_input(wildcards):
 
 rule export_cool_loci:
     input:
+        'workflow/phenotypes.py',
         export_cool_loci_input
     output:
         'export/combined/cool_loci/.exported'
@@ -1567,19 +1619,31 @@ rule export_cool_loci:
 
 rule export_combined_summaries_and_figures:
     input:
-        'signals/peak_stats_summary.txt',
+        #'signals/peak_stats_summary.txt',
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt',
         'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
         'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
-        'export_scripts/results/validate_our_code.png'
+        'export_scripts/results/validate_our_code.png',
+        'export_scripts/results/panukbb_scatter.png',
+        'export_scripts/results/panukbb_scatter.svg',
+        'export_scripts/results/peaks_by_pheno.svg',
+        'export_scripts/results/peaks_by_pheno.png',
+        'export_scripts/results/str_tagging_peak_hist.png',
+        'export_scripts/results/str_tagging_peak_hist.svg'
     output:
-        'export/combined/peak_stats_summary.txt',
+        #'export/combined/peak_stats_summary.txt',
         'export/combined/phenotypes.tab',
         'export/combined/phenotypes_README.txt',
         'export/combined/putatively_causal_multiallelic_STRs.tab',
         'export/combined/putatively_causal_multiallelic_STRs_README.txt',
-        'export/combined/validate_our_code.png'
+        'export/combined/validate_our_code.png',
+        'export/combined/panukbb_scatter.png',
+        'export/combined/panukbb_scatter.svg',
+        'export/combined/peaks_by_pheno.svg',
+        'export/combined/peaks_by_pheno.png',
+        'export/combined/str_tagging_peak_hist.png',
+        'export/combined/str_tagging_peak_hist.svg'
     resources:
         time='00:05:00'
     run:
@@ -1597,5 +1661,5 @@ rule gather_all_exports:
         # -- total ---
         'export/combined/cool_loci/.exported',
         # stand in for combined and figures 
-        [f'export/combined/peak_stats_summary.txt' for phenotype in phenotypes.phenotypes_in_use],
+        'export/combined/phenotypes.tab'
         

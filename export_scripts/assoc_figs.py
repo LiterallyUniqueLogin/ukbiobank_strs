@@ -79,29 +79,6 @@ def validate_our_code():
 
     plt.savefig(f'{ukb}/export_scripts/results/validate_our_code.png')
 
-# currently unused, doesn't seem like a figure we want
-def compare_to_panukbb_b():
-    print('loading csv ... ', flush=True)
-    df = pd.read_csv(
-        f'{ukb}/misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv.bgz',
-        compression='gzip',
-        header=0,
-        delimiter='\t',
-        usecols=['chr', 'pos', 'pval_EUR'],
-        dtype={'chr': str, 'pos': int, 'pval_EUR': float}
-    )
-    df.rename(columns={'chr': 'CHR', 'pos': 'BP', 'pval_EUR': 'P'}, inplace=True)
-    df = df[df['CHR'] != 'X']
-    df = df.astype({'CHR': int})
-    df.loc[df['P'] < 1e-100, 'P'] = 1e-100
-
-    print('plotting manhattan ... ', flush=True)
-    qqman.manhattan(
-        df,
-        f'{ukb}/export/figures/compare_to_pan_ukbb_b.png',
-        suggestiveline=False
-    )
-
 def scatter_with_panukbb():
     print('loading panukbb ... ', flush=True)
     panukbb_df = pd.read_csv(
@@ -158,6 +135,8 @@ def scatter_with_panukbb():
     cb.set_label('counts')
     figure.show()
 
+    # svg for later use in adobe illustrator, png for direct importing into google docs files
+    plt.savefig(f'{ukb}/export_scripts/results/panukbb_scatter.svg')
     plt.savefig(f'{ukb}/export_scripts/results/panukbb_scatter.png')
 
 if __name__ == '__main__':
