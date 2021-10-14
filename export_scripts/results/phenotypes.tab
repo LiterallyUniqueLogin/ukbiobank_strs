@@ -1,32 +1,32 @@
 phenotype	data_field_ID	measurement_units	minimum_reportable_value	n_samples_omitted_below_reportable_range	maximum_reportable_value	n_samples_omitted_above_reportable_range	n_individuals_tested	association_testing_categorical_covariates	n_association_peaks
-alanine_aminotransferase	30620	U/L	3	45	500	22	330588	('alanine_aminotransferase_aliquot', '30622')	272
-albumin	30600	g/L	15	14	60	2	307165	('albumin_aliquot', '30602')	294
-alkaline_phosphatase	30610	U/L	3	46	1500	3	330702	('alkaline_phosphatase_aliquot', '30612')	398
-apolipoprotein_a	30630	g/L	0.4	20	2.5	1809	305581	('apolipoprotein_a_aliquot', '30632')	344
-apolipoprotein_b	30640	g/L	0.4	871	2	339	329329	('apolipoprotein_b_aliquot', '30642')	198
-aspartate_aminotransferase	30650	U/L	3	11	1000	3	329692	('aspartate_aminotransferase_aliquot', '30652')	347
-c_reactive_protein	30710	mg/L	0.08	119	80	324	330101	('c_reactive_protein_aliquot', '30712')	282
-calcium	30680	mmol/L	1	61	5	0	307069	('calcium_aliquot', '30682')	257
-cholesterol	30690	mmol/L	0.5	7	18	0	330696	('cholesterol_aliquot', '30692')	215
-creatinine	30700	umol/L	4	0	4420	0	330555	('creatinine_aliquot', '30702')	524
-eosinophil_count	30150	10^9 cells/L	NA	NA	NA	NA	335081	('eosinophil_count_device_id', '30153')	444
-eosinophil_percent	30210	%	NA	NA	NA	NA	335084	('eosinophil_percent_device_id', '30213')	449
-haematocrit	30030	%	NA	NA	NA	NA	335585	('haematocrit_device_id', '30033')	427
-haemoglobin_concentration	30020	g/dL	NA	NA	NA	NA	335585	('haemoglobin_concentration_device_id', '30023')	441
-ldl_cholesterol_direct	30780	mmol/L	0.26	7	10.3	0	330188	('ldl_cholesterol_direct_aliquot', '30782')	182
-lymphocyte_count	30120	10^9 cells/L	NA	NA	NA	NA	335081	('lymphocyte_count_device_id', '30123')	480
-lymphocyte_percent	30180	%	NA	NA	NA	NA	335084	('lymphocyte_percent_device_id', '30183')	384
-mean_corpuscular_haemoglobin	30050	10^-12 g	NA	NA	NA	NA	335582	('mean_corpuscular_haemoglobin_device_id', '30053')	489
-mean_corpuscular_haemoglobin_concentration	30060	g/dL	NA	NA	NA	NA	335581	('mean_corpuscular_haemoglobin_concentration_device_id', '30063')	128
-mean_corpuscular_volume	30040	10^-15 L	NA	NA	NA	NA	335585	('mean_corpuscular_volume_device_id', '30043')	549
-mean_platelet_volume	30100	10^-15 L	NA	NA	NA	NA	335581	('mean_platelet_volume_device_id', '30103')	612
-mean_sphered_cell_volume	30270	10^-15 L	NA	NA	NA	NA	330773	('mean_sphered_cell_volume_device_id', '30273')	468
-neutrophil_count	30140	10^9 cells/L	NA	NA	NA	NA	335081	('neutrophil_count_device_id', '30143')	396
-neutrophil_percent	30200	%	NA	NA	NA	NA	335084	('neutrophil_percent_device_id', '30203')	353
-platelet_count	30080	10^9 cells/L	NA	NA	NA	NA	335585	('platelet_count_device_id', '30083')	634
-platelet_crit	30090	%	NA	NA	NA	NA	335441	('platelet_crit_device_id', '30093')	576
-platelet_distribution_width	30110	%	NA	NA	NA	NA	335440	('platelet_distribution_width_device_id', '30113')	506
-red_blood_cell_count	30010	10^12 cells/L	NA	NA	NA	NA	335585	('red_blood_cell_count_device_id', '30013')	523
-red_blood_cell_distribution_width	30070	%	NA	NA	NA	NA	335585	('red_blood_cell_distribution_width_device_id', '30073')	458
-total_bilirubin	30840	umol/L	1	18	513	0	329557	('total_bilirubin_aliquot', '30842')	154
-white_blood_cell_count	30000	10^9 cells/L	NA	NA	NA	NA	335583	('white_blood_cell_count_device_id', '30003')	484
+alanine_aminotransferase	30620	U/L	3	45	500	22	330588	('alanine_aminotransferase_aliquot', '30622')	245
+albumin	30600	g/L	15	14	60	2	307165	('albumin_aliquot', '30602')	256
+alkaline_phosphatase	30610	U/L	3	46	1500	3	330702	('alkaline_phosphatase_aliquot', '30612')	343
+apolipoprotein_a	30630	g/L	0.4	20	2.5	1809	305581	('apolipoprotein_a_aliquot', '30632')	275
+apolipoprotein_b	30640	g/L	0.4	871	2	339	329329	('apolipoprotein_b_aliquot', '30642')	158
+aspartate_aminotransferase	30650	U/L	3	11	1000	3	329692	('aspartate_aminotransferase_aliquot', '30652')	296
+c_reactive_protein	30710	mg/L	0.08	119	80	324	330101	('c_reactive_protein_aliquot', '30712')	236
+calcium	30680	mmol/L	1	61	5	0	307069	('calcium_aliquot', '30682')	216
+cholesterol	30690	mmol/L	0.5	7	18	0	330696	('cholesterol_aliquot', '30692')	170
+creatinine	30700	umol/L	4	0	4420	0	330555	('creatinine_aliquot', '30702')	454
+eosinophil_count	30150	10^9 cells/L	NA	NA	NA	NA	335081	('eosinophil_count_device_id', '30153')	366
+eosinophil_percent	30210	%	NA	NA	NA	NA	335084	('eosinophil_percent_device_id', '30213')	374
+haematocrit	30030	%	NA	NA	NA	NA	335585	('haematocrit_device_id', '30033')	378
+haemoglobin_concentration	30020	g/dL	NA	NA	NA	NA	335585	('haemoglobin_concentration_device_id', '30023')	395
+ldl_cholesterol_direct	30780	mmol/L	0.26	7	10.3	0	330188	('ldl_cholesterol_direct_aliquot', '30782')	147
+lymphocyte_count	30120	10^9 cells/L	NA	NA	NA	NA	335081	('lymphocyte_count_device_id', '30123')	410
+lymphocyte_percent	30180	%	NA	NA	NA	NA	335084	('lymphocyte_percent_device_id', '30183')	344
+mean_corpuscular_haemoglobin	30050	10^-12 g	NA	NA	NA	NA	335582	('mean_corpuscular_haemoglobin_device_id', '30053')	415
+mean_corpuscular_haemoglobin_concentration	30060	g/dL	NA	NA	NA	NA	335581	('mean_corpuscular_haemoglobin_concentration_device_id', '30063')	110
+mean_corpuscular_volume	30040	10^-15 L	NA	NA	NA	NA	335585	('mean_corpuscular_volume_device_id', '30043')	460
+mean_platelet_volume	30100	10^-15 L	NA	NA	NA	NA	335581	('mean_platelet_volume_device_id', '30103')	472
+mean_sphered_cell_volume	30270	10^-15 L	NA	NA	NA	NA	330773	('mean_sphered_cell_volume_device_id', '30273')	403
+neutrophil_count	30140	10^9 cells/L	NA	NA	NA	NA	335081	('neutrophil_count_device_id', '30143')	347
+neutrophil_percent	30200	%	NA	NA	NA	NA	335084	('neutrophil_percent_device_id', '30203')	312
+platelet_count	30080	10^9 cells/L	NA	NA	NA	NA	335585	('platelet_count_device_id', '30083')	530
+platelet_crit	30090	%	NA	NA	NA	NA	335441	('platelet_crit_device_id', '30093')	497
+platelet_distribution_width	30110	%	NA	NA	NA	NA	335440	('platelet_distribution_width_device_id', '30113')	419
+red_blood_cell_count	30010	10^12 cells/L	NA	NA	NA	NA	335585	('red_blood_cell_count_device_id', '30013')	453
+red_blood_cell_distribution_width	30070	%	NA	NA	NA	NA	335585	('red_blood_cell_distribution_width_device_id', '30073')	379
+total_bilirubin	30840	umol/L	1	18	513	0	329557	('total_bilirubin_aliquot', '30842')	132
+white_blood_cell_count	30000	10^9 cells/L	NA	NA	NA	NA	335583	('white_blood_cell_count_device_id', '30003')	415

@@ -1,1 +1,0 @@
-../../../finemapping/summary/cholesterol_table_README.txt

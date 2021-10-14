@@ -1,1 +1,0 @@
-../../../finemapping/summary/mean_platelet_volume_table_README.txt

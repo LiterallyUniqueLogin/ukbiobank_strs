@@ -27,11 +27,16 @@ def main():
 
     print('Checking each region contains a peak ...')
     for region in regions:
+        if region[0] == 6 and region[1] <= 33.5e6 and region[2] >= 25e6:
+            # ignore regions intersecting MHC
+            continue
         idx = bisect.bisect(peaks, region)
         peak = peaks[idx]
-        assert peak[0] == region[0]
-        assert peak[1] > region[1]
-        assert peak[1] < region[2]
+        if (peak[0] != region[0] or
+            peak[1] <= region[1] or
+            peak[1] >= region[2]):
+            print(peak, region)
+            assert False
 
     print('Checking each peak is in a region ...')
     for peak in peaks:
@@ -40,9 +45,11 @@ def main():
             continue
         idx = bisect.bisect(regions, peak)
         region = regions[idx - 1]
-        assert peak[0] == region[0]
-        assert peak[1] > region[1]
-        assert peak[1] < region[2]
+        if (peak[0] != region[0] or
+            peak[1] <= region[1] or
+            peak[1] >= region[2]):
+            print(peak, region)
+            assert False
 
     print('Done.')
 

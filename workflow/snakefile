@@ -1207,6 +1207,11 @@ rule manhattan_finemap:
         shell(cmd)
 
 #-------------------SuSiE----------------
+def susie_load_time(wildcards, attempt):
+    if attempt == 1:
+        return '00:30:00'
+    else:
+        return '47:30:00'
 
 checkpoint susie_load_gts:
     input:
@@ -1216,16 +1221,28 @@ checkpoint susie_load_gts:
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     output:
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
+        temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy'),
+        temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy')
     resources:
-        time = '02:00:00',
-        mem_gb = 20
+        time = susie_load_time,
+        mem_gb = 50
     shell:
         'finemapping/susie_load_gts.py '
         f'{str_imputation_run_name} '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
+
+def susie_run_mem(wildcards, attempt):
+    if attempt == 1:
+        return 30
+    else:
+        return 128
+
+def susie_run_time(wildcards, attempt):
+    if attempt == 1:
+        return '00:45:00'
+    else:
+        return '04:00:00'
 
 rule susie_run:
     input:
@@ -1233,10 +1250,19 @@ rule susie_run:
         'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
         'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
     output:
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/susie_fit.RData'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/alpha.tab'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf.tab'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf_variable.tab'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/sigma2.txt'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/V.tab'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/converged.txt'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lfsr.tab'),
+        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/requested_coverage.txt'),
+        #also all the csN.txt files, just an unknown number of them
+        #consuming jobs should consume alpha.tab
     resources:
-        time = '01:00:00',
-        mem_gb = 40
+        time = susie_run_time,
+        mem_gb = susie_run_mem
     conda:
         'envs/ukb_susier.env.yml'
     shell:
@@ -1259,7 +1285,7 @@ def susie_run_region_input(wildcards):
         return f'{region_dir}/no_strs'
     else:
         # ask for finemapping of this region
-        return f'{region_dir}/susie_fit.RData'
+        return f'{region_dir}/alpha.tab'
 
 rule susie_run_region:
     input:
@@ -1382,7 +1408,7 @@ checkpoint produce_summary_table:
         'finemapping/summary/{phenotype}_table.tab'
     resources:
         time='05:00:00',
-        mem_gb = 50
+        mem_gb = 75
     run:
         STRs = ''
         first = True
@@ -1425,6 +1451,19 @@ rule locus_summary_inputs:
 rule summarize_loci:
     input:
         [f'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab' for chrom in range(1, 23)]
+    output:
+        'export_scripts/results/allele_count_thresh_0.001.png',
+        'export_scripts/results/allele_count_thresh_0.001.svg',
+        'export_scripts/results/allele_count_thresh_0.004.png',
+        'export_scripts/results/allele_count_thresh_0.004.svg',
+        'export_scripts/results/allele_count_thresh_0.015.png',
+        'export_scripts/results/allele_count_thresh_0.015.svg',
+        'export_scripts/results/allele_count_thresh_0.06.png',
+        'export_scripts/results/allele_count_thresh_0.06.svg'
+    resources:
+        time='00:30:00'
+    shell:
+        'export_scripts/loci_stats.py '
 
 rule create_phenotypes_table:
     input:
@@ -1477,8 +1516,8 @@ rule peak_figs:
     output:
         'export_scripts/results/peaks_by_pheno.svg',
         'export_scripts/results/peaks_by_pheno.png',
-        'export_scripts/results/str_tagging_peak_hist.png',
-        'export_scripts/results/str_tagging_peak_hist.svg'
+        #'export_scripts/results/str_tagging_peak_hist.png',
+        #'export_scripts/results/str_tagging_peak_hist.svg'
     resources:
         time='01:00:00'
     shell:
@@ -1564,8 +1603,12 @@ rule export_phenotype_all_signals:
         'export/phenotypes/{phenotype}/region_plots/.exported'
     resources:
         time='00:05:00'
-    shell:
-        'touch export/phenotypes/{wildcards.phenotype}/region_plots/.exported'
+    run:
+        link_files(input, 
+            [f'export/phenotypes/{wildcards.phenotype}/region_plots/' + fname.split('/')[-1]
+                for fname in input]
+        )
+        shell('touch export/phenotypes/{wildcards.phenotype}/region_plots/.exported')
 
 rule export_cool_locus1:
     input:
@@ -1619,7 +1662,6 @@ rule export_cool_loci:
 
 rule export_combined_summaries_and_figures:
     input:
-        #'signals/peak_stats_summary.txt',
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt',
         'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
@@ -1629,10 +1671,15 @@ rule export_combined_summaries_and_figures:
         'export_scripts/results/panukbb_scatter.svg',
         'export_scripts/results/peaks_by_pheno.svg',
         'export_scripts/results/peaks_by_pheno.png',
-        'export_scripts/results/str_tagging_peak_hist.png',
-        'export_scripts/results/str_tagging_peak_hist.svg'
+        'export_scripts/results/allele_count_thresh_0.001.png',
+        'export_scripts/results/allele_count_thresh_0.001.svg',
+        'export_scripts/results/allele_count_thresh_0.004.png',
+        'export_scripts/results/allele_count_thresh_0.004.svg',
+        'export_scripts/results/allele_count_thresh_0.015.png',
+        'export_scripts/results/allele_count_thresh_0.015.svg',
+        'export_scripts/results/allele_count_thresh_0.06.png',
+        'export_scripts/results/allele_count_thresh_0.06.svg'
     output:
-        #'export/combined/peak_stats_summary.txt',
         'export/combined/phenotypes.tab',
         'export/combined/phenotypes_README.txt',
         'export/combined/putatively_causal_multiallelic_STRs.tab',
@@ -1642,8 +1689,14 @@ rule export_combined_summaries_and_figures:
         'export/combined/panukbb_scatter.svg',
         'export/combined/peaks_by_pheno.svg',
         'export/combined/peaks_by_pheno.png',
-        'export/combined/str_tagging_peak_hist.png',
-        'export/combined/str_tagging_peak_hist.svg'
+        'export/combined/allele_count_thresh_0.001.png',
+        'export/combined/allele_count_thresh_0.001.svg',
+        'export/combined/allele_count_thresh_0.004.png',
+        'export/combined/allele_count_thresh_0.004.svg',
+        'export/combined/allele_count_thresh_0.015.png',
+        'export/combined/allele_count_thresh_0.015.svg',
+        'export/combined/allele_count_thresh_0.06.png',
+        'export/combined/allele_count_thresh_0.06.svg'
     resources:
         time='00:05:00'
     run:
@@ -1652,6 +1705,8 @@ rule export_combined_summaries_and_figures:
 rule gather_all_exports:
     input:
         'workflow/phenotypes.py',
+        # temp stand in to make susie run
+        [f'finemapping/susie_results/{phenotype}/all_signals_done' for phenotype in phenotypes.phenotypes_in_use],
         # --- per phenotype ---
         # stand in for summaries
         [f'export/phenotypes/{phenotype}/manhattan.FINEMAP.html' for phenotype in phenotypes.phenotypes_in_use],
@@ -1661,5 +1716,5 @@ rule gather_all_exports:
         # -- total ---
         'export/combined/cool_loci/.exported',
         # stand in for combined and figures 
-        'export/combined/phenotypes.tab'
+        'export/combined/phenotypes.tab',
         

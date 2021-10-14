@@ -1,4 +1,5 @@
 Any STR x phenotype association that has p-value <= 1e-10 and FINEMAP posterior probability of causality >= 0.8 and multiallelicness >= 0.025
+phenotype
 chrom
 start_pos - the start bp of the STR, 1-based
 repeat_unit - as preliminarily inferred by TRTools from the reference STR sequence and the repeat period stated in the SNPSTR reference panel

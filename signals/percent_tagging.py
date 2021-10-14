@@ -13,11 +13,10 @@ def to_float(f):
     else:
         return -np.log10(max(float(f), 1e-300))
 
-tag_fractions = []
+snps = []
+strs = []
 fnames = glob.glob(f'{ukb}/signals/peaks/*_250000_5e-8.tab')
 for fname in fnames:
-    max_p = 0
-    is_STR = False
     with open(fname) as peaks:
         header = next(peaks).strip().split('\t')
         var_type_idx = header.index('variant_type')
@@ -30,35 +29,44 @@ for fname in fnames:
             p_val = to_float(p_val)
             other_p_val = to_float(other_p_val)
 
-            if p_val == other_p_val == 300:
-                min_p = np.nan
-            elif p_val > max_p:
-                max_p = p_val
-                is_STR = var_type == 'STR'
+            if np.isnan(p_val):
+                p_val = 0
+            if np.isnan(other_p_val):
+                other_p_val = 0
 
             if var_type == 'SNP':
-                if np.isnan(other_p_val):
-                    tag_fractions.append(0)
-                else:
-                    tag_fractions.append(other_p_val/p_val)
+                snps.append(p_val)
+                strs.append(other_p_val)
             else:
                 assert var_type == 'STR'
-                if np.isnan(other_p_val):
-                    tag_fractions.append(np.inf)
-                else:
-                    tag_fractions.append(p_val/other_p_val)
-    if is_STR:
-        print(fname)
+                snps.append(other_p_val)
+                strs.append(p_val)
+snps = np.array(snps)
+strs = np.array(strs)
 
+print(f'n peaks: {len(snps)}')
+print(f'n peaks per pheno: {len(snps)/len(fnames)}')
+print(f'% peaks only STR: {np.sum(snps == 0)/len(snps)}')
 
-print(f'n peaks: {len(tag_fractions)}')
-print(f'peaks per pheno: {len(tag_fractions)/len(fnames)}')
-
-tag_fractions = np.array(tag_fractions)
-
-print(f'fraction of peaks with only STRs')
-print(np.sum(np.isinf(tag_fractions))/tag_fractions.shape[0])
+print('Subsetting to peaks that have a SNP')
+strs = strs[snps != 0]
+snps = snps[snps != 0]
 
 for cutoff in .8, .9, 1:
-    print(f'fraction bigger than {cutoff}')
-    print(np.sum(tag_fractions >= cutoff)/tag_fractions.shape[0])
+    print(f'fraction STR peaks >= {cutoff} fraction of SNP peak {np.sum(snps*cutoff <= strs)/len(snps)}')
+    for sig_thresh in 20, 30, 50:
+        sig_idx = (snps >= sig_thresh) | (strs >= sig_thresh)
+        print(f'fraction STR peaks >= {cutoff} fraction of SNP peak among peaks <= 1e-{sig_thresh} {np.sum((snps*cutoff <= strs)[sig_idx])/np.sum(sig_idx)}')
+
+
+non_capped_idx = (snps < 300) & (strs < 300)
+
+snps = snps[non_capped_idx]
+strs = strs[non_capped_idx]
+
+for cutoff in .8, .9, 1:
+    print(f'fraction STR peaks >= {cutoff} fraction of SNP peak {np.sum(snps*cutoff <= strs)/len(snps)}')
+    for sig_thresh in 20, 30, 50:
+        sig_idx = (snps >= sig_thresh) | (strs >= sig_thresh)
+        print(f'fraction STR peaks >= {cutoff} fraction of SNP peak among peaks <= 1e-{sig_thresh} {np.sum((snps*cutoff <= strs)[sig_idx])/np.sum(sig_idx)}')
+

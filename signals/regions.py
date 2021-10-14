@@ -55,7 +55,7 @@ def plink_snp_output_itr(plink_snp_fname, thresh):
         usecols=['#CHROM', 'POS', 'P']
     ).to_numpy()
 
-    csv = csv[csv[:, 2]  <= thresh, :]
+    csv = csv[csv[:, 2]  < thresh, :]
 
     for linenum in range(csv.shape[0]):
         yield tuple(csv[linenum, :2])
@@ -68,7 +68,7 @@ def my_str_output_itr(phenotype, my_str_fname, thresh):
         usecols=['chrom', 'pos', f'p_{phenotype}']
     ).to_numpy()
 
-    csv = csv[csv[:, 2]  <= thresh, :]
+    csv = csv[csv[:, 2]  < thresh, :]
 
     for linenum in range(csv.shape[0]):
         yield tuple(csv[linenum, :2])

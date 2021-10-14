@@ -1,1 +1,0 @@
-../../../finemapping/summary/mean_corpuscular_haemoglobin_table_README.txt

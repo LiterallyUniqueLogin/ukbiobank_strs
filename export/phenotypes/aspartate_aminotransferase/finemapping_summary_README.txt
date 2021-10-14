@@ -1,1 +1,0 @@
-../../../finemapping/summary/aspartate_aminotransferase_table_README.txt

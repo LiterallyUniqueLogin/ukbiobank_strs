@@ -1,1 +1,0 @@
-../../../finemapping/summary/haematocrit_table_README.txt

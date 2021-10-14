@@ -1,1 +1,0 @@
-../../../finemapping/summary/lymphocyte_count_table_README.txt

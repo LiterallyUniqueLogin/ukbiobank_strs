@@ -23,8 +23,8 @@ subset_entropy - the entropy in the association sample subset calculated from al
 subset_HWEP - the Hardy-Weinberg p-value in the association sample subset comparing hardcall genotypes and allele frequencies
 subset_allele_dosage_r2 - a metric of imputation accuracy, the per-allele R^2 between dosage-weighted allele length and allele hardcalls across samples
 association_p_value - linear regression of rank inverse normalized phenotype values vs repeat length on QC'ed sample subset, with covariates
-Δphenotype_per_additional_repeat_unit - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in 10^9 cells/Litre
-Δphenotype_per_s.d._increase_in_repeat_size - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in 10^9 cells/Litre
+Δphenotype_per_additional_repeat_unit - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in mg/L
+Δphenotype_per_s.d._increase_in_repeat_size - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in mg/L
 pcausal - FINEMAP posterior probability of causality
 included_from_literature - Whether or not this row was included in the table because it was reported previously in the literature. False here means we have not checked whether or not this is reported in the literature, not that it has not.
 nearby_exons - A comma separated list of distance:'upstream'/'downstream'/'inside':exon-start:exon-end:gene-name:gene-type, where upstream means upstream of the exon in that gene's direction. All exons within a 1000bp radius, or 'none'. (See https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.) 

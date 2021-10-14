@@ -1,1 +1,0 @@
-../../../finemapping/summary/apolipoprotein_a_table_README.txt

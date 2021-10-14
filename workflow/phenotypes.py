@@ -72,6 +72,7 @@ haematological_phenotypes = {
     'haemoglobin_concentration': PhenotypeDescription(
         '30020',
         unit = 'g/dL',
+        exciting_STR_hits = ['15:76246773']
     ),
     'haematocrit': PhenotypeDescription(
         '30030',
@@ -81,11 +82,13 @@ haematological_phenotypes = {
     # here corpuscular means of red blood cells
     'mean_corpuscular_volume': PhenotypeDescription(
         '30040',
-        unit = '10^-15 L'
+        unit = '10^-15 L',
+        exciting_STR_hits = ['22:32897468']
     ),
     'mean_corpuscular_haemoglobin': PhenotypeDescription(
         '30050',
-        unit = '10^-12 g'
+        unit = '10^-12 g',
+        exciting_STR_hits = ['22:32897468']
     ),
     'mean_corpuscular_haemoglobin_concentration': PhenotypeDescription(
         '30060',
@@ -96,7 +99,8 @@ haematological_phenotypes = {
     # property of this cell type
     'red_blood_cell_distribution_width': PhenotypeDescription(
         '30070',
-        unit = '%'
+        unit = '%',
+        exciting_STR_hits = ['1:43429968']
     ),
     'platelet_count': PhenotypeDescription(
         '30080',
@@ -110,11 +114,13 @@ haematological_phenotypes = {
     ),
     'mean_platelet_volume': PhenotypeDescription(
         '30100',
-        unit = '10^-15 L'
+        unit = '10^-15 L',
+        exciting_STR_hits = ['17:27842010', '17:44033915']
     ),
     'platelet_distribution_width': PhenotypeDescription(
         '30110',
-        unit = '%'
+        unit = '%',
+        exciting_STR_hits = ['22:43385874']
     ),
     'lymphocyte_count': PhenotypeDescription(
         '30120',
@@ -163,7 +169,8 @@ haematological_phenotypes = {
     # I think this is referring to spherical rbcs?
     'mean_sphered_cell_volume': PhenotypeDescription(
         '30270',
-        unit = '10^-15 L'
+        unit = '10^-15 L',
+        exciting_STR_hits = ['17:44084292']
     ),
     'immature_reticulocyte_fraction': PhenotypeDescription(
         '30280',
@@ -204,7 +211,8 @@ serum_biomarkers = {
         min_val = 15,
         max_val = 60,
         min_omit=14,
-        max_omit=2
+        max_omit=2,
+        exciting_STR_hits = ['4:177692134']
     ),
     'alkaline_phosphatase': PhenotypeDescription(
         '30610',
@@ -220,7 +228,8 @@ serum_biomarkers = {
         min_val=3,
         max_val=500,
         min_omit=45,
-        max_omit=22
+        max_omit=22,
+        exciting_STR_hits = ['2:227110021']
     ),
 
     # 1.8k samples discarded due to too high values (>2.5)
@@ -230,7 +239,8 @@ serum_biomarkers = {
         min_val=0.4,
         max_val=2.5,
         min_omit=20,
-        max_omit=1809
+        max_omit=1809,
+        exciting_STR_hits = ['1:93858126']
     ),
 
     # 1.2k samples discarded (both < 0.4 and > 2)
@@ -248,7 +258,8 @@ serum_biomarkers = {
         min_val=3,
         max_val=1000,
         min_omit=11,
-        max_omit=3
+        max_omit=3,
+        exciting_STR_hits = ['14:35662185']
     ),
     # skipping direct bilirubin 30660, 70k values are too low
     'urea': PhenotypeDescription(
@@ -265,7 +276,8 @@ serum_biomarkers = {
         min_val=1,
         max_val=5,
         min_omit=61,
-        max_omit=0
+        max_omit=0,
+        exciting_STR_hits = ['11:2982726', '6:34182033']
     ),
     'cholesterol': PhenotypeDescription(
         '30690',
@@ -281,7 +293,8 @@ serum_biomarkers = {
         min_val=4,
         max_val=4420,
         min_omit=0,
-        max_omit=0
+        max_omit=0,
+        exciting_STR_hits = ['2:15786517', '2:148599967']
     ),
     'c_reactive_protein': PhenotypeDescription(
         '30710',
@@ -469,24 +482,7 @@ phenotypes_in_use = {
 phenotypes_in_use = set(
     key for key in haematological_phenotypes if 'reticulocyte' not in key
 )
-phenotypes_in_use = phenotypes_in_use.union([
-    'ldl_cholesterol_direct',
-    'total_bilirubin',
-])
-phenotypes_in_use = phenotypes_in_use.union(sorted(serum_biomarkers)[:10])
-
-# temporary
-'''
-phenotypes_in_use = phenotypes_in_use.difference({
-    'alanine_aminotransferase',
-    'aspartate_aminotransferase',
-    'alkaline_phosphatase',
-    'apolipoprotein_b',
-    'c_reactive_protein',
-    'creatinine',
-    'calcium'
-})
-'''
+phenotypes_in_use = phenotypes_in_use.union(serum_biomarkers)
 
 phenotypes_in_use = sorted(phenotypes_in_use)
 

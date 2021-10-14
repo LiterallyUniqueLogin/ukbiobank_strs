@@ -1,1 +1,0 @@
-../../../finemapping/summary/creatinine_table_README.txt
