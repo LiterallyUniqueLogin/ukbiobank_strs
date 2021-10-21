@@ -90,7 +90,7 @@ def get_gff_kvp(kvp_string, key):
     else:
         return str(splits[1].split(';', maxsplit=1)[0])
 
-def main(readme, phenotype, previous_STRs):
+def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
     with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unitfile:
         unit = next(unitfile).strip()
 
@@ -143,9 +143,18 @@ def main(readme, phenotype, previous_STRs):
         (col_dphen_sd, 'linear regression on raw phenotypes vs repeat length on '
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
         ('pcausal', 'FINEMAP posterior probability of causality'),
-        ('included_from_literature', 'Whether or not this row was included in the table '
-         'because it was reported previously in the literature. False here means we have '
+        ('mentioned_in_literature', 'Whether or not this we know of a citation '
+         'saying this STR is likely causal for this trait. False here means we have '
          'not checked whether or not this is reported in the literature, not that it has not.'),
+        ('literature_inclusion_url', 'If mentioned_in_literature, then the corresponding ULR. '
+          'Otherwise NA. '),
+        ('included_only_due_to_literature', 'NA if not mentioned in literature. True if the locus '
+         'would have been filtered, but is included due to literature. False otherwise. '
+        ('curated', 'Whether or not manual examination was used to decide this was an '
+         'exciting locus worthy of extra attention. '),
+        ('included_only_due_to_curation', 'NA if not curated. True if the locus '
+         'would have been filtered, but is included due to manual curation. '
+         'False if the locus was curated but would have been included regardless (not filtered). ')
         ('nearby_exons', "A comma separated list of distance:'upstream'/'downstream'/'inside':"
          "exon-start:exon-end:gene-name:gene-type, where upstream means upstream of "
          "the exon in that gene's direction. All exons within a 1000bp radius, or 'none'. (See "
@@ -238,11 +247,11 @@ def main(readme, phenotype, previous_STRs):
     rename_column_pd(associations, 'motif', 'repeat_unit')
     rename_column_pd(associations, 'subset_het', 'subset_heterozygosity')
     rename_column_pd(associations, f'p_{phenotype}', 'association_p_value')
-    for STR in previous_STRs:
+    for STR in literature_STRs:
         chrom, pos = STR.split(':')
         if not np.any((associations['chrom'] == int(chrom)) & (associations['pos'] == int(pos))):
-            readme.write(f'Never ran association on previously reported STR association at {STR}\n')
-            previous_STRs[STR] = True
+            readme.write(f'Never ran association on literature reported STR association at {STR}\n')
+            literature_STRs[STR] = True
 
     print("Merging ...", flush=True)
     signals = signals.merge(
@@ -250,34 +259,65 @@ def main(readme, phenotype, previous_STRs):
         on=['chrom', 'pos'],
         how='right'
     )
-    previous_STR_rows = None
-    for STR, already_dropped in previous_STRs.items():
+    literature_STR_rows = None
+    literature_STR_URLs = ['NA']*len(signals)
+    for (STR, already_dropped), URL in zip(literature_STRs.items(), literature_STR_URLs):
         if already_dropped:
             continue
         chrom, pos = STR.split(':')
         new_rows = (signals['chrom'] == int(chrom)) & (signals['pos'] == int(pos))
-        if previous_STR_rows is None:
-            previous_STR_rows = new_rows
+        assert np.sum(new_rows) == 1
+        literature_STR_URLs[np.where(new_rows)[0]] = URL
+        if literature_STR_rows is None:
+            literature_STR_rows = new_rows
         else:
-            previous_STR_rows |= new_rows
-    if previous_STR_rows is None:
-        previous_STR_rows = np.full((signals.shape[0]), False, dtype=bool)
+            literature_STR_rows |= new_rows
+    if literature_STR_rows is None:
+        literature_STR_rows = np.full((signals.shape[0]), False, dtype=bool)
 
-    signals['included_from_literature'] = previous_STR_rows
+    signals['mentioned_in_literature'] = literature_STR_rows
+    signals['literature_inclusion_url'] = literature_STR_URLs
+    only_lit = ['NA']*signals.shape[0]
+    only_lit[literature_STR_rows] = 'True'
+    only_lit[
+        literature_STR_rows &
+        ~np.isnan(signals['pcausal'].to_numpy()) &
+        (signals['pcausal'] >= 0.05)
+    ] = 'False'
+
+    signals['included_only_due_to_literature'] = only_lit
+
+    cool_loci_rows = None
+    for STR in cool_loci:
+        chrom, pos = STR.split(':')
+        new_rows = (signals['chrom'] == int(chrom)) & (signals['pos'] == int(pos))
+        assert np.sum(new_rows) == 1
+        if cool_loci_rows is None:
+            cool_loci_rows = new_rows
+        else:
+            cool_loci_rows |= new_rows
+    if cool_loci_rows is None:
+        cool_loci_rows = np.full((signals.shape[0]), False, dtype=bool)
+
+    signals['curated'] = cool_loci_rows
+    only_cool = ['NA']*signals.shape[0]
+    only_cool[cool_loci_rows] = 'True'
+    only_cool[
+        cool_loci_rows &
+        ~np.isnan(signals['pcausal'].to_numpy()) &
+        (signals['pcausal'] >= 0.05)
+    ] = 'False'
+
+    signals['included_only_due_to_curation'] = only_cool
+
     signals = signals[
-        previous_STR_rows | (
+        literature_STR_rows | cool_loci_rows | (
             ~np.isnan(signals['pcausal'].to_numpy()) & (signals['pcausal'] >= 0.05)
     )]
 
-    signals = signals[signals['association_p_value'] < 5e-8]
+    signals = signals[(signals['association_p_value'] < 5e-8) | literature_STR_rows]
     signals.reset_index(inplace=True)
     nrows = signals.shape[0]
-
-    for STR, already_dropped in previous_STRs.items():
-        chrom, pos = STR.split(':')
-        if not already_dropped and not np.any((signals['chrom'] == int(chrom)) & (signals['pos'] == int(pos))):
-            readme.write(f'Omitting previously reported STR association at {STR} as it did not pass the GWAS association significance threshold\n')
-            previous_STRs[STR] = True
 
     rename_column_pd(signals, 'pos', 'SNPSTR_start_pos')
 
@@ -550,9 +590,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
     parser.add_argument('--previous-STR-findings', nargs='+', default=[])
+    parser.add_argument('--previous-STR-finding-URLs', nargs='+', default=[])
+    parser.add_argument('--cool-loci', nargs='+', default=[])
     args = parser.parse_args()
     phenotype = args.phenotype
     previous_STRs = {STR : False for STR in args.previous_STR_findings}
+    previous_STR_URLs = args.previous_STR_finding_URLs
+
+    assert len(previous_STRs) == len(previous_STR_URLs)
 
     with open(f'{ukb}/finemapping/summary/{phenotype}_table_README.txt', 'w') as readme:
-        main(readme, phenotype, previous_STRs)
+        main(readme, phenotype, previous_STRs, previous_STR_URLs, args.cool_loci)

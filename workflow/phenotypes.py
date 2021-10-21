@@ -9,7 +9,7 @@ class PhenotypeDescription:
             min_omit = None,
             max_omit = None,
             categorical_covars = [],
-            previous_STR_findings = [], # format "chr:pos"
+            previous_STR_findings = [], # format ("chr:pos", 'url')
             previous_SNP_findings = [], # unsure of format yet
             exciting_STR_hits= []) :# format "chr:pos"
         self.data_field_id = data_field_id
@@ -28,7 +28,7 @@ pheno_descs = {
     'height': PhenotypeDescription(
         '50',
         unit = 'cm',
-        previous_STR_findings = ["3:53128363"]
+        previous_STR_findings = [("3:53128363", 'https://www.nature.com/articles/s41588-019-0521-9')]
     ),
     # blood pressure - combine 4079, 94, 4080, 93,  with covars 36,37 - all category 100011
     # --- Spirometry ---
@@ -72,12 +72,14 @@ haematological_phenotypes = {
     'haemoglobin_concentration': PhenotypeDescription(
         '30020',
         unit = 'g/dL',
-        exciting_STR_hits = ['15:76246773']
+        exciting_STR_hits = ['15:76246773'],
+        previous_STR_findings = [("16:88800373", 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5889333/')]
     ),
     'haematocrit': PhenotypeDescription(
         '30030',
         unit = '%',
-        exciting_STR_hits = ['15:76246773']
+        exciting_STR_hits = ['15:76246773'],
+        previous_STR_findings = [("16:88800373", 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5889333/')]
     ),
     # here corpuscular means of red blood cells
     'mean_corpuscular_volume': PhenotypeDescription(
@@ -88,11 +90,13 @@ haematological_phenotypes = {
     'mean_corpuscular_haemoglobin': PhenotypeDescription(
         '30050',
         unit = '10^-12 g',
-        exciting_STR_hits = ['22:32897468']
+        exciting_STR_hits = ['22:32897468'],
+        previous_STR_findings = [("16:88800373", 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5889333/')]
     ),
     'mean_corpuscular_haemoglobin_concentration': PhenotypeDescription(
         '30060',
-        unit = 'g/dL'
+        unit = 'g/dL',
+        previous_STR_findings = [("16:88800373", 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5889333/')]
     ),
     # my (possibly incorrect) understanding is that this is the width of the image
     # the machine took relative to its receptive field and is not an innate
@@ -157,10 +161,12 @@ haematological_phenotypes = {
     'reticulocyte_percent': PhenotypeDescription(
         '30240',
         unit = '%',
+        previous_STR_findings = [("16:88800373", 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5889333/')]
     ),
     'reticulocyte_count': PhenotypeDescription(
         '30250',
         unit = '10^12 cells/L',
+        previous_STR_findings = [("16:88800373", 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5889333/')]
     ),
     'mean_reticulocyte_volume': PhenotypeDescription(
         '30260',
@@ -394,7 +400,7 @@ serum_biomarkers = {
     'total_bilirubin': PhenotypeDescription(
         '30840',
         unit = 'umol/L',
-        previous_STR_findings = ["2:234668880"],
+        previous_STR_findings = [("2:234668880", 'https://academic.oup.com/clinchem/article/54/5/851/5628770')],
         min_val=1,
         max_val=513,
         min_omit=18,

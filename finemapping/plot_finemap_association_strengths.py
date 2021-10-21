@@ -32,8 +32,10 @@ def main():
     signals = pd.read_csv(
         f'{ukb}/finemapping/summary/{phenotype}_table.tab',
         delimiter='\t',
-        encoding='UTF-8'
+        encoding='UTF-8',
+        dtype={'included_only_due_to_literature': str, 'included_only_due_to_curation': str}
     )
+    signals = signals[(signals['included_only_due_to_literature'] != 'True') & (signals['included_only_due_to_curation'] != 'True')]
     data_dict = {}
     cols = {
         'chrom',

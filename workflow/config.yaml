@@ -8,12 +8,11 @@
 # snakemake vs sbatch options are not interchangeable
     
 # snakemake replaces {rule} and {wildcards}
-# https://snakemake.readthedocs.io/en/stable/snakefiles/configuration.html#cluster-configuration-deprecated
+# see snakemake --help for --cluster
 # this is then passed to slurm, which replaces %j with jobid
 # https://support.pawsey.org.au/documentation/display/US/Customize+the+SLURM+output+file+name
 # all the resourcem may be modified for different runs
 # parsable needed for status-sacct
-# TODO reset job name to --job-name={rule}-{wildcards}
 cluster:
   mkdir -p logs/{rule} &&
   sbatch
@@ -23,8 +22,7 @@ cluster:
     --nodes 1
     --job-name={rule}-{wildcards}
     --output=logs/{rule}/{rule}-{wildcards}-%j.out
-    --mail-type FAIL
-    --mail-user jbmargoliash@ucsd.edu
+    $(if (({resources.attempt} != 1)) ; then echo '--mail-type FAIL --mail-user jbmargoliash@ucsd.edu' ; fi)
     --ntasks-per-node={resources.threads}
     --mem={resources.mem_gb}G
     --time={resources.time}
@@ -32,12 +30,15 @@ cluster:
 default-resources:
   - threads=1
   - mem_gb=2
+  - attempt=0 # this doesn't correspond to the retry attempt. That needs to be manually set in the snakefile
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
 restart-times: 1
 max-jobs-per-second: 30 #too many?
 max-status-checks-per-second: 10
 latency-wait: 180
-jobs: 500
+resources: mem_gb=8192
+jobs: 4096 #this is required, but we want snakemake to be memory bound, not job bound, so set it
+           #to the maximal amount
 keep-going: True
 rerun-incomplete: True # https://groups.google.com/g/snakemake/c/fbQbnD8yYkQ?pli=1
 printshellcmds: True

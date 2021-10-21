@@ -6,6 +6,7 @@ import math
 import os
 import pathlib
 import subprocess as sp
+import sys
 import time
 
 import numpy as np
@@ -77,6 +78,16 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
     )
     for line in out.stdout.decode().split('\n'):
         strs_to_include.add(line.strip())
+    if len(strs_to_include) == 0:
+        with open(f"{outdir}/README.txt", 'w') as readme:
+            readme.write(
+                f"No STRs were found in the region with p < {p_cutoff}, "
+                "so finemapping is being skipped.\n"
+            )
+        pathlib.Path(f'{outdir}/no_strs').touch()
+        pathlib.Path(f'{outdir}/pheno_residuals.npy').touch()
+        pathlib.Path(f'{outdir}/gt_residuals.npy').touch()
+        sys.exit()
 
     snps_to_filter = set()
     with open(filter_set_fname) as filter_file:
@@ -122,17 +133,10 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         var_names.append(f'STR_{str_pos}')
         gts.append(get_str_dosages(str_dosages_dict))
     print(f"Time: {time.time() - start}s")
-
-    if len(gts) == 0:
-        # no strs, skip this locus
-        with open(f"{outdir}/README.txt", 'w') as readme:
-            readme.write(
-                f"No STRs were found in the region with p < {p_cutoff}, "
-                "so finemapping is being skipped.\n"
-            )
-        pathlib.Path(f'{outdir}/no_strs').touch()
-        pathlib.Path(f'{outdir}/pheno_residuals.npy').touch()
-        pathlib.Path(f'{outdir}/gt_residuals.npy').touch()
+    if len(gts[0]) != len(strs_to_include):
+        print(var_names)
+        print(strs_to_include)
+        assert False
 
     snp_itr = lfg.load_imputed_snps(region, sample_idx)
 
@@ -150,6 +154,10 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         # TODO skip if p-value is too high?
         gts.append(snp_dosages[:, 1] + 2*snp_dosages[:, 2])
     print(f"Time: {time.time() - start}s")
+    if len(gts[0]) != len(snps_to_include):
+        print(var_names)
+        print(snps_to_include)
+        assert False
 
     gts = np.stack(gts, axis=1)
     assert gts.shape[1] == len(var_names)

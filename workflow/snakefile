@@ -1097,7 +1097,8 @@ rule finemap_calc_corrs:
         temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/lds.h5')
     resources:
         time = finemap_corrs_time,
-        mem_gb = 4
+        mem_gb = 4,
+        attempt = lambda wildcards, attempt: attempt
     shell:
         'finemapping/finemap_calc_corrs.py '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
@@ -1225,7 +1226,8 @@ checkpoint susie_load_gts:
         temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy')
     resources:
         time = susie_load_time,
-        mem_gb = 50
+        mem_gb = 50,
+        attempt = lambda wildcards, attempt: attempt
     shell:
         'finemapping/susie_load_gts.py '
         f'{str_imputation_run_name} '
@@ -1262,7 +1264,8 @@ rule susie_run:
         #consuming jobs should consume alpha.tab
     resources:
         time = susie_run_time,
-        mem_gb = susie_run_mem
+        mem_gb = susie_run_mem,
+        attempt = lambda wildcards, attempt: attempt
     conda:
         'envs/ukb_susier.env.yml'
     shell:
@@ -1289,6 +1292,9 @@ def susie_run_region_input(wildcards):
 
 rule susie_run_region:
     input:
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt',
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
+        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
         susie_run_region_input
     output:
         done='finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/done'
@@ -1411,15 +1417,30 @@ checkpoint produce_summary_table:
         mem_gb = 75
     run:
         STRs = ''
+        URLs = ''
         first = True
-        for STR in phenotypes.pheno_descs[wildcards.phenotype].previous_STR_findings:
+        for STR, url in phenotypes.pheno_descs[wildcards.phenotype].previous_STR_findings:
             if not first:
                 STRs += ' '
+                URLs += ' '
             first = False
             STRs += STR
+            URLs += url
+
+        exciting_STRs = ''
+        first = True
+        for STR in phenotypes.pheno_descs[wildcards.phenotype].exciting_STR_hits:
+            if not first:
+                exciting_STRs += ' '
+            first = False
+            exciting_STRs += STR
+
         command = 'finemapping/collate_strong_associations.py ' + wildcards.phenotype
         if STRs:
             command += ' --previous-STR-findings ' + STRs
+            command += ' --previous-STR-finding-URLs ' + URLs
+        if exciting_STRs:
+            command += ' --cool-loci ' + exciting_STRs
         shell(command)
 
 rule graph_finemap_output:
@@ -1485,7 +1506,9 @@ rule concat_and_filter_finemapping_summary_tables:
         [f'finemapping/summary/{phenotype}_table.tab' for phenotype in phenotypes.phenotypes_in_use]
     output:
         'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
-        'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt'
+        'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
+        'export_scripts/results/curated_STRs.tab',
+        'export_scripts/results/curated_STRs_README.txt'
     resources:
         time='00:10:00'
     run:
@@ -1542,7 +1565,8 @@ rule export_phenotype_summaries:
         'finemapping/summary/{phenotype}_table_README.txt',
         'finemapping/summary/{phenotype}_table.tab',
         'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
-        'association/plots/{phenotype}.manhattan.FINEMAP.html'
+        'association/plots/{phenotype}.manhattan.FINEMAP.html',
+        'association/plots/{phenotype}.overview.manhattan.png'
     output:
         'export/phenotypes/{phenotype}/peaks_250000_5e-8.tab',
         'export/phenotypes/{phenotype}/peaks_250000_5e-8_README.txt',
@@ -1553,7 +1577,8 @@ rule export_phenotype_summaries:
         'export/phenotypes/{phenotype}/finemapping_summary_README.txt',
         'export/phenotypes/{phenotype}/finemapping_summary.tab',
         'export/phenotypes/{phenotype}/signal_strengths.html',
-        'export/phenotypes/{phenotype}/manhattan.FINEMAP.html'
+        'export/phenotypes/{phenotype}/manhattan.FINEMAP.html',
+        'export/phenotypes/{phenotype}/overview.manhattan.png'
     resources:
         time='00:05:00'
     run:
@@ -1587,7 +1612,7 @@ def conditional_plots_sig_strs(wildcards):
         header=0,
         delimiter='\t'
     ))
-    results = results[(results['pcausal'] >= 0.5) | results['included_from_literature']]
+    results = results[(results['pcausal'] >= 0.5) | results['included_from_literature'] | results['curated']]
     outfiles = []
     for result in results:
         outfiles.append(
@@ -1666,6 +1691,8 @@ rule export_combined_summaries_and_figures:
         'export_scripts/results/phenotypes_README.txt',
         'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
         'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
+        'export_scripts/results/curated_STRs.tab',
+        'export_scripts/results/curated_STRs_README.txt',
         'export_scripts/results/validate_our_code.png',
         'export_scripts/results/panukbb_scatter.png',
         'export_scripts/results/panukbb_scatter.svg',
@@ -1684,6 +1711,8 @@ rule export_combined_summaries_and_figures:
         'export/combined/phenotypes_README.txt',
         'export/combined/putatively_causal_multiallelic_STRs.tab',
         'export/combined/putatively_causal_multiallelic_STRs_README.txt',
+        'export/combined/curated_STRs.tab',
+        'export/combined/curated_STRs_README.txt',
         'export/combined/validate_our_code.png',
         'export/combined/panukbb_scatter.png',
         'export/combined/panukbb_scatter.svg',

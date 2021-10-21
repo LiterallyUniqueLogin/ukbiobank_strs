@@ -49,3 +49,4 @@ twistd.pid
 *.gff3
 dag.svg
 export/*
+malaria_STR.tab
