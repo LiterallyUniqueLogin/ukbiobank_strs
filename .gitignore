@@ -50,3 +50,4 @@ twistd.pid
 dag.svg
 export/*
 malaria_STR.tab
+temp*

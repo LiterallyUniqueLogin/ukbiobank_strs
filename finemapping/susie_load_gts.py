@@ -77,7 +77,9 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         capture_output=True
     )
     for line in out.stdout.decode().split('\n'):
-        strs_to_include.add(line.strip())
+        if line.strip() != '':
+            strs_to_include.add(line.strip())
+
     if len(strs_to_include) == 0:
         with open(f"{outdir}/README.txt", 'w') as readme:
             readme.write(
@@ -111,7 +113,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
     )
     for line in out.stdout.decode().split('\n'):
         snp = tuple(line.strip().split())
-        if snp not in snps_to_filter:
+        if snp not in snps_to_filter and line.strip() != '':
             snps_to_include.add(snp)
 
     var_names = []
@@ -133,12 +135,12 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         var_names.append(f'STR_{str_pos}')
         gts.append(get_str_dosages(str_dosages_dict))
     print(f"Time: {time.time() - start}s")
-    if len(gts[0]) != len(strs_to_include):
+    if len(gts) != len(strs_to_include):
         print(var_names)
         print(strs_to_include)
         assert False
 
-    snp_itr = lfg.load_imputed_snps(region, sample_idx)
+    snp_itr = lfg.load_imputed_snps(region, sample_idx, apply_filter = False)
 
     print('loading SNPs... ', flush=True)
     start = time.time()
@@ -151,10 +153,9 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         if (str(snp_pos), *alleles) not in snps_to_include:
             continue
         var_names.append(f'SNP_{snp_pos}_' + '_'.join(alleles))
-        # TODO skip if p-value is too high?
         gts.append(snp_dosages[:, 1] + 2*snp_dosages[:, 2])
     print(f"Time: {time.time() - start}s")
-    if len(gts[0]) != len(snps_to_include):
+    if len(gts) != len(snps_to_include) + len(strs_to_include):
         print(var_names)
         print(snps_to_include)
         assert False

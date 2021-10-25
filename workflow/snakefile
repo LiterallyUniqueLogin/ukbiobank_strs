@@ -1299,7 +1299,7 @@ rule susie_run_region:
     output:
         done='finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/done'
     resources:
-        time='00:01:00'
+        time='00:10:00'
     shell:
         'touch {output.done} '
 

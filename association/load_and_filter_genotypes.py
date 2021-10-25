@@ -315,7 +315,8 @@ def filtered_microarray_snps(region):
 
 def load_imputed_snps(region: str,
                       samples: np.ndarray,
-                      info_thresh: Optional[float] = None):
+                      info_thresh: Optional[float] = None,
+                      apply_filter: bool = True):
     """
     Iterate over a region returning genotypes at SNP loci.
 
@@ -331,6 +332,8 @@ def load_imputed_snps(region: str,
         (True) and which are not
     info_thresh:
         Loci must have INFO scores of at least this thresh or will be filtered
+    apply_filter:
+        should the mac 20 cutoff be applied?
 
     Yields
     ------
@@ -367,6 +370,8 @@ def load_imputed_snps(region: str,
     of the genotypes for heterozygous samples is arbitrary. This
     currently doesn't matter as hard calls are)
     """
+    assert (not apply_filter) or info_thresh is None
+
     chrom, posses = region.split(':')
     start, end = tuple(int(val) for val in posses.split('-'))
     bgen_fname = f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen'
@@ -383,7 +388,6 @@ def load_imputed_snps(region: str,
         'subset_total_hardcalls',
         'subset_HWEP'
     )
-
 
     with open(mfi_fname) as mfi:
         for variant_num, pos in enumerate(bgen.positions):
@@ -459,7 +463,7 @@ def load_imputed_snps(region: str,
                 f'{subset_hwep}'
             )
 
-            if (subset_total_alt_dosage < 20 or subset_total_ref_dosage < 20):
+            if (subset_total_alt_dosage < 20 or subset_total_ref_dosage < 20) and apply_filter:
                 yield (
                     None,
                     alleles,
@@ -476,7 +480,7 @@ def load_imputed_snps(region: str,
                     alleles,
                     chrom,
                     pos,
-                    'info<{info_thresh}',
+                    f'info<{info_thresh}',
                     locus_details
                 )
                 continue
