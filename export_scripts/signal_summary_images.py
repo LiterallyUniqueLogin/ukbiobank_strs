@@ -61,21 +61,25 @@ def peaks_by_pheno(peaks):
         width=1200,
         height=1200
     )
+    fig.toolbar_location = None
     fig.xaxis.major_label_orientation = 1.2
     fig.xaxis.group_label_orientation = 1.2
     fig.vbar_stack(
         [ 'snp_only_peaks', 'both_peaks', 'str_peaks'],
         x='phenos',
         legend_label = ['Only tagged by SNPs', 'Tagged by both SNPs and STRs', 'Only tagged by STRs'],
-        color=['blue', 'purple', 'red'],
+        color=['#3B8CF5', '#9D6898', '#FF443B'],
         source = data,
         width=0.9
     )
     fig.legend.location='top_left'
     fig.background_fill_color = None
     fig.border_fill_color = None
-    fig.ygrid.grid_line_color = None
-    fig.xgrid.grid_line_color = None
+    fig.grid.grid_line_color = None
+    fig.title.text_font_size = '30px'
+    fig.axis.axis_label_text_font_size = '26px'
+    fig.yaxis.major_label_text_font_size = '20px'
+    fig.legend.label_text_font_size = '22px'
 
     return fig
 

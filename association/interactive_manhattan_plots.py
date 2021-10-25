@@ -49,13 +49,6 @@ def make_overview_manhattan(
 
     my_str_results['p_val'] = np.minimum(overview_max_p_val, my_str_results['p_val'])
     plink_snp_results['p_val'] = np.minimum(overview_max_p_val, plink_snp_results['p_val'])
-  
-    '''
-    n_str_peaks = np.sum(my_str_results['is_peak'])
-    n_snp_peaks = np.sum(plink_snp_results['is_peak'])
-    n_strs = np.sum(~my_str_results['is_peak'])
-    n_snps = np.sum(~plink_snp_results['is_peak'])
-    '''
 
     str_peak_dict = {}
     snp_peak_dict = {}
@@ -79,42 +72,14 @@ def make_overview_manhattan(
         ))
 
     for _dict, color1, color2 in [
-            #(str_peak_dict,  '#EE82EE', '#DA70D6'),
-            #(str_locus_dict, '#EE82EE', '#DA70D6'),
-            #(snp_peak_dict,  '#87CEFA', '#1E90FF', '#6A5ACD'),
-            #(snp_locus_dict, '#87CEFA', '#1E90FF', '#6A5ACD'),
             (insignificant_locus_dict, '#A9A9A9', '#696969')]:
         _dict['color'] = np.full(_dict['chr'].shape, '#000000')
         _dict['color'][_dict['chr'] % 2 == 1] = color1
         _dict['color'][_dict['chr'] % 2 == 0] = color2
 
-    '''
-    my_str_results = my_str_results[my_str_results['p_val'] > -np.log10(5e-8)]
-    plink_snp_results = plink_snp_results[plink_snp_results['p_val'] > -np.log10(5e-8)]
-    '''
-
     for chrom in range(2, 23):
         for _dict in str_peak_dict, snp_peak_dict, str_locus_dict, snp_locus_dict, insignificant_locus_dict:
             _dict['pos'][_dict['chr'] >= chrom] += chr_lens[chrom - 2]
-
-    '''
-    col_dict['type'] = np.full((n_strs + n_snps, ), 'a very long string')
-    col_dict['type'][n_snps:][my_str_results['is_peak']] = 'STR peak'
-    col_dict['type'][n_snps:][~my_str_results['is_peak']] = 'STR'
-    col_dict['type'][:n_snps][plink_snp_results['is_peak']] = 'SNP peak'
-    col_dict['type'][:n_snps][~plink_snp_results['is_peak']] = 'SNP'
-    #col_dict['type'][col_dict['p_val'] < -np.log(5e-8)]  = 'Insignificant'
-
-    col_dict['size'] = np.full((n_strs + n_snps, ), 4)
-    col_dict['size'][n_snps:][my_str_results['is_peak']] = 15
-    col_dict['size'][:n_snps][plink_snp_results['is_peak']] = 15
-
-    col_dict['alpha'] = np.full((n_strs + n_snps, ), np.nan)
-    col_dict['alpha'][:n_snps] = 1
-    col_dict['alpha'][n_snps:] = 0.3
-    col_dict['alpha'][n_snps:][my_str_results['is_peak']] = 1
-    col_dict['alpha'][:n_snps][plink_snp_results['is_peak']] = 1
-    '''
 
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
@@ -122,50 +87,32 @@ def make_overview_manhattan(
         title=(phenotype.capitalize()),
         x_axis_label='Chromosomes',
         y_axis_label='-log10(p-value)',
-        #y_range=(np.min(insignificant_locus_dict['p_val']), max(np.max(str_locus_dict['p_val']), np.max(snp_locus_dict['p_val']))),
     )
-    manhattan_plot.xgrid.grid_line_color = None
-    manhattan_plot.ygrid.grid_line_color = None
+    manhattan_plot.title.text_font_size = '30px'
+    manhattan_plot.axis.axis_label_text_font_size = '26px'
+    manhattan_plot.axis.major_label_text_font_size = '20px'
+    manhattan_plot.grid.grid_line_color = None
     manhattan_plot.background_fill_color = None
     manhattan_plot.border_fill_color = None
+    manhattan_plot.toolbar_location = None
 
     pre_chr_sums = np.cumsum([0, *chr_lens[:-1]])
     mid_points = [int(num) for num in pre_chr_sums + (chr_lens//2)]
     manhattan_plot.xaxis.ticker = mid_points
     manhattan_plot.xaxis.major_label_overrides = {
         mid_points[chrom - 1]: str(chrom) for chrom in range(1, 23)
-        #mid_points[chrom - 1]: f"chr{chrom}" for chrom in range(1, 23)
     }
-    #manhattan_plot.xaxis.major_label_orientation = np.pi/4
-
-    '''
-    color_dict = {
-        'STR peak': bokeh.colors.RGB(204, 121, 167),
-        'SNP peak': bokeh.colors.RGB(86, 180, 233),
-        'STR': bokeh.colors.RGB(204, 121, 167),
-        'SNP': bokeh.colors.RGB(86, 180, 233),
-        #'Insignificant': bokeh.colors.named.darkgrey
-    }
-
-    # from the periodic table example
-    # https://docs.bokeh.org/en/latest/docs/user_guide/categorical.html#mixed-factors
-    cmap = bokeh.transform.factor_cmap(
-        'type',
-        palette = list(color_dict.values()),
-        factors = list(color_dict.keys())
-    )
-    '''
 
     # from https://projects.susielu.com/viz-palette
-    str_color = "#FFB14E"
-    #snp_color = "#EA5F94"
-    snp_color = "#0000FF"
+    str_color = '#FF443B'
+    snp_color = '#3B8CF5'
     manhattan_plot.diamond(
         'pos',
         'p_val',
         source=bokeh.models.ColumnDataSource(insignificant_locus_dict),
         color='color',
-        size=4
+        size=4,
+        legend_label = 'not GWAS sig.'
     )
     manhattan_plot.diamond(
         'pos',
@@ -200,6 +147,7 @@ def make_overview_manhattan(
         legend_label = 'STRs',
         size=11
     )
+    manhattan_plot.legend.label_text_font_size = '22px'
 
     bokeh.io.export_png(manhattan_plot, filename=outfname)
 
@@ -296,7 +244,8 @@ def make_manhattan_plots(
         conditioned_strs,
         conditioned_isnps,
         *,
-        return_figure = False):
+        return_figure = False,
+        legend=True):
     ext = outfname.split('.')[-1]
 
     if not binary:
@@ -411,6 +360,10 @@ def make_manhattan_plots(
             tools='save',
             y_range=(-2, 5)
         )
+        locus_plot.title.text_font_size = '18px'
+        locus_plot.axis.axis_label_text_font_size = '18px'
+        locus_plot.axis.major_label_text_font_size = '14px'
+
         subtext = "Phenotype values are unadjusted for covariates"
         if conditioning:
             subtext += " or genotypes that were conditioned on"
@@ -428,11 +381,12 @@ def make_manhattan_plots(
             'CI5e_8_upper': ['4', '4.5']
         })
 
-        locus_plot.varea('x', 'CI5e_2_upper', 'CI5e_8_upper', source=locus_source, color="red", alpha=0.2)
-        locus_plot.varea('x', 'CI5e_2_upper', 'CI5e_2_lower', source=locus_source, color="red", alpha=0.4)
+        locus_plot.varea('x', 'CI5e_2_upper', 'CI5e_8_upper', source=locus_source, color="red", alpha=0.2, legend_label='1 - 5e-8 Confidence')
+        locus_plot.varea('x', 'CI5e_2_upper', 'CI5e_2_lower', source=locus_source, color="red", alpha=0.4, legend_label='0.95 confidence')
         locus_plot.varea('x', 'CI5e_2_lower', 'CI5e_8_lower', source=locus_source, color="red", alpha=0.2)
         locus_plot.line('x', 'y', source=locus_source, line_width=2, color="black")
-        locus_plot.circle('x', 'y', source=locus_source, color="black", size=6)
+        locus_plot.circle('x', 'y', source=locus_source, color="black", size=6, legend_label='mean')
+        locus_plot.legend.label_text_font_size = '9px'
         
         locus_wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="height")
         locus_plot.add_tools(locus_wheel_zoom)
@@ -481,42 +435,53 @@ def make_manhattan_plots(
         y_range=(-0.025*start_height_cap, start_height_cap*1.025),
         output_backend=output_backend
     )
+    manhattan_plot.title.text_font_size = '30px'
+    manhattan_plot.axis.axis_label_text_font_size = '26px'
+    manhattan_plot.axis.major_label_text_font_size = '20px'
+
+    if ext != 'html':
+        manhattan_plot.grid.grid_line_color = None
+        manhattan_plot.background_fill_color = None
+        manhattan_plot.border_fill_color = None
+        manhattan_plot.toolbar_location = None
+
     if start:
         x_width = end - start
         manhattan_plot.x_range = bokeh.models.Range1d(start-0.025*x_width, end+0.025*x_width)
 
-    # add custom tools
-    wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")
-    manhattan_plot.add_tools(wheel_zoom)
-    manhattan_plot.toolbar.active_scroll = wheel_zoom
+    if ext == 'html':
+        # add custom tools
+        wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")
+        manhattan_plot.add_tools(wheel_zoom)
+        manhattan_plot.toolbar.active_scroll = wheel_zoom
 
-    pan = bokeh.models.tools.PanTool(dimensions="width")
-    manhattan_plot.add_tools(pan)
-    manhattan_plot.toolbar.active_drag = pan
+        pan = bokeh.models.tools.PanTool(dimensions="width")
+        manhattan_plot.add_tools(pan)
+        manhattan_plot.toolbar.active_drag = pan
 
-    # make sure only one tooltip displays, not all moused over tooltips
-    # from https://stackoverflow.com/a/64544102/2966505
-    # and https://stackoverflow.com/a/707580/2966505
-    one_tooltip_callback = bokeh.models.callbacks.CustomJS(code="""
-        if (window['one_tooltip']) {
-            return;
-        }
-        window['one_tooltip'] = true;
-
-        var styles = `
-            div.bk-tooltip.bk-right>div.bk>div:not(:first-child) {
-                display:none !important;
+        # make sure only one tooltip displays, not all moused over tooltips
+        # from https://stackoverflow.com/a/64544102/2966505
+        # and https://stackoverflow.com/a/707580/2966505
+        one_tooltip_callback = bokeh.models.callbacks.CustomJS(code="""
+            if (window['one_tooltip']) {
+                return;
             }
-            div.bk-tooltip.bk-left>div.bk>div:not(:first-child) {
-                display:none !important;
-            }
-        `
-        var styleSheet = document.createElement("style")
-        styleSheet.type = "text/css"
-        styleSheet.innerText = styles
-        document.head.appendChild(styleSheet)
-    """)
-    manhattan_plot.js_on_event(bokeh.events.MouseEnter, one_tooltip_callback)
+            window['one_tooltip'] = true;
+
+            var styles = `
+                div.bk-tooltip.bk-right>div.bk>div:not(:first-child) {
+                    display:none !important;
+                }
+                div.bk-tooltip.bk-left>div.bk>div:not(:first-child) {
+                    display:none !important;
+                }
+            `
+            var styleSheet = document.createElement("style")
+            styleSheet.type = "text/css"
+            styleSheet.innerText = styles
+            document.head.appendChild(styleSheet)
+        """)
+        manhattan_plot.js_on_event(bokeh.events.MouseEnter, one_tooltip_callback)
 
     if not start:
         start = 0
@@ -536,24 +501,15 @@ def make_manhattan_plots(
         color='red',
         legend_label='GWAS p-value threshold'
     )
+    manhattan_plot.legend.label_text_font_size = '22px'
 
-    # colors from here: https://bconnelly.net/posts/creating_colorblind-friendly_figures/
-    # RGB255
-    # 0,0,0
-    # 230, 159, 0
-    # 86, 180, 233
-    # 0, 158, 115
-    # 240, 228, 66 - yellow, draws attention and has some problems
-    # 0, 114, 178
-    # 213, 94, 0
-    # 204, 121, 167
     if finemap_regions:
         cmap_field_name = 'FINEMAP_pcausal'
     else:
         cmap_field_name = 'pos' # arbitrary existant field
 
     if plot_plink_snp_data:
-        plink_snp_color = bokeh.colors.RGB(0, 114, 178)
+        plink_snp_color = '#3B8CF5'
         plink_snp_cmap = bokeh.transform.linear_cmap(
             field_name = cmap_field_name,
             low = 0,
@@ -571,7 +527,7 @@ def make_manhattan_plots(
             muted_alpha=0.1
         )
     if plot_my_str_data:
-        my_str_color = bokeh.colors.RGB(204, 121, 167)
+        my_str_color = '#FF443B'
         my_str_cmap = bokeh.transform.linear_cmap(
             field_name = cmap_field_name,
             low = 0,
@@ -619,102 +575,103 @@ def make_manhattan_plots(
             size=20
         )
 
-    # add hover tooltips for each manhattan plot
-    # see https://stackoverflow.com/questions/49282078/multiple-hovertools-for-different-lines-bokeh
-    hover_tools = []
-    if plot_my_str_data and ext == 'html':
-        my_str_hover = bokeh.models.tools.HoverTool(renderers=[my_str_manhattan])
-        my_str_hover.tooltips = [
-            ('var type', 'STR'),
-            ('alleles:', '@alleles'),
-            ('pos', '@pos'),
-            ('-log10(p_val) my code', '@p_val')
-        ]
-        if binary:
-            my_str_hover.tooltips.append(
-                ('Using Firth penalization during regression?', '@firth')
+    if ext == 'html':
+        # add hover tooltips for each manhattan plot
+        # see https://stackoverflow.com/questions/49282078/multiple-hovertools-for-different-lines-bokeh
+        hover_tools = []
+        if plot_my_str_data:
+            my_str_hover = bokeh.models.tools.HoverTool(renderers=[my_str_manhattan])
+            my_str_hover.tooltips = [
+                ('var type', 'STR'),
+                ('alleles:', '@alleles'),
+                ('pos', '@pos'),
+                ('-log10(p_val) my code', '@p_val')
+            ]
+            if binary:
+                my_str_hover.tooltips.append(
+                    ('Using Firth penalization during regression?', '@firth')
+                )
+            if conditioning:
+                my_str_hover.tooltips.append(
+                    ('-log10(unconditioned_p_val) my code', '@unconditioned_p')
+                )
+            if str_finemap_signals:
+                my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal{safe}'))
+            str_stats_start_idx = list(my_str_data.dtype.names).index(
+                f'{stat}_{phenotype}_per_single_dosage'
             )
-        if conditioning:
-            my_str_hover.tooltips.append(
-                ('-log10(unconditioned_p_val) my code', '@unconditioned_p')
-            )
-        if str_finemap_signals:
-            my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal{safe}'))
-        str_stats_start_idx = list(my_str_data.dtype.names).index(
-            f'{stat}_{phenotype}_per_single_dosage'
-        )
-        for detail_name in my_str_data.dtype.names[7:str_stats_start_idx]:
-            if detail_name in cols_to_skip:
-                continue
-            my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
-        manhattan_plot.add_tools(my_str_hover)
-        hover_tools.append(my_str_hover)
+            for detail_name in my_str_data.dtype.names[7:str_stats_start_idx]:
+                if detail_name in cols_to_skip:
+                    continue
+                my_str_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
+            manhattan_plot.add_tools(my_str_hover)
+            hover_tools.append(my_str_hover)
 
-    if plot_my_snp_data and ext == 'html':
-        my_snp_hover = bokeh.models.tools.HoverTool(renderers=[my_snp_manhattan])
-        my_snp_hover.tooltips = [
-            ('var type', 'STR'),
-            ('alleles:', '@alleles'),
-            ('pos', '@pos'),
-            ('-log10(p_val) my code', '@p_val')
-        ]
-        snp_stats_start_idx = list(my_snp_data.dtype.names).index(
-            f'{stat}_{phenotype}_per_single_dosage'
-        )
-        for detail_name in my_snp_data.dtype.names[7:snp_stats_start_idx]:
-            if detail_name in cols_to_skip:
-                continue
-            my_snp_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
-        manhattan_plot.add_tools(my_snp_hover)
-        hover_tools.append(my_snp_hover)
+        if plot_my_snp_data:
+            my_snp_hover = bokeh.models.tools.HoverTool(renderers=[my_snp_manhattan])
+            my_snp_hover.tooltips = [
+                ('var type', 'STR'),
+                ('alleles:', '@alleles'),
+                ('pos', '@pos'),
+                ('-log10(p_val) my code', '@p_val')
+            ]
+            snp_stats_start_idx = list(my_snp_data.dtype.names).index(
+                f'{stat}_{phenotype}_per_single_dosage'
+            )
+            for detail_name in my_snp_data.dtype.names[7:snp_stats_start_idx]:
+                if detail_name in cols_to_skip:
+                    continue
+                my_snp_hover.tooltips.append((detail_name, f'@{detail_name}' '{safe}'))
+            manhattan_plot.add_tools(my_snp_hover)
+            hover_tools.append(my_snp_hover)
 
-    if plot_plink_snp_data and ext == 'html':
-        plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[plink_snp_manhattan])
-        plink_snp_hover.tooltips = [
-            ('var type', 'SNP'),
-            ('alleles:', '@alleles'),
-            ('pos', '@pos'),
-            ('ID', '@id'),
-            ('-log10(p_val) Plink', '@p_val')
-        ]
-        if binary == 'logistic':
-            plink_snp_hover.tooltips.append(
-                ('alt_case_count', '@alt_case_count')
-            )
-            plink_snp_hover.tooltips.append(
-                ('alt_control_count', '@alt_control_count')
-            )
-            plink_snp_hover.tooltips.append(
-                ('Using Firth penalization during regression?', '@firth')
-            )
-        if conditioning:
-            plink_snp_hover.tooltips.append(
-                ('-log10(unconditioned_p_val) Plink', '@unconditioned_p')
-            )
-            plink_snp_hover.tooltips.append(
-                ('plink error code', '@error')
-            )
-        plink_snp_hover.tooltips.extend([
-            ('Minor allele frequency', '@maf'),
-            ('Imputation INFO', '@info')
-        ])
-        if snp_finemap_signals:
-            plink_snp_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal' '{safe}'))
-        manhattan_plot.add_tools(plink_snp_hover)
-        hover_tools.append(plink_snp_hover)
+        if plot_plink_snp_data:
+            plink_snp_hover = bokeh.models.tools.HoverTool(renderers=[plink_snp_manhattan])
+            plink_snp_hover.tooltips = [
+                ('var type', 'SNP'),
+                ('alleles:', '@alleles'),
+                ('pos', '@pos'),
+                ('ID', '@id'),
+                ('-log10(p_val) Plink', '@p_val')
+            ]
+            if binary == 'logistic':
+                plink_snp_hover.tooltips.append(
+                    ('alt_case_count', '@alt_case_count')
+                )
+                plink_snp_hover.tooltips.append(
+                    ('alt_control_count', '@alt_control_count')
+                )
+                plink_snp_hover.tooltips.append(
+                    ('Using Firth penalization during regression?', '@firth')
+                )
+            if conditioning:
+                plink_snp_hover.tooltips.append(
+                    ('-log10(unconditioned_p_val) Plink', '@unconditioned_p')
+                )
+                plink_snp_hover.tooltips.append(
+                    ('plink error code', '@error')
+                )
+            plink_snp_hover.tooltips.extend([
+                ('Minor allele frequency', '@maf'),
+                ('Imputation INFO', '@info')
+            ])
+            if snp_finemap_signals:
+                plink_snp_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal' '{safe}'))
+            manhattan_plot.add_tools(plink_snp_hover)
+            hover_tools.append(plink_snp_hover)
 
-    if plot_gwas_catalog:
-        catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
-        catalog_hover.tooltips = [
-            ('var type', 'GWAS Catalog SNP'),
-            ('pos', '@pos'),
-            ('rsid:', '@rsids'),
-            ('-log10(p_val)', '@p_val')
-        ]
-        manhattan_plot.add_tools(catalog_hover)
-        hover_tools.append(catalog_hover)
+        if plot_gwas_catalog:
+            catalog_hover = bokeh.models.tools.HoverTool(renderers=[catalog_manhattan])
+            catalog_hover.tooltips = [
+                ('var type', 'GWAS Catalog SNP'),
+                ('pos', '@pos'),
+                ('rsid:', '@rsids'),
+                ('-log10(p_val)', '@p_val')
+            ]
+            manhattan_plot.add_tools(catalog_hover)
+            hover_tools.append(catalog_hover)
 
-    manhattan_plot.toolbar.active_inspect = hover_tools
+        manhattan_plot.toolbar.active_inspect = hover_tools
 
     if plot_my_str_data and ext == 'html':
         tap = bokeh.models.tools.TapTool()
@@ -790,7 +747,7 @@ def make_manhattan_plots(
                 locus_source.data = new_dict; 
                 locus_source.change.emit();
 
-                locus_plot.title.text = 'STR ' + data['chr'][idx].toString() + ':' + data['pos'][idx].toString() + ' Repeat Unit: ' + data['motif'][idx] + ' -log10(Association p-val): ' + data['p_val'][idx].toFixed(2);
+                locus_plot.title.text = 'STR ' + data['chr'][idx].toString() + ':' + data['pos'][idx].toString() + ' Repeat Unit: ' + data['motif'][idx];
             """
         )
         my_str_source.selected.js_on_change('indices', plot_tap_callback)
@@ -972,6 +929,7 @@ def make_manhattan_plots(
 
     manhattan_plot.legend.click_policy="mute"
 
+    manhattan_plot.legend.visible = legend
     if return_figure:
         return manhattan_plot
 
@@ -1562,7 +1520,8 @@ def main():
             finemap_regions = finemap_regions,
             conditioned_isnps = conditioned_isnps,
             conditioned_strs = conditioned_strs,
-            return_figure = True
+            return_figure = True,
+            legend=False
         )
         unconditioned_man = make_manhattan_plots(
             '.png',

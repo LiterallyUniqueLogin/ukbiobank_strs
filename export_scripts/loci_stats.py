@@ -87,18 +87,21 @@ def main():
             x_axis_label=f'Num. alleles with frequency > {thresh*100}%',
             y_axis_label='Num. STRs analyzed',
             width=600,
-            height=600,
-            tools=''
+            height=600
         )
+        figure.title.text_font_size = '18px'
+        figure.axis.axis_label_text_font_size = '18px'
+        figure.axis.major_label_text_font_size = '14px'
+        figure.toolbar_location = None
         figure.background_fill_color = None
         figure.border_fill_color = None
-        figure.ygrid.grid_line_color = None
-        figure.xgrid.grid_line_color = None
+        figure.grid.grid_line_color = None
         figure.quad(
             top=ys,
             bottom=0,
             left=xs-0.5,
-            right=xs+0.5
+            right=xs+0.5,
+            color='#d2691e'
         )
         bokeh.io.export_png(figure, filename=f'{ukb}/export_scripts/results/allele_count_thresh_{thresh}.png')
         bokeh.io.export_svg(figure, filename=f'{ukb}/export_scripts/results/allele_count_thresh_{thresh}.svg')

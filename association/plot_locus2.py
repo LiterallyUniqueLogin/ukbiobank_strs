@@ -45,10 +45,13 @@ figure = bokeh.plotting.figure(
     y_axis_label=y_axis_label,
     x_axis_label='Sum of allele lengths (repeat copies)'
 )
-figure.xgrid.grid_line_color = None
-figure.ygrid.grid_line_color = None
+figure.grid.grid_line_color = None
 figure.background_fill_color = None
 figure.border_fill_color = None
+figure.toolbar_location = None
+figure.title.text_font_size = '18px'
+figure.axis.axis_label_text_font_size = '18px'
+figure.axis.major_label_text_font_size = '14px'
 
 if not args.binary:
     run_type = 'my_str'
@@ -120,18 +123,6 @@ for aidx1, len_allele1 in enumerate(len_alleles):
 
 assert np.isclose(sum(subset_summed_dosage_fractions.values()), 1)
 
-'''
-subset_single_dosages = ast.literal_eval(result[header.index('subset_total_per_allele_dosages')])
-total_dosage = sum(subset_single_dosages.values())
-est_subset_summed_dosage_fractions = {}
-for a1 in subset_single_dosages:
-    for a2 in subset_single_dosages:
-        summed_a = float(a1) + float(a2)
-        if summed_a not in est_subset_summed_dosage_fractions:
-            est_subset_summed_dosage_fractions[summed_a] = 0
-        est_subset_summed_dosage_fractions[summed_a] += subset_single_dosages[a1]*subset_single_dosages[a2]/total_dosage**2
-'''
-
 alleles = list(subset_summed_dosage_fractions.keys())
 alleles_copy = alleles.copy()
 for allele in alleles_copy:
@@ -146,30 +137,23 @@ else:
 mean_per_dosage = {float(allele): val for allele, val in ast.literal_eval(result[header.index(f'{stat_name}_{args.phenotype}_per_single_dosage')]).items()}
 ci5e_2 = {float(allele): val for allele, val in ast.literal_eval(result[header.index('0.05_significance_CI')]).items()}
 ci5e_8 = {float(allele): val for allele, val in ast.literal_eval(result[header.index('5e-8_significance_CI')]).items()}
-'''
-alleles_copy = alleles.copy()
-for allele in alleles:
-    if mean_per_dosage[allele] == 'NaN' or 'NaN' in ci5e_2[allele] or 'NaN' in ci5e_8[allele]:
-        alleles_copy.remove(allele)
-alleles = alleles_copy
-'''
-
 y_min = min(ci5e_8[allele][0] for allele in alleles)
 y_max = max(ci5e_8[allele][1] for allele in alleles)
 
-figure.varea(alleles, [ci5e_2[allele][1] for allele in alleles], [ci5e_8[allele][1] for allele in alleles], color="red", alpha=0.2, legend_label='1 - 5e-8 CI')
-figure.varea(alleles, [ci5e_2[allele][0] for allele in alleles], [ci5e_2[allele][1] for allele in alleles], color="red", alpha=0.4, legend_label='0.95 CI')
+figure.varea(alleles, [ci5e_2[allele][1] for allele in alleles], [ci5e_8[allele][1] for allele in alleles], color="red", alpha=0.2, legend_label='1 - 5e-8 Confidence Interval')
+figure.varea(alleles, [ci5e_2[allele][0] for allele in alleles], [ci5e_2[allele][1] for allele in alleles], color="red", alpha=0.4, legend_label='0.95 Confidence Interval')
 figure.varea(alleles, [ci5e_8[allele][0] for allele in alleles], [ci5e_2[allele][0] for allele in alleles], color="red", alpha=0.2)
 figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=2, color="black")
 figure.circle(alleles, [mean_per_dosage[allele] for allele in alleles], color="black", size=6, legend_label='mean')
+figure.legend.label_text_font_size = '10px'
 
 figure.y_range = bokeh.models.Range1d(y_min - 0.05*(y_max-y_min), y_max + 0.05*(y_max-y_min))
 
 figure.add_layout(
-    bokeh.models.Title(text=f'STR {args.chrom}:{args.pos} Repeat Unit:{result[header.index("motif")]}', align="center"), "above"
+    bokeh.models.Title(text=f'STR {args.chrom}:{args.pos} Repeat Unit:{result[header.index("motif")]}', align="center", text_font_size='18px'), "above"
 )
 figure.add_layout(
-    bokeh.models.Title(text=args.phenotype.replace('_', ' ').capitalize() + " vs genotype", align="center"), "above"
+    bokeh.models.Title(text=args.phenotype.replace('_', ' ').capitalize() + " vs genotype", align="center", text_font_size='18px'), "above"
 )
 
 figure.add_layout(bokeh.models.Title(text="Phenotype values are unadjusted for covariates", align="center"), "below")

@@ -111,11 +111,10 @@ def main():
         x_axis_label='min absolute correlation',
         y_axis_label='# credible sets',
     )
+    fig.axis.axis_label_text_font_size = '30px'
     fig.background_fill_color = None
     fig.border_fill_color = None
-    fig.ygrid.grid_line_color = None
-    fig.xgrid.grid_line_color = None
-    fig.toolbar.logo = None
+    fig.grid.grid_line_color = None
     fig.toolbar_location = None
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
