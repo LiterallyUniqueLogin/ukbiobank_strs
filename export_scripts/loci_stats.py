@@ -34,8 +34,8 @@ def main():
             title=col.capitalize() + ' distribution',
             x_axis_label=x_axis_label,
             y_axis_label='pdf',
-            width=600,
-            height=600,
+            width=5000,
+            height=5000,
             tools=''
         )
         figure.background_fill_color = None

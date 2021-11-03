@@ -11,6 +11,7 @@ from statsmodels.regression.linear_model import WLS
 from statsmodels.stats.weightstats import DescrStatsW
 
 import python_array_utils as utils
+import annotation_utils
 
 ukb = os.environ['UKB']
 
@@ -19,76 +20,6 @@ def prep_dict(d):
 
 def rename_column_pd(df, old_name, new_name):
     df.rename(columns = {old_name: new_name}, inplace = True)
-
-def get_relation(str_start, str_end, feature_start, feature_end, feature_direction):
-    assert str_start <= str_end and feature_start <= feature_end
-    assert feature_direction in {'-', '+'}
-    if feature_start <= str_start and str_end <= feature_end:
-        return 'inside'
-    if str_start <= feature_start and feature_end <= str_end:
-        raise ValueError(f'STR spans feature {str_start} {str_end} {feature_start} {feature_end}')
-    if str_start <= feature_start:
-        if feature_direction == '+':
-            return 'upstream'
-        else:
-            return 'downstream'
-    else:
-        if feature_direction == '+':
-            return 'downstream'
-        else:
-            return 'upstream'
-
-def distance(start1, end1, start2, end2):
-    if start1 <= start2 <= end1 or start2 <= start1 <= end2:
-        # overlapping
-        return '0'
-    return str(min(abs(start1 - end2), abs(end1 - start2)))
-
-def get_merged_annotations(signals, annotation_dir, distance=False, bp_overlap=False):
-    dfs = []
-    names=[
-        'chrom',
-        'STR_pos',
-        'STR_ID',
-        'annotation_feature_type',
-        'annotation_pos',
-        'annotation_end_pos',
-        'annotation_strand',
-        'annotation_phase',
-        'annotation_info'
-    ]
-    if distance:
-        names.append('annotation_distance')
-    if bp_overlap:
-        names.append('bp_overlap')
-    for f in os.listdir(annotation_dir):
-        fname = f'{annotation_dir}/{f}'
-        dfs.append(pd.read_csv(
-            fname,
-            delimiter='\t',
-            names=names,
-            dtype=utils.get_dtypes(fname, colnames = names),
-            index_col=False
-        ))
-    full_df = pd.concat(dfs)
-    merge = signals.merge(
-        full_df,
-        left_on=['chrom', 'SNPSTR_start_pos'],
-        right_on=['chrom', 'STR_pos']
-    )
-    print(dict(merge.dtypes))
-    return merge
-
-def get_gff_kvp(kvp_string, key):
-    if kvp_string[:len(key)] == key:
-        splits = kvp_string.split(f'{key}=', maxsplit=1)
-    else:
-        splits = kvp_string.split(f';{key}=', maxsplit=1)
-
-    if len(splits) == 1:
-        return 'missing_from_gencode'
-    else:
-        return str(splits[1].split(';', maxsplit=1)[0])
 
 def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
     with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unitfile:
@@ -185,8 +116,8 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
 
     readme.write(
         'table.tab contains one row for each variant that was not filtered prior to association '
-        'testing and either was previously reported as an association or both had '
-        'association p-value >= 5e-8 and '
+        'testing and either was reported as an association in literature, or I manually marked it as interesting '
+        'or both had association p-value >= 5e-8 and '
         'FINEMAP posterior probability of causaility >= 0.05\n'
         '\n'
         'table.tab contains the following columns:\n'
@@ -406,20 +337,20 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
 
     # handle gene & transcript annotations
     print("Loading gene and transcript annotations ...", flush=True)
-    nearby_exon_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_exon_d_1000')
-    closest_gene_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
-    nearby_gene_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_100000')
+    nearby_exon_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_exon_d_1000')
+    closest_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
+    nearby_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_100000')
 
     print("Loading high level intersections...", flush=True)
-    transcript_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_transcript', bp_overlap=True)
-    gene_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_gene', bp_overlap=True)
-    exon_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_exon', bp_overlap=True)
+    transcript_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_transcript', bp_overlap=True)
+    gene_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_gene', bp_overlap=True)
+    exon_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_exon', bp_overlap=True)
 
     print("Loading low level intersections...", flush=True)
-    CDS_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_CDS', bp_overlap=True)
-    five_prime_UTR_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_five_prime_UTR', bp_overlap=True)
-    three_prime_UTR_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_three_prime_UTR', bp_overlap=True)
-    UTR_intersect_merge = get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_UTR', bp_overlap=True)
+    CDS_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_CDS', bp_overlap=True)
+    five_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_five_prime_UTR', bp_overlap=True)
+    three_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_three_prime_UTR', bp_overlap=True)
+    UTR_intersect_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/intersects_UTR', bp_overlap=True)
 
     sub_exon_types = pd.concat([CDS_intersect_merge, five_prime_UTR_intersect_merge, three_prime_UTR_intersect_merge, UTR_intersect_merge])
 
@@ -444,16 +375,16 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
                 nearby_exons[idx] = ''
             else:
                 nearby_exons[idx] += ','
-            nearby_exons[idx] += distance(
+            nearby_exons[idx] += annotation_utils.distance(
                 start_pos, end_pos, line.annotation_pos, line.annotation_end_pos
             ) + ":"
-            nearby_exons[idx] += get_relation(
+            nearby_exons[idx] += annotation_utils.get_relation(
                 start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
             ) + ":"
             nearby_exons[idx] += str(line.annotation_pos) + ":"
             nearby_exons[idx] += str(line.annotation_end_pos) + ":"
-            nearby_exons[idx] += get_gff_kvp(line.annotation_info, 'gene_name') + ":"
-            nearby_exons[idx] += get_gff_kvp(line.annotation_info, 'gene_type')
+            nearby_exons[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
+            nearby_exons[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
 
         for line in closest_gene_merge[
             (closest_gene_merge['chrom'] == chrom) & (closest_gene_merge['STR_pos'] == snpstr_pos)
@@ -463,11 +394,11 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
             else:
                 closest_gene[idx] = ''
             closest_gene[idx] += str(line.annotation_distance) + ":"
-            closest_gene[idx] += get_relation(
+            closest_gene[idx] += annotation_utils.get_relation(
                 start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
             ) + ":"
-            closest_gene[idx] += get_gff_kvp(line.annotation_info, 'gene_name') + ":"
-            closest_gene[idx] += get_gff_kvp(line.annotation_info, 'gene_type')
+            closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
+            closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
 
         for line in nearby_gene_merge[
             (nearby_gene_merge['chrom'] == chrom) & (nearby_gene_merge['STR_pos'] == snpstr_pos)
@@ -476,14 +407,14 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
                 nearby_genes[idx] = ''
             else:
                 nearby_genes[idx] += ','
-            nearby_genes[idx] += distance(
+            nearby_genes[idx] += annotation_utils.distance(
                 start_pos, end_pos, line.annotation_pos, line.annotation_end_pos
             ) + ":"
-            nearby_genes[idx] += get_relation(
+            nearby_genes[idx] += annotation_utils.get_relation(
                 start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
             ) + ":"
-            nearby_genes[idx] += get_gff_kvp(line.annotation_info, 'gene_name') + ":"
-            nearby_genes[idx] += get_gff_kvp(line.annotation_info, 'gene_type')
+            nearby_genes[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
+            nearby_genes[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
 
         # dict from gene to types of intersections
         gene_intersections = {}
@@ -491,8 +422,8 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
         for line in gene_intersect_merge[
             (gene_intersect_merge['chrom'] == chrom) & (gene_intersect_merge['STR_pos'] == snpstr_pos)
         ].itertuples():
-            gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
-            gene_type = get_gff_kvp(line.annotation_info, 'gene_type')
+            gene_name = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name')
+            gene_type = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
             if gene_name in gene_intersections:
                 # already described this gene, just hope the description is the same
                 continue
@@ -521,7 +452,7 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
         for line in exon_intersect_merge[
             (exon_intersect_merge['chrom'] == chrom) & (exon_intersect_merge['STR_pos'] == snpstr_pos)
         ].itertuples():
-            gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
+            gene_name = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name')
             if gene_name not in gene_intersections:
                 raise ValueError(f"STR {chrom} {start_pos} gene name {gene_name} not in list of overlapping genes {set(gene_intersections.keys())}")
             for p in gene_intersections[gene_name][2]:
@@ -531,7 +462,7 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
         for line in sub_exon_types[
             (sub_exon_types['chrom'] == chrom) & (sub_exon_types['STR_pos'] == snpstr_pos)
         ].itertuples():
-            gene_name = get_gff_kvp(line.annotation_info, 'gene_name')
+            gene_name = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name')
             if gene_name not in gene_intersections:
                 raise ValueError(f"STR {chrom} {start_pos} gene name {gene_name} not in list of overlapping genes {set(gene_intersections.keys())}")
             if gene_intersections[gene_name][2] == False:
@@ -567,9 +498,9 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
                 transcribed[idx] = 'transcribed;'
             else:
                 transcribed[idx] += ','
-            transcribed[idx] += get_gff_kvp(line.annotation_info, 'transcript_name') + ":"
-            transcribed[idx] += get_gff_kvp(line.annotation_info, 'transcript_type') + ":"
-            transcribed[idx] += get_gff_kvp(line.annotation_info, 'transcript_support_level')
+            transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_name') + ":"
+            transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_type') + ":"
+            transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_support_level')
 
     signals['nearby_exons'] = nearby_exons
     signals['closest_gene'] = closest_gene

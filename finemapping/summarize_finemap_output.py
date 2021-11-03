@@ -6,9 +6,8 @@ import os.path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
-import mpl_graphing_utils as graphing_utils
+import graphing_utils
 
 ukb = os.environ['UKB']
 

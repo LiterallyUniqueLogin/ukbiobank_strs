@@ -36,8 +36,10 @@ restart-times: 1
 max-jobs-per-second: 30 #too many?
 max-status-checks-per-second: 10
 latency-wait: 180
-resources: mem_gb=8192
-jobs: 4096 #this is required, but we want snakemake to be memory bound, not job bound, so set it
+resources: mem_gb=15000
+jobs: 4000
+#resources: mem_gb=8192
+#jobs: 4096 #this is required, but we want snakemake to be memory bound, not job bound, so set it
            #to the maximal amount
 keep-going: True
 rerun-incomplete: True # https://groups.google.com/g/snakemake/c/fbQbnD8yYkQ?pli=1

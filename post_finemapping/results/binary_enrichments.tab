@@ -1,0 +1,30 @@
+From among phenotypes: ['alanine_aminotransferase', 'albumin', 'alkaline_phosphatase', 'apolipoprotein_a', 'apolipoprotein_b', 'aspartate_aminotransferase', 'c_reactive_protein', 'calcium', 'cholesterol', 'creatinine', 'eosinophil_count', 'eosinophil_percent', 'haematocrit', 'haemoglobin_concentration', 'hdl_cholesterol', 'ldl_cholesterol_direct', 'lymphocyte_count', 'lymphocyte_percent', 'mean_corpuscular_haemoglobin', 'mean_corpuscular_haemoglobin_concentration', 'mean_corpuscular_volume', 'mean_platelet_volume', 'mean_sphered_cell_volume', 'neutrophil_count', 'neutrophil_percent', 'platelet_count', 'platelet_crit', 'platelet_distribution_width', 'red_blood_cell_count', 'red_blood_cell_distribution_width', 'total_bilirubin', 'white_blood_cell_count']
+All categories are among protein coding genes, except where specified
+Transcript support level >= 2 required
+UTR5 and UTR3 must be explicitly labeled as such, not just UTR
+intronic is not exonic, UTR3, UTR5, but also not coding or UTR (which remove a few more)
+intergenic is not in a protein coding gene
+transcribed_non_protein is transcribed and not in a protein coding gene
+category	subset	all_STRs_count	%_in_cat	subset_STRs_count	%_subset_in_cat	p_val
+exonic	gwas_sig	445720	1.1781%	43915	1.9857%	3.928012467511448e-61
+exonic	FINEMAPed	445720	1.1781%	374	4.2781%	1.04442353376867e-07
+UTR5	gwas_sig	445720	0.1232%	43915	0.2209%	1.2244443533193467e-09
+UTR5	FINEMAPed	445720	0.1232%	374	0.5348%	0.125298555535116
+UTR3	gwas_sig	445720	1.0421%	43915	1.7124%	6.478970475678372e-48
+UTR3	FINEMAPed	445720	1.0421%	374	2.4064%	0.01905387976220794
+intronic	gwas_sig	445720	46.6881%	43915	62.8327%	0.0
+intronic	FINEMAPed	445720	46.6881%	374	57.7540%	2.2403316574992365e-05
+intergenic	gwas_sig	445720	52.0179%	43915	34.9994%	0.0
+intergenic	FINEMAPed	445720	52.0179%	374	37.9679%	7.077154049616544e-08
+transcribed_non_protein	gwas_sig	445720	4.1288%	43915	2.9557%	1.2005525865359222e-38
+transcribed_non_protein	FINEMAPed	445720	4.1288%	374	5.3476%	0.29134811590343457
+
+dist to nearest	stream	from among	compared to	p_val
+gene	upstream	intergenic STRs	gwas_sig STRs	0.0
+gene	upstream	intergenic STRs	FINEMAPed STRs	5.990032435358083e-21
+gene	downstream	intergenic STRs	gwas_sig STRs	0.0
+gene	downstream	intergenic STRs	FINEMAPed STRs	4.729403056599131e-17
+exon	upstream	intronic STRs	gwas_sig STRs	0.0
+exon	upstream	intronic STRs	FINEMAPed STRs	5.630854701134712e-08
+exon	downstream	intronic STRs	gwas_sig STRs	0.0
+exon	downstream	intronic STRs	FINEMAPed STRs	9.961685449499872e-07

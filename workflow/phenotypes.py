@@ -50,6 +50,10 @@ pheno_descs = {
     'afib_and_flutter_I48': PhenotypeDescription(
         '131350',
         unit = 'binary_date_first_reported',
+    ),
+    'ovarian_dysfunction_E28': PhenotypeDescription(
+        '130736',
+        unit = 'binary_date_first_reported',
     )
 }
 

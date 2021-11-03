@@ -3,6 +3,7 @@
 import argparse
 import ast
 import copy
+import math
 import os
 import os.path
 import time
@@ -26,6 +27,7 @@ import numpy.ma
 import numpy.random
 import pandas as pd
 
+import graphing_utils
 import python_array_utils as utils
 
 ukb = os.environ['UKB']
@@ -82,7 +84,7 @@ def make_overview_manhattan(
             _dict['pos'][_dict['chr'] >= chrom] += chr_lens[chrom - 2]
 
     manhattan_plot = bokeh.plotting.figure(
-        width=1200,
+        width=math.floor(4.25*400),
         height=400,
         title=(phenotype.capitalize()),
         x_axis_label='Chromosomes',
@@ -104,14 +106,15 @@ def make_overview_manhattan(
     }
 
     # from https://projects.susielu.com/viz-palette
-    str_color = '#FF443B'
-    snp_color = '#3B8CF5'
+    str_color = '#FF520D'
+    snp_color = '#00B8FF'
+    size_ratio = 5000/1200
     manhattan_plot.diamond(
         'pos',
         'p_val',
         source=bokeh.models.ColumnDataSource(insignificant_locus_dict),
         color='color',
-        size=4,
+        size=math.floor(size_ratio*8),
         legend_label = 'not GWAS sig.'
     )
     manhattan_plot.diamond(
@@ -119,35 +122,34 @@ def make_overview_manhattan(
         'p_val',
         source=bokeh.models.ColumnDataSource(snp_locus_dict),
         color=snp_color,
-        size=4
+        size=math.floor(size_ratio*8)
     )
     manhattan_plot.diamond(
         'pos',
         'p_val',
         source=bokeh.models.ColumnDataSource(str_locus_dict),
         color=str_color,
-        size=4,
-        alpha=0.5,
+        size=math.floor(size_ratio*8),
+        alpha=0.5
     )
     manhattan_plot.diamond(
         'pos',
         'p_val',
         source=bokeh.models.ColumnDataSource(snp_peak_dict),
         fill_color=snp_color,
-        #line_width=2,
         legend_label = 'SNPs',
-        size=11
+        size=math.floor(size_ratio*15)
     )
     manhattan_plot.diamond(
         'pos',
         'p_val',
         source=bokeh.models.ColumnDataSource(str_peak_dict),
         fill_color=str_color,
-        #line_width=2,
         legend_label = 'STRs',
-        size=11
+        size=math.floor(size_ratio*15)
     )
     manhattan_plot.legend.label_text_font_size = '22px'
+    graphing_utils.resize(manhattan_plot, size_ratio)
 
     bokeh.io.export_png(manhattan_plot, filename=outfname)
 
@@ -509,7 +511,7 @@ def make_manhattan_plots(
         cmap_field_name = 'pos' # arbitrary existant field
 
     if plot_plink_snp_data:
-        plink_snp_color = '#3B8CF5'
+        plink_snp_color = '#00B8FF'
         plink_snp_cmap = bokeh.transform.linear_cmap(
             field_name = cmap_field_name,
             low = 0,
@@ -527,7 +529,7 @@ def make_manhattan_plots(
             muted_alpha=0.1
         )
     if plot_my_str_data:
-        my_str_color = '#FF443B'
+        my_str_color = '#FF520D'
         my_str_cmap = bokeh.transform.linear_cmap(
             field_name = cmap_field_name,
             low = 0,
