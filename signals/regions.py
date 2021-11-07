@@ -89,6 +89,17 @@ def main():
 
     phenotype = args.phenotype
 
+    results = pd.read_csv(
+        f"{ukb}/association/results/{phenotype}/my_str/results.tab",
+        header=0,
+        usecols=['chrom', 'pos', f'p_{phenotype}', 'locus_filtered'],
+        delimiter='\t',
+        encoding='UTF-8',
+        dtype={'chrom': int, 'pos': int, f'p_{phenotype}': float, 'locus_filtered': str}
+    )
+    results = results.loc[results[f'p_{phenotype}'] <= 5e-4, :]
+    results = results.loc[results['locus_filtered'] == 'False', :]
+
     pthresh = 5e-8
     itrs = [
         plink_snp_output_itr(args.plink_imputed_snp_fname, pthresh),
@@ -103,7 +114,7 @@ def main():
             'overlapping intervals.\n'
         )
     with open(args.out_fname, 'w') as outfile:
-        outfile.write('chrom\tstart\tend\n')
+        outfile.write('chrom\tstart\tend\tany_strs\n')
         outfile.flush()
         prev_clump = None
         for clump in generate_clumps(itrs):
@@ -111,7 +122,12 @@ def main():
             if prev_clump is not None and prev_clump[0] == clump[0] and prev_clump[2] >= clump[1]:
                 print(prev_clump, clump)
                 assert False
-            outfile.write(f'{clump[0]}\t{clump[1]}\t{clump[2]}\n')
+            strs = np.any(
+                (results['chrom'] == clump[0]) &
+                (clump[1] <= results['pos']) &
+                (results['pos'] <= clump[2])
+            )
+            outfile.write(f'{clump[0]}\t{clump[1]}\t{clump[2]}\t{strs}\n')
             outfile.flush()
             prev_clump = clump
 

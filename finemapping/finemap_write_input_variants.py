@@ -16,7 +16,6 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
     '''
     write README.txt
     write finemap_input.z
-    sometimes write no_strs
     '''
     plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
     str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
@@ -75,18 +74,7 @@ def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
                 finemap_input_z.write(
                     f'STR_{result_pos} {result_chrom:02} {result_pos} nan nan nan {beta} {se}\n'
                 )
-        if not any_strs:
-            pathlib.Path(f"{workdir}/no_strs").touch()
-            readme.write(
-                "No nominally significant (p<=0.05) STRs were found in the region, "
-                "so finemapping is being skipped.\n"
-            )
-            print(
-                "No nominally significant (p<=0.05) STRs were found in the region, "
-                "so finemapping is being skipped.",
-                flush = True
-            )
-            return
+        assert any_strs
 
         # load SNPs
         snps_to_filter = set()

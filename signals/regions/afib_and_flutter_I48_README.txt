@@ -1,1 +1,0 @@
-Clumping results from my_str and plink_snp runs for phenotype afib_and_flutter_I48 by cenetering a 250kb interval (125kb in each direction) around each variant from either run that passes the 5e-08 threshold and then joining all overlapping intervals.

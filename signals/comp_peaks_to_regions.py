@@ -17,7 +17,7 @@ def main():
     with open(f'{ukb}/signals/regions/{phenotype}.tab') as regions_itr:
         next(regions_itr)
         for line in regions_itr:
-            regions.append(tuple(int(el) for el in line.strip().split('\t')))
+            regions.append(tuple(int(el) for el in line.strip().split('\t')[:-1]))
     peaks = []
     with open(f'{ukb}/signals/peaks/{phenotype}_250000_5e-8.tab') as peaks_itr:
         next(peaks_itr)

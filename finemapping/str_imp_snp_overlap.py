@@ -7,6 +7,7 @@ import time
 
 import cyvcf2
 
+import str_utils
 import python_utils as utils
 
 ukb = os.environ['UKB']
@@ -66,25 +67,6 @@ def get_next_strs_helper(next_var, vcf):
             curr_range = range(curr_range.start, var.INFO['END'] + 1 + border)
 
     return (curr_STRs, curr_range, None)
-
-def standardize(kmer):
-    options = set()
-    for i in range(len(kmer)):
-        options.add(kmer[i:] + kmer[:i])
-    return min(options)
-
-def infer_repeat_unit(seq, period):
-    kmer_counts = collections.Counter()
-    for i in range(len(seq) - period + 1):
-        kmer = standardize(seq[i:(i+period)])
-        kmer_counts[kmer] += 1
-    best_kmers = kmer_counts.most_common(2)
-    if len(best_kmers) == 1:
-        return best_kmers[0][0]
-    (top_kmer, top_count), (next_kmer, next_count) = best_kmers
-    if next_count*2 >= top_count:
-        return None
-    return top_kmer
 
 def is_pure_repeats(seq, repeat_unit):
     slen = len(seq)
@@ -146,7 +128,7 @@ def process_chrom(chrom):
             # values I will print
             print_STRs = []
             for STR in curr_STRs:
-                repeat_unit = infer_repeat_unit(STR[1], STR[2])
+                repeat_unit = str_utils.infer_repeat_unit(STR[1], STR[2])
                 if repeat_unit is not None:
                     print_STRs.append((STR[0], repeat_unit))
                 else:

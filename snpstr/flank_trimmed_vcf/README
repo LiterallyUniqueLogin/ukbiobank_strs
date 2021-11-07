@@ -1,1 +1,0 @@
-echo -e 'chrom\tpos\tsnpstr_pos' > vars.tab ; for chr in $(seq 1 22) ; do bcftools query -f '%CHROM\t%POS\t%INFO/ORIGINAL_POS\n' chr${chr}.vcf.gz >> vars.tab ; done

@@ -873,7 +873,11 @@ def generated_regions(phenotype):
     with open(f'signals/regions/{phenotype}.tab') as signal_file:
         next(signal_file)
         for line in signal_file:
-            yield line.split()
+            split = line.split()
+            if split[-1] == 'False':
+                # skip regions without strs
+                continue
+            yield split[:-1]
             # chrom, start, stop
 
 def peak_snp_input_inputs(wildcards):
@@ -1058,7 +1062,7 @@ rule concatenate_all_regions_my_str_logistic_gwas:
 
 #--------------FINEMAP-----------------
 
-checkpoint finemap_write_input_variants:
+rule finemap_write_input_variants:
     input:
         'association/results/{phenotype}/my_str/results.tab',
         'association/results/{phenotype}/plink_snp/results.tab',
@@ -1122,38 +1126,12 @@ rule finemap_write_corrs_and_run:
     resources:
         time = finemap_corrs_time,
         mem_gb = 8,
-        threads = 4
+        threads = 4,
+        attempt = lambda wildcards, attempt: attempt
     shell:
         'finemapping/finemap_write_corrs_and_run.py '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
-
-def finemap_region_input(wildcards):
-    phenotype = wildcards.phenotype
-    chrom = wildcards.chrom
-    start = wildcards.start
-    end = wildcards.end
-    checkpoints.finemap_write_input_variants.get(
-        phenotype=phenotype, chrom=chrom, start=start, end=end
-    )
-    region_dir = \
-        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}'
-    if os.path.exists(f'{region_dir}/no_strs'):
-        # file already created, nothing to be done
-        return f'{region_dir}/no_strs'
-    else:
-        # ask for finemapping of this region
-        return f'{region_dir}/finemap_output.snp'
-
-rule finemap_region:
-    input:
-        finemap_region_input
-    output:
-        done='finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/done'
-    resources:
-        time='00:01:00'
-    shell:
-        'touch {output.done} '
 
 def collect_finemap_output_all_regions(wildcards):
     assert not phenotypes.is_binary(wildcards.phenotype)
@@ -1163,7 +1141,7 @@ def collect_finemap_output_all_regions(wildcards):
     target_files = []
     for chrom, start, stop in generated_regions(phenotype):
         target_files.append(
-            f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/done'
+            f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/finemap_output.snp'
         )
 
     return target_files
@@ -1217,13 +1195,19 @@ rule manhattan_finemap:
         shell(cmd)
 
 #-------------------SuSiE----------------
+def susie_mem(wildcards, attempt):
+    if attempt == 1:
+        return 30
+    else:
+        return 128
+
 def susie_load_time(wildcards, attempt):
     if attempt == 1:
         return '00:30:00'
     else:
         return '47:30:00'
 
-checkpoint susie_load_gts:
+rule susie_load_gts:
     input:
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         'association/results/{phenotype}/plink_snp/results.tab',
@@ -1235,19 +1219,13 @@ checkpoint susie_load_gts:
         temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy')
     resources:
         time = susie_load_time,
-        mem_gb = 50,
+        mem_gb = susie_mem,
         attempt = lambda wildcards, attempt: attempt
     shell:
         'finemapping/susie_load_gts.py '
         f'{str_imputation_run_name} '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
-
-def susie_run_mem(wildcards, attempt):
-    if attempt == 1:
-        return 30
-    else:
-        return 128
 
 def susie_run_time(wildcards, attempt):
     if attempt == 1:
@@ -1273,7 +1251,7 @@ rule susie_run:
         #consuming jobs should consume alpha.tab
     resources:
         time = susie_run_time,
-        mem_gb = susie_run_mem,
+        mem_gb = susie_mem,
         attempt = lambda wildcards, attempt: attempt
     conda:
         'envs/ukb_susier.env.yml'
@@ -1281,36 +1259,6 @@ rule susie_run:
         'Rscript finemapping/susie_run.r '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
-
-def susie_run_region_input(wildcards):
-    phenotype = wildcards.phenotype
-    chrom = wildcards.chrom
-    start = wildcards.start
-    end = wildcards.end
-    checkpoints.susie_load_gts.get(
-        phenotype=phenotype, chrom=chrom, start=start, end=end
-    )
-    region_dir = \
-        f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}'
-    if os.path.exists(f'{region_dir}/no_strs'):
-        # file already created, nothing to be done
-        return f'{region_dir}/no_strs'
-    else:
-        # ask for finemapping of this region
-        return f'{region_dir}/alpha.tab'
-
-rule susie_run_region:
-    input:
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt',
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
-        susie_run_region_input
-    output:
-        done='finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/done'
-    resources:
-        time='00:10:00'
-    shell:
-        'touch {output.done} '
 
 def collect_susie_output_all_regions(wildcards):
     assert not phenotypes.is_binary(wildcards.phenotype)
@@ -1320,7 +1268,7 @@ def collect_susie_output_all_regions(wildcards):
     target_files = []
     for chrom, start, stop in generated_regions(phenotype):
         target_files.append(
-            f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{stop}/done'
+            f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{stop}/alpha.tab'
         )
 
     return target_files
@@ -1334,6 +1282,10 @@ rule run_susie_phenotype:
         time='00:01:00'
     shell:
         'touch finemapping/susie_results/{wildcards.phenotype}/all_signals_done'
+
+rule susie_all_phenotypes:
+    input:
+        [f'finemapping/susie_results/{phenotype}/all_signals_done' for phenotype in phenotypes.phenotypes_in_use],
 
 # ----- finemapping summaries ----------
 rule sort_gencode:
@@ -1389,7 +1341,7 @@ rule str_closest_updownstream_feature:
                 "for level in " + supports + " ; do "
                 'grep "transcript_support_level=${{level}}" {input.gencode_feature} '
                 + grep_cmd +
-                " ; done "
+                " ; done | sort -k 1,1 -k 4,4n "
             )
         else:
             b_file = 'cat {input.gencode_feature} ' + grep_cmd
@@ -1443,7 +1395,7 @@ rule str_intersects_feature:
             "<(for level in " + supports + " ; do "
                 'grep "transcript_support_level=${{level}}" {input.gencode_feature} '
                 + grep_cmd +
-            " ; done ) | "
+            " ; done | sort -k 1,1 -k 4,4n ) | "
             + cut_str_gencode_command +
             '> {output[0]}'
          )
@@ -1815,16 +1767,3 @@ rule gather_all_exports:
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
        
-
-rule test:
-    output:
-        'tmp/{foo}'
-    resources:
-        time='00:10:00'
-    shell:
-        'touch tmp/{wildcards.foo}'
-
-rule all_tests:
-    input:
-        [f'tmp/{foo}' for foo in range(100)]
-

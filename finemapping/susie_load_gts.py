@@ -80,17 +80,8 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
         if line.strip() != '':
             strs_to_include.add(line.strip())
 
-    if len(strs_to_include) == 0:
-        with open(f"{outdir}/README.txt", 'w') as readme:
-            readme.write(
-                f"No STRs were found in the region with p < {p_cutoff}, "
-                "so finemapping is being skipped.\n"
-            )
-        pathlib.Path(f'{outdir}/no_strs').touch()
-        pathlib.Path(f'{outdir}/pheno_residuals.npy').touch()
-        pathlib.Path(f'{outdir}/gt_residuals.npy').touch()
-        sys.exit()
-
+    assert len(strs_to_include) != 0
+    
     snps_to_filter = set()
     with open(filter_set_fname) as filter_file:
         next(filter_file) # skip header
