@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import ast
 import os
 from typing import List
 
@@ -27,42 +28,48 @@ And with FINEMAP pcausal >= .9
 #def main():
 
 def binary_test(out, all_STRs, in_category, category_string):
-    n_strs = all_STRs.shape[0]
+    gwas_sig_STRs = all_STRs.loc[all_STRs['gwas_sig'], :]
+    in_category = in_category[all_STRs['gwas_sig']]
+    FINEMAPed = gwas_sig_STRs['FINEMAPed']
+    # marginals
+    n_strs = gwas_sig_STRs.shape[0]
     n_cat = np.sum(in_category)
-    for subset in 'gwas_sig', 'FINEMAPed':
-        n_neither = np.sum(~all_STRs[subset] & ~in_category)
-        n_subset = np.sum(all_STRs[subset])
-        n_subset_not_cat = np.sum(all_STRs[subset] & ~in_category)
-        n_cat_not_subset = np.sum(~all_STRs[subset] & in_category)
-        n_subset_cat = np.sum(all_STRs[subset] & in_category)
-        contingency_table = [[n_neither, n_subset_not_cat], [n_cat_not_subset, n_subset_cat]]
-        if np.any(np.array(contingency_table) < 20):
-            p_val = scipy.stats.fisher_exact(contingency_table)[1]
-        else:
-            p_val = scipy.stats.chi2_contingency(contingency_table)[1]
-        write_cat(out, category_string, subset, n_strs, n_cat, n_subset, n_subset_cat, p_val)
+    n_subset = np.sum(FINEMAPed)
+    # table elements
+    n_neither = np.sum(~FINEMAPed & ~in_category)
+    n_subset_not_cat = np.sum(FINEMAPed & ~in_category)
+    n_cat_not_subset = np.sum(~FINEMAPed & in_category)
+    n_subset_cat = np.sum(FINEMAPed & in_category)
+    contingency_table = [[n_neither, n_subset_not_cat], [n_cat_not_subset, n_subset_cat]]
+    if np.any(np.array(contingency_table) < 20):
+        p_val = scipy.stats.fisher_exact(contingency_table)[1]
+    else:
+        p_val = scipy.stats.chi2_contingency(contingency_table)[1]
+    out.write(f'{category_string}\t{subset}\t{n_strs}\t{n_cat}\t{n_cat/n_strs*100:.4f}%\t{n_subset}\t{n_subset_cat}\t{n_subset_cat/n_subset*100:.4f}%\t{p_val}\n')
 
-def write_cat(out, category, subset, n_strs, n_cat, n_subset, n_subset_cat, p_val):
-    out.write(f'{category}\t{subset}\t{n_strs}\t{n_cat}\t{n_cat/n_strs*100:.4f}%\t{n_subset}\t{n_subset_cat}\t{n_subset_cat/n_subset*100:.4f}%\t{p_val}\n')
+def graph_relative_rate_by_pcausal(all_STRs, in_category, category_string):
+    gwas_sig_STRs = all_STRs.loc[all_STRs['gwas_sig'], :]
+    in_category = in_category[all_STRs['gwas_sig']]
 
-def graph_relative_rate_by_pcausal(all_STRs, subset, subset_string):
-    xs = np.arange(0.00, 1.01, 0.01)
+    xs = np.arange(0.01, 1.01, 0.01)
     rate_ratios = []
     upper_cis = []
     lower_cis = []
+
     for x in xs:
         result = scipy.stats.contingency.relative_risk(
-            np.sum(subset & (all_STRs['FINEMAP_pcausal'] >= x) & all_STRs['gwas_sig']),
-            np.sum((all_STRs['FINEMAP_pcausal'] >= x) & all_STRs['gwas_sig']),
-            np.sum(subset),
+            np.sum(in_category & (gwas_sig_STRs['FINEMAP_pcausal'] >= x)),
+            np.sum(gwas_sig_STRs['FINEMAP_pcausal'] >= x),
+            np.sum(in_category),
             all_STRs.shape[0]
         )
         rate_ratios.append(result.relative_risk)
+        # +/-1 SD
         lower, upper = result.confidence_interval(.68)
         lower_cis.append(lower)
         upper_cis.append(upper)
     fig = bokeh.plotting.figure(
-        title=f'Relative rate of {subset_string} STRs by FINEMAP posterior causality',
+        title=f'Relative rate of {category_string} STRs by FINEMAP posterior causality',
         y_axis_label = 'Relative rate',
         x_axis_label = 'FINEMAP posterior causality at least this',
         width=1200,
@@ -75,23 +82,20 @@ def graph_relative_rate_by_pcausal(all_STRs, subset, subset_string):
     fig.title.text_font_size = '30px'
     fig.axis.axis_label_text_font_size = '26px'
     fig.axis.major_label_text_font_size = '20px'
-    fig.varea(xs, lower_cis, upper_cis, legend_label='+/- 1 SE')
+    fig.varea(xs, lower_cis, upper_cis, legend_label='+/- 1 SD')
     fig.line(xs, rate_ratios, color='black', legend_label='relative rate')
     fig.legend.label_text_font_size = '22px'
     fig.add_layout(bokeh.models.Title(
-        text='Relative rate is compared to the set among all STRs.'
+        text='Relative rate is compared to the set of all gwas-sig STRs.'
     ), 'below')
     fig.add_layout(bokeh.models.Title(
-        text=f'Relative rate is defined as (% {subset_string} STRs among FINEMAP STRs with posterior causality >= x) / (% {subset_string} STRs among all STRs)'
+        text=f'Relative rate is defined as (% {category_string} STRs among FINEMAP STRs with posterior causality >= x) / (% {category_string} STRs among all gwas-sig STRs)'
     ), 'below')
     fig.add_layout(bokeh.models.Title(
-        text='FINEMAP STRs only among those with association p <= 5e-8'
+        text='gwas-sig STRs are those with association p <= 5e-8. FINEMAP STRs must also be gwas-sig'
     ), 'below')
-    fig.add_layout(bokeh.models.Title(
-        text='FINEMAP posterior causality >= 0 is the same as all gwas sig STRs'
-    ), 'below')
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_{subset_string}_relative_rate.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_{subset_string}_relative_rate.svg')
+    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_{category_string}_relative_rate.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_{category_string}_relative_rate.svg')
 
 def _BetterCDF(data_list: List[float],
            ax: matplotlib.axes.Axes):
@@ -110,8 +114,6 @@ def _BetterCDF(data_list: List[float],
         [0]
     ))
     return ax.step(data, ys, where='post')
-
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('phenotypes', nargs='+')
@@ -172,6 +174,32 @@ all_STRs.merge(
     left_on=['canonical_unit'],
     right_on=['repeat_unit'],
 )
+
+loci_summary_dfs = []
+for chrom in range(1, 23):
+    distribution_stats = pd.read_csv(
+        f'{ukb}/export_scripts/intermediate_results/chr{chrom}_loci_summary.tab',
+        delimiter='\t',
+        header=0,
+        index_col=None
+    )
+    loci_summary_dfs.append(distribution_stats)
+loci_summaries = pd.concat(loci_summary_dfs)
+n_before = all_STRs.shape[0]
+all_STRs.merge(
+    loci_summaries,
+    how='left',
+    left_on=['chrom', 'snpstr_pos'],
+    right_on=['chron', 'pos']
+)
+assert n_before == all_STRs.shape[0]
+print('Calculating mean lens ... ', flush=True, end='')
+all_STRs['mean_len'] = np.nan
+for locus in range(all_STRs.shape[0]):
+    all_STRs.iloc[locus, 'mean_len'] = sum(
+        key*val for (key, val) in ast.literal_eval(all_STRs.iloc[locus, 'allele_dist']).items()
+    )
+print('done', flush=True)
 
 print('Getting promoters ... ', flush=True, end='')
 all_STRs['promoter'] = False
@@ -370,44 +398,67 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
         binary_test(out, all_STRs, all_STRs[category], category)
         graph_relative_rate_by_pcausal(all_STRs, all_STRs[category], category)
     for period in range(1,7):
-        binary_test(out, all_STRs, (all_STRs['period'] == period) & all_STRs['gwas_sig'], f'period_is_{period}')
+        binary_test(out, all_STRs, all_STRs['period'] == period, f'period_is_{period}')
         graph_relative_rate_by_pcausal(all_STRs, all_STRs['period'] == period, f'period_is_{period}')
     for structure in 'HAIRP', 'QUAD', 'IMOT':
-        binary_test(out, all_STRs, (all_STRs['structure'] == structure & all_STRs['gwas_sig']
+        binary_test(out, all_STRs, all_STRs['structure'] == structure, f'structure_is_{structure}')
+        graph_relative_rate_by_pcausal(all_STRs, all_STRs['structure'] == structure, f'structure_is_{structure}')
+    binary_test(out, all_STRs, (all_STRs['structure'] != 'UNF') & ~all_STRs['structure'].isnull(), 'any_stalling_struture')
+    graph_relative_rate_by_pcausal(all_STRs, (all_STRs['structure'] != 'UNF') & ~all_STRs['structure'].isnull(), 'any_stalling_struture')
+    binary_test(out, all_STRs.loc[~all_STRs['structure'].isnull()], (all_STRs['structure'] != 'UNF') & ~all_STRs['structure'].isnull(), 'any_stalling_struture_among_known_stalling_or_not')
+    graph_relative_rate_by_pcausal(all_STRs.loc[~all_STRs['structure'].isnull()], (all_STRs['structure'] != 'UNF') & ~all_STRs['structure'].isnull(), 'any_stalling_struture_among_known_stalling_or_not')
+
     graph_relative_rate_by_pcausal(all_STRs, all_STRs['promoter'], 'promoter')
     repeat_units = sorted(
         set(all_STRs['canonical_unit']),
         key = lambda seq : (len(seq), seq)
     )
     repeat_units.remove('None')
-    '''
     for repeat_unit in repeat_units:
         binary_test(out, all_STRs, all_STRs['canonical_unit'] == repeat_unit, f'canonical_repeat_unit_is_{repeat_unit}')
-    '''
 
     out.write('\n')
-    out.write('dist to nearest\tstream\tfrom among\tcompared to\tp_val\n')
+    subbed_data = all_STRs.loc[all_STRs['gwas_sig'], :]
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, np.max(subbed_data['mean_len']))
+    ax.set_title('CDF of STR mean len')
+    ax.set_ylabel('density')
+    ax.set_xlabel('distance (bp)')
+    _BetterCDF(subbed_data['mean_len'], ax)
+    p_val = scipy.stats.mannwhitneyu(subbed_data['mean_len'], subbed_data.loc[subbed_data['FINEMAPed'], 'mean_len'])[1]
+    out.write(f'Mann-Whitney p_val mean len FINEMAPed vs all gwas sig: {p_val}\n')
+    _BetterCDF(subbed_data.loc[subbed_data['FINEMAPed'], 'mean_len'], ax)
+    legends = ['gwas sig STRs', 'FINEMAPed']
+    ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9", ha="center", transform=ax.transAxes)
+    ax.text(0.5, -1.1, f"Medians: {np.median(subbed_data['mean_len'])} (gwas_sig) {np.median(subbed_data.loc[subbed_data['FINEMAPed'], 'mean_len'])} (FINEMAPed)", ha="center", transform=ax.transAxes)
+    plt.legend(legends)
+    plt.savefig('{ukb}/post_finemapping/results/mean_len_cdf.png')
+    plt.savefig('{ukb}/post_finemapping/results/mean_len_cdf.pdf')
+
+    out.write('\n')
+    out.write('dist to nearest\tstream\tfrom among\tMann-Whitney p_val FINEMAPed vs all gwas sig\n')
     for category, class_ in ('gene', 'intergenic'), ('exon', 'intronic'):
         for stream in 'upstream', 'downstream':
             col = f'{stream}_{category}_dist'
-            subbed_data = all_STRs.loc[all_STRs[class_], :]
+            subbed_data = all_STRs.loc[all_STRs[class_] & all_STRs['gwas_sig'], :]
             fig, ax = plt.subplots()
             ax.set_xlim(0, np.max(subbed_data[col]))
             ax.set_title(f'CDF of {col} from within {class_} STRs')
             ax.set_ylabel('density')
             ax.set_xlabel('distance (bp)')
-            legends = ['all_STRs']
             _BetterCDF(subbed_data[col], ax)
-            for subset in 'gwas_sig', 'FINEMAPed':
-                p_val = scipy.stats.mannwhitneyu(subbed_data[col], subbed_data.loc[subbed_data[subset], col])[1]
-                out.write(f'{category}\t{stream}\t{class_} STRs\t{subset} STRs\t{p_val}\n')
-                _BetterCDF(subbed_data.loc[subbed_data[subset], col], ax)
-                legends.append(subset)
-            ax.text(0.5, -0.1, "gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9", ha="center", transform=ax.transAxes)
-            ax.text(0.5, -0.2, f"Medians: {np.median(subbed_data[col])} (all) {np.median(subbed_data.loc[subbed_data['gwas_sig'], col])} (gwas_sig) {np.median(subbed_data.loc[subbed_data['FINEMAPed'], col])} (FINEMAPed)", ha="center", transform=ax.transAxes)
+            p_val = scipy.stats.mannwhitneyu(subbed_data[col], subbed_data.loc[subbed_data['FINEMAPed'], col])[1]
+            out.write(f'{category}\t{stream}\t{class_} STRs\t{p_val}\n')
+            _BetterCDF(subbed_data.loc[subbed_data['FINEMAPed'], col], ax)
+            legends = ['gwas sig STRs', 'FINEMAPed']
+            ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9", ha="center", transform=ax.transAxes)
+            ax.text(0.5, -1.1, f"Medians: {np.median(subbed_data[col])} (gwas_sig) {np.median(subbed_data.loc[subbed_data['FINEMAPed'], col])} (FINEMAPed)", ha="center", transform=ax.transAxes)
             plt.legend(legends)
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf.png')
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf.pdf')
+            ax.set_xlim(0, 50000)
+            plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf_50kbp.png')
+            plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf_50kbp.pdf')
 
 '''
 if __name__ == '__main__':
