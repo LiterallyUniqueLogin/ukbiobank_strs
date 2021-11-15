@@ -28,7 +28,7 @@ def main():
     n_regions = 0
     for phenotype in phenotypes:
         regions_df = pd.read_csv(
-            f'{ukb}/signals/regions/platelet_count.tab',
+            f'{ukb}/signals/regions/{phenotype}.tab',
             header=0,
             delimiter='\t'
         )

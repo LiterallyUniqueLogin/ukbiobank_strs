@@ -33,7 +33,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
             f'Run date: {today}\n'
             'Loading STR and SNP gts and the phenotype values, regressing out '
             'covariates from all of those, then running SuSiE. '
-            f'Variants for which association tests were skipped or with p >= {p_cutoff} are excluded. '
+            f'Variants for which association tests were skipped or with p > {p_cutoff} are excluded. '
             'SNPs in the filter set are also skipped. '
             f'(Filter set at {filter_set_fname})\n'
         )
@@ -59,7 +59,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
     pheno_vals = covars[:, 1]
     covars = covars[:, 2:]
 
-    # first choose STRs and SNPs only with p < p_cutoff to lessen memory burden
+    # first choose STRs and SNPs only with p <= p_cutoff to lessen memory burden
     strs_to_include = set()
     snps_to_include = set()
 
@@ -70,7 +70,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
 
     out = sp.run(
         f"grep -P '^{chrom}\t' {str_results_fname} | "
-        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${str_p_idx + 1} < {p_cutoff}) "
+        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${str_p_idx + 1} <= {p_cutoff}) "
         " { print $2 } }' ",
         shell=True,
         check = True,
@@ -96,7 +96,7 @@ def load_gts(imputation_run_name, phenotype, chrom, start_pos, end_pos):
 
     out = sp.run(
         f"grep -P '^{chrom}\t' {snp_results_fname} | "
-        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${snp_p_idx + 1} != \"NA\" && ${snp_p_idx + 1} < {p_cutoff}) "
+        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${snp_p_idx + 1} != \"NA\" && ${snp_p_idx + 1} <= {p_cutoff}) "
         " { print $2 \" \" $4 \" \" $5 } }' ",
         shell=True,
         check = True,

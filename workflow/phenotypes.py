@@ -128,7 +128,7 @@ haematological_phenotypes = {
     'platelet_distribution_width': PhenotypeDescription(
         '30110',
         unit = '%',
-        exciting_STR_hits = ['22:43385874']
+        exciting_STR_hits = ['22:43385872']
     ),
     'lymphocyte_count': PhenotypeDescription(
         '30120',
@@ -345,7 +345,7 @@ serum_biomarkers = {
         max_val=4.65,
         min_omit=5,
         max_omit=1,
-        exciting_STR_hits = ['11:47732457']
+        exciting_STR_hits = ['11:47332457']
     ),
     'igf_1': PhenotypeDescription(
         '30770',

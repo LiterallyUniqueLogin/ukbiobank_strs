@@ -1,4 +1,4 @@
-table.tab contains one row for each variant that was not filtered prior to association testing and either was previously reported as an association or both had association p-value >= 5e-8 and FINEMAP posterior probability of causaility >= 0.05
+table.tab contains one row for each variant that was not filtered prior to association testing and either was reported as an association in literature, or I manually marked it as interesting or both had association p-value >= 5e-8 and FINEMAP posterior probability of causaility >= 0.05
 
 table.tab contains the following columns:
 chrom
@@ -25,8 +25,12 @@ subset_allele_dosage_r2 - a metric of imputation accuracy, the per-allele R^2 be
 association_p_value - linear regression of rank inverse normalized phenotype values vs repeat length on QC'ed sample subset, with covariates
 Δphenotype_per_additional_repeat_unit - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in 10^9 cells/Litre
 Δphenotype_per_s.d._increase_in_repeat_size - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in 10^9 cells/Litre
-pcausal - FINEMAP posterior probability causality
-included_from_literature - Whether or not this row was included in the table because it was reported previously in the literature. False here means we have not checked whether or not this is reported in the literature, not that it has not.
+pcausal - FINEMAP posterior probability of causality
+mentioned_in_literature - Whether or not this we know of a citation saying this STR is likely causal for this trait. False here means we have not checked whether or not this is reported in the literature, not that it has not.
+literature_inclusion_url - If mentioned_in_literature, then the corresponding ULR. Otherwise NA. 
+included_only_due_to_literature - NA if not mentioned in literature. True if the locus would have been filtered, but is included due to literature. False otherwise. 
+curated - Whether or not manual examination was used to decide this was an exciting locus worthy of extra attention. 
+included_only_due_to_curation - NA if not curated. True if the locus would have been filtered, but is included due to manual curation. False if the locus was curated but would have been included regardless (not filtered). 
 nearby_exons - A comma separated list of distance:'upstream'/'downstream'/'inside':exon-start:exon-end:gene-name:gene-type, where upstream means upstream of the exon in that gene's direction. All exons within a 1000bp radius, or 'none'. (See https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.) 
 closest_gene - distance:'upstream'/'downstream'/'inside':gene-name:gene-type. Possibly a comma separated list if multiple genes are tied by distance. (See https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.)
 nearby_genes - A comma separated list of entries like that in closest_gene. All genes within a 100kbp radius, or 'none'.

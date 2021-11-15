@@ -1416,13 +1416,15 @@ def main():
             # change the output file
             outfname = '.'.join(outfname.split('.')[:-1]) + f'.FINEMAP.{ext}'
             finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
-            out_files = [f'{finemap_loc}/{d}/finemap_output.snp' for d in
-                         os.listdir(finemap_loc) if d[0] in '0123456789']
-            out_files = [f for f in out_files if os.path.exists(f) and os.path.getsize(f) > 0]
-            snp_finemap_signals, str_finemap_signals, finemap_regions = load_finemap_signals(sorted(
-                out_files,
-                key=lambda dirname: [int(val) for val in dirname.split('/')[-2].split('_')]
-            ))
+            out_files = []
+            with open(f'{ukb}/signals/regions/{phenotype}.tab') as regions:
+                next(regions)
+                for line in regions:
+                    region_chrom, region_start, region_end, any_strs = line.strip().split('\t')
+                    if any_strs == 'False':
+                        continue
+                    out_files.append(f'{finemap_loc}/{region_chrom}_{region_start}_{region_end}/finemap_output.snp')
+            snp_finemap_signals, str_finemap_signals, finemap_regions = load_finemap_signals(out_files)
     else:
         chrom = args.chrom
         start = args.start

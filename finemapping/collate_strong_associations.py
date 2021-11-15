@@ -21,7 +21,7 @@ def prep_dict(d):
 def rename_column_pd(df, old_name, new_name):
     df.rename(columns = {old_name: new_name}, inplace = True)
 
-def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
+def main(outfname, readme, phenotype, literature_STRs, literature_STR_URL_list, cool_loci):
     with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unitfile:
         unit = next(unitfile).strip()
 
@@ -80,12 +80,12 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
         ('literature_inclusion_url', 'If mentioned_in_literature, then the corresponding ULR. '
           'Otherwise NA. '),
         ('included_only_due_to_literature', 'NA if not mentioned in literature. True if the locus '
-         'would have been filtered, but is included due to literature. False otherwise. '
+         'would have been filtered, but is included due to literature. False otherwise. '),
         ('curated', 'Whether or not manual examination was used to decide this was an '
          'exciting locus worthy of extra attention. '),
         ('included_only_due_to_curation', 'NA if not curated. True if the locus '
          'would have been filtered, but is included due to manual curation. '
-         'False if the locus was curated but would have been included regardless (not filtered). ')
+         'False if the locus was curated but would have been included regardless (not filtered). '),
         ('nearby_exons', "A comma separated list of distance:'upstream'/'downstream'/'inside':"
          "exon-start:exon-end:gene-name:gene-type, where upstream means upstream of "
          "the exon in that gene's direction. All exons within a 1000bp radius, or 'none'. (See "
@@ -192,29 +192,34 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
     )
     literature_STR_rows = None
     literature_STR_URLs = ['NA']*len(signals)
-    for (STR, already_dropped), URL in zip(literature_STRs.items(), literature_STR_URLs):
+    for (STR, already_dropped), URL in zip(literature_STRs.items(), literature_STR_URL_list):
         if already_dropped:
             continue
         chrom, pos = STR.split(':')
         new_rows = (signals['chrom'] == int(chrom)) & (signals['pos'] == int(pos))
         assert np.sum(new_rows) == 1
-        literature_STR_URLs[np.where(new_rows)[0]] = URL
+        for idx in np.nonzero(new_rows.to_numpy())[0]:
+            literature_STR_URLs[idx] = URL
         if literature_STR_rows is None:
             literature_STR_rows = new_rows
         else:
             literature_STR_rows |= new_rows
     if literature_STR_rows is None:
         literature_STR_rows = np.full((signals.shape[0]), False, dtype=bool)
+    else:
+        literature_STR_rows = literature_STR_rows.to_numpy()
 
     signals['mentioned_in_literature'] = literature_STR_rows
     signals['literature_inclusion_url'] = literature_STR_URLs
     only_lit = ['NA']*signals.shape[0]
-    only_lit[literature_STR_rows] = 'True'
-    only_lit[
+    for idx in np.nonzero(literature_STR_rows)[0]:
+        only_lit[idx] = 'True'
+    for idx in np.nonzero(
         literature_STR_rows &
         ~np.isnan(signals['pcausal'].to_numpy()) &
-        (signals['pcausal'] >= 0.05)
-    ] = 'False'
+        (signals['pcausal'].to_numpy() >= 0.05)
+    )[0]:
+        only_lit[idx] = 'False'
 
     signals['included_only_due_to_literature'] = only_lit
 
@@ -229,24 +234,30 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
             cool_loci_rows |= new_rows
     if cool_loci_rows is None:
         cool_loci_rows = np.full((signals.shape[0]), False, dtype=bool)
+    else:
+        cool_loci_rows = cool_loci_rows.to_numpy()
 
     signals['curated'] = cool_loci_rows
     only_cool = ['NA']*signals.shape[0]
-    only_cool[cool_loci_rows] = 'True'
-    only_cool[
+    for idx in np.nonzero(cool_loci_rows)[0]:
+        only_cool[idx] = 'True'
+    for idx in np.nonzero(
         cool_loci_rows &
         ~np.isnan(signals['pcausal'].to_numpy()) &
-        (signals['pcausal'] >= 0.05)
-    ] = 'False'
+        (signals['pcausal'].to_numpy() >= 0.05)
+    )[0]:
+        only_cool[idx] = 'False'
 
     signals['included_only_due_to_curation'] = only_cool
 
     signals = signals[
-        literature_STR_rows | cool_loci_rows | (
-            ~np.isnan(signals['pcausal'].to_numpy()) & (signals['pcausal'] >= 0.05)
+        literature_STR_rows |
+        cool_loci_rows | (
+            ~np.isnan(signals['pcausal'].to_numpy()) &
+            (signals['pcausal'].to_numpy() >= 0.05) &
+            (signals['association_p_value'].to_numpy() < 5e-8)
     )]
 
-    signals = signals[(signals['association_p_value'] < 5e-8) | literature_STR_rows]
     signals.reset_index(inplace=True)
     nrows = signals.shape[0]
 
@@ -337,6 +348,7 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
 
     # handle gene & transcript annotations
     print("Loading gene and transcript annotations ...", flush=True)
+    signals['pos'] = signals['start_pos']
     nearby_exon_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_exon_d_1000')
     closest_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
     nearby_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_100000')
@@ -397,6 +409,7 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
             closest_gene[idx] += annotation_utils.get_relation(
                 start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
             ) + ":"
+
             closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
             closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
 
@@ -511,7 +524,7 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
     signals = signals[[colname for colname, description in columns]]
 
     signals.to_csv(
-        f'{ukb}/finemapping/summary/{phenotype}_table.tab',
+        f'{outfname}.tab',
         sep='\t',
         index=False,
         na_rep = 'NA'
@@ -520,15 +533,17 @@ def main(readme, phenotype, literature_STRs, literature_STR_URLs, cool_loci):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
+    parser.add_argument('outfname') # writes out ${outfname}.tab and ${outfname}_README.tab
     parser.add_argument('--previous-STR-findings', nargs='+', default=[])
     parser.add_argument('--previous-STR-finding-URLs', nargs='+', default=[])
     parser.add_argument('--cool-loci', nargs='+', default=[])
     args = parser.parse_args()
     phenotype = args.phenotype
+    outfname = args.outfname
     previous_STRs = {STR : False for STR in args.previous_STR_findings}
     previous_STR_URLs = args.previous_STR_finding_URLs
 
     assert len(previous_STRs) == len(previous_STR_URLs)
 
-    with open(f'{ukb}/finemapping/summary/{phenotype}_table_README.txt', 'w') as readme:
-        main(readme, phenotype, previous_STRs, previous_STR_URLs, args.cool_loci)
+    with open(f'{outfname}_README.txt', 'w') as readme:
+        main(outfname, readme, phenotype, previous_STRs, previous_STR_URLs, args.cool_loci)
