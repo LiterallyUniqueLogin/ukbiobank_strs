@@ -21,10 +21,7 @@ def prep_dict(d):
 def rename_column_pd(df, old_name, new_name):
     df.rename(columns = {old_name: new_name}, inplace = True)
 
-def main(outfname, readme, phenotype, literature_STRs, literature_STR_URL_list, cool_loci):
-    with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unitfile:
-        unit = next(unitfile).strip()
-
+def main(outfname, readme, phenotype, unit, my_STR_results_fname, all_STR_contribs_fname, literature_STRs, literature_STR_URL_list, cool_loci):
     col_dphen_unit = 'Δphenotype_per_additional_repeat_unit'
     col_dphen_sd = 'Δphenotype_per_s.d._increase_in_repeat_size'
 
@@ -132,12 +129,11 @@ def main(outfname, readme, phenotype, literature_STRs, literature_STR_URL_list, 
 
     print("Reading finemapping output ...", flush=True)
     # chrom, signal_region, SNPSTR_start_pos, pcausal
-    signals_fname = f'{ukb}/finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
     signals = pd.read_csv(
-        signals_fname,
+        all_STR_contribs_fname,
         skiprows = 1,
         delimiter='\t',
-        dtype=utils.get_dtypes(signals_fname)
+        dtype=utils.get_dtypes(all_STR_contribs_fname)
     )
     rename_column_pd(signals, 'signal', 'signal_region')
 
@@ -145,8 +141,6 @@ def main(outfname, readme, phenotype, literature_STRs, literature_STR_URL_list, 
     signals['chrom'] = signal_split[0].astype(int)
     str_split = signals['STR'].str.split('_', n=1, expand=True)
     signals['pos'] = str_split[1].astype(int)
-
-    str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
 
     '''
     chrom
@@ -169,11 +163,12 @@ def main(outfname, readme, phenotype, literature_STRs, literature_STR_URL_list, 
     '''
     print("Reading associations ...", flush=True)
     associations = pd.read_csv(
-        str_results_fname,
+        my_STR_results_fname,
         header=0,
         delimiter='\t',
-        dtype=utils.get_dtypes(str_results_fname, {'locus_filtered': str})
+        dtype=utils.get_dtypes(my_STR_results_fname, {'locus_filtered': str})
     )
+    print(associations.columns)
     rename_column_pd(associations, 'ref_len', 'reference_allele')
     rename_column_pd(associations, 'motif', 'repeat_unit')
     rename_column_pd(associations, 'subset_het', 'subset_heterozygosity')
@@ -190,6 +185,7 @@ def main(outfname, readme, phenotype, literature_STRs, literature_STR_URL_list, 
         on=['chrom', 'pos'],
         how='right'
     )
+    
     literature_STR_rows = None
     literature_STR_URLs = ['NA']*len(signals)
     for (STR, already_dropped), URL in zip(literature_STRs.items(), literature_STR_URL_list):
@@ -534,6 +530,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
     parser.add_argument('outfname') # writes out ${outfname}.tab and ${outfname}_README.tab
+    parser.add_argument('unit') # writes out ${outfname}.tab and ${outfname}_README.tab
+    parser.add_argument('my_STR_results_fname')
+    parser.add_argument('all_STR_contribs_fname')
     parser.add_argument('--previous-STR-findings', nargs='+', default=[])
     parser.add_argument('--previous-STR-finding-URLs', nargs='+', default=[])
     parser.add_argument('--cool-loci', nargs='+', default=[])
@@ -546,4 +545,4 @@ if __name__ == '__main__':
     assert len(previous_STRs) == len(previous_STR_URLs)
 
     with open(f'{outfname}_README.txt', 'w') as readme:
-        main(outfname, readme, phenotype, previous_STRs, previous_STR_URLs, args.cool_loci)
+        main(outfname, readme, phenotype, args.unit, args.my_STR_results_fname, args.all_STR_contribs_fname, previous_STRs, previous_STR_URLs, args.cool_loci)
