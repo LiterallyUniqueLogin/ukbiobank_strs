@@ -4,6 +4,7 @@ import glob
 
 import numpy as np
 import pandas as pd
+import polars
 import shutil
 
 import python_array_utils as utils
@@ -20,6 +21,9 @@ str_imputation_run_name = 'first_pass'
 
 def chr_expand(string):
     return [string.replace('CHR', str(chrom)) for chrom in range(1, 23)]
+
+def pheno_expand(string):
+    return [string.replace('PHENO', phenotype) for phenotype in phenotypes.phenotypes_in_use]
 
 ################## Loading and collating data ############################
 
@@ -394,13 +398,13 @@ rule run_regional_my_str_gwas:
 
         shell(cmd)
 
-rule concatenate_whole_genome_my_str_gwas:
+rule concatenate_my_str_gwas:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_str{wildcards.suffix}/batches/chr{region}.tab' for
              region in regions(int(1e7))]
     output:
-        protected('association/results/{phenotype}/my_str{suffix,|_linear}/results.tab')
+        results = protected('association/results/{phenotype}/my_str{suffix,|_linear}/results.tab')
     resources:
         time='04:00:00'
     run:
@@ -513,8 +517,8 @@ rule concatenate_linear_plink_gwas:
 
 rule all_associations:
     input:
-        [f'association/results/{phenotype}/plink_snp/results.tab' for phenotype in phenotypes.phenotypes_in_use],
-        [f'association/results/{phenotype}/my_str/results.tab' for phenotype in phenotypes.phenotypes_in_use]
+        pheno_expand('association/results/PHENO/plink_snp/results.tab'),
+        pheno_expand('association/results/PHENO/my_str/results.tab')
 
 rule append_mfi_to_comparison_logistic_plink_run:
     input:
@@ -863,25 +867,30 @@ checkpoint generate_regions:
     input:
         unpack(generate_regions_input)
     output:
-        protected('signals/regions/{phenotype}_README.txt'),
-        out=protected('signals/regions/{phenotype}.tab')
+        readme=protected('signals/regions/{phenotype}_README.txt'),
+        table=protected('signals/regions/{phenotype}.tab')
     resources:
         time='00:30:00',
         mem_gb = 10
     shell:
-        'signals/regions.py {wildcards.phenotype} {input.strs} {input.imputed_snps} {output.out} '
+        'signals/regions.py {wildcards.phenotype} {input.strs} {input.imputed_snps} {output.table} '
 
 def generated_regions(phenotype):
     checkpoints.generate_regions.get(phenotype=phenotype)
-    with open(f'signals/regions/{phenotype}.tab') as signal_file:
-        next(signal_file)
-        for line in signal_file:
-            split = line.split()
-            if split[-1] == 'False':
-                # skip regions without strs
-                continue
-            yield split[:-1]
-            # chrom, start, stop
+    df = polars.read_csv(
+        expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
+        sep='\t'
+    )
+    df = df[df['any_strs']]
+    return list(zip(df['chrom'], df['start'], df['end']))
+
+def n_regions_no_strs(phenotype):
+    checkpoints.generate_regions.get(phenotype=phenotype)
+    df = polars.read_csv(
+        expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
+        sep='\t'
+    )
+    return (~df['any_strs']).sum()
 
 def peak_snp_input_inputs(wildcards):
     if not phenotypes.is_binary(wildcards.phenotype):
@@ -1136,22 +1145,16 @@ rule finemap_write_corrs_and_run:
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
-def collect_finemap_output_all_regions(wildcards):
-    assert not phenotypes.is_binary(wildcards.phenotype)
-    phenotype = wildcards.phenotype
-    files = []
-    # make sure we've loaded all input variants for all regions
-    target_files = []
-    for chrom, start, stop in generated_regions(phenotype):
-        target_files.append(
-            f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/finemap_output.snp'
-        )
-
-    return target_files
+def all_finemap_dirs(phenotype):
+    assert not phenotypes.is_binary(phenotype)
+    return [
+        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/'
+        for chrom, start, stop in generated_regions(phenotype)
+    ]
 
 rule run_finemap_phenotype:
     input:
-        collect_finemap_output_all_regions
+        expand('{dir_}/finemap_output.snp', dir_=all_finemap_dirs, phenotype='{phenotype}')
     output:
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     resources:
@@ -1161,19 +1164,30 @@ rule run_finemap_phenotype:
 
 rule summarize_finemap_output:
     input:
-        'signals/regions/{phenotype}.tab',
-        'finemapping/finemap_results/{phenotype}/all_signals_done'
+        finemap_dirs = lambda wildcards: all_finemap_dirs(wildcards.phenotype)
     output:
         'finemapping/finemap_results/{phenotype}/summary/summary.txt',
-        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
+        'finemapping/finemap_results/{phenotype}/summary/best_STR_contribs.tab',
+        'finemapping/finemap_results/{phenotype}/summary/best_STR_ranks.tab',
+        'finemapping/finemap_results/{phenotype}/summary/avg_causal_count.png',
+        'finemapping/finemap_results/{phenotype}/summary/str_contrib_fractions.png',
+        'finemapping/finemap_results/{phenotype}/summary/single_str_contrib_fractions.png',
+        'finemapping/finemap_results/{phenotype}/summary/str_rank.png',
+        all_STR_contribs = 'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
     resources:
         time='00:30:00'
-    shell:
-        'finemapping/summarize_finemap_output.py {wildcards.phenotype} '
+    run:
+        shell(
+            'finemapping/summarize_finemap_output.py '
+            '{wildcards.phenotype} '
+            'finemapping/finemap_results/{wildcards.phenotype}/summary '
+            + str(n_regions_no_strs(wildcards.phenotype)) + 
+            ' {input.finemap_dirs} '
+        )
 
 rule all_summaries:
     input:
-        [f'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab' for phenotype in phenotypes.phenotypes_in_use]
+        pheno_expand('finemapping/finemap_results/PHENO/summary/all_STR_contribs.tab')
 
 rule manhattan_finemap:
     input:
@@ -1290,7 +1304,7 @@ rule run_susie_phenotype:
 
 rule susie_all_phenotypes:
     input:
-        [f'finemapping/susie_results/{phenotype}/all_signals_done' for phenotype in phenotypes.phenotypes_in_use],
+        pheno_expand('finemapping/susie_results/PHENO/all_signals_done')
 
 # ----- finemapping summaries ----------
 rule sort_gencode:
@@ -1423,8 +1437,8 @@ rule enrichments:
         chr_expand('side_analyses/str_annotations/closest_upstream_protein_coding_exon_support_2/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/closest_downstream_protein_coding_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/closest_upstream_protein_coding_gene/chrCHR.tab'),
-        [f'association/results/{phenotype}/my_str/results.tab' for phenotype in phenotypes.phenotypes_in_use],
-        [f'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab' for phenotype in phenotypes.phenotypes_in_use]
+        pheno_expand('association/results/PHENO/my_str/results.tab'),
+        pheno_expand('finemapping/finemap_results/PHENO/summary/all_STR_contribs.tab')
     output:
         'side_analyses/str_annotations/all_STRs.tab',
         'post_finemapping/results/enrichments.tab',
@@ -1514,10 +1528,8 @@ rule enrichments:
     shell:
         './post_finemapping/enrichments.py {phenotypes.phenotypes_in_use} ' 
 
-checkpoint produce_summary_table:
+checkpoint summary_table:
     input:
-        'association/results/{phenotype}/my_str/results.tab',
-        'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab',
         chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/closest_exon/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
@@ -1528,10 +1540,12 @@ checkpoint produce_summary_table:
         chr_expand('side_analyses/str_annotations/intersects_five_prime_UTR/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_three_prime_UTR/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_UTR/chrCHR.tab'),
-        chr_expand('side_analyses/str_annotations/intersects_transcript/chrCHR.tab')
+        chr_expand('side_analyses/str_annotations/intersects_transcript/chrCHR.tab'),
+        results = expand(rules.concatenate_my_str_gwas.output.results, suffix='', phenotype='{phenotype}'),
+        all_STR_contribs = rules.summarize_finemap_output.output.all_STR_contribs,
     output:
-        'finemapping/summary/{phenotype}_table_README.txt',
-        'finemapping/summary/{phenotype}_table.tab'
+        readme = 'finemapping/summary/{phenotype}_table_README.txt',
+        table = 'finemapping/summary/{phenotype}_table.tab',
     resources:
         time='05:00:00',
         mem_gb = 75
@@ -1555,7 +1569,15 @@ checkpoint produce_summary_table:
             first = False
             exciting_STRs += STR
 
-        command = 'finemapping/collate_strong_associations.py ' + wildcards.phenotype
+        command = (
+            'finemapping/collate_strong_associations.py '
+            f'{wildcards.phenotype} '
+            f"'{phenotypes.pheno_descs[wildcards.phenotype].unit}' "
+            f'{output.readme} '
+            f'{output.table} '
+            f'{input.results} '
+            f'{input.all_STR_contribs} '
+        )
         if STRs:
             command += ' --previous-STR-findings ' + STRs
             command += ' --previous-STR-finding-URLs ' + URLs
@@ -1609,9 +1631,9 @@ rule summarize_loci:
 rule create_phenotypes_table:
     input:
         'workflow/phenotypes.py',
-        [f"sample_qc/runs/{phenotype}/combined_unrelated.sample" for phenotype in phenotypes.phenotypes_in_use],
-        [f'signals/peaks/{phenotype}_500000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use],
-        [f'signals/comparison/{phenotype}.done' for phenotype in phenotypes.phenotypes_in_use]
+        pheno_expand("sample_qc/runs/PHENO/combined_unrelated.sample"),
+        pheno_expand('signals/peaks/PHENO_500000_5e-8.tab'),
+        pheno_expand('signals/comparison/PHENO.done')
     output:
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt'
@@ -1623,7 +1645,7 @@ rule create_phenotypes_table:
 rule concat_and_filter_finemapping_summary_tables:
     input:
         'workflow/phenotypes.py',
-        [f'finemapping/summary/{phenotype}_table.tab' for phenotype in phenotypes.phenotypes_in_use]
+        pheno_expand('finemapping/summary/PHENO_table.tab')
     output:
         'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
         'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
@@ -1655,7 +1677,7 @@ rule assoc_figures:
 rule peak_figs:
     input:
         'workflow/phenotypes.py',
-        [f'signals/peaks/{phenotype}_250000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
+        pheno_expand('signals/peaks/PHENO_250000_5e-8.tab')
     output:
         'export_scripts/results/peaks_by_pheno.svg',
         'export_scripts/results/peaks_by_pheno.png',
@@ -1726,7 +1748,7 @@ rule export_phenotype_signal2:
         link_files(input, output)
 
 def conditional_plots_sig_strs(wildcards):
-    checkpoints.produce_summary_table.get(phenotype=wildcards.phenotype)
+    checkpoints.summary_table.get(phenotype=wildcards.phenotype)
     phenotype = wildcards.phenotype
     results = utils.df_to_recarray(pd.read_csv(
         f'finemapping/summary/{phenotype}_table.tab',
@@ -1866,19 +1888,19 @@ rule export_combined_summaries_and_figures:
     run:
         link_files(input, output)
 
-rule gather_all_exports:
+rule export_all:
     input:
         'workflow/phenotypes.py',
         # temp stand in to make susie run
-        # [f'finemapping/susie_results/{phenotype}/all_signals_done' for phenotype in phenotypes.phenotypes_in_use],
+        # pheno_expand('finemapping/susie_results/PHENO/all_signals_done'),
         # --- per phenotype ---
         # stand in for summaries
-        [f'export/phenotypes/{phenotype}/manhattan.FINEMAP.html' for phenotype in phenotypes.phenotypes_in_use],
+        pheno_expand('export/phenotypes/PHENO/manhattan.FINEMAP.html'),
         # stand in for region plots
-        [f'export/phenotypes/{phenotype}/region_plots/.exported' for phenotype in phenotypes.phenotypes_in_use],
+        pheno_expand('export/phenotypes/PHENO/region_plots/.exported'),
 
         # -- total ---
         'export/combined/cool_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
-       
+
