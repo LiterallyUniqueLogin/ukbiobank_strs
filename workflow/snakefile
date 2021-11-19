@@ -1,6 +1,7 @@
 import collections
 import csv
 import glob
+import pathlib
 
 import numpy as np
 import pandas as pd
@@ -190,44 +191,17 @@ rule transform_phenotype_subset:
 
 rule plot_str_locus:
     input:
-        "traits/phenotypes/{phenotype}_unit.txt",
-        'traits/phenotypes/{phenotype}.npy',
-        'traits/subset_transformed_phenotypes/{phenotype}.npy'
-    output:
-        'association/locus_plots/{phenotype}/{chrom}_{pos,[0-9]+}{transform,(_.*)?}.png',
-        'association/locus_plots/{phenotype}/{chrom}_{pos,[0-9]+}{transform,(_.*)?}.csv'
-    resources:
-        time='00:30:00'
-    run:
-        if phenotypes.is_binary(wildcards.phenotype):
-            raise ValueError("Plotting loci doesn't make sense for binary phenotypes "
-                             'unless I was to account for covariates, which this does not do '
-                             'at the moment')
-        if wildcards.transform == '':
-            transform_step = 'original'
-        elif wildcards.transform == '_rin':
-            transform_step = 'rin'
-        else:
-            raise ValueError("Unrecognized transform")
-        shell(
-            f'association/plot_loci.py {str_imputation_run_name} '
-            f'{wildcards.phenotype} {transform_step} '
-            f'{wildcards.chrom}:{wildcards.pos} '
-        )
-
-rule plot_str_locus2:
-    input:
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         'association/results/{phenotype}/my_str/results.tab',
         'traits/subset_transformed_phenotypes/{phenotype}.npy'
     output:
-        'association/locus_plots/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg'
+        plot='association/locus_plots/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg'
     resources:
         time='00:30:00'
     run:
         unit = phenotypes.pheno_descs[wildcards.phenotype].unit
         shell(
-            f'association/plot_locus2.py {str_imputation_run_name} '
+            f'association/plot_locus.py {str_imputation_run_name} '
             '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
             '{wildcards.dosage_fraction_threshold} '
             f"--unit '{unit}' "
@@ -503,7 +477,7 @@ rule concatenate_linear_plink_gwas:
     input:
         concatenate_whole_genome_plink_gwas_input
     output:
-        protected('association/results/{phenotype}/plink_snp{suffix,.*}/results.tab')
+        protected('association/results/{phenotype,[^/]+}/plink_snp{suffix,[^/.]*}/results.tab')
     resources:
         time='04:00:00'
     run:
@@ -564,7 +538,7 @@ rule subset_plink_gwas_results:
     input:
         'association/results/{phenotype}/plink_snp{suffix}/results.tab'
     output:
-        'association/plots/input/{phenotype}/plink_snp{suffix,.*}_results.tab'
+        'association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results.tab'
     resources:
         time='08:00:00'
     run:
@@ -589,7 +563,7 @@ rule append_mfi_to_subsetted_plink_results:
     input:
         'association/plots/input/{phenotype}/plink_snp{suffix}_results.tab'
     output:
-        'association/plots/input/{phenotype}/plink_snp{suffix,.*}_results_with_mfi.npy'
+        'association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results_with_mfi.npy'
     resources:
         time='01:00:00',
         mem_gb = 50
@@ -825,7 +799,7 @@ rule append_mfi_to_conditional_plink_results:
     input:
         'association/results/{phenotype}/plink_snp_conditional/{condition}/plink2.rin_{phenotype}.glm.linear.done'
     output:
-        'association/plots/input/{phenotype}/plink_snp_conditional_{condition}_results_with_mfi.npy'
+        'association/plots/input/{phenotype,[^/]+}/plink_snp_conditional_{condition,[^/.]+}_results_with_mfi.npy'
     resources:
         time='01:00:00',
         mem_gb = 50
@@ -840,7 +814,7 @@ rule manhattan_conditional:
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'association/plots/input/{phenotype}/plink_snp_conditional_chr{condition}_results_with_mfi.npy'
     output:
-        'association/plots/{phenotype}.manhattan.chr{condition}.{ext}'
+        manhattan='association/plots/{phenotype,[^.]+}.manhattan.chr{condition,[^.]+}.{ext,html|png|svg}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -944,12 +918,12 @@ rule generate_peaks:
         imputed_snps='signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab'
     output:
         readme=protected('signals/peaks/{phenotype}_{spacing}_{thresh}_README.txt'),
-        out=protected('signals/peaks/{phenotype}_{spacing}_{thresh}.tab')
+        peaks=protected('signals/peaks/{phenotype}_{spacing}_{thresh}.tab')
     resources:
         time='01:00:00'
     shell:
         'signals/peaks.py {wildcards.phenotype} {wildcards.spacing} {input.strs} {input.imputed_snps} '
-        '{output.readme} {output.out} '
+        '{output.readme} {output.peaks} '
 
 rule region_peak_comparison:
     input:
@@ -1005,7 +979,7 @@ rule overview_manhattan:
         manhattan_inputs,
         'signals/peaks/{phenotype}_10000000_5e-8.tab'
     output:
-        'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.overview.manhattan.png'
+        manhattan='association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.overview.manhattan.png'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1197,7 +1171,7 @@ rule manhattan_finemap:
         'signals/regions/{phenotype}.tab',
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     output:
-        'association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.FINEMAP.{ext}'
+        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.FINEMAP.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1585,11 +1559,11 @@ checkpoint summary_table:
             command += ' --cool-loci ' + exciting_STRs
         shell(command)
 
-rule graph_finemap_output:
+rule finemap_signal_strengths:
     input:
         'finemapping/summary/{phenotype}_table.tab'
     output:
-        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html'
+        graph='finemapping/finemap_results/{phenotype}/summary/signal_strengths.html'
     resources:
         time='00:30:00',
         mem_gb = 50
@@ -1691,70 +1665,56 @@ rule peak_figs:
 
 ######################### Export Files ########################
 
+def link_file(input_, output_):
+    input_ = '../'*output_.count('/') + input_
+    shell(f"ln -s {input_} {output_}")
+
 def link_files(inputs, outputs):
-    for _input, _output in zip(inputs, outputs):
-        _input = '../'*_output.count('/') + _input
-        shell(f"ln -s {_input} {_output}")
+    for input_, output_ in zip(inputs, outputs):
+        link_file(input_, output_)
 
 rule export_phenotype_summaries:
     input:
-        'signals/peaks/{phenotype}_250000_5e-8.tab',
-        'signals/peaks/{phenotype}_250000_5e-8_README.txt',
-        'signals/peaks/{phenotype}_500000_5e-8.tab',
-        'signals/peaks/{phenotype}_2000000_5e-8.tab',
-        'signals/peaks/{phenotype}_250000_5e-9.tab',
-        'signals/peaks/{phenotype}_250000_5e-10.tab',
-        'finemapping/summary/{phenotype}_table_README.txt',
-        'finemapping/summary/{phenotype}_table.tab',
-        'finemapping/finemap_results/{phenotype}/summary/signal_strengths.html',
-        'association/plots/{phenotype}.manhattan.FINEMAP.html',
-        'association/plots/{phenotype}.overview.manhattan.png'
+        expand(rules.generate_peaks.output.peaks, zip,
+            spacing=[250000, 500000, 2000000, 250000, 250000],
+            thresh=['5e-8', '5e-8', '5e-8', '5e-9', '5e-10'],
+            phenotype=['{phenotype}']*5),
+        expand(rules.generate_peaks.output.readme, spacing=250000, thresh='5e-8', phenotype='{phenotype}'),
+        rules.summary_table.output.readme,
+        rules.summary_table.output.table,
+        rules.finemap_signal_strengths.output.graph,
+        expand(rules.manhattan_finemap.output.manhattan, binary_type='', ext='html', phenotype='{phenotype}'),
+        expand(rules.overview_manhattan.output.manhattan, binary_type='', phenotype='{phenotype}')
     output:
-        'export/phenotypes/{phenotype}/peaks_250000_5e-8.tab',
-        'export/phenotypes/{phenotype}/peaks_250000_5e-8_README.txt',
-        'export/phenotypes/{phenotype}/peaks_500000_5e-8.tab',
-        'export/phenotypes/{phenotype}/peaks_2000000_5e-8.tab',
-        'export/phenotypes/{phenotype}/peaks_250000_5e-9.tab',
-        'export/phenotypes/{phenotype}/peaks_250000_5e-10.tab',
-        'export/phenotypes/{phenotype}/finemapping_summary_README.txt',
-        'export/phenotypes/{phenotype}/finemapping_summary.tab',
-        'export/phenotypes/{phenotype}/signal_strengths.html',
-        'export/phenotypes/{phenotype}/manhattan.FINEMAP.html',
-        'export/phenotypes/{phenotype}/overview.manhattan.png'
+        # owns all symlinks in this directory
+        complete='export/phenotypes/{phenotype}/.exported'
     resources:
         time='00:05:00',
         mem_gb=5 # got OOM error for this job, don't know why
     run:
-        link_files(input, output)
+        # delete all symlinks in the out directory before running
+        out_dir = output.complete[:output.complete.rfind('/')] # strip the file off of the directory
+        out_links = [path for path in pathlib.PosixPath(out_dir).iterdir() if path.is_symlink()]
+        for path in out_links:
+            path.unlink()
 
-rule export_phenotype_signal1:
-    input:
-        'association/plots/{phenotype}.manhattan.chr{chrom}_{start}_{end}_STR_{STR}__ISNP__ASNP.png'
-    output:
-        'export/phenotypes/{phenotype}/region_plots/manhattan.chr{chrom}_{start}_{end}_STR_{STR}__ISNP__ASNP.png'
-    resources:
-        time='00:05:00'
-    run:
-        link_files(input, output)
+        for file_ in input:
+            link_file(
+                file_,
+                f'export/phenotypes/{wildcards.phenotype}/' + 
+                    file_.replace('/', '_').replace(f'_{wildcards.phenotype}', '')
+            )
 
-rule export_phenotype_signal2:
-    input:
-        'association/locus_plots/{phenotype}_{chrom}_{STR}_0.001.svg'
-    output:
-        'export/phenotypes/{phenotype}/region_plots/{phenotype}_{chrom}_{STR}_0.001.svg'
-    resources:
-        time='00:05:00'
-    run:
-        link_files(input, output)
+        shell(f"touch {output.complete}")
 
-def conditional_plots_sig_strs(wildcards):
+def phenotype_hit_highlights(wildcards):
     checkpoints.summary_table.get(phenotype=wildcards.phenotype)
     phenotype = wildcards.phenotype
-    results = utils.df_to_recarray(pd.read_csv(
-        f'finemapping/summary/{phenotype}_table.tab',
-        header=0,
-        delimiter='\t'
-    ))
+    results = polars.read_csv(
+        expand(rules.summary_table.output.table, phenotype=phenotype)[0],
+        sep='\t',
+        dtype={'alleles': str}
+    )
     results = results[(
         results['mentioned_in_literature'] |
         results['curated'] | (
@@ -1763,80 +1723,94 @@ def conditional_plots_sig_strs(wildcards):
             (results['subset_multiallelicness'] >= 0.025)
         )
     )]
-    outfiles = []
-    for result in results:
-        outfiles.append(
-            'association/plots/{phenotype}.manhattan.'
-            f'chr{result["signal_region"]}_STR_{result["SNPSTR_start_pos"]}__ISNP__ASNP.png'
+    return (
+        *expand(
+            rules.manhattan_conditional.output.manhattan,
+            phenotype=phenotype,
+            condition=results['signal_region'] + '_STR_' + results['SNPSTR_start_pos'] + '__ISNP__ASNP',
+            ext='png',
+        ),
+        *expand(
+            rules.plot_str_locus.output.plot,
+            zip,
+            phenotype=[phenotype]*results.shape[0],
+            chrom=results['chrom'],
+            pos=results['SNPSTR_start_pos'],
+            dosage_fraction_threshold=['0.001']*results.shape[0]
         )
-        outfiles.append(
-            f'association/locus_plots/{phenotype}_{result["chrom"]}_{result["SNPSTR_start_pos"]}_0.001.svg'
-        )
-    return outfiles
-     
-rule export_phenotype_all_signals:
+    )
+
+rule export_phenotype_hit_highlights:
     input:
-        conditional_plots_sig_strs
+        phenotype_hit_highlights
     output:
-        'export/phenotypes/{phenotype}/region_plots/.exported'
+        # owns all symlinks in this directory
+        complete='export/phenotypes/{phenotype}/region_plots/.exported'
     resources:
         time='00:05:00'
     run:
-        link_files(input, 
-            [f'export/phenotypes/{wildcards.phenotype}/region_plots/' + fname.split('/')[-1]
-                for fname in input]
-        )
-        shell('touch export/phenotypes/{wildcards.phenotype}/region_plots/.exported')
+        # delete all symlinks in the out directory before running
+        out_dir = output.complete[:output.complete.rfind('/')] # strip the file off of the directory
+        out_links = [path for path in pathlib.PosixPath(out_dir).iterdir() if path.is_symlink()]
+        for path in out_links:
+            path.unlink()
 
-rule export_cool_locus1:
-    input:
-        'export/phenotypes/{phenotype}/region_plots/manhattan.chr{chrom}_{start}_{end}_STR_{STR}__ISNP__ASNP.png',
-    output:
-        'export/combined/cool_loci/{phenotype}_{chrom}.manhattan.{start}_{end}_STR_{STR}__ISNP__ASNP.png',
-    resources:
-        time='00:05:00'
-    run:
-        link_files(input, output)
+        # link new files
+        for file_ in input:
+            outfname = file_.split('/')[-1]
+            outfname = re.sub(f'{wildcards.phenotype}(.|_)', '', outfname) 
+            link_file(file_, f'{out_dir}/{outfname}')
+        shell(f'touch {output.complete}')
 
-rule export_cool_locus2:
-    input:
-        'export/phenotypes/{phenotype}/region_plots/{phenotype}_{chrom}_{STR}_0.001.svg'
-    output:
-        'export/combined/cool_loci/{phenotype}_{chrom}_{STR}_0.001.svg'
-    resources:
-        time='00:05:00'
-    run:
-        link_files(input, output)
-
-def export_cool_loci_input(wildcards):
+def curated_hit_highlights(wildcards):
     files = []
     for phenotype in phenotypes.phenotypes_in_use:
         for loc in phenotypes.pheno_descs[phenotype].exciting_STR_hits:
-            chrom, str_pos = loc.split(':')
-            files.append(
-                f'export/combined/cool_loci/{phenotype}_{chrom}_{str_pos}_0.001.svg'
-            )
+            chrom, str_pos = [int(x) for x in loc.split(':')]
+            files.append(expand(
+                rules.plot_str_locus.output.plot,
+                phenotype=phenotype,
+                chrom=chrom,
+                pos=str_pos,
+                dosage_fraction_threshold='0.001'
+            )[0])
             found_region = False
+
             for region_chrom, region_start, region_stop, in generated_regions(phenotype):
                 if chrom == region_chrom and region_start <= str_pos <= region_stop:
-                    files.append(
-                        f'export/combined/cool_loci/{phenotype}_{chrom}.manhattan.{region_start}_{region_stop}_STR_{str_pos}__ISNP__ASNP.png',
-                    )
+                    files.append(expand(
+                        rules.manhattan_conditional.output.manhattan,
+                        phenotype=phenotype,
+                        condition=f'{chrom}_{region_start}_{region_stop}_STR_{str_pos}__ISNP__ASNP',
+                        ext='png',
+                    )[0])
                     found_region = True
                     break
-            assert found_region
+            if not found_region:
+                print(phenotype, chrom, str_pos)
+                assert False
     return files
 
-rule export_cool_loci:
+rule export_curated_hit_highlights:
     input:
         'workflow/phenotypes.py',
-        export_cool_loci_input
+        hits=curated_hit_highlights
     output:
-        'export/combined/cool_loci/.exported'
+        # owns all symlinks in this directory
+        complete='export/combined/curated_loci/.exported'
     resources:
-        time='00:01:00'
-    shell:
-        'touch export/combined/cool_loci/.exported'
+        time='00:05:00'
+    run:
+        # delete all symlinks in the out directory before running
+        out_dir = output.complete[:output.complete.rfind('/')] # strip the file off of the directory
+        out_links = [path for path in pathlib.PosixPath(out_dir).iterdir() if path.is_symlink()]
+        for path in out_links:
+            path.unlink()
+
+        # link new files
+        for file_ in input.hits:
+            link_file(file_, out_dir + '/' + file_.split('/')[-1])
+        shell(f'touch {output.complete}')
 
 rule export_combined_summaries_and_figures:
     input:
@@ -1894,13 +1868,11 @@ rule export_all:
         # temp stand in to make susie run
         # pheno_expand('finemapping/susie_results/PHENO/all_signals_done'),
         # --- per phenotype ---
-        # stand in for summaries
-        pheno_expand('export/phenotypes/PHENO/manhattan.FINEMAP.html'),
-        # stand in for region plots
-        pheno_expand('export/phenotypes/PHENO/region_plots/.exported'),
+        expand(rules.export_phenotype_summaries.output.complete, phenotype=phenotypes.phenotypes_in_use),
+        expand(rules.export_phenotype_hit_highlights.output.complete, phenotype=phenotypes.phenotypes_in_use),
 
-        # -- total ---
-        'export/combined/cool_loci/.exported',
+        # -- combined ---
+        'export/combined/curated_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
 
