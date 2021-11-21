@@ -83,7 +83,10 @@ def main():
                     write_line(strong_out, split, indices, 'phenotype')
                     write_line(curated_out, split, indices, 'phenotype')
                 else:
-                    assert next(table) == header
+                    next_line = next(table)
+                    if next_line != header:
+                        print(next_line, header)
+                        assert False
 
                 for line in table:
                     split = line.strip().split('\t')

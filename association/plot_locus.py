@@ -162,3 +162,5 @@ figure.add_layout(bokeh.models.Title(text="Only considers tested individuals", a
 figure.add_layout(bokeh.models.Title(text=f"Genotypes with dosages less than {100*args.dosage_fraction_threshold}% of the population are omitted", align="center"), "below")
 
 bokeh.io.export_svg(figure, filename=f'{ukb}/association/locus_plots/{args.phenotype}_{args.chrom}_{args.pos}_{args.dosage_fraction_threshold}.svg')
+bokeh.io.export_png(figure, filename=f'{ukb}/association/locus_plots/{args.phenotype}_{args.chrom}_{args.pos}_{args.dosage_fraction_threshold}.png')
+

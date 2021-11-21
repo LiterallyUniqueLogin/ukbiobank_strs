@@ -1,0 +1,30 @@
+phenotype	chrom	start_pos	repeat_unit	multiallelicness	association_p_value	pcausal	relation_to_gene	transcribed
+alanine_aminotransferase	2	227110026	GT	0.20505056531929422	7.37e-36	0.868616	intergenic	untranscribed
+albumin	4	177692134	AC	0.18715350774063344	5.06e-12	1.0	intron:VEGFC:protein_coding	transcribed;VEGFC-202:protein_coding:1
+apolipoprotein_a	1	93858126	A	0.1844189265693875	2.51e-20	0.985561	intergenic	untranscribed
+aspartate_aminotransferase	14	35662188	A	0.12724410965385874	2.48e-17	0.983994	intergenic	untranscribed
+calcium	6	34182039	A	0.08615265051004023	9.85e-43	0.937712	intergenic	untranscribed
+calcium	11	2982732	A	0.09281724652057856	1.27e-31	1.0	intergenic	untranscribed
+creatinine	2	15786517	T	0.3715756414327763	4.51e-36	1.0	intergenic	untranscribed
+creatinine	2	148599967	A	0.28232005263874393	5.449999999999999e-34	0.937933	intergenic	untranscribed
+eosinophil_count	3	51119327	A	0.14114229865908834	1.7000000000000002e-27	1.0	intergenic	untranscribed
+eosinophil_count	10	26721459	AAAAT	0.3861247535801121	1.75e-39	1.0	intergenic	untranscribed
+eosinophil_percent	8	130623382	AC	0.3459570327764054	3.02e-65	1.0	intron:CCDC26:lncRNA	transcribed;CCDC26-201:lncRNA:1,CCDC26-213:lncRNA:missing from gencode,CCDC26-243:lncRNA:missing from gencode
+eosinophil_percent	19	16424885	A	0.10650003542395127	4.2300000000000004e-132	1.0	intergenic	untranscribed
+haematocrit	15	76246773	T	0.02625166911687747	3.72e-51	1.0	intron:NRG4:protein_coding	transcribed;NRG4-210:nonsense_mediated_decay:3,NRG4-202:nonsense_mediated_decay:1,NRG4-201:protein_coding:1,NRG4-203:nonsense_mediated_decay:2,NRG4-214:nonsense_mediated_decay:1,NRG4-209:nonsense_mediated_decay:2,NRG4-205:nonsense_mediated_decay:2
+haemoglobin_concentration	15	76246773	T	0.026309304240406693	3.95e-47	1.0	intron:NRG4:protein_coding	transcribed;NRG4-210:nonsense_mediated_decay:3,NRG4-202:nonsense_mediated_decay:1,NRG4-201:protein_coding:1,NRG4-203:nonsense_mediated_decay:2,NRG4-214:nonsense_mediated_decay:1,NRG4-209:nonsense_mediated_decay:2,NRG4-205:nonsense_mediated_decay:2
+hdl_cholesterol	11	47332459	A	0.1658593582082988	3.02e-72	0.977044	intergenic	untranscribed
+mean_corpuscular_haemoglobin	22	32897470	A	0.21830682270905127	6.56e-120	0.945413	intergenic	untranscribed
+mean_corpuscular_volume	22	32897470	A	0.21850065009459946	8.45e-133	1.0	intergenic	untranscribed
+mean_platelet_volume	17	27842016	A	0.20561204799652852	0.0	1.0	intergenic	untranscribed
+mean_platelet_volume	17	44033915	AT	0.3219704700018439	1.0400000000000001e-32	1.0	intron:MAPT:protein_coding	transcribed;MAPT-218:protein_coding:missing from gencode,MAPT-209:protein_coding:5,MAPT-204:protein_coding:1,MAPT-201:protein_coding:1,MAPT-203:protein_coding:1,MAPT-211:nonsense_mediated_decay:4,MAPT-210:processed_transcript:3,MAPT-217:protein_coding:missing from gencode,MAPT-202:protein_coding:1,MAPT-208:protein_coding:1
+mean_sphered_cell_volume	17	44084292	AAAAT	0.194762193630527	5.429999999999999e-82	1.0	intron:MAPT:protein_coding	transcribed;MAPT-215:retained_intron:2,MAPT-218:protein_coding:missing from gencode,MAPT-209:protein_coding:5,MAPT-204:protein_coding:1,MAPT-201:protein_coding:1,MAPT-203:protein_coding:1,MAPT-210:processed_transcript:3,MAPT-217:protein_coding:missing from gencode,MAPT-202:protein_coding:1,MAPT-208:protein_coding:1,MAPT-205:protein_coding:5,MAPT-214:protein_coding:5,MAPT-206:protein_coding:1,MAPT-212:protein_coding:5,MAPT-207:protein_coding:5
+platelet_count	11	119077000	CGG	0.19372093559513193	3.77e-83	1.0	intergenic;five_prime_UTR:CBL:protein_coding	transcribed;CBL-203:protein_coding:5,CBL-204:protein_coding:5
+platelet_count	17	27842016	A	0.20526742286486907	2.2600000000000002e-181	1.0	intergenic	untranscribed
+platelet_crit	1	204527033	AAT	0.1604297339548981	5.76e-17	1.0	three_prime_UTR:MDM4:protein_coding	transcribed;MDM4-207:protein_coding:1,MDM4-214:protein_coding:5,MDM4-205:protein_coding:1,MDM4-215:protein_coding:5,MDM4-216:protein_coding:5,MDM4-204:protein_coding:1,MDM4-203:protein_coding:1
+platelet_crit	4	7040818	A	0.15489094382114843	1.17e-28	0.965011	intergenic	untranscribed
+platelet_distribution_width	22	43385874	AT	0.13124103551660687	0.0	1.0	intergenic	untranscribed
+red_blood_cell_count	3	141097028	A	0.08915050617772337	5.3699999999999996e-40	1.0	intergenic	untranscribed
+red_blood_cell_count	15	76246773	T	0.02641479704080757	2.5900000000000003e-43	1.0	intron:NRG4:protein_coding	transcribed;NRG4-210:nonsense_mediated_decay:3,NRG4-202:nonsense_mediated_decay:1,NRG4-201:protein_coding:1,NRG4-203:nonsense_mediated_decay:2,NRG4-214:nonsense_mediated_decay:1,NRG4-209:nonsense_mediated_decay:2,NRG4-205:nonsense_mediated_decay:2
+red_blood_cell_distribution_width	1	43429968	T	0.13083597872939756	1.21e-33	1.0	intron:SLC2A1-AS1:lncRNA	transcribed;SLC2A1-AS1-202:lncRNA:2,SLC2A1-AS1-203:lncRNA:missing from gencode,SLC2A1-AS1-204:lncRNA:missing from gencode,SLC2A1-AS1-201:retained_intron:2
+white_blood_cell_count	17	38177325	AAAC	0.030890360953921978	1.26e-256	1.0	intron:MED24:protein_coding	transcribed;MED24-209:nonsense_mediated_decay:5,MED24-205:protein_coding:1,MED24-207:processed_transcript:5,MED24-202:protein_coding:1,MED24-201:protein_coding:2,MED24-204:protein_coding:1,MED24-203:protein_coding:2,MED24-234:protein_coding:1,MED24-214:nonsense_mediated_decay:2,MED24-212:protein_coding:5
