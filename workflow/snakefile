@@ -477,7 +477,7 @@ rule concatenate_linear_plink_gwas:
     input:
         concatenate_whole_genome_plink_gwas_input
     output:
-        protected('association/results/{phenotype,[^/]+}/plink_snp{suffix,[^/.]*}/results.tab')
+        results=protected('association/results/{phenotype,[^/]+}/plink_snp{suffix,|_linear}/results.tab')
     resources:
         time='04:00:00'
     run:
@@ -487,7 +487,7 @@ rule concatenate_linear_plink_gwas:
             assert wildcards.suffix == '_linear'
             assert phenotypes.is_binary(wildcards.phenotype)
 
-        concatenate_csvs(output[0], input)
+        concatenate_csvs(output.results, input)
 
 rule all_associations:
     input:
@@ -538,7 +538,7 @@ rule subset_plink_gwas_results:
     input:
         'association/results/{phenotype}/plink_snp{suffix}/results.tab'
     output:
-        'association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results.tab'
+        subsetted_tab='association/plots/input/{phenotype}/plink_snp{suffix,|_linear|logistic}_results.tab'
     resources:
         time='08:00:00'
     run:
@@ -561,7 +561,7 @@ rule subset_plink_gwas_results:
 
 rule append_mfi_to_subsetted_plink_results:
     input:
-        'association/plots/input/{phenotype}/plink_snp{suffix}_results.tab'
+        rules.subset_plink_gwas_results.output.subsetted_tab
     output:
         'association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results_with_mfi.npy'
     resources:
@@ -768,7 +768,7 @@ rule run_continuous_conditional_plink_gwas:
     input:
         'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{ISNPs}__ASNP_plink.tab'
     output:
-        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
+        results='association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
     resources:
         time='24:00:00',
         mem_gb=110,
@@ -797,9 +797,9 @@ rule run_binary_conditional_plink_gwas:
 
 rule append_mfi_to_conditional_plink_results:
     input:
-        'association/results/{phenotype}/plink_snp_conditional/{condition}/plink2.rin_{phenotype}.glm.linear.done'
+        'association/results/{phenotype}/plink_snp_conditional/chr{condition}/plink2.rin_{phenotype}.glm.linear.done'
     output:
-        'association/plots/input/{phenotype,[^/]+}/plink_snp_conditional_{condition,[^/.]+}_results_with_mfi.npy'
+        mfi_npy='association/plots/input/{phenotype,[^/]+}/plink_snp_conditional_chr{condition,[^/.]+}_results_with_mfi.npy'
     resources:
         time='01:00:00',
         mem_gb = 50
@@ -812,7 +812,7 @@ rule manhattan_conditional:
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/results/{phenotype}/my_str_conditional/chr{condition}.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
-        'association/plots/input/{phenotype}/plink_snp_conditional_chr{condition}_results_with_mfi.npy'
+        rules.append_mfi_to_conditional_plink_results.output.mfi_npy,
     output:
         manhattan='association/plots/{phenotype,[^.]+}.manhattan.chr{condition,[^.]+}.{ext,html|png|svg}'
     resources:
@@ -1122,7 +1122,7 @@ rule finemap_write_corrs_and_run:
 def all_finemap_dirs(phenotype):
     assert not phenotypes.is_binary(phenotype)
     return [
-        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/'
+        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}'
         for chrom, start, stop in generated_regions(phenotype)
     ]
 
@@ -1138,7 +1138,7 @@ rule run_finemap_phenotype:
 
 rule summarize_finemap_output:
     input:
-        finemap_dirs = lambda wildcards: all_finemap_dirs(wildcards.phenotype)
+        finemap_dirs = lambda wildcards: [f'{dir_}/finemap_output.snp' for dir_ in all_finemap_dirs(wildcards.phenotype)]
     output:
         'finemapping/finemap_results/{phenotype}/summary/summary.txt',
         'finemapping/finemap_results/{phenotype}/summary/best_STR_contribs.tab',
@@ -1504,7 +1504,7 @@ rule enrichments:
 
 checkpoint summary_table:
     input:
-        chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
+        #chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/closest_exon/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_gene_d_100000/chrCHR.tab'),
@@ -1710,19 +1710,27 @@ rule export_phenotype_summaries:
 def phenotype_hit_highlights(wildcards):
     checkpoints.summary_table.get(phenotype=wildcards.phenotype)
     phenotype = wildcards.phenotype
+    # TODO this should be settable: 'included_only_due_to_literature': float
+    # TODO this should be settable: 'included_only_due_to_literature': curation 
+    # TODO this should be inferred: 'association_p_value': float
+    # comparison to string shouldn't cause casting
+    # ask for dtype flag, not just dtypes?
     results = polars.read_csv(
         expand(rules.summary_table.output.table, phenotype=phenotype)[0],
         sep='\t',
-        dtype={'alleles': str}
+        dtype={'alleles': str, 'association_p_value': float},
+        null_values='NA'
     )
-    results = results[(
-        results['mentioned_in_literature'] |
-        results['curated'] | (
-            (results['pcausal'] >= 0.8) &
-            (results['association_p_value'] <= 1e-10) &
-            (results['subset_multiallelicness'] >= 0.025)
+    results = results[
+        (results['association_p_value'] <= 1e-10) &
+        (
+            results['mentioned_in_literature'] |
+            results['curated'] | (
+                (results['pcausal'] >= 0.8) &
+                (results['subset_multiallelicness'] >= 0.025)
+            )
         )
-    )]
+    ]
     return (
         *expand(
             rules.manhattan_conditional.output.manhattan,
@@ -1745,7 +1753,7 @@ rule export_phenotype_hit_highlights:
         phenotype_hit_highlights
     output:
         # owns all symlinks in this directory
-        complete='export/phenotypes/{phenotype}/region_plots/.exported'
+        complete='export/phenotypes/{phenotype}/loci/.exported'
     resources:
         time='00:05:00'
     run:
