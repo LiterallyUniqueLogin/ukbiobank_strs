@@ -87,9 +87,9 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
          "exon-start:exon-end:gene-name:gene-type, where upstream means upstream of "
          "the exon in that gene's direction. All exons within a 1000bp radius, or 'none'. (See "
          'https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.) '),
-        #('closest_gene', "distance:'upstream'/'downstream'/'inside':gene-name:gene-type. Possibly a comma "
-        # 'separated list if multiple genes are tied by distance. '
-        # "(See https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.)"),
+        ('closest_gene', "distance:'upstream'/'downstream'/'inside':gene-name:gene-type. Possibly a comma "
+         'separated list if multiple genes are tied by distance. '
+         "(See https://www.gencodegenes.org/pages/biotypes.html for gene type meanings.)"),
         ('nearby_genes', 'A comma separated list of entries like that in closest_gene. '
          "All genes within a 100kbp radius, or 'none'."),
         ('relation_to_gene', "If this STR intersects a single gene with a single category, then "
@@ -353,7 +353,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     print("Loading gene and transcript annotations ...", flush=True)
     signals['pos'] = signals['start_pos']
     nearby_exon_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_exon_d_1000')
-    #closest_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
+    closest_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
     nearby_gene_merge = annotation_utils.get_merged_annotations(signals, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_100000')
 
     print("Loading high level intersections...", flush=True)
@@ -372,7 +372,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     nrows = signals.shape[0]
 
     nearby_exons = ['none']*nrows
-    #closest_gene = [None]*nrows
+    closest_gene = [None]*nrows
     nearby_genes = ['none']*nrows
     relation_to_gene = ['']*nrows
     transcribed = ['untranscribed']*nrows
@@ -380,11 +380,10 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     print("Handling gene and transcript annotations ...", flush=True)
     for idx in range(nrows):
         chrom = signals['chrom'][idx]
-        snpstr_pos = signals['SNPSTR_start_pos'][idx]
         start_pos = signals['start_pos'][idx]
         end_pos = signals['end_pos'][idx]
         for line in nearby_exon_merge[
-            (nearby_exon_merge['chrom'] == chrom) & (nearby_exon_merge['STR_pos'] == snpstr_pos)
+            (nearby_exon_merge['chrom'] == chrom) & (nearby_exon_merge['STR_pos'] == start_pos)
         ].itertuples():
             if nearby_exons[idx] == 'none':
                 nearby_exons[idx] = ''
@@ -401,9 +400,8 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
             nearby_exons[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
             nearby_exons[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
 
-        '''
         for line in closest_gene_merge[
-            (closest_gene_merge['chrom'] == chrom) & (closest_gene_merge['STR_pos'] == snpstr_pos)
+            (closest_gene_merge['chrom'] == chrom) & (closest_gene_merge['STR_pos'] == start_pos)
         ].itertuples():
             if closest_gene[idx] is not None:
                 closest_gene[idx] += ','
@@ -416,10 +414,9 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
 
             closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
             closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
-        '''
 
         for line in nearby_gene_merge[
-            (nearby_gene_merge['chrom'] == chrom) & (nearby_gene_merge['STR_pos'] == snpstr_pos)
+            (nearby_gene_merge['chrom'] == chrom) & (nearby_gene_merge['STR_pos'] == start_pos)
         ].itertuples():
             if nearby_genes[idx] == 'none':
                 nearby_genes[idx] = ''
@@ -438,7 +435,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
         gene_intersections = {}
         partial_overlap = False
         for line in gene_intersect_merge[
-            (gene_intersect_merge['chrom'] == chrom) & (gene_intersect_merge['STR_pos'] == snpstr_pos)
+            (gene_intersect_merge['chrom'] == chrom) & (gene_intersect_merge['STR_pos'] == start_pos)
         ].itertuples():
             gene_name = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name')
             gene_type = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
@@ -468,7 +465,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
             relation_to_gene[idx] += 'multigene;'
 
         for line in exon_intersect_merge[
-            (exon_intersect_merge['chrom'] == chrom) & (exon_intersect_merge['STR_pos'] == snpstr_pos)
+            (exon_intersect_merge['chrom'] == chrom) & (exon_intersect_merge['STR_pos'] == start_pos)
         ].itertuples():
             gene_name = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name')
             if gene_name not in gene_intersections:
@@ -478,7 +475,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
                     gene_intersections[gene_name][2][p] = True
 
         for line in sub_exon_types[
-            (sub_exon_types['chrom'] == chrom) & (sub_exon_types['STR_pos'] == snpstr_pos)
+            (sub_exon_types['chrom'] == chrom) & (sub_exon_types['STR_pos'] == start_pos)
         ].itertuples():
             gene_name = annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name')
             if gene_name not in gene_intersections:
@@ -510,7 +507,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
             relation_to_gene[idx] += gene_name + ":" + gene_data[0]
 
         for line in transcript_intersect_merge[
-            (transcript_intersect_merge['chrom'] == chrom) & (transcript_intersect_merge['STR_pos'] == snpstr_pos)
+            (transcript_intersect_merge['chrom'] == chrom) & (transcript_intersect_merge['STR_pos'] == start_pos)
         ].itertuples():
             if transcribed[idx] == 'untranscribed':
                 transcribed[idx] = 'transcribed;'
@@ -521,7 +518,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
             transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_support_level')
 
     signals['nearby_exons'] = nearby_exons
-    #signals['closest_gene'] = closest_gene
+    signals['closest_gene'] = closest_gene
     signals['nearby_genes'] = nearby_genes
     signals['relation_to_gene'] = relation_to_gene
     signals['transcribed'] = transcribed
