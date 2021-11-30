@@ -54,6 +54,10 @@ pheno_descs = {
     'ovarian_dysfunction_E28': PhenotypeDescription(
         '130736',
         unit = 'binary_date_first_reported',
+    ),
+    'type_2_diabetes_E11': PhenotypeDescription(
+        '130708',
+        unit = 'binary_date_first_reported'
     )
 }
 
@@ -320,7 +324,8 @@ serum_biomarkers = {
         min_val=0.1,
         max_val='(7.7-8.99)',
         min_omit=6,
-        max_omit=9
+        max_omit=9,
+        exciting_STR_hits = ['6:50833055']
     ),
     'gamma_glutamyltransferase': PhenotypeDescription(
         '30730',
@@ -328,7 +333,8 @@ serum_biomarkers = {
         min_val=5,
         max_val=1200,
         min_omit=22,
-        max_omit=73
+        max_omit=73,
+        exciting_STR_hits = ['14:103891577', '21:30125677']
     ),
     'glucose': PhenotypeDescription(
         '30740',
@@ -353,7 +359,8 @@ serum_biomarkers = {
         min_val=1.30,
         max_val=195,
         min_omit=6,
-        max_omit=0
+        max_omit=0,
+        exciting_STR_hits = ['3:141097026']
     ),
     'ldl_cholesterol_direct': PhenotypeDescription(
         '30780',
@@ -361,7 +368,8 @@ serum_biomarkers = {
         min_val=0.26,
         max_val=10.3,
         min_omit=7,
-        max_omit=0
+        max_omit=0,
+        exciting_STR_hits = ['2:21266752'] #biallelic
     ),
 
 #    #48k < 3.8 , 34k > 189
@@ -422,7 +430,8 @@ serum_biomarkers = {
         min_val=30,
         max_val=120,
         min_omit=16,
-        max_omit=1
+        max_omit=1,
+        exciting_STR_hits = ['19:50028307'] #biallelic
     ),
     'triglycerides': PhenotypeDescription(
         '30870',
@@ -430,7 +439,8 @@ serum_biomarkers = {
         min_val=0.1,
         max_val=11.3,
         min_omit=6,
-        max_omit=136
+        max_omit=136,
+        exciting_STR_hits = ['12:57701088', '3:135916825']
     ),
     'urate': PhenotypeDescription(
         '30880',
@@ -462,7 +472,8 @@ serum_biomarkers['glycated_haemoglobin'] = PhenotypeDescription(
     min_val='unknown',
     max_val='unknown',
     min_omit=190,
-    max_omit=0
+    max_omit=0,
+    exciting_STR_hits = ['22:30363907', '19:17252973']
 )
 
 pheno_descs.update(serum_biomarkers)

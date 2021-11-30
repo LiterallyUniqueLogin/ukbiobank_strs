@@ -185,12 +185,6 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
         how='right'
     )
     mhc = (signals['chrom'] == 6) & (signals['pos'] >= 25e6) & (signals['pos'] <= 33.5e6)
-    signals.to_csv(
-        f'{ukb}/foo',
-        sep='\t',
-        index=False,
-        na_rep = 'NA'
-    )
 
     literature_STR_rows = None
     literature_STR_URLs = ['NA']*len(signals)

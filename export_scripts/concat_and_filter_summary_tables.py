@@ -39,11 +39,10 @@ def main():
         'transcript support level (1-5 or missing)\n'
     )
 
-    with open(f'{ukb}/export_scripts/results/putatively_causal_multiallelic_STRs_README.txt', 'w') as readme:
+    with open(f'{ukb}/export_scripts/results/putatively_causal_STRs_README.txt', 'w') as readme:
         readme.write(
             'Any STR x phenotype association that has p-value <= 1e-10 and '
-            'FINEMAP posterior probability of causality >= 0.8 '
-            'and multiallelicness >= 0.025\n'
+            'FINEMAP posterior probability of causality >= 0.8\n'
             + col_descs
         )
 
@@ -64,7 +63,7 @@ def main():
         'transcribed'
     ]
 
-    with open(f'{ukb}/export_scripts/results/putatively_causal_multiallelic_STRs.tab', 'w') as strong_out, \
+    with open(f'{ukb}/export_scripts/results/putatively_causal_STRs.tab', 'w') as strong_out, \
             open(f'{ukb}/export_scripts/results/curated_STRs.tab', 'w') as curated_out:
         first_phen = True
         for phenotype in phenotypes:
@@ -95,9 +94,7 @@ def main():
                     association_p_value = float(split[association_p_value_index])
                     if association_p_value != 0 and -np.log10(association_p_value) < 10:
                         continue
-                    if float(split[pcausal_index]) < .8:
-                        continue
-                    if float(split[subset_multiallelicness_index]) < .025:
+                    if split[pcausal_index] != 'NA' and float(split[pcausal_index]) < .8:
                         continue
                     if split[only_curated_index] == 'True' or split[only_lit_index] == 'True':
                         continue

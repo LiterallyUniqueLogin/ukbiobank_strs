@@ -1,6 +1,7 @@
 import collections
 import csv
 import glob
+import json
 import pathlib
 
 import numpy as np
@@ -59,7 +60,7 @@ rule decompress_field:
         'main_dataset/raw_data/ukb46781.enc_ukb',
         'main_dataset/raw_data/ukb46782.enc_ukb'
     output:
-        protected("main_dataset/extracted_data/{field_name}_{field_id}.txt"),
+        protected("main_dataset/extracted_data/{field_name}_{field_id,[0-9]+}.txt"),
         protected("main_dataset/extracted_data/{field_name}_{field_id}_README.txt")
     resources:
         time='05:00:00'
@@ -242,8 +243,8 @@ def regions(region_len):
 
 rule write_my_gwas_readme:
     output:
-        protected('association/results/{phenotype}/my_{run_type}/README.txt'),
-        protected('association/results/{phenotype}/my_{run_type}/time.stamp')
+        readme=protected('association/results/{phenotype}/my_{run_type}/README.txt'),
+        timestamp=protected('association/results/{phenotype}/my_{run_type}/time.stamp')
     resources:
         time='00:05:00'
     run:
@@ -426,12 +427,10 @@ rule timestamp_plink_run:
     shell:
         'touch association/results/{wildcards.phenotype}/plink_snp{wildcards.suffix}/time.stamp'
 
-rule run_linear_plink_gwas:
+rule run_linear_plink_gwas_parent:
     input:
         'association/results/{phenotype}/plink_snp{suffix}/input/transformed_phenotype_and_covars.tab',
         'association/results/{phenotype}/plink_snp{suffix}/time.stamp'
-    output:
-        temporary('association/results/{phenotype}/plink_snp{suffix,.*}/chrs/chr{chrom}/plink2.{rin,(rin_)?}{phenotype}.glm.linear.done')
     resources:
         time='06:00:00',
         threads=28,
@@ -446,6 +445,16 @@ rule run_linear_plink_gwas:
             assert phenotypes.is_binary(wildcards.phenotype)
 
         shell('PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} SUFFIX={wildcards.suffix} association/plink_association.sh')
+
+use rule run_linear_plink_gwas_parent as run_linear_binary_plink_gwas with:
+    output:
+        results=temporary('association/results/{phenotype}/plink_snp{suffix,_linear}/chrs/chr{chrom}/plink2.{phenotype}.glm.linear.done'),
+        plinklog='association/results/{phenotype}/plink_snp{suffix,_linear}/chrs/chr{chrom}/plink2.log'
+
+use rule run_linear_plink_gwas_parent as run_linear_rin_plink_gwas with:
+    output:
+        results=temporary('association/results/{phenotype}/plink_snp{suffix,}/chrs/chr{chrom}/plink2.rin_{phenotype}.glm.linear.done'),
+        plinklog='association/results/{phenotype}/plink_snp{suffix,}/chrs/chr{chrom}/plink2.log'
 
 rule run_logistic_plink_gwas:
     input:
@@ -490,11 +499,6 @@ rule concatenate_linear_plink_gwas:
 
         concatenate_csvs(output.results, input)
 
-rule all_associations:
-    input:
-        pheno_expand('association/results/PHENO/plink_snp/results.tab'),
-        pheno_expand('association/results/PHENO/my_str/results.tab')
-
 rule append_mfi_to_comparison_logistic_plink_run:
     input:
         'association/results/{phenotype}/plink_snp_logistic/batches/chr{chrom}_{start}_{end}/plink2.{phenotype}.glm.logistic.hybrid.done'
@@ -525,7 +529,7 @@ rule subset_my_gwas_results:
     input:
         'association/results/{phenotype}/my_{gwas_type}/results.tab'
     output:
-        'association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
+        subsetted_results='association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
     resources:
         time='01:00:00'
     run:
@@ -564,7 +568,7 @@ rule append_mfi_to_subsetted_plink_results:
     input:
         rules.subset_plink_gwas_results.output.subsetted_tab
     output:
-        'association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results_with_mfi.npy'
+        mfi_npy='association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results_with_mfi.npy'
     resources:
         time='01:00:00',
         mem_gb = 50
@@ -593,7 +597,7 @@ rule compare_my_to_plink_continuous_gwas:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py eosinophil_count html --my-plink-comparison --chrom 21 '
+        'association/interactive_manhattan_plot.py eosinophil_count html --my-plink-comparison --chrom 21 '
 
 rule compare_my_to_plink_continuous_gwas_figure_plink_only:
     input:
@@ -606,7 +610,7 @@ rule compare_my_to_plink_continuous_gwas_figure_plink_only:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py eosinophil_count png '
+        'association/interactive_manhattan_plot.py eosinophil_count png '
         '--my-plink-comparison --chrom 21 --only-plink '
 
 rule compare_my_to_plink_continuous_gwas_figure_mine_only:
@@ -619,7 +623,7 @@ rule compare_my_to_plink_continuous_gwas_figure_mine_only:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py eosinophil_count png '
+        'association/interactive_manhattan_plot.py eosinophil_count png '
         '--my-plink-comparison --chrom 21 --only-mine'
 
 rule compare_my_to_plink_binary_linear_gwas:
@@ -634,7 +638,7 @@ rule compare_my_to_plink_binary_linear_gwas:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py afib_and_flutter_I48 html --my-plink-comparison --binary linear '
+        'association/interactive_manhattan_plot.py afib_and_flutter_I48 html --my-plink-comparison --binary linear '
         '--chrom 21 --start 10000001 --end 11000000 '
 
 rule compare_my_to_plink_binary_logistic_gwas:
@@ -648,7 +652,7 @@ rule compare_my_to_plink_binary_logistic_gwas:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py afib_and_flutter_I48 html --my-plink-comparison --binary logistic '
+        'association/interactive_manhattan_plot.py afib_and_flutter_I48 html --my-plink-comparison --binary logistic '
         '--plink-snp-fname {input.plink_snp_fname} '
         '--chrom 21 --start 10000001 --end 11000000 '
 
@@ -673,7 +677,7 @@ rule manhattan:
         time='00:30:00',
         mem_gb=50
     run:
-        cmd = 'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+        cmd = 'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
         if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
@@ -693,7 +697,7 @@ rule region_manhattan:
         mem_gb=50
     run:
         cmd = (
-            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
             '--chrom {wildcards.chrom} '
             '--start {wildcards.start} '
             '--end {wildcards.end} '
@@ -820,7 +824,7 @@ rule manhattan_conditional:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+        'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
         '--condition chr{wildcards.condition} '
 
 ###################### Extracting Association Signals #######################
@@ -965,7 +969,7 @@ rule peak_manhattan:
         mem_gb=50
     run:
         cmd = (
-            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
             '--peaks-spacing {wildcards.spacing} --peaks-thresh {wildcards.thresh} '
         )
         if not phenotypes.is_binary(wildcards.phenotype):
@@ -975,26 +979,29 @@ rule peak_manhattan:
             cmd += f'--binary {wildcards.binary_type[1:]} '
         shell(cmd)
 
-rule overview_manhattan:
+rule linear_overview_manhattan:
     input:
-        manhattan_inputs,
-        'signals/peaks/{phenotype}_10000000_5e-8.tab'
+        my_str_run_readme=expand(rules.write_my_gwas_readme.output.readme, run_type='str', phenotype='{phenotype}'),
+        my_str_results=expand(rules.subset_my_gwas_results.output.subsetted_results, gwas_type='str', phenotype='{phenotype}'),
+        plink_snp_log_file=expand(rules.run_linear_rin_plink_gwas.output.plinklog, chrom=21, suffix='', phenotype='{phenotype}'),
+        plink_snp_results=expand(rules.append_mfi_to_subsetted_plink_results.output.mfi_npy, suffix='', phenotype='{phenotype}'),
+        peaks_fname=expand(rules.generate_peaks.output.peaks, spacing=10000000, thresh='5e-8', phenotype='{phenotype}')
     output:
-        manhattan='association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.overview.manhattan.png'
+        manhattan='association/plots/{phenotype,[^.]*}.overview.manhattan.png'
     resources:
         time='00:30:00',
-        mem_gb=50
-    run:
-        cmd = (
-            'association/interactive_manhattan_plots.py {wildcards.phenotype} png '
-            '--peaks-spacing 10000000 --peaks-thresh 5e-8 --overview '
-        )
-        if not phenotypes.is_binary(wildcards.phenotype):
-            assert wildcards.binary_type == ''
-        else:
-            assert wildcards.binary_type != ''
-            cmd += f'--binary {wildcards.binary_type[1:]} '
-        shell(cmd)
+        mem_gb=75
+    shell:
+        'association/overview_manhattan_plot.py '
+        '{wildcards.phenotype} '
+        '{output.manhattan} '
+        '{input.my_str_run_readme} '
+        '{input.my_str_results} '
+        '{input.plink_snp_log_file} '
+        '{input.plink_snp_results} '
+        '10000000 '
+        '5e-8 '
+        '{input.peaks_fname} '
 
 # ----------- rerunning binary logistic regression associaiton on
 # ----------- binary linear regression association regions
@@ -1178,7 +1185,7 @@ rule manhattan_finemap:
         mem_gb=50
     run:
         cmd = (
-            'association/interactive_manhattan_plots.py {wildcards.phenotype} {wildcards.ext} '
+            'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
             '--finemap-signals '
         )
         if not phenotypes.is_binary(wildcards.phenotype):
@@ -1505,7 +1512,8 @@ rule enrichments:
 
 checkpoint summary_table:
     input:
-        #chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
+        'workflow/phenotypes.py',
+        chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/closest_exon/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_gene_d_100000/chrCHR.tab'),
@@ -1617,14 +1625,27 @@ rule create_phenotypes_table:
         time='00:02:00'
     shell:
         'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
- 
+
+rule concat_finemapping_summary_tables:
+    input:
+        'workflow/phenotypes.py',
+        tables=expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
+    output:
+        table='export_scripts/results/finemapping_summary_all_phenotypes.tab'
+    resources:
+        time = '00:10:00'
+    run:
+        cmd = 'export_scripts/concat_summary_tables.py {output[0]} '
+        cmd += "'{" + json.dumps({phen: table for (phen, table) in zip(phenotypes.phenotypes_in_use, input.tables)}) + "}'"
+        shell(cmd)
+
 rule concat_and_filter_finemapping_summary_tables:
     input:
         'workflow/phenotypes.py',
         expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
     output:
-        'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
-        'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
+        'export_scripts/results/putatively_causal_STRs.tab',
+        'export_scripts/results/putatively_causal_STRs_README.txt',
         'export_scripts/results/curated_STRs.tab',
         'export_scripts/results/curated_STRs_README.txt'
     resources:
@@ -1633,6 +1654,20 @@ rule concat_and_filter_finemapping_summary_tables:
         cmd = 'export_scripts/concat_and_filter_summary_tables.py '
         for phenotype in phenotypes.phenotypes_in_use:
             cmd += f'{phenotype} '
+        shell(cmd)
+
+rule exonic_finemapped_strs:
+    input:
+        'workflow/phenotypes.py',
+        tables=expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
+    output:
+        table='export_scripts/results/exonic_finemapped_STRs.tab',
+        readme='export_scripts/results/exonic_finemapped_STRs_README.txt'
+    resources:
+        time = '00:10:00'
+    run:
+        cmd = 'export_scripts/exonic_finemapped_strs.py {output.table} {output.readme} '
+        cmd += "'{" + json.dumps({phen: table for (phen, table) in zip(phenotypes.phenotypes_in_use, input.tables)}) + "}'"
         shell(cmd)
 
 rule assoc_figures:
@@ -1687,7 +1722,7 @@ rule export_phenotype_summaries:
         rules.summary_table.output.table,
         rules.finemap_signal_strengths.output.graph,
         expand(rules.manhattan_finemap.output.manhattan, binary_type='', ext='html', phenotype='{phenotype}'),
-        expand(rules.overview_manhattan.output.manhattan, binary_type='', phenotype='{phenotype}')
+        rules.linear_overview_manhattan.output.manhattan
     output:
         # owns all symlinks in this directory
         complete='export/phenotypes/{phenotype}/.exported'
@@ -1838,10 +1873,12 @@ rule export_combined_summaries_and_figures:
     input:
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt',
-        'export_scripts/results/putatively_causal_multiallelic_STRs.tab',
-        'export_scripts/results/putatively_causal_multiallelic_STRs_README.txt',
+        'export_scripts/results/putatively_causal_STRs.tab',
+        'export_scripts/results/putatively_causal_STRs_README.txt',
         'export_scripts/results/curated_STRs.tab',
         'export_scripts/results/curated_STRs_README.txt',
+        'export_scripts/results/exonic_finemapped_STRs.tab',
+        'export_scripts/results/exonic_finemapped_STRs_README.txt',
         'export_scripts/results/validate_our_code.png',
         'export_scripts/results/panukbb_scatter.png',
         'export_scripts/results/panukbb_scatter.svg',
@@ -1856,14 +1893,17 @@ rule export_combined_summaries_and_figures:
         'export_scripts/results/allele_count_thresh_0.015.png',
         'export_scripts/results/allele_count_thresh_0.015.svg',
         'export_scripts/results/allele_count_thresh_0.06.png',
-        'export_scripts/results/allele_count_thresh_0.06.svg'
+        'export_scripts/results/allele_count_thresh_0.06.svg',
+        'export_scripts/results/finemapping_summary_all_phenotypes.tab'
     output:
         'export/combined/phenotypes.tab',
         'export/combined/phenotypes_README.txt',
-        'export/combined/putatively_causal_multiallelic_STRs.tab',
-        'export/combined/putatively_causal_multiallelic_STRs_README.txt',
+        'export/combined/putatively_causal_STRs.tab',
+        'export/combined/putatively_causal_STRs_README.txt',
         'export/combined/curated_STRs.tab',
         'export/combined/curated_STRs_README.txt',
+        'export/combined/exonic_finemapped_STRs.tab',
+        'export/combined/exonic_finemapped_STRs_README.txt',
         'export/combined/validate_our_code.png',
         'export/combined/panukbb_scatter.png',
         'export/combined/panukbb_scatter.svg',
@@ -1878,10 +1918,16 @@ rule export_combined_summaries_and_figures:
         'export/combined/allele_count_thresh_0.015.png',
         'export/combined/allele_count_thresh_0.015.svg',
         'export/combined/allele_count_thresh_0.06.png',
-        'export/combined/allele_count_thresh_0.06.svg'
+        'export/combined/allele_count_thresh_0.06.svg',
+        'export/combined/finemapping_summary_all_phenotypes.tab'
     resources:
         time='00:05:00'
     run:
+        # delete all symlinks in the out directory before running
+        out_links = [path for path in pathlib.PosixPath('export/combined').iterdir() if path.is_symlink()]
+        for path in out_links:
+            path.unlink()
+
         link_files(input, output)
 
 rule export_all:
@@ -1897,4 +1943,3 @@ rule export_all:
         'export/combined/curated_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
-
