@@ -16,46 +16,27 @@ import load_and_filter_genotypes
 import python_array_utils as utils
 import weighted_binom_conf
 
-ukb = os.environ['UKB']
 project_temp = os.environ['PROJECT_TEMP']
 
 def perform_regional_gwas_helper(
+        outfile,
+        pheno_and_covars_fname,
+        shared_covars_fname,
+        sample_fname,
+        untransformed_phenotypes_fname,
         phenotype,
         binary,
-        outfile,
+        region,
         runtype,
         imputation_run_name,
-        region,
-        conditional):
-    if binary == 'logistic':
-        # need to use the Firth logistic regression implementation in R as there
-        # is no current implementation in python (and I think it's safer to use
-        # a preexisting implementation than to code and debug my own)
-        # so import the Python to R bridge
-        # I don't want this package to always depend on that,
-        # so import here as opposed to at the file top
-        import pandas as pd
-        import rpy2.robjects as rob
-        import rpy2.robjects.conversion
-        import rpy2.robjects.packages
-        import rpy2.robjects.pandas2ri
-        logistf = rob.packages.importr('logistf')
-        # R formulas use named columns, I'm not sure how to get them
-        # to just use column numbers instead, so load the covariate names
-        covar_names = []
-        with open(f'{ukb}/traits/phenotypes/{phenotype}_covar_names.txt') as covar_names_file:
-            for line in covar_names_file:
-                covar_names.append(line.strip())
-        with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_names_file:
-            for line in covar_names_file:
-                covar_names.append(line.strip())
+        conditional_covars_fname = None):
 
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
                   f"p_{phenotype}\tcoeff_{phenotype}\t")
     if binary != 'logistic':
         outfile.write(f'se_{phenotype}\tR^2\t')
     else:
-        outfile.write("unused_col\tfirth?\t")
+        outfile.write("unused_col\tunused_col\t")
     outfile.flush()
 
     n_loci = 0
@@ -63,25 +44,17 @@ def perform_regional_gwas_helper(
     batch_size = 50
     total_time = 0
 
-    pheno_specific_covars = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{phenotype}.npy')
-    shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
+    pheno_specific_covars = np.load(pheno_and_covars_fname)
+    shared_covars = np.load(shared_covars_fname)
     covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
 
-    if conditional:
-        chrom = region.split(':')[0]
-        gt_covars = np.load(
-            f'{ukb}/association/results/{phenotype}/conditional_inputs/chr{chrom}_{conditional}.npy'
-        )
+    if conditional_covars_fname:
+        gt_covars = np.load(conditional_covars_fname)
         covars = utils.merge_arrays(covars, gt_covars)
-        if binary == 'logistic':
-            STRs, ISNPs, ASNPs = conditional.split('__')
-            covar_names.extend(STRs[3:].split('_'))
-            covar_names.extend(ISNPs[4:].split('_'))
-            covar_names.extend(ASNPs[4:].split('_'))
 
     # order samples according to order in genetics files
     bgen_samples = []
-    with open(f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample') as samplefile:
+    with open(sample_fname) as samplefile:
         for num, line in enumerate(samplefile):
             if num <= 1:
                 # skip first two lines
@@ -95,8 +68,8 @@ def perform_regional_gwas_helper(
     outcome = merge[unfiltered_samples, 1].copy()
     covars = merge[unfiltered_samples, :]
     covars[:, 1] = 1 # reuse the column that was the outcome as the intercept
-
-    ori_phenotypes = np.load(f'{ukb}/traits/phenotypes/{phenotype}.npy')
+    
+    ori_phenotypes = np.load(untransformed_phenotypes_fname)
     ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
     ori_phenotypes = ori_phenotypes[unfiltered_samples]
 
@@ -173,48 +146,16 @@ def perform_regional_gwas_helper(
             rsquared = reg_result.rsquared
             outfile.write(f"{pval:.2e}\t{coef}\t{se}\t{rsquared}\t")
         else:
-            # use firth regression when there are less than 400 nonmajor allele copies
-            # see https://www.cog-genomics.org/plink/2.0/assoc#glm_footnote4_from
-            # in one of the firth footnontes
-            if runtype == 'strs':
-                # no STRs meet this threshold as currently defined
-                per_allele_dosage_list = [np.sum(dosages) for dosages in dosage_gts.values()]
-                firth = \
-                    np.sum(np.sort(per_allele_dosage_list)[:-1]) < 400
-            else:
-                firth = (
-                    2 * np.sum(dosage_gts[:, 0]) + np.sum(dosage_gts[:, 1]) < 400 or
-                    2 * np.sum(dosage_gts[:, 2]) + np.sum(dosage_gts[:, 1]) < 400
-                )
-
-            if True:
-            #if not firth:
-                model = sm.GLM(
-                    outcome,
-                    covars,
-                    missing='drop',
-                    family=sm.families.Binomial()
-                )
-                reg_result = model.fit()
-                pval = reg_result.pvalues[0]
-                coef = reg_result.params[0]
-                outfile.write(f'{pval:.2e}\t{coef}\tnan\tFalse\t')
-            else:
-                # automatically includes intercept, so can replace it with the outcomes
-                covars[:, 1] = outcome
-                cols = ['gt', 'phenotype'] + covar_names
-                df = pd.DataFrame(
-                    covars,
-                    columns=cols,
-                    copy=True
-                )
-                with rob.conversion.localconverter(rob.default_converter + rob.pandas2ri.converter):
-                    r_df = rob.conversion.py2rpy(df)
-                formula = 'phenotype ~ gt + ' + ' + '.join(covar_names)
-                reg_result = logistf.logistf(formula, r_df)
-                pval = reg_result.rx2('prob')[1]
-                coef = reg_result.rx2('coefficients')[1]
-                outfile.write(f'{pval:.2e}\t{coef}\tNA\tTrue\t')
+            model = sm.GLM(
+                outcome,
+                covars,
+                missing='drop',
+                family=sm.families.Binomial()
+            )
+            reg_result = model.fit()
+            pval = reg_result.pvalues[0]
+            coef = reg_result.params[0]
+            outfile.write(f'{pval:.2e}\t{coef}\tnan\tnan\t')
 
         outfile.write('\t'.join(locus_details) + '\t')
 
@@ -345,41 +286,22 @@ def perform_regional_gwas_helper(
         print(f"No variants found in the region {region}\n", flush=True)
 
 
-def perform_regional_gwas(phenotype, binary, region, runtype, imputation_run_name, conditional):
-    chrom, poses = region.split(':')
-    start, end = poses.split('-')
-    region_str = f'{chrom}_{start}_{end}'
-    if runtype == 'strs':
-        dirname = 'str'
-    elif runtype == 'imputed-snps':
-        dirname = 'imputed_snp'
-
-    if binary:
-        dirname += '_' + binary
-
-    with tempfile.NamedTemporaryFile(dir=project_temp, mode='w+') as outfile:
-        print(f"Writing output to temp file {outfile.name}", flush=True)
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, sample_fname, untransformed_phenotypes_fname, phenotype, binary, region, runtype, imputation_run_name, conditional_covars_fname):
+    with tempfile.NamedTemporaryFile(dir=project_temp, mode='w+') as temp_outfile:
+        print(f"Writing output to temp file {temp_outfile.name}", flush=True)
         perform_regional_gwas_helper(
-            phenotype, binary, outfile, runtype, imputation_run_name, region, conditional
+            temp_outfile, pheno_and_covars_fname, shared_covars_fname, sample_fname, untransformed_phenotypes_fname, phenotype, binary, region, runtype, imputation_run_name, conditional_covars_fname
         )
-        if not conditional:
-            permanent_loc = \
-                f'{ukb}/association/results/{phenotype}/my_{dirname}/batches/chr{region_str}.tab'
-        else:
-            permanent_loc = (
-                f'{ukb}/association/results/{phenotype}/my_{dirname}_conditional/'
-                f'chr{chrom}_{start}_{end}_{conditional}.tab'
-            )
 
-        print(f"Copying {outfile.name} to {permanent_loc}")
+        print(f"Copying {temp_outfile.name} to {outfile}")
         shutil.copy(
-            outfile.name,
-            permanent_loc
+            temp_outfile.name,
+            outfile
         )
         print("Done.")
 
-def write_str_readme(phenotype, imputation_run_name, binary):
-    with open(f'{ukb}/association/results/{phenotype}/my_str{"_" + binary if binary else ""}/README.txt', 'w') as readme:
+def write_str_readme(outfile, imputation_run_name, binary):
+    with open(outfile, 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
 
@@ -392,12 +314,13 @@ def write_str_readme(phenotype, imputation_run_name, binary):
         elif binary == 'linear':
             readme.write('Doing linear regressions against the binary phenotype\n')
         else:
-            readme.write('Doing logistic regressions against the binary phenotype. Using '
-                         'Frith penalized logistic regression when MAC <= 400, '
-                         'standard logistic regression otherwise.\n')
+            readme.write('Doing logistic regressions against the binary phenotype. No longer '
+                         'using firth penalized logistic regression when MAC <= 400, should but '
+                         "this doesn't apply to any strs in this dataset. Instead, always using "
+                         'standard logistic regression.\n')
 
-def write_imputed_snp_readme(phenotype, binary):
-    with open(f'{ukb}/association/results/{phenotype}/my_imputed_snp{"_" + binary if binary else ""}/README.txt', 'w') as readme:
+def write_imputed_snp_readme(outfile, binary):
+    with open(outfile, 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
 
@@ -416,6 +339,7 @@ def write_imputed_snp_readme(phenotype, binary):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('outfile')
     parser.add_argument(
         'runtype',
         choices=['imputed-snps', 'strs']
@@ -423,30 +347,53 @@ def main():
     parser.add_argument('phenotype')
     parser.add_argument('--readme', action='store_true')
     parser.add_argument('--region')
+    parser.add_argument('--pheno-and-covars')
+    parser.add_argument('--shared-covars')
+    parser.add_argument('--conditional-covars')
+    parser.add_argument('--untransformed-phenotypes')
+    parser.add_argument('--sample-file')
     parser.add_argument('--imputation-run-name')
-    parser.add_argument('--conditional')
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
 
     assert args.readme == (args.region is None)
     assert (args.imputation_run_name is not None) == (args.runtype == 'strs')
 
+    # this would require firth regression which I've removed
+    assert not ((args.runtype == 'imputed-snps') and (args.binary == 'logistic'))
+
+    assert (
+        (args.region is not None) ==
+        (args.pheno_and_covars is not None) ==
+        (args.shared_covars is not None) ==
+        (args.sample_file is not None) ==
+        (args.untransformed_phenotypes is not None)
+    )
+
+    if args.conditional_covars is not None:
+        assert args.region is not None
+
     if args.readme:
         if args.runtype == 'strs':
-            write_str_readme(args.phenotype, args.imputation_run_name, args.binary)
+            write_str_readme(args.outfile, args.imputation_run_name, args.binary)
         elif args.runtype == 'imputed-snps':
-            write_imputed_snp_readme(args.phenotype, args.binary)
+            write_imputed_snp_readme(args.outfile, args.binary)
         else:
             raise ValueError("Readme not implemented for this runtype")
         return
     else:
         perform_regional_gwas(
+            args.outfile,
+            args.pheno_and_covars,
+            args.shared_covars,
+            args.sample_file,
+            args.untransformed_phenotypes,
             args.phenotype,
             args.binary,
             args.region,
             args.runtype,
             args.imputation_run_name,
-            args.conditional
+            args.conditional_covars
         )
 
 

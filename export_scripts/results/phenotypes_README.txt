@@ -1,4 +1,5 @@
 phenotype: the name of the phenotype
+category: either haematology or serum biomarker. See manuscript for more details.
 data_field_ID: the ID of the data field of this phenotype in the UKB data showcase
 measurement_units
 minimum_reportable_value: for machines which had a threshold below which readings could not be taken, causing the corresponding individuals to be excluded from this phenotype

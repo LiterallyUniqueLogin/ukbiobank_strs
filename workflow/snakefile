@@ -29,6 +29,35 @@ def pheno_expand(string):
 
 ################## Loading and collating data ############################
 
+rule decompress_field:
+    input:
+        'main_dataset/raw_data/ukb46781.enc_ukb',
+        'main_dataset/raw_data/ukb46782.enc_ukb'
+    output:
+        data=protected("main_dataset/extracted_data/{field_name}_{field_id,[0-9]+}.txt"),
+        readme=protected("main_dataset/extracted_data/{field_name}_{field_id}_README.txt")
+    resources:
+        time='05:00:00'
+    shell:
+        "main_dataset/decompress_trait.py {wildcards.field_name} {wildcards.field_id} "
+
+rule ethnic_sample_lists:
+    input:
+        white_brits='sample_qc/common_filters/keep/white_brits.sample',
+        ethnicities=expand(rules.decompress_field.output.data, field_name='ethnicity_self_report', field_id='21000')
+    output:
+        # must all go into the same directory
+        all_files=expand(
+            'sample_qc/common_filters/ethnicity/{ethnicity}.sample',
+            ethnicity={'black', 'white_other', 'irish', 'southeast_asian', 'chinese'}
+        )
+    resources:
+        time='00:05:00'
+    params:
+        outdir=lambda wildcards, output: '/'.join(output.all_files[0].split('/')[:-1])
+    shell:
+        'sample_qc/scripts/ethnicity.py {params.outdir} {input.white_brits} {input.ethnicities} '
+
 rule possible_samples:
     input:
         glob.glob("sample_qc/common_filters/keep/*sample"),
@@ -45,27 +74,15 @@ rule load_shared_covars:
     input:
         "main_dataset/extracted_data/assessment_ages_21003.txt"
     output:
-        protected("traits/shared_covars/shared_covars.npy"),
-        protected("traits/shared_covars/assessment_ages.npy"),
-        protected("traits/shared_covars/README.txt"),
-        protected("traits/shared_covars/covar_names.txt")
+        shared_covars=protected("traits/shared_covars/shared_covars.npy"),
+        assessment_ages=protected("traits/shared_covars/assessment_ages.npy"),
+        readme=protected("traits/shared_covars/README.txt"),
+        covar_names=protected("traits/shared_covars/covar_names.txt")
     resources:
         time='00:15:00',
         mem_gb=10
     shell:
         "traits/load_shared_covars.py"
-
-rule decompress_field:
-    input:
-        'main_dataset/raw_data/ukb46781.enc_ukb',
-        'main_dataset/raw_data/ukb46782.enc_ukb'
-    output:
-        protected("main_dataset/extracted_data/{field_name}_{field_id,[0-9]+}.txt"),
-        protected("main_dataset/extracted_data/{field_name}_{field_id}_README.txt")
-    resources:
-        time='05:00:00'
-    shell:
-        "main_dataset/decompress_trait.py {wildcards.field_name} {wildcards.field_id} "
 
 def input_fields_for_phenotype(wildcards):
     phenotype = wildcards.phenotype
@@ -92,10 +109,10 @@ rule load_phenotype:
         'sample_qc/runs/no_phenotype/combined.sample',
         input_fields_for_phenotype
     output:
-        protected("traits/phenotypes/{phenotype}.npy"),
-        protected("traits/phenotypes/{phenotype}_README.txt"),
-        protected("traits/phenotypes/{phenotype}_unit.txt"),
-        protected("traits/phenotypes/{phenotype}_covar_names.txt")
+        phenotype=protected("traits/phenotypes/{phenotype}.npy"),
+        readme=protected("traits/phenotypes/{phenotype}_README.txt"),
+        unit=protected("traits/phenotypes/{phenotype}_unit.txt"),
+        covar_names=protected("traits/phenotypes/{phenotype}_covar_names.txt")
     resources:
         time='00:05:00'
     run:
@@ -180,8 +197,8 @@ rule transform_phenotype_subset:
         "traits/phenotypes/{phenotype}.npy",
         "sample_qc/runs/{phenotype}/combined_unrelated.sample"
     output:
-        protected("traits/subset_transformed_phenotypes/{phenotype}_README.txt"),
-        protected("traits/subset_transformed_phenotypes/{phenotype}.npy")
+        readme=protected("traits/subset_transformed_phenotypes/{phenotype}_README.txt"),
+        phenotype=protected("traits/subset_transformed_phenotypes/{phenotype}.npy")
     resources:
         time='00:05:00'
     run:
@@ -210,6 +227,8 @@ rule plot_str_locus:
         )
 
 ##################### Running and Plotting Associations ###########################
+
+sample_fname = 'microarray/ukb46122_hap_chr1_v2_s487314.sample'
 
 def concatenate_csvs(output_file, input_files):
     with open(output_file + '.temp', 'w') as outfile:
@@ -241,41 +260,45 @@ def regions(region_len):
             regions.append(f'{chrom}_{start}_{end}')
     return regions
 
+# no readme for conditional gwas, use readme of prep conditional input
 rule write_my_gwas_readme:
     output:
-        readme=protected('association/results/{phenotype}/my_{run_type}/README.txt'),
-        timestamp=protected('association/results/{phenotype}/my_{run_type}/time.stamp')
+        readme=protected('association/results/{phenotype}/my_{run_type,str|imputed_snp}{binary,|_linear|_logistic}/README.txt'),
+        timestamp=protected('association/results/{phenotype}/my_{run_type}{binary}/time.stamp')
     resources:
         time='00:05:00'
     run:
-        cmd = (
+        run_type = wildcards.run_type
+        if run_type == 'str':
+            command_run_type = 'strs'
+            imputation_flag = f'--imputation-run-name {str_imputation_run_name}'
+        else:
+            assert run_type == 'imputed_snp'
+            command_run_type = 'imputed-snps'
+            imputation_flag = ''
+
+        binary = wildcards.binary
+        if binary == '':
+            assert not phenotypes.is_binary(wildcards.phenotype)
+            binary_flag = ''
+        elif binary == '_linear':
+            assert phenotypes.is_binary(wildcards.phenotype)
+            binary_flag = '--binary linear'
+        else:
+            assert binary == '_logistic'
+            assert phenotypes.is_binary(wildcards.phenotype)
+            binary_flag = '--binary logistic'
+
+        shell(
             'touch association/results/{wildcards.phenotype}/my_{wildcards.run_type}/time.stamp && '
             'association/my_regional_gwas.py '
+            '{output.readme} '
+            f'{command_run_type} '
+            '{wildcards.phenotype} '
+            '--readme '
+            f'{imputation_flag} '
+            f'{binary_flag} '
         )
-
-        run_type = wildcards.run_type
-        if run_type.startswith('imputed_snp'):
-            cmd += 'imputed-snps {wildcards.phenotype} '
-            suffix = run_type[len('imputed_snp'):]
-        else:
-            assert run_type.startswith('str')
-            cmd += 'strs {wildcards.phenotype} '
-            cmd += f'--imputation-run-name {str_imputation_run_name} '
-            suffix = run_type[len('str'):]
-
-        cmd += '--readme '
-
-        if suffix == '':
-            assert not phenotypes.is_binary(wildcards.phenotype)
-        elif suffix == '_linear':
-            assert phenotypes.is_binary(wildcards.phenotype)
-            cmd += '--binary linear '
-        else:
-            assert suffix == '_logistic'
-            assert phenotypes.is_binary(wildcards.phenotype)
-            cmd += '--binary logistic '
-
-        shell(cmd)
 
 def my_regional_gwas_mem_gb_req(wildcards, attempt):
     if wildcards.suffix != '_logistic':
@@ -283,6 +306,7 @@ def my_regional_gwas_mem_gb_req(wildcards, attempt):
     else:
         return 40
 
+# TODO update for new syntax
 rule run_regional_my_imputed_snp_gwas:
     input:
         "traits/phenotypes/{phenotype}.npy",
@@ -342,16 +366,62 @@ rule move_my_imputed_snp_binary_logistic_gwas_chr21_10000001_11000000:
     run:
         shutil.move(input[0], output[0])
 
+rule run_str_spot_test:
+    input:
+        shared_covars=rules.load_shared_covars.output.shared_covars,
+        untransformed_phenotype=rules.load_phenotype.output.phenotype,
+        transformed_phenotype=rules.transform_phenotype_subset.output.phenotype,
+        sample_fname = sample_fname,
+        vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
+        vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
+    output:
+        result=protected('association/spot_test/{phenotype}/chr{chrom}_{pos}.tab'),
+        readme=protected('association/spot_test/{phenotype}/chr{chrom}_{pos}_README.txt'),
+    resources:
+        time='00:20:00',
+        mem_gb=lambda wildcards: 9 if not phenotypes.is_binary(wildcards.phenotype) else 40
+    run:
+        if not phenotypes.is_binary(wildcards.phenotype):
+            binary_flag = ''
+        else:
+            binary_flag = '--binary logistic'
+
+        shell(
+            'association/my_regional_gwas.py '
+            '{output.readme} '
+            'strs '
+            '{wildcards.phenotype} '
+            '--readme '
+            f'--imputation-run-name {str_imputation_run_name} '
+            f'{binary_flag} '
+        )
+
+        shell(
+            'association/my_regional_gwas.py '
+            '{output.result} '
+            'strs '
+            '{wildcards.phenotype} '
+            '--region {wildcards.chrom}:{wildcards.pos}-{wildcards.pos} '
+            '--pheno-and-covars {input.transformed_phenotype} '
+            '--shared-covars {input.shared_covars} '
+            '--untransformed-phenotypes {input.untransformed_phenotype} '
+            '--sample-file {input.sample_fname} '
+            f'--imputation-run-name {str_imputation_run_name} '
+            f'{binary_flag} '
+        )
+
+# TODO update for new syntax
 rule run_regional_my_str_gwas:
     input:
-        "traits/shared_covars/shared_covars.npy",
-        "traits/phenotypes/{phenotype}.npy",
-        'association/results/{phenotype}/my_str{suffix}/time.stamp',
-        "traits/subset_transformed_phenotypes/{phenotype}.npy",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
+        shared_covars=rules.load_shared_covars.output.shared_covars,
+        untransformed_phenotype=rules.load_phenotype.output.phenotype,
+        run_timestamp=rules.write_my_gwas_readme.output.timestamp,
+        #run_timestamp='association/results/{phenotype}/my_str{suffix}/time.stamp',
+        transformed_phenotype=rules.transform_phenotype_subset.output.phenotype,
+        vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
+        vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        temporary("association/results/{phenotype}/my_str{suffix,.*}/batches/chr{chrom}_{start}_{end}.tab")
+        results=temporary("association/results/{phenotype}/my_str{suffix,.*}/batches/chr{chrom}_{start}_{end}.tab")
     resources:
         time='12:00:00',
         mem_gb=my_regional_gwas_mem_gb_req
@@ -710,12 +780,13 @@ rule region_manhattan:
         shell(cmd)
 
 ################### Running and Plotting Conditional Associations ######################
+#TODO implement/test binary for all conditional commands (including ones that had an attempt at supporting binary)
 
 rule prep_conditional_input:
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.npy',
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_varnames.txt',
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_README.txt'
+        npy='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.npy',
+        varnames='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_varnames.txt',
+        readme='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_README.txt'
     resources:
         time='00:30:00'
     run:
@@ -728,25 +799,36 @@ rule prep_conditional_input:
             command += wildcards.imputed_SNPs.replace('_', ' ') + ' '
         shell(command)
 
- #TODO binary for all conditional commands (including ones that had an attempt at supporting binary)
 rule run_conditional_my_str_gwas:
     input:
-        "traits/phenotypes/{phenotype}.npy",
-        "traits/subset_transformed_phenotypes/{phenotype}.npy",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
-        f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi",
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
+        shared_covars=rules.load_shared_covars.output.shared_covars,
+        untransformed_phenotype=rules.load_phenotype.output.phenotype,
+        transformed_phenotype=rules.transform_phenotype_subset.output.phenotype,
+        conditional_covars=rules.prep_conditional_input.output.npy,
+        sample_fname = sample_fname,
+        vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
+        vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        'association/results/{phenotype}/my_str_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.tab'
+        result='association/results/{phenotype}/my_str_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.tab'
+    params:
+        binary_flag = lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary logistic'
     resources:
         time='12:00:00',
         mem_gb=9,
         threads=4
     shell:
-        'association/my_regional_gwas.py strs {wildcards.phenotype} '
+        'association/my_regional_gwas.py '
+        '{output.result} '
+        'strs '
+        '{wildcards.phenotype} '
         '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
+        '--pheno-and-covars {input.transformed_phenotype} '
+        '--shared-covars {input.shared_covars} '
+        '--untransformed-phenotypes {input.untransformed_phenotype} '
+        '--conditional-covars {input.conditional_covars} '
+        '--sample-file {input.sample_fname} '
         f'--imputation-run-name {str_imputation_run_name} '
-        '--conditional STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP'
+        '{params.binary_flag} '
 
 rule prep_conditional_plink_input:
     input:
@@ -981,7 +1063,7 @@ rule peak_manhattan:
 
 rule linear_overview_manhattan:
     input:
-        my_str_run_readme=expand(rules.write_my_gwas_readme.output.readme, run_type='str', phenotype='{phenotype}'),
+        my_str_run_readme=expand(rules.write_my_gwas_readme.output.readme, run_type='str', phenotype='{phenotype}', conditional='', binary=''),
         my_str_results=expand(rules.subset_my_gwas_results.output.subsetted_results, gwas_type='str', phenotype='{phenotype}'),
         plink_snp_log_file=expand(rules.run_linear_rin_plink_gwas.output.plinklog, chrom=21, suffix='', phenotype='{phenotype}'),
         plink_snp_results=expand(rules.append_mfi_to_subsetted_plink_results.output.mfi_npy, suffix='', phenotype='{phenotype}'),
@@ -1763,10 +1845,8 @@ def phenotype_hit_highlights(wildcards):
         (results['association_p_value'] <= 1e-10) &
         (
             results['mentioned_in_literature'] |
-            results['curated'] | (
-                (results['pcausal'] >= 0.8) &
-                (results['subset_multiallelicness'] >= 0.025)
-            )
+            results['curated'] |
+            (results['pcausal'] >= 0.8)
         )
     ]
     return (
@@ -1943,3 +2023,4 @@ rule export_all:
         'export/combined/curated_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
+

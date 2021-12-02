@@ -17,7 +17,7 @@ cluster:
   mkdir -p logs/{rule} &&
   sbatch
     --account ddp268
-    --partition shared
+    --partition $(if [ -v PARTITION ] ; then echo $PARTITION ; else echo shared ; fi)
     --export ALL
     --nodes 1
     --job-name={rule}-{wildcards}
@@ -25,7 +25,7 @@ cluster:
     $(if (({resources.attempt} != 1)) ; then echo '--mail-type FAIL --mail-user jbmargoliash@ucsd.edu' ; fi)
     --ntasks-per-node={resources.threads}
     --mem={resources.mem_gb}G
-    --time={resources.time}
+    --time=$(if [ "$PARTITION" != debug ] ; then echo {resources.time} ; else echo "00:29:30" ; fi)
     --parsable
 default-resources:
   - threads=1

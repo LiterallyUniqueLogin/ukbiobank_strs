@@ -17,6 +17,7 @@ def generate_phenotypes_table(all_phenotypes):
     with open(f'{ukb}/export_scripts/results/phenotypes.tab', 'w') as outfile:
         outfile.write(
             'phenotype\t'
+            'category\t'
             'data_field_ID\t'
             'measurement_units\t'
             'minimum_reportable_value\t'
@@ -29,8 +30,14 @@ def generate_phenotypes_table(all_phenotypes):
         )
         for phenotype in all_phenotypes:
             desc = phenotypes.pheno_descs[phenotype]
+            if phenotype in phenotypes.haematological_phenotypes:
+                category = 'haematology'
+            elif phenotype in phenotypes.serum_biomarkers:
+                category = 'serum biomarker'
+            else:
+                assert False
             outfile.write(
-                f'{phenotype}\t{desc.data_field_id}\t{desc.unit}\t'
+                f'{phenotype}\t{category}\t{desc.data_field_id}\t{desc.unit}\t'
                 f'{na_check(desc.min_val)}\t{na_check(desc.min_omit)}\t'
                 f'{na_check(desc.max_val)}\t{na_check(desc.max_omit)}\t'
             )
@@ -38,7 +45,7 @@ def generate_phenotypes_table(all_phenotypes):
                 n_samps = len(samp_file.readlines()) - 1
             outfile.write(f'{n_samps}\t')
             if len(desc.categorical_covars) == 0:
-                outfile.write('None')
+                outfile.write('None\t')
             else:
                 outfile.write(','.join([str(covar_pair) for covar_pair in desc.categorical_covars]))
                 outfile.write('\t')
@@ -48,6 +55,7 @@ def generate_phenotypes_table(all_phenotypes):
 
     with open(f'{ukb}/export_scripts/results/phenotypes_README.txt', 'w') as readme:
         readme.write('phenotype: the name of the phenotype\n')
+        readme.write('category: either haematology or serum biomarker. See manuscript for more details.\n')
         readme.write('data_field_ID: the ID of the data field of this phenotype in the UKB data showcase\n')
         readme.write('measurement_units\n')
         readme.write(
