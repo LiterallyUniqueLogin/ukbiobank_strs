@@ -1028,7 +1028,7 @@ def main():
     else:
         plink_snp_run_date = None
 
-    with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt') as unit_file:
+    with open(f'{ukb}/traits/phenotypes/white_brits/{phenotype}_unit.txt') as unit_file:
         unit = next(unit_file).strip()
 
     if not condition:

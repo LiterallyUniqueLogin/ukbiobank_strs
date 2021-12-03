@@ -22,6 +22,7 @@ for key, value in assessment_dict.items():
     reverse_assessment_dict[value] = key
 
 parser = argparse.ArgumentParser()
+parser.add_argument('ethnicity')
 parser.add_argument('phenotype_name')
 parser.add_argument('phenotype_field_id')
 parser.add_argument('unit')
@@ -36,12 +37,13 @@ args = parser.parse_args()
 assert 'binary' not in args.unit
 
 phenotype = args.phenotype_name
+ethnicity = args.ethnicity
 
-with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt', 'w') as unit_file:
+with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_unit.txt', 'w') as unit_file:
     unit_file.write(f'{args.unit}\n')
 
-with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
-        open(f'{ukb}/traits/phenotypes/{phenotype}_covar_names.txt', 'w') as covar_names:
+with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as readme, \
+        open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_covar_names.txt', 'w') as covar_names:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
     data_fname = f'{ukb}/main_dataset/extracted_data/{phenotype}_{args.phenotype_field_id}.txt'
     readme.write(f"Run date: {today}\n")
@@ -61,7 +63,7 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
     readme.write("Subsetting to white British qc'ed samples\n")
     # load samples that have passed qc
     samples = np.genfromtxt(
-        f'{ukb}/sample_qc/runs/no_phenotype/combined.sample',
+        f'{ukb}/sample_qc/runs/{ethnicity}/no_phenotype/combined.sample',
         skip_header=1
     )
 
@@ -272,5 +274,5 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme, \
     else:
         readme.write('All samples have all covariates.\n')
 
-    np.save(f'{ukb}/traits/phenotypes/{phenotype}.npy', data)
+    np.save(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}.npy', data)
 

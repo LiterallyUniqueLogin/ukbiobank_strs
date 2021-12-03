@@ -8,10 +8,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     'run_name',
     help=('Verifies the unrelatedness of the sample file '
-          '$UKB/sample_qc/runs/{run_name}/combined_unrelated.sample')
+          '$UKB/sample_qc/runs/{ethnicity}/{run_name}/combined_unrelated.sample')
 )
+parser.add_argument('ethnicity')
 args = parser.parse_args()
 run_name = args.run_name
+ethnicity = args.ethnicity
 ukb = os.environ['UKB']
 
 def error(msg):
@@ -31,9 +33,9 @@ def load_samples(fname):
     return samples
 
 unfiltered_samples = \
-    load_samples(f'{ukb}/sample_qc/runs/{run_name}/combined.sample')
+    load_samples(f'{ukb}/sample_qc/runs/{ethnicity}/{run_name}/combined.sample')
 filtered_samples = \
-    load_samples(f'{ukb}/sample_qc/runs/{run_name}/combined_unrelated.sample')
+    load_samples(f'{ukb}/sample_qc/runs/{ethnicity}/{run_name}/combined_unrelated.sample')
 
 # from sample_id to sample_id
 neighbors: Dict[str, Set[str]] = {}

@@ -73,7 +73,7 @@ if out.stderr:
 
 result = out.stdout.decode().strip().split('\t')
 
-pheno_data = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}.npy')
+pheno_data = np.load(f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{args.phenotype}.npy')
 
 bgen_samples = []
 with open(f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample') as samplefile:

@@ -2,7 +2,7 @@ import os
 import sys
 
 
-def produce_list_from_sample_qc(list_name, keep, *, column=None, func=None):
+def produce_list_from_sample_qc(list_name, ethnicity, *, column=None, func=None):
     """
     In/exclude participants marked by col <column> in the sample qc file.
 
@@ -10,9 +10,9 @@ def produce_list_from_sample_qc(list_name, keep, *, column=None, func=None):
     ----------
     list_name
         the name of the output file (w/o extension)
-    keep
-        whether the participants identified by this column should be kept
-        or excluded
+    ethnicity
+        If true, output to common_filters/ethnicity
+        Otherwise output to common_filters/exclude
     column
         the column of the sample qc file in the misc/EGA directory to look at
         samples are written out if this column evaluates to true
@@ -25,8 +25,7 @@ def produce_list_from_sample_qc(list_name, keep, *, column=None, func=None):
     -------
     None
         Writes out a list of samples to
-        $UKB/sample_qc/runs/run_name/keep/list_name.sample
-        (or with remove instead of keep depending)
+        $UKB/sample_qc/runs/run_name/<dir>/list_name.sample
 
     """
     if (func is None) == (column is None):
@@ -34,10 +33,10 @@ def produce_list_from_sample_qc(list_name, keep, *, column=None, func=None):
               file=sys.stderr)
         sys.exit(-1)
 
-    if keep:
-        keep_or_remove = "keep"
+    if ethnicity:
+        dir_ = "ethnicity"
     else:
-        keep_or_remove = "remove"
+        dir_ = "remove"
     ukb = os.environ["UKB"]
 
     sample_floc = f"{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample"
@@ -47,7 +46,7 @@ def produce_list_from_sample_qc(list_name, keep, *, column=None, func=None):
     sqc_floc = f"{ukb}/misc_data/EGA/ukb_sqc_v2.txt"
     fam_floc = f"{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam"
     out_floc = (f"{ukb}/sample_qc/common_filters/"
-                f"{keep_or_remove}/{list_name}.sample")
+                f"{dir_}/{list_name}.sample")
     with open(sqc_floc) as sqc_file, \
             open(fam_floc) as fam_file, \
             open(out_floc, 'w') as out_file:

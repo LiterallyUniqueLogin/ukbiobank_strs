@@ -12,12 +12,14 @@ import python_array_utils as utils
 ukb = os.environ['UKB']
 
 parser = argparse.ArgumentParser()
+parser.add_argument('ethnicity')
 parser.add_argument('phenotype_name')
 parser.add_argument('phenotype_field_id')
 
 args = parser.parse_args()
 
 phenotype = args.phenotype_name
+ethnicity = args.ethnicity
 
 def load_date_data_field(fname, extra_field = False):
     names=['skip1', 'id', 'date', 'skip2']
@@ -48,13 +50,13 @@ def load_date_data_field(fname, extra_field = False):
     return float_array
 
 
-with open(f'{ukb}/traits/phenotypes/{phenotype}_unit.txt', 'w') as unit_file:
+with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_unit.txt', 'w') as unit_file:
     unit_file.write('binary_0=control_1=case\n')
 
-with open(f'{ukb}/traits/phenotypes/{phenotype}_covar_names.txt', 'w') as covar_names:
+with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_covar_names.txt', 'w') as covar_names:
     covar_names.write('current_age_or_age_at_death\n')
 
-with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme:
+with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as readme:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
     data_fname = f'{ukb}/main_dataset/extracted_data/{phenotype}_{args.phenotype_field_id}.txt'
     readme.write(f"Run date: {today}\n")
@@ -136,5 +138,5 @@ with open(f'{ukb}/traits/phenotypes/{phenotype}_README.txt', 'w') as readme:
         'that date minus their birth date (year, month, day=1), measured in days.\n'
     )
 
-    np.save(f'{ukb}/traits/phenotypes/{phenotype}.npy', data)
+    np.save(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}.npy', data)
 

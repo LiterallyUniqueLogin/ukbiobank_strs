@@ -43,7 +43,7 @@ rule decompress_field:
 
 rule ethnic_sample_lists:
     input:
-        white_brits='sample_qc/common_filters/keep/white_brits.sample',
+        white_brits='sample_qc/common_filters/ethnicity/white_brits.sample',
         ethnicities=expand(rules.decompress_field.output.data, field_name='ethnicity_self_report', field_id='21000')
     output:
         # must all go into the same directory
@@ -58,17 +58,18 @@ rule ethnic_sample_lists:
     shell:
         'sample_qc/scripts/ethnicity.py {params.outdir} {input.white_brits} {input.ethnicities} '
 
-rule possible_samples:
+# doesn't filter for relatedness, only QC problems
+rule filter_samples_for_ethnicity:
     input:
-        glob.glob("sample_qc/common_filters/keep/*sample"),
-        glob.glob("sample_qc/common_filters/remove/*sample")
+        start_file='sample_qc/common_filters/ethnicity/{ethnicity}.sample',
+        remove_files=glob.glob("sample_qc/common_filters/remove/*sample")
     output:
-        'sample_qc/runs/no_phenotype/combined.sample',
-        'sample_qc/runs/no_phenotype/README.txt'
+        samples='sample_qc/runs/{ethnicity}/no_phenotype/combined.sample',
+        readme='sample_qc/runs/{ethnicity}/no_phenotype/README.txt'
     resources:
         time='00:05:00',
     shell:
-        'sample_qc/scripts/combine.py '
+        'sample_qc/scripts/combine.py {output.samples} {output.readme} {input.start_file} {input.remove_files} '
 
 rule load_shared_covars:
     input:
@@ -106,17 +107,18 @@ def input_fields_for_phenotype(wildcards):
 rule load_phenotype:
     input:
         "traits/shared_covars/assessment_ages.npy",
-        'sample_qc/runs/no_phenotype/combined.sample',
+        rules.filter_samples_for_ethnicity.output.samples,
         input_fields_for_phenotype
     output:
-        phenotype=protected("traits/phenotypes/{phenotype}.npy"),
-        readme=protected("traits/phenotypes/{phenotype}_README.txt"),
-        unit=protected("traits/phenotypes/{phenotype}_unit.txt"),
-        covar_names=protected("traits/phenotypes/{phenotype}_covar_names.txt")
+        phenotype=protected("traits/phenotypes/{ethnicity}/{phenotype}.npy"),
+        readme=protected("traits/phenotypes/{ethnicity}/{phenotype}_README.txt"),
+        unit=protected("traits/phenotypes/{ethnicity}/{phenotype}_unit.txt"),
+        covar_names=protected("traits/phenotypes/{ethnicity}/{phenotype}_covar_names.txt")
     resources:
         time='00:05:00'
     run:
         phenotype = wildcards.phenotype
+        ethnicity = wildcards.ethnicity
         if phenotype in phenotypes.pheno_descs:
             args = phenotypes.pheno_descs[phenotype]
             if 'binary' in args.unit:
@@ -124,12 +126,12 @@ rule load_phenotype:
                     raise ValueError("Only type of binary field understood is binary_date_first_reported")
                 shell(
                     'traits/load_binary_phenotype_from_main_dataset.py '
-                    f'{phenotype} {args.data_field_id}'
+                    f'{ethnicitiy} {phenotype} {args.data_field_id}'
                 )
             else:
                 base_command = (
                     "traits/load_continuous_phenotype_from_main_dataset.py "
-                    f"{phenotype} {args.data_field_id} '{args.unit}' "
+                    f"{ethnicity} {phenotype} {args.data_field_id} '{args.unit}' "
                 )
                 if not args.categorical_covars:
                     shell(base_command)
@@ -141,6 +143,7 @@ rule load_phenotype:
         else:
             raise ValueError(f"Couldn't identify phenotype {phenotype}")
 
+# TODO update for ethnicity
 rule plot_phenotype_by_sex:
     input:
         "traits/shared_covars/shared_covars.npy",
@@ -155,6 +158,7 @@ rule plot_phenotype_by_sex:
     shell:
         'traits/plot_phenotype.py {wildcards.phenotype} sex'
 
+# TODO update for ethnicity
 rule plot_phenotype_by_age:
     input:
         "traits/phenotypes/{phenotype}.npy",
@@ -168,41 +172,64 @@ rule plot_phenotype_by_age:
     shell:
         'traits/plot_phenotype.py {wildcards.phenotype} age'
 
+# doesn't filter for relatedness, only QC problems
+rule filter_samples_for_phenotype:
+    input:
+        start_file='sample_qc/common_filters/ethnicity/{ethnicity}.sample',
+        remove_files=glob.glob("sample_qc/common_filters/remove/*sample"),
+        pheno_file=rules.load_phenotype.output.phenotype
+    output:
+        samples=temporary('sample_qc/runs/{ethnicity}/{phenotype}/combined.sample'),
+        readme='sample_qc/runs/{ethnicity}/{phenotype}/README.txt'
+    resources:
+        time='00:05:00',
+    shell:
+        'sample_qc/scripts/combine.py '
+        '{output.samples} '
+        '{output.readme} '
+        '{input.start_file} '
+        '{input.remove_files} '
+        '--pheno-file {input.pheno_file} '
+
+#subset to unrelated samples
 rule subset_samples_for_phenotype:
     input:
-        "traits/phenotypes/{phenotype}.npy",
-        glob.glob("sample_qc/common_filters/keep/*sample"),
-        glob.glob("sample_qc/common_filters/remove/*sample"),
-        "misc_data/ukbgene/ukb46122_rel_s488282.dat"
+        kinship_file="misc_data/ukbgene/ukb46122_rel_s488282.dat",
+        samples=rules.filter_samples_for_phenotype.output.samples,
+        phenotype=( # only actually necessary for binary phenotypes
+            lambda wildcards: [rules.load_phenotype.output.phenotype]
+                if wildcards.phenotype != 'no_phenotype'
+                else []
+        )
     output:
-        protected("sample_qc/runs/{phenotype}/README.txt"),
-        protected("sample_qc/runs/{phenotype}/combined_unrelated.sample")
-    shadow: 'minimal'
+        samples=protected("sample_qc/runs/{ethnicity}/{phenotype}/combined_unrelated.sample")
+    params:
+        binary_flag = (
+            lambda wildcards: ''
+                if wildcards.phenotype == 'no_phenotype' or not phenotypes.is_binary(wildcards.phenotype)
+                else '--binary-pheno {input.phenotype} '
+        )
     resources:
         time='24:00:00'
-    run:
-        cmd = (
-            'shadow_dir=$(pwd) ; cd $UKB ; export UKB=${{shadow_dir}} ; '
-            'sample_qc/scripts/combine.py --phenotype {wildcards.phenotype} && '
-            'PHEN={wildcards.phenotype} sample_qc/scripts/test_combine.sh && '
-            'sample_qc/scripts/unrelated_individuals.py {wildcards.phenotype} '
-        )
-        if phenotypes.is_binary(wildcards.phenotype):
-            cmd += '--binary --phenotype {wildcards.phenotype} '
-        cmd += '&& sample_qc/scripts/verify_unrelatedness.py {wildcards.phenotype}'
-        shell(cmd)
+    shell:
+        'sample_qc/scripts/unrelated_individuals.py '
+        '{output.samples} '
+        '{input.kinship_file} '
+        '{input.samples} '
+        '{params.binary_flag} '
 
+# TODO update
 rule transform_phenotype_subset:
     input:
-        "traits/phenotypes/{phenotype}.npy",
-        "sample_qc/runs/{phenotype}/combined_unrelated.sample"
+        rules.load_phenotype.output.phenotype,
+        rules.subset_samples_for_phenotype.output.samples,
     output:
-        readme=protected("traits/subset_transformed_phenotypes/{phenotype}_README.txt"),
-        phenotype=protected("traits/subset_transformed_phenotypes/{phenotype}.npy")
+        readme=protected("traits/subset_transformed_phenotypes/{ethnicity}/{phenotype}_README.txt"),
+        phenotype=protected("traits/subset_transformed_phenotypes/{ethnicity}/{phenotype}.npy")
     resources:
         time='00:05:00'
     run:
-        cmd = 'traits/transform_traits.py {wildcards.phenotype} '
+        cmd = 'traits/transform_traits.py {wildcards.phenotype} {wildcards.ethnicity} '
         if phenotypes.is_binary(wildcards.phenotype):
             cmd += '--binary '
         shell(cmd)
@@ -211,7 +238,7 @@ rule plot_str_locus:
     input:
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         'association/results/{phenotype}/my_str/results.tab',
-        'traits/subset_transformed_phenotypes/{phenotype}.npy'
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits')
     output:
         svg='association/locus_plots/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg',
         png='association/locus_plots/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.png'
@@ -375,8 +402,8 @@ rule run_str_spot_test:
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        result=protected('association/spot_test/{phenotype}/chr{chrom}_{pos}.tab'),
-        readme=protected('association/spot_test/{phenotype}/chr{chrom}_{pos}_README.txt'),
+        result=protected('association/spot_test/{ethnicity}/{phenotype}/chr{chrom}_{pos}.tab'),
+        readme=protected('association/spot_test/{ethnicity}/{phenotype}/chr{chrom}_{pos}_README.txt'),
     resources:
         time='00:20:00',
         mem_gb=lambda wildcards: 9 if not phenotypes.is_binary(wildcards.phenotype) else 40
@@ -414,10 +441,10 @@ rule run_str_spot_test:
 rule run_regional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
-        untransformed_phenotype=rules.load_phenotype.output.phenotype,
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
         run_timestamp=rules.write_my_gwas_readme.output.timestamp,
         #run_timestamp='association/results/{phenotype}/my_str{suffix}/time.stamp',
-        transformed_phenotype=rules.transform_phenotype_subset.output.phenotype,
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
@@ -460,8 +487,8 @@ rule prep_continuous_plink_input:
     input:
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        'traits/subset_transformed_phenotypes/{phenotype}.npy',
-        'traits/phenotypes/{phenotype}_covar_names.txt'
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
     output:
         'association/results/{phenotype}/plink_snp{suffix,|_linear}/input/transformed_phenotype_and_covars.tab'
     resources:
@@ -480,8 +507,8 @@ rule prep_binary_plink_input:
     input:
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        'traits/subset_transformed_phenotypes/{phenotype}.npy',
-        'traits/phenotypes/{phenotype}_covar_names.txt'
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
     output:
         'association/results/{phenotype}/plink_snp_logistic/input/transformed_phenotype_and_covars.tab'
     resources:
@@ -657,7 +684,7 @@ rule append_mfi_to_subsetted_plink_results:
 
 rule compare_my_to_plink_continuous_gwas:
     input:
-        "traits/phenotypes/eosinophil_count_unit.txt",
+        "traits/phenotypes/white_brits/eosinophil_count_unit.txt",
         'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
         'association/plots/input/eosinophil_count/plink_snp_results_with_mfi.npy'
@@ -671,7 +698,7 @@ rule compare_my_to_plink_continuous_gwas:
 
 rule compare_my_to_plink_continuous_gwas_figure_plink_only:
     input:
-        "traits/phenotypes/eosinophil_count_unit.txt",
+        "traits/phenotypes/white_brits/eosinophil_count_unit.txt",
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
         'association/plots/input/eosinophil_count/plink_snp_results_with_mfi.npy'
     output:
@@ -685,7 +712,7 @@ rule compare_my_to_plink_continuous_gwas_figure_plink_only:
 
 rule compare_my_to_plink_continuous_gwas_figure_mine_only:
     input:
-        "traits/phenotypes/eosinophil_count_unit.txt",
+        "traits/phenotypes/white_brits/eosinophil_count_unit.txt",
         'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
     output:
         'association/plots/continuous_my_imputed_snp.png'
@@ -698,7 +725,7 @@ rule compare_my_to_plink_continuous_gwas_figure_mine_only:
 
 rule compare_my_to_plink_binary_linear_gwas:
     input:
-        "traits/phenotypes/afib_and_flutter_I48_unit.txt",
+        "traits/phenotypes/white_brits/afib_and_flutter_I48_unit.txt",
         'association/plots/input/afib_and_flutter_I48/my_imputed_snp_linear_chr21_10000001_11000000_results.tab',
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
         'association/plots/input/afib_and_flutter_I48/plink_snp_linear_results_with_mfi.npy'
@@ -713,7 +740,7 @@ rule compare_my_to_plink_binary_linear_gwas:
 
 rule compare_my_to_plink_binary_logistic_gwas:
     input:
-        "traits/phenotypes/afib_and_flutter_I48_unit.txt",
+        "traits/phenotypes/white_brits/afib_and_flutter_I48_unit.txt",
         'association/plots/input/afib_and_flutter_I48/my_imputed_snp_logistic_chr21_10000001_11000000_results.tab',
         plink_snp_fname='association/plots/input/afib_and_flutter_I48/plink_snp_logistic_chr21_10000001_11000000_results_with_mfi.npy'
     output:
@@ -739,7 +766,7 @@ def manhattan_inputs(wildcards):
 
 rule manhattan:
     input:
-        "traits/phenotypes/{phenotype}_unit.txt",
+        "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         manhattan_inputs
     output:
         'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.{ext,[^.]+}'
@@ -757,7 +784,7 @@ rule manhattan:
 
 rule region_manhattan:
     input:
-        "traits/phenotypes/{phenotype}_unit.txt",
+        "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
     output:
@@ -802,8 +829,8 @@ rule prep_conditional_input:
 rule run_conditional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
-        untransformed_phenotype=rules.load_phenotype.output.phenotype,
-        transformed_phenotype=rules.transform_phenotype_subset.output.phenotype,
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
         conditional_covars=rules.prep_conditional_input.output.npy,
         sample_fname = sample_fname,
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
@@ -836,8 +863,8 @@ rule prep_conditional_plink_input:
         'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        'traits/subset_transformed_phenotypes/{phenotype}.npy',
-        'traits/phenotypes/{phenotype}_covar_names.txt'
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
     output:
         'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
     resources:
@@ -895,7 +922,7 @@ rule append_mfi_to_conditional_plink_results:
 
 rule manhattan_conditional:
     input:
-        "traits/phenotypes/{phenotype}_unit.txt",
+        "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/results/{phenotype}/my_str_conditional/chr{condition}.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
@@ -1041,7 +1068,7 @@ rule peak_stats:
 
 rule peak_manhattan:
     input:
-        "traits/phenotypes/{phenotype}_unit.txt",
+        "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         manhattan_inputs,
         'signals/peaks/{phenotype}_{spacing}_{thresh}.tab'
     output:
@@ -1155,8 +1182,8 @@ rule finemap_write_input_variants:
 
 rule finemap_load_gts:
     input:
-        'sample_qc/runs/{phenotype}/combined_unrelated.sample',
-        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
+        expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits'),
+        'finemapping/finemap_results/white_brits/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
     output:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
         temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
@@ -1255,7 +1282,7 @@ rule all_summaries:
 
 rule manhattan_finemap:
     input:
-        "traits/phenotypes/{phenotype}_unit.txt",
+        "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         'association/plots/input/{phenotype}/my_str_results.tab',
         'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
         'signals/regions/{phenotype}.tab',
@@ -1666,7 +1693,7 @@ rule finemap_signal_strengths:
 rule locus_summary_inputs:
     input:
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
-        'sample_qc/runs/no_phenotype/combined.sample'
+        all_white_brits=expand(rules.filter_samples_for_ethnicity.output.samples, phenotype='no_phenotype', ethnicity='white_brits')
     output:
         'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab'
     resources:
@@ -1674,7 +1701,7 @@ rule locus_summary_inputs:
         mem_gb=5
     shell:
         f'export_scripts/loci_stat_inputs.py {str_imputation_run_name} '
-        '{wildcards.chrom} '
+        '{wildcards.chrom} {input.all_white_brits} '
 
 rule summarize_loci:
     input:
@@ -1697,7 +1724,7 @@ rule summarize_loci:
 rule create_phenotypes_table:
     input:
         'workflow/phenotypes.py',
-        pheno_expand("sample_qc/runs/PHENO/combined_unrelated.sample"),
+        expand(rules.filter_samples_for_ethnicity.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity='white_brits'),
         pheno_expand('signals/peaks/PHENO_500000_5e-8.tab'),
         pheno_expand('signals/comparison/PHENO.done')
     output:

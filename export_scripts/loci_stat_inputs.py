@@ -19,20 +19,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('str_imputation_run_name')
     parser.add_argument('chrom')
+    parser.add_argument('all_white_brits_fname')
     args = parser.parse_args()
     str_imputation_run_name = args.str_imputation_run_name
     chrom = args.chrom
 
     with open(f'{ukb}/export_scripts/intermediate_results/chr{chrom}_loci_summary.tab', 'w') as output:
-        main_helper(output, str_imputation_run_name, chrom)
+        main_helper(output, str_imputation_run_name, chrom, args.all_white_brits_fname)
 
-def main_helper(output, str_imputation_run_name, chrom):
+def main_helper(output, str_imputation_run_name, chrom, all_white_brits_fname):
     vcf_fname = (f'{ukb}/str_imputed/runs/{str_imputation_run_name}/'
                              f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
 
     subset_samples = []
-    with open(f'{ukb}/sample_qc/runs/no_phenotype/combined.sample') as samp_file:
+    with open(all_white_brits_fname) as samp_file:
         next(samp_file)
         for line in samp_file:
             subset_samples.append(line.strip())

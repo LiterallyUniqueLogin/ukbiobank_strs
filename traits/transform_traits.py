@@ -32,18 +32,19 @@ def inverse_normalize_ranks(readme, ranks):
 def main():  # noqa: D103
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
+    parser.add_argument('ethnicity')
     parser.add_argument('--binary', default=False, action='store_true')
     args = parser.parse_args()
 
-    with open(f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}_README.txt', 'w') as readme:
+    with open(f'{ukb}/traits/subset_transformed_phenotypes/{args.ethnicity}/{args.phenotype}_README.txt', 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
-        sample_fname = f'{ukb}/sample_qc/runs/{args.phenotype}/combined_unrelated.sample'
+        sample_fname = f'{ukb}/sample_qc/runs/{args.ethnicity}/{args.phenotype}/combined_unrelated.sample'
         readme.write("Subsetting to samples with phenotype that passed sample_qc, "
                      f"as denoted by the file: {sample_fname}\n")
         readme.flush()
 
-        data = np.load(f'{ukb}/traits/phenotypes/{args.phenotype}.npy')
+        data = np.load(f'{ukb}/traits/phenotypes/{args.ethnicity}/{args.phenotype}.npy')
         with open(sample_fname) as sample_file:
             next(sample_file)
             samples = np.array([int(sample.strip()) for sample in sample_file])
@@ -77,7 +78,7 @@ def main():  # noqa: D103
             )
 
         np.save(
-            f'{ukb}/traits/subset_transformed_phenotypes/{args.phenotype}.npy',
+            f'{ukb}/traits/subset_transformed_phenotypes/{args.ethnicity}/{args.phenotype}.npy',
             transformed_data
         )
 

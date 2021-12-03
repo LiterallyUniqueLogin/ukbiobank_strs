@@ -19,7 +19,7 @@ phenotype = args.phenotype
 
 shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
 
-subset_transformed_phenotype = np.load(f'{ukb}/traits/subset_transformed_phenotypes/{phenotype}.npy')
+subset_transformed_phenotype = np.load(f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{phenotype}.npy')
 
 # shared covars here aren't necessarily going to have exactly mean 0 and std 1
 # because they were standardized before subsetting, but that's okay
@@ -46,7 +46,7 @@ else:
         # (b) plink doesn't have numeric instabilities
         data[:, 2] = (data[:, 2] - data[:,2].mean())/data[:, 2].std()
 
-with open(f'{ukb}/traits/phenotypes/{phenotype}_covar_names.txt') as pheno_names_file:
+with open(f'{ukb}/traits/phenotypes/white_brits/{phenotype}_covar_names.txt') as pheno_names_file:
     for line in pheno_names_file:
         line = line.strip()
         if line == '':

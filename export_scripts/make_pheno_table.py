@@ -41,7 +41,7 @@ def generate_phenotypes_table(all_phenotypes):
                 f'{na_check(desc.min_val)}\t{na_check(desc.min_omit)}\t'
                 f'{na_check(desc.max_val)}\t{na_check(desc.max_omit)}\t'
             )
-            with open(f"sample_qc/runs/{phenotype}/combined_unrelated.sample") as samp_file:
+            with open(f"sample_qc/runs/white_brits/{phenotype}/combined_unrelated.sample") as samp_file:
                 n_samps = len(samp_file.readlines()) - 1
             outfile.write(f'{n_samps}\t')
             if len(desc.categorical_covars) == 0:
