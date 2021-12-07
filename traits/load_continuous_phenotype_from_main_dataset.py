@@ -60,7 +60,7 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
     # drop first and last rows which because of the way data is extracted
     # and then read by numpy are always nans
 
-    readme.write("Subsetting to white British qc'ed samples\n")
+    readme.write("Subsetting to qc'ed samples of this ethnicity\n")
     # load samples that have passed qc
     samples = np.genfromtxt(
         f'{ukb}/sample_qc/runs/{ethnicity}/no_phenotype/combined.sample',
@@ -214,9 +214,14 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
             )
 
     data = visit_aligned_data
+    # we will subset to those samples which only have measured data
+    measured_samples = ~np.any(np.isnan(data), axis=1)
+    data = data[measured_samples, :]
 
     for covar, covar_data, reverse_covar_hash in \
             zip(args.categorical_covars, visit_aligned_covars, reverse_covar_hashes):
+        unmeasured_covar_data = covar_data[~measured_samples, :]
+        covar_data = covar_data[measured_samples, :]
         assert covar_data.shape[1] == 1
         covar_name = covar.split(',')[0]
         categories, counts = np.unique(covar_data[~np.isnan(covar_data)], return_counts=True)
@@ -224,11 +229,25 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
         max_cat_idx = np.argmax(counts)
         assert len(categories) <= 10
         using_covar = False
-        for cat_name in sorted(cat_names):
+        for category, cat_name in reverse_covar_hash.items():
+            if cat_name not in cat_names:
+                if not np.any(unmeasured_covar_data == category):
+                    readme.write(
+                        f"No qc'ed samples of this ethnicity had value {cat_name} "
+                        f'for categorical covariate {covar}.\n'
+                    )
+                else:
+                    readme.write(
+                        f"No qc'ed samples of this ethnicity for which this phenotype "
+                        f'was measured had value {cat_name} '
+                        f'for categorical covariate {covar}.\n'
+                    )
+                continue
+
             if cat_name == cat_names[max_cat_idx]:
                 continue
             cat_idx = cat_names.index(cat_name)
-            cat, cat_count = categories[cat_idx], counts[cat_idx]
+            cat_count = counts[cat_idx]
             if cat_count <= cat_drop_num:
                 readme.write(
                     f"Dropping {cat_count} samples with value {cat_name} for categorical "
@@ -246,7 +265,7 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
                 continue
             using_covar = True
             covar_names.write(f"{covar_name}_is_{cat_name}\n")
-            data = np.concatenate((data, covar_data == cat), axis=1)
+            data = np.concatenate((data, covar_data == category), axis=1)
         if using_covar:
             readme.write(
                 f'Using categorical covar {covar_name}, default category when all dummy '

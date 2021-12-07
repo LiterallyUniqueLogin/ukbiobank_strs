@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import ast
+import json
 import os
 
 import numpy as np
@@ -25,6 +27,8 @@ def main():
         'start_pos - the start bp of the STR, 1-based\n'
         'repeat_unit - as preliminarily inferred by TRTools from the reference STR '
         'sequence and the repeat period stated in the SNPSTR reference panel\n'
+        'white_brit_allele_frequencies - frequencies of each allele (by dosage) '
+        'among the tested population\n'
         'multiallelicness - amongst the population being tested for association, '
         'this is the fraction of total allelic dosage at this locus '
         'taken up by all alleles but the two most common alleles\n'
@@ -39,14 +43,14 @@ def main():
         'transcript support level (1-5 or missing)\n'
     )
 
-    with open(f'{ukb}/export_scripts/results/putatively_causal_STRs_README.txt', 'w') as readme:
+    with open(f'{ukb}/post_finemapping/results/putatively_causal_STRs_README.txt', 'w') as readme:
         readme.write(
             'Any STR x phenotype association that has p-value <= 1e-10 and '
             'FINEMAP posterior probability of causality >= 0.8\n'
             + col_descs
         )
 
-    with open(f'{ukb}/export_scripts/results/curated_STRs_README.txt', 'w') as readme:
+    with open(f'{ukb}/post_finemapping/results/curated_STRs_README.txt', 'w') as readme:
         readme.write(
             'Any curated STR x phenotype association\n'
             + col_descs
@@ -56,6 +60,7 @@ def main():
         'chrom',
         'start_pos',
         'repeat_unit',
+        'subset_total_per_allele_dosages',
         'subset_multiallelicness',
         'association_p_value',
         'pcausal',
@@ -63,8 +68,8 @@ def main():
         'transcribed'
     ]
 
-    with open(f'{ukb}/export_scripts/results/putatively_causal_STRs.tab', 'w') as strong_out, \
-            open(f'{ukb}/export_scripts/results/curated_STRs.tab', 'w') as curated_out:
+    with open(f'{ukb}/post_finemapping/results/putatively_causal_STRs.tab', 'w') as strong_out, \
+            open(f'{ukb}/post_finemapping/results/curated_STRs.tab', 'w') as curated_out:
         first_phen = True
         for phenotype in phenotypes:
             with open(f'{ukb}/finemapping/summary/{phenotype}_table.tab') as table:
@@ -74,11 +79,13 @@ def main():
                     indices = [split.index(col) for col in cols]
                     association_p_value_index = split.index('association_p_value')
                     pcausal_index = split.index('pcausal')
+                    allele_dosage_index = split.index('subset_total_per_allele_dosages')
                     subset_multiallelicness_index = split.index('subset_multiallelicness')
                     curated_index = split.index('curated')
                     only_curated_index = split.index('included_only_due_to_curation')
                     only_lit_index = split.index('included_only_due_to_literature')
                     split[subset_multiallelicness_index] = 'multiallelicness'
+                    split[allele_dosage_index] = 'white_brit_allele_frequencies'
                     write_line(strong_out, split, indices, 'phenotype')
                     write_line(curated_out, split, indices, 'phenotype')
                 else:
@@ -98,6 +105,14 @@ def main():
                         continue
                     if split[only_curated_index] == 'True' or split[only_lit_index] == 'True':
                         continue
+
+                    dosage_dict_str = split[allele_dosage_index]
+                    assert dosage_dict_str[0] == dosage_dict_str[-1] == '"'
+                    dosages = ast.literal_eval(dosage_dict_str[1:-1].replace('""', '"'))
+                    # drop zero alleles
+                    dosages = { k: v for k, v in dosages.items() if v != 0 }
+                    total_dosage = sum(dosages.values())
+                    split[allele_dosage_index] = json.dumps({ k: f'{v/total_dosage*100:.2f}%' for k,v in dosages.items() }).replace('"', '')
                     write_line(strong_out, split, indices, phenotype)
             first_phen = False
 

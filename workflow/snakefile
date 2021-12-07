@@ -3,11 +3,12 @@ import csv
 import glob
 import json
 import pathlib
+import shutil
+import tempfile
 
 import numpy as np
 import pandas as pd
-import polars
-import shutil
+import polars as pl
 
 import python_array_utils as utils
 import phenotypes
@@ -31,8 +32,9 @@ def pheno_expand(string):
 
 rule decompress_field:
     input:
-        'main_dataset/raw_data/ukb46781.enc_ukb',
-        'main_dataset/raw_data/ukb46782.enc_ukb'
+        # TODO ancient is temp
+        ancient('main_dataset/raw_data/ukb46781.enc_ukb'),
+        ancient('main_dataset/raw_data/ukb46782.enc_ukb')
     output:
         data=protected("main_dataset/extracted_data/{field_name}_{field_id,[0-9]+}.txt"),
         readme=protected("main_dataset/extracted_data/{field_name}_{field_id}_README.txt")
@@ -40,6 +42,8 @@ rule decompress_field:
         time='05:00:00'
     shell:
         "main_dataset/decompress_trait.py {wildcards.field_name} {wildcards.field_id} "
+
+other_ethnicities=['black', 'white_other', 'irish', 'southeast_asian', 'chinese']
 
 rule ethnic_sample_lists:
     input:
@@ -49,7 +53,7 @@ rule ethnic_sample_lists:
         # must all go into the same directory
         all_files=expand(
             'sample_qc/common_filters/ethnicity/{ethnicity}.sample',
-            ethnicity={'black', 'white_other', 'irish', 'southeast_asian', 'chinese'}
+            ethnicity=other_ethnicities
         )
     resources:
         time='00:05:00'
@@ -965,20 +969,18 @@ checkpoint generate_regions:
 
 def generated_regions(phenotype):
     checkpoints.generate_regions.get(phenotype=phenotype)
-    df = polars.read_csv(
+    df = pl.scan_csv(
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
-    )
-    df = df[df['any_strs']]
+    ).filter('any_strs').collect()
     return list(zip(df['chrom'], df['start'], df['end']))
 
 def n_regions_no_strs(phenotype):
     checkpoints.generate_regions.get(phenotype=phenotype)
-    df = polars.read_csv(
+    return pl.scan_csv(
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
-    )
-    return (~df['any_strs']).sum()
+    ).select((~pl.col('any_strs')).sum()).collect()
 
 def peak_snp_input_inputs(wildcards):
     if not phenotypes.is_binary(wildcards.phenotype):
@@ -1183,7 +1185,7 @@ rule finemap_write_input_variants:
 rule finemap_load_gts:
     input:
         expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits'),
-        'finemapping/finemap_results/white_brits/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
+        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
     output:
         protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
         temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
@@ -1735,7 +1737,7 @@ rule create_phenotypes_table:
     shell:
         'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
 
-rule concat_finemapping_summary_tables:
+rule concat_summary_tables:
     input:
         'workflow/phenotypes.py',
         tables=expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
@@ -1748,22 +1750,61 @@ rule concat_finemapping_summary_tables:
         cmd += "'{" + json.dumps({phen: table for (phen, table) in zip(phenotypes.phenotypes_in_use, input.tables)}) + "}'"
         shell(cmd)
 
-rule concat_and_filter_finemapping_summary_tables:
+checkpoint concat_and_filter_summary_tables:
     input:
         'workflow/phenotypes.py',
         expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
     output:
-        'export_scripts/results/putatively_causal_STRs.tab',
-        'export_scripts/results/putatively_causal_STRs_README.txt',
-        'export_scripts/results/curated_STRs.tab',
-        'export_scripts/results/curated_STRs_README.txt'
+        causal_STRs='post_finemapping/results/putatively_causal_STRs.tab',
+        causal_STRs_README='post_finemapping/results/putatively_causal_STRs_README.txt',
+        curated_STRs='post_finemapping/results/curated_STRs.tab',
+        curated_STRs_README='post_finemapping/results/curated_STRs_README.txt'
     resources:
         time='00:10:00'
     run:
-        cmd = 'export_scripts/concat_and_filter_summary_tables.py '
+        cmd = 'post_finemapping/concat_and_filter_summary_tables.py '
         for phenotype in phenotypes.phenotypes_in_use:
             cmd += f'{phenotype} '
         shell(cmd)
+
+def putatively_causal_spot_test_dict(hits_fname):
+    checkpoints.concat_and_filter_summary_tables.get()
+    hits = (pl.scan_csv(hits_fname, sep='\t')
+        .join(
+            pl.scan_csv('snpstr/flank_trimmed_vcf/vars.tab', sep='\t'),
+            how='left',
+            left_on=['chrom', 'start_pos'],
+            right_on=['chrom', 'pos']
+        ).select(['phenotype', 'chrom', 'snpstr_pos']).collect())
+    return {
+        f'{hits[idx, "phenotype"]}__{hits[idx, "chrom"]}__{hits[idx, "snpstr_pos"]}__{ethnicity}' :
+        expand(rules.run_str_spot_test.output.result, phenotype=hits[idx, "phenotype"], chrom=hits[idx, "chrom"], pos=hits[idx, "snpstr_pos"], ethnicity=ethnicity)[0]
+        for idx in range(hits.shape[0])
+        for ethnicity in other_ethnicities
+    }
+
+rule validate_STRs_parent:
+    params:
+        spot_test_json_dict = lambda wildcards, input: json.dumps(putatively_causal_spot_test_dict(input.strs))
+    resources:
+        time='00:10:00'
+    run:
+        with tempfile.NamedTemporaryFile(mode='w') as fp:
+            fp.write(params.spot_test_json_dict)
+            fp.write('\n')
+            cmd = 'post_finemapping/validate_hits.py {output.strs} {output.readme} {input.pos_to_snpstr_pos} {input.strs} {input.readme} {fp.name}'
+            print(cmd)
+            shell(cmd)
+
+use rule validate_STRs_parent as validate_putatively_causal_STRs with:
+    input:
+        pos_to_snpstr_pos='snpstr/flank_trimmed_vcf/vars.tab',
+        strs=rules.concat_and_filter_summary_tables.output.causal_STRs,
+        readme=rules.concat_and_filter_summary_tables.output.causal_STRs_README,
+        spot_tests=lambda wildcards: list(putatively_causal_spot_test_dict(rules.concat_and_filter_summary_tables.output.causal_STRs).values())
+    output:
+        strs='post_finemapping/results/validated/putatively_causal_STRs.tab',
+        readme='post_finemapping/results/validated/putatively_causal_STRs_README.txt'
 
 rule exonic_finemapped_strs:
     input:
@@ -1862,7 +1903,7 @@ def phenotype_hit_highlights(wildcards):
     # TODO this should be inferred: 'association_p_value': float
     # comparison to string shouldn't cause casting
     # ask for dtype flag, not just dtypes?
-    results = polars.read_csv(
+    results = pl.read_csv(
         expand(rules.summary_table.output.table, phenotype=phenotype)[0],
         sep='\t',
         dtype={'alleles': str, 'association_p_value': float},
@@ -1973,11 +2014,7 @@ rule export_curated_hit_highlights:
             link_file(file_, out_dir + '/' + file_.split('/')[-1])
         shell(f'touch {output.complete}')
 
-rule export_curated_hit_table:
-    input:
-
-rule export_combined_summaries_and_figures:
-    input:
+inputs_for_export_combined = [
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt',
         'export_scripts/results/putatively_causal_STRs.tab',
@@ -2002,31 +2039,13 @@ rule export_combined_summaries_and_figures:
         'export_scripts/results/allele_count_thresh_0.06.png',
         'export_scripts/results/allele_count_thresh_0.06.svg',
         'export_scripts/results/finemapping_summary_all_phenotypes.tab'
+]
+
+rule export_combined_summaries_and_figures:
+    input:
+        inputs_for_export_combined
     output:
-        'export/combined/phenotypes.tab',
-        'export/combined/phenotypes_README.txt',
-        'export/combined/putatively_causal_STRs.tab',
-        'export/combined/putatively_causal_STRs_README.txt',
-        'export/combined/curated_STRs.tab',
-        'export/combined/curated_STRs_README.txt',
-        'export/combined/exonic_finemapped_STRs.tab',
-        'export/combined/exonic_finemapped_STRs_README.txt',
-        'export/combined/validate_our_code.png',
-        'export/combined/panukbb_scatter.png',
-        'export/combined/panukbb_scatter.svg',
-        'export/combined/peaks_by_pheno.svg',
-        'export/combined/peaks_by_pheno.png',
-        'export/combined/p_val_comp_jitter_scatter.svg',
-        'export/combined/p_val_comp_jitter_scatter.png',
-        'export/combined/allele_count_thresh_0.001.png',
-        'export/combined/allele_count_thresh_0.001.svg',
-        'export/combined/allele_count_thresh_0.004.png',
-        'export/combined/allele_count_thresh_0.004.svg',
-        'export/combined/allele_count_thresh_0.015.png',
-        'export/combined/allele_count_thresh_0.015.svg',
-        'export/combined/allele_count_thresh_0.06.png',
-        'export/combined/allele_count_thresh_0.06.svg',
-        'export/combined/finemapping_summary_all_phenotypes.tab'
+        ['export/combined/' + input_.split('/')[-1] for input_ in inputs_for_export_combined]
     resources:
         time='00:05:00'
     run:
