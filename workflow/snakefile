@@ -446,13 +446,12 @@ rule run_regional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
         untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
-        run_timestamp=rules.write_my_gwas_readme.output.timestamp,
-        #run_timestamp='association/results/{phenotype}/my_str{suffix}/time.stamp',
+        run_timestamp=expand(rules.write_my_gwas_readme.output.timestamp, run_type='str', binary='{binary}', phenotype='{phenotype}'),
         transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        results=temporary("association/results/{phenotype}/my_str{suffix,.*}/batches/chr{chrom}_{start}_{end}.tab")
+        results=temporary("association/results/{phenotype}/my_str{binary,|_linear|_logistic}/batches/chr{chrom}_{start}_{end}.tab")
     resources:
         time='12:00:00',
         mem_gb=my_regional_gwas_mem_gb_req
@@ -1624,6 +1623,7 @@ rule enrichments:
 checkpoint summary_table:
     input:
         'workflow/phenotypes.py',
+        'snpstr/repeat_units.tab',
         chr_expand('side_analyses/str_annotations/closest_gene/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/closest_exon/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/nearby_exon_d_1000/chrCHR.tab'),
@@ -1767,8 +1767,9 @@ checkpoint concat_and_filter_summary_tables:
             cmd += f'{phenotype} '
         shell(cmd)
 
-def putatively_causal_spot_test_dict(hits_fname):
-    checkpoints.concat_and_filter_summary_tables.get()
+def putatively_causal_spot_test_dict(hits_fname, checkpoint_to_get=None):
+    if checkpoint_to_get is not None:
+        checkpoint_to_get.get()
     hits = (pl.scan_csv(hits_fname, sep='\t')
         .join(
             pl.scan_csv('snpstr/flank_trimmed_vcf/vars.tab', sep='\t'),
@@ -1801,12 +1802,12 @@ use rule validate_STRs_parent as validate_putatively_causal_STRs with:
         pos_to_snpstr_pos='snpstr/flank_trimmed_vcf/vars.tab',
         strs=rules.concat_and_filter_summary_tables.output.causal_STRs,
         readme=rules.concat_and_filter_summary_tables.output.causal_STRs_README,
-        spot_tests=lambda wildcards: list(putatively_causal_spot_test_dict(rules.concat_and_filter_summary_tables.output.causal_STRs).values())
+        spot_tests=lambda wildcards: list(putatively_causal_spot_test_dict(rules.concat_and_filter_summary_tables.output.causal_STRs, checkpoints.concat_and_filter_summary_tables).values())
     output:
         strs='post_finemapping/results/validated/putatively_causal_STRs.tab',
         readme='post_finemapping/results/validated/putatively_causal_STRs_README.txt'
 
-rule exonic_finemapped_strs:
+checkpoint exonic_finemapped_strs:
     input:
         'workflow/phenotypes.py',
         tables=expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
@@ -1819,6 +1820,16 @@ rule exonic_finemapped_strs:
         cmd = 'export_scripts/exonic_finemapped_strs.py {output.table} {output.readme} '
         cmd += "'{" + json.dumps({phen: table for (phen, table) in zip(phenotypes.phenotypes_in_use, input.tables)}) + "}'"
         shell(cmd)
+
+use rule validate_STRs_parent as validate_exonic_STRs with:
+    input:
+        pos_to_snpstr_pos='snpstr/flank_trimmed_vcf/vars.tab',
+        strs=rules.exonic_finemapped_strs.output.table,
+        readme=rules.exonic_finemapped_strs.output.readme,
+        spot_tests=lambda wildcards: list(putatively_causal_spot_test_dict(rules.exonic_finemapped_strs.output.table, checkpoints.exonic_finemapped_strs).values())
+    output:
+        strs='post_finemapping/results/validated/exonic_finemapped_STRs.tab',
+        readme='post_finemapping/results/validated/exonic_finemapped_STRs_README.txt'
 
 rule assoc_figures:
     input:
@@ -2017,12 +2028,12 @@ rule export_curated_hit_highlights:
 inputs_for_export_combined = [
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt',
-        'export_scripts/results/putatively_causal_STRs.tab',
-        'export_scripts/results/putatively_causal_STRs_README.txt',
+        rules.validate_putatively_causal_STRs.output.strs,
+        rules.validate_putatively_causal_STRs.output.readme,
         'export_scripts/results/curated_STRs.tab',
         'export_scripts/results/curated_STRs_README.txt',
-        'export_scripts/results/exonic_finemapped_STRs.tab',
-        'export_scripts/results/exonic_finemapped_STRs_README.txt',
+        rules.validate_exonic_STRs.output.strs,
+        rules.validate_exonic_STRs.output.readme,
         'export_scripts/results/validate_our_code.png',
         'export_scripts/results/panukbb_scatter.png',
         'export_scripts/results/panukbb_scatter.svg',
@@ -2069,4 +2080,3 @@ rule export_all:
         'export/combined/curated_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
-

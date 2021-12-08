@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import collections
 import os
 
 import cyvcf2
@@ -27,7 +26,9 @@ with open(f'{ukb}/snpstr/repeat_units.tab', 'w') as out:
                 continue
             ref_seq = ref_chrom[(var.INFO['START'] - 1):var.INFO['END']]
             unit = str_utils.infer_repeat_unit(ref_seq, var.INFO['PERIOD'])
-           
+            if unit is not None:
+                unit = str_utils.canonicalize(unit)
+
             compound_unit = False
             if unit is None:
                 compound_unit = 'NA'
@@ -36,5 +37,5 @@ with open(f'{ukb}/snpstr/repeat_units.tab', 'w') as out:
                     compound_unit = unit[:(len(unit)//2)] == unit[(len(unit)//2):]
                 if var.INFO['PERIOD'] == 6:
                     compound_unit |= unit[:2] == unit[2:4] == unit[4:]
-                
+
             out.write(f'{var.CHROM}\t{var.POS}\t{var.INFO["PERIOD"]}\t{unit}\t{compound_unit}\n')

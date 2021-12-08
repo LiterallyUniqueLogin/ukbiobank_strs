@@ -25,14 +25,17 @@ def main():
         'phenotype\n'
         'chrom\n'
         'start_pos - the start bp of the STR, 1-based\n'
-        'repeat_unit - as preliminarily inferred by TRTools from the reference STR '
-        'sequence and the repeat period stated in the SNPSTR reference panel\n'
+        'repeat_unit - canonical repeat sequence as preliminarily inferred by '
+        'the paper algorithm from the reference STR sequence and the repeat period '
+        'stated in the SNPSTR reference panel\n'
         'white_brit_allele_frequencies - frequencies of each allele (by dosage) '
         'among the tested population\n'
         'multiallelicness - amongst the population being tested for association, '
         'this is the fraction of total allelic dosage at this locus '
         'taken up by all alleles but the two most common alleles\n'
         'association_p_value\n'
+        'direction_of_association - "+" if an increase in STR length causes an '
+        'increase in phenotype, "-" if the reverse\n'
         "pcausal - FINEMAP's posterior probability of causality\n"
         'relation_to_gene - if this STR is transcribed, for each transcript '
         'what is the GENCODE gene type of that transcript (i.e. protein coding, '
@@ -63,6 +66,7 @@ def main():
         'subset_total_per_allele_dosages',
         'subset_multiallelicness',
         'association_p_value',
+        'direction_of_association',
         'pcausal',
         'relation_to_gene',
         'transcribed'

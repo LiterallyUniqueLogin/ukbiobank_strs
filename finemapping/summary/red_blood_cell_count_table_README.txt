@@ -8,7 +8,7 @@ end_pos - 1-based, inclusive
 SNPSTR_start_pos - the start position of the STR in the SNP-STR reference panel (may be smaller that start_pos if HipSTR called this STR with a physically phased SNP upstream of the STR)
 SNPSTR_ID - ID of the STR in the SNPSTR reference panel
 period - as specified in the SNPSTR reference panel
-repeat_unit - as inferred by TRTools from the STR sequence and the period
+repeat_unit - as inferred by the algorithm described in the paper methods
 alleles - possible # copies of the repeat unit
 reference_allele
 total_per_allele_dosages - sum of imputed dosage of each allele across both chromsomes in all samples
@@ -23,6 +23,7 @@ subset_entropy - the entropy in the association sample subset calculated from al
 subset_HWEP - the Hardy-Weinberg p-value in the association sample subset comparing hardcall genotypes and allele frequencies
 subset_allele_dosage_r2 - a metric of imputation accuracy, the per-allele R^2 between dosage-weighted allele length and allele hardcalls across samples
 association_p_value - linear regression of rank inverse normalized phenotype values vs repeat length on QC'ed sample subset, with covariates
+direction_of_association - + if an increase in STR length causes an increase in phenotype, - if the reverse, NaN if p-value > 0.05
 Δphenotype_per_additional_repeat_unit - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in 10^12 cells/L
 Δphenotype_per_s.d._increase_in_repeat_size - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in 10^12 cells/L
 pcausal - FINEMAP posterior probability of causality

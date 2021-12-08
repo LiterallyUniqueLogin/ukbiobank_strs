@@ -37,8 +37,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
          'SNP upstream of the STR)'),
         ('SNPSTR_ID', 'ID of the STR in the SNPSTR reference panel'),
         ('period', 'as specified in the SNPSTR reference panel'),
-        ("repeat_unit", "as inferred by TRTools from the STR sequence and "
-         "the period"),
+        ("repeat_unit", "as inferred by the algorithm described in the paper methods"),
         ('alleles', 'possible # copies of the repeat unit'),
         ('reference_allele', None),
         ('total_per_allele_dosages', 'sum of imputed dosage of each allele across '
@@ -66,6 +65,8 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
          'between dosage-weighted allele length and allele hardcalls across samples'),
         ('association_p_value', 'linear regression of rank inverse normalized phenotype '
          "values vs repeat length on QC'ed sample subset, with covariates"),
+        ('direction_of_association', '+ if an increase in STR length causes an increase in phenotype, - '
+         'if the reverse, NaN if p-value > 0.05'),
         (col_dphen_unit, 'linear regression on raw phenotypes vs repeat length on '
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
         (col_dphen_sd, 'linear regression on raw phenotypes vs repeat length on '
@@ -145,7 +146,6 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     '''
     chrom
     SNPSTR_start_pos
-    repeat_unit
     period
     alleles
     ref_len
@@ -160,6 +160,7 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     subset_HWEP
     subset_allele_dosage_r2
     association_p_value
+    direction_of_association
     '''
     print("Reading associations ...", flush=True)
     associations = pd.read_csv(
@@ -169,9 +170,9 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
         dtype=utils.get_dtypes(my_STR_results_fname, {'locus_filtered': str})
     )
     rename_column_pd(associations, 'ref_len', 'reference_allele')
-    rename_column_pd(associations, 'motif', 'repeat_unit')
     rename_column_pd(associations, 'subset_het', 'subset_heterozygosity')
     rename_column_pd(associations, f'p_{phenotype}', 'association_p_value')
+    rename_column_pd(associations, f'coeff_{phenotype}', 'association_coeff')
     for STR in literature_STRs:
         chrom, pos = STR.split(':')
         if not np.any((associations['chrom'] == int(chrom)) & (associations['pos'] == int(pos))):
@@ -184,7 +185,9 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
         on=['chrom', 'pos'],
         how='right'
     )
-    mhc = (signals['chrom'] == 6) & (signals['pos'] >= 25e6) & (signals['pos'] <= 33.5e6)
+    signals['direction_of_association'] = 'NaN'
+    signals.loc[(signals.loc[:, 'association_p_value'] <= 0.05) & (signals.loc[:, 'association_coeff'] > 0), 'direction_of_association'] = '+'
+    signals.loc[(signals.loc[:, 'association_p_value'] <= 0.05) & (signals.loc[:, 'association_coeff'] < 0), 'direction_of_association'] = '-'
 
     literature_STR_rows = None
     literature_STR_URLs = ['NA']*len(signals)
@@ -258,6 +261,22 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     nrows = signals.shape[0]
 
     rename_column_pd(signals, 'pos', 'SNPSTR_start_pos')
+
+    # repeat_unit
+    repeat_units = pd.read_csv(
+        'snpstr/repeat_units.tab',
+        header=0,
+        delimiter='\t',
+    )
+    rename_column_pd(repeat_units, 'unit', 'repeat_unit')
+
+    signals = signals.merge(
+        repeat_units,
+        how='left',
+        left_on=['chrom', 'SNPSTR_start_pos'],
+        right_on=['chrom', 'snpstr_pos'],
+        suffixes=('', '_other')
+    )
 
     # calculate effect sizes and third on allele freqs
     print("Working on effect sizes and multiallelicness ...", flush=True)

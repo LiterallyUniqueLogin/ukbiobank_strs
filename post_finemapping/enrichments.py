@@ -17,7 +17,6 @@ import scipy.stats
 import scipy.stats.contingency
 
 import annotation_utils
-import str_utils
 
 ukb = os.environ['UKB']
 
@@ -178,7 +177,6 @@ all_STRs = all_STRs.merge(
     suffixes=['', 'other']
 )
 assert ~np.any(all_STRs['period'].isnull())
-all_STRs['canonical_unit'] = [str_utils.canonicalize(seq) if seq != 'None' else 'None' for seq in all_STRs['unit']]
 
 dna_structures = pd.read_csv(
     f'{ukb}/misc_data/stalling/canon_structure.tab',

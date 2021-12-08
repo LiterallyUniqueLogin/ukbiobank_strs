@@ -3,7 +3,6 @@
 import argparse
 import ast
 import json
-import shutil
 
 import numpy as np
 import polars as pl
@@ -14,7 +13,6 @@ def reformat_dosage_dict_str(dict_str):
     d = ast.literal_eval(dict_str)
     d = {k: v for (k, v) in d.items() if not np.isnan(v) and v != 0}
     total_dosage = sum(d.values())
-    #print(json.dumps({k: f'{v/total_dosage*100:.2f}%' for (k, v) in d.items()}).replace('"', "'"))
     return json.dumps({k: f'{v/total_dosage*100:.2f}%' for (k, v) in d.items()}).replace('"', "'")
 
 def fix_cols(cols, phenotype):
@@ -42,8 +40,9 @@ def main():
     with open(args.spot_test_fname_json_dict_fname) as json_file:
         spot_test_fname_json_dict = next(json_file)
 
-    shutil.copy(args.inreadme, args.outreadme)
     with open(args.outreadme, 'w+') as readme:
+        with open(args.inreadme) as inreadme:
+            readme.write(inreadme.read())
         readme.write(
             'other_ethnic_association_ps - association p-values for the other '
             'ethnicities in the order ' +
@@ -115,59 +114,6 @@ def main():
         pl.sum([pl.col(f'{ethnicity}_effect_direction').cast(str) + pl.lit(', ') for ethnicity in other_ethnicities])
              .str.replace(', $', '').alias('other_ethnic_effect_directions')
     ])
-    '''
-    .with_columns([
-        pl.col('subset_total_per_allele_dosages')
-         .apply(reformat_dosage_dict_str)
-         .alias('ethnic_allele_frequencies'),
-        pl.when(pl.col('ethnic_coeff') > 0)
-         .then(pl.lit('+'))
-         .otherwise(pl.lit('-'))
-         .alias('ethnic_effect_direction')
-    ]).collect()
-
-    index_cols=['phenotype', 'chrom', 'snpstr_pos']
-
-    allele_freqs = (
-        hits.map(lambda df:
-            df.groupby(index_cols).pivot(pivot_column="ethnicity", values_column="ethnic_allele_frequencies").first()
-        ).rename({col: f'{col}_population_allele_frequencies' for col in other_ethnicities})
-    )
-
-    effect_dirs = (
-        hits.map(lambda df:
-            df.groupby(index_cols).pivot(pivot_column="ethnicity", values_column="ethnic_effect_direction").first()
-        ).select([
-            index_cols,
-            (pl.sum([pl.col(ethnicity).cast(str) + pl.lit(', ') for ethnicity in other_ethnicities])
-             .str.replace(', $', '').alias('other_ethnic_effect_directions'))
-        ])
-    )
-
-    assoc_ps = (
-        hits.map(lambda df:
-            df.groupby(index_cols).pivot(pivot_column="ethnicity", values_column="ethnic_p").first()
-        ).select([
-            index_cols,
-            (pl.sum([pl.col(ethnicity).cast(str) + pl.lit(', ') for ethnicity in other_ethnicities])
-             .str.replace(', $', '').alias('other_ethnic_association_ps'))
-        ])
-    )
-
-    hits = (hits
-        .groupby(index_cols)
-        .join(allele_freqs, how='left', on=index_cols)
-        .join(effect_dirs, how='left', on=index_cols)
-        .join(assoc_ps, how='left', on=index_cols)
-        .select([
-            cols,
-            'other_ethnic_association_ps',
-            'other_ethnic_effect_directions',
-            [ f'{col}_population_allele_frequencies' for col in cols]
-        ])
-        .collect()
-    )
-    '''
 
     hits = hits.select([
         *cols,
