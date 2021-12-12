@@ -481,6 +481,12 @@ pheno_descs.update(serum_biomarkers)
 def is_binary(phenotype):
     return 'binary' in pheno_descs[phenotype].unit
 
+def is_haematological(phenotype):
+    return phenotype in haematological_phenotypes
+
+def is_serum_biomarker(phenotype):
+    return phenotype in serum_biomarkers
+
 '''
 phenotypes_in_use = {
     'eosinophil_count',

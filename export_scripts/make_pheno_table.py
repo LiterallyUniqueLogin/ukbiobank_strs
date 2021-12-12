@@ -25,7 +25,7 @@ def generate_phenotypes_table(all_phenotypes):
             'maximum_reportable_value\t'
             'n_samples_omitted_above_reportable_range\t'
             'n_individuals_tested\t'
-            'association_testing_categorical_covariates\t'
+            'phenotype_specific_association_testing_categorical_covariates\t'
             'n_association_peaks\n'
         )
         for phenotype in all_phenotypes:

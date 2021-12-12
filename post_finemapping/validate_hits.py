@@ -7,7 +7,7 @@ import json
 import numpy as np
 import polars as pl
 
-other_ethnicities=['black', 'southeast_asian', 'chinese', 'irish', 'white_other']
+other_ethnicities=['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 def reformat_dosage_dict_str(dict_str):
     d = ast.literal_eval(dict_str)
@@ -60,10 +60,19 @@ def main():
                 "(by dosage) among the ethnicity's tested population\n"
             )
 
-    hits = pl.scan_csv(args.intable, sep='\t').with_column(
-        pl.col('white_brit_allele_frequencies').str.replace_all('"', "'")
+    hits = pl.scan_csv(
+        args.intable,
+        sep='\t',
+        # hack added arguments here that will be ignored when reading putatively_causal but not when reading exonic_finemapped
+        dtype={'alleles': str}
     )
     cols = hits.columns
+
+    # hack to only clean in one of the two cases this function is running
+    if 'white_brit_allele_frequencies' in cols:
+        hits = hits.with_column(
+            pl.col('white_brit_allele_frequencies').str.replace_all('"', "'")
+        )
 
     hits = hits.join(
         pl.scan_csv(args.pos_to_snpstr_pos, sep='\t'),
@@ -121,7 +130,12 @@ def main():
         'other_ethnic_effect_directions',
         *[f'{ethnicity}_population_allele_frequencies' for ethnicity in other_ethnicities]
     ]).collect()
-    assert hits.shape[0] == pl.read_csv(args.intable, sep='\t').shape[0]
+    assert hits.shape[0] == pl.read_csv(
+        args.intable,
+        sep='\t',
+        # same hack as above
+        dtype = {'alleles': str}
+    ).shape[0]
 
     hits.to_csv(args.outtable, sep='\t',)
 

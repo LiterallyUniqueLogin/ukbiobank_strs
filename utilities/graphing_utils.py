@@ -93,7 +93,7 @@ def resize(fig, ratio, legend=True):
     resize_int(fig, 'width', ratio)
     resize_int(fig, 'height', ratio)
     resize_font(fig.title, 'text_font_size', ratio)
-    for axis in fig.xaxis, fig.yaxis:
+    for axis in fig.axis:
         resize_font(axis, 'axis_label_text_font_size', ratio)
         resize_font(axis, 'major_label_text_font_size', ratio)
         resize_int(axis, 'axis_label_standoff', ratio)
@@ -105,6 +105,13 @@ def resize(fig, ratio, legend=True):
         resize_int(axis, 'minor_tick_line_width', ratio)
         resize_int(axis, 'minor_tick_in', ratio)
         resize_int(axis, 'minor_tick_out', ratio)
+        if isinstance(axis, bokeh.models.CategoricalAxis):
+            resize_int(axis, 'separator_line_width', ratio)
+            resize_int(axis, 'separator_line_dash_offset', ratio)
+            resize_int(axis, 'group_text_line_height', ratio)
+            resize_font(axis, 'group_text_font_size', ratio)
+            resize_int(axis, 'subgroup_text_line_height', ratio)
+            resize_font(axis, 'subgroup_text_font_size', ratio)
     if legend:
         resize_font(fig.legend, 'label_text_font_size', ratio)
         resize_int(fig.legend, 'title_standoff', ratio)
@@ -121,3 +128,25 @@ def resize(fig, ratio, legend=True):
         for obj in getattr(fig, place):
             if isinstance(obj, bokeh.models.Title):
                 resize_font(obj, 'text_font_size', ratio)
+            if isinstance(obj, bokeh.models.ColorBar):
+                resize_font(obj, 'title_text_font_size', ratio)
+                resize_int(obj, 'title_text_line_height', ratio)
+                resize_int(obj, 'title_standoff', ratio)
+                resize_font(obj, 'major_label_text_font_size', ratio)
+                resize_int(obj, 'major_label_text_line_height', ratio)
+                resize_int(obj, 'label_standoff', ratio)
+                resize_int(obj, 'major_tick_line_width', ratio)
+                resize_int(obj, 'major_tick_in', ratio)
+                resize_int(obj, 'major_tick_out', ratio)
+                resize_int(obj, 'minor_tick_line_width', ratio)
+                resize_int(obj, 'minor_tick_in', ratio)
+                resize_int(obj, 'minor_tick_out', ratio)
+                resize_int(obj, 'bar_line_width', ratio)
+                resize_int(obj, 'border_line_width', ratio)
+                resize_int(obj, 'margin', ratio)
+                resize_int(obj, 'padding', ratio)
+                if isinstance(obj.height, int):
+                    resize_int(obj, 'height', ratio)
+                if isinstance(obj.width, int):
+                    resize_int(obj, 'width', ratio)
+

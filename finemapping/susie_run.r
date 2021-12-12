@@ -1,7 +1,5 @@
-library(reticulate)
 library(susieR)
-
-np = import("numpy")
+library(rhdf5)
 
 ukb = Sys.getenv("UKB")
 args = commandArgs(trailingOnly=TRUE)
@@ -15,8 +13,8 @@ dir = paste(
     ukb, '/finemapping/susie_results/', phenotype, '/', chrom, '_', start, '_', end,
 sep='')
 
-pheno_residuals = np$load(paste(dir, '/pheno_residuals.npy', sep=''))
-gt_residuals = np$load(paste(dir, '/gt_residuals.npy', sep=''))
+pheno_residuals = as.vector(h5read(paste(dir, '/pheno_residuals.h5', sep=''), 'pheno_residuals'))
+gt_residuals = t(h5read(paste(dir, '/gt_residuals.h5', sep=''), 'gt_residuals'))
 
 coverage=0.9
 fitted = susie(gt_residuals, pheno_residuals, L=10, scaled_prior_variance = 0.005, min_abs_corr = 0, coverage=coverage)

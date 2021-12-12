@@ -81,7 +81,7 @@ print(ethnicities.shape)
 coding_names = {
     'irish': 1002,
     'white_other': 1003,
-    'southeast_asian': 3000,
+    'south_asian': 3000,
     'black': 4,
     'chinese': 5
 }

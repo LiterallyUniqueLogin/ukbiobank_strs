@@ -20,10 +20,8 @@ import bokeh.plotting
 import bokeh.resources
 import colorcet
 import numpy as np
-import numpy.lib.recfunctions
-import numpy.ma
-import numpy.random
 import pandas as pd
+import polars as pl
 
 import graphing_utils
 import python_array_utils as utils
@@ -461,16 +459,53 @@ def load_and_merge_peaks_into_dfs(peaks_fname, my_str_results,  plink_snp_result
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_str_results, plink_snp_results
 
-def full_genome_x_axis(plot, pos_dicts):
+def full_genome_x_axis(plot):
     pre_chr_sums = np.cumsum([0, *chr_lens[:-1]])
     mid_points = [int(num) for num in pre_chr_sums + (chr_lens//2)]
     plot.xaxis.ticker = mid_points
     plot.xaxis.major_label_overrides = {
         mid_points[chrom - 1]: str(chrom) for chrom in range(1, 23)
     }
-    for dict_ in pos_dicts:
-        dict_['plot_pos'] = dict_['pos']
-    for chrom in range(2, 23):
-        for dict_ in pos_dicts:
-            dict_['plot_pos'][dict_['chr'] >= chrom] += chr_lens[chrom - 2]
 
+def full_genome_pandas_df(df):
+    df['plot_pos'] = df['pos']
+    for chrom in range(2, 23):
+        df['plot_pos'][df['chr'] >= chrom] += chr_lens[chrom - 2]
+
+def full_genome_polars_df(df):
+    df['plot_pos'] = df['pos']
+    for chrom in range(2, 23):
+        df = df.with_column(pl
+            .when(pl.col('chr') >= chrom)
+            .then(pl.col('plot_pos') + int(chr_lens[chrom - 2]))
+            .otherwise(pl.col('plot_pos'))
+            .alias('plot_pos')
+        )
+    return df
+
+def export(bokeh_plot, outfname, ext, title=None):
+    if ext != 'html':
+        bokeh_plot.background_fill_color = None
+        bokeh_plot.border_fill_color = None
+        bokeh_plot.toolbar_location = None
+    if ext == 'png':
+        bokeh.io.export_png(bokeh_plot, filename=outfname)
+    elif ext == 'svg':
+        bokeh.io.export_svg(bokeh_plot, filename=outfname)
+    else:
+        assert ext == 'html'
+        html = bokeh.embed.file_html(bokeh_plot, bokeh.resources.CDN, title)
+        with open(outfname, 'w') as outfile:
+                outfile.write(html)
+
+def add_x_navigate(bokeh_plot):
+    wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")
+    bokeh_plot.add_tools(wheel_zoom)
+    bokeh_plot.toolbar.active_scroll = wheel_zoom
+
+    pan = bokeh.models.tools.PanTool(dimensions="width")
+    bokeh_plot.add_tools(pan)
+    bokeh_plot.toolbar.active_drag = pan
+
+    bokeh_plot.add_tools(bokeh.models.tools.ZoomInTool(dimensions='width'))
+    bokeh_plot.add_tools(bokeh.models.tools.ZoomOutTool(dimensions='width'))

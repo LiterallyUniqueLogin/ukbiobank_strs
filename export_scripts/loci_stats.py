@@ -61,14 +61,14 @@ def main():
         bokeh.io.export_png(figure, filename=f'{ukb}/export_scripts/results/{col}_distribution.png')
         bokeh.io.export_svg(figure, filename=f'{ukb}/export_scripts/results/{col}_distribution.svg')
 
-    for thresh in (0.001, 0.004, 0.015, 0.06):
-        print(f'plotting allele count > {thresh} ... ', flush=True)
+    for thresh in (0.0004, 0.002, 0.01, 0.05):
+        print(f'plotting allele count >= {thresh} ... ', flush=True)
         counts = {}
         for str_ in df['allele_dist']:
             split = str_.split(' ')
             count = 0
             for freq in split[1::2]:
-                if float(freq[:-1]) > thresh:
+                if float(freq[:-1]) >= thresh:
                     count += 1
             if count not in counts:
                 counts[count] = 0
@@ -84,8 +84,8 @@ def main():
 
         figure = bokeh.plotting.figure(
             title='Histogram of STR loci by number of non-rare alleles',
-            x_axis_label=f'Num. alleles with frequency > {thresh*100}%',
-            y_axis_label='Num. STRs analyzed',
+            x_axis_label=f'Number alleles with frequency >= {thresh*100}%',
+            y_axis_label='Number of STR loci',
             width=600,
             height=600
         )
@@ -96,13 +96,39 @@ def main():
         figure.background_fill_color = None
         figure.border_fill_color = None
         figure.grid.grid_line_color = None
+        if 1 in xs:
+            idx = xs == 1
+            figure.quad(
+                top=ys[idx],
+                bottom=0,
+                left=0.5,
+                right=1.5,
+                color='#888888',
+                legend_label='monoallelic'
+            )
+            xs = xs[~idx]
+            ys = ys[~idx]
+        if 2 in xs:
+            idx = xs == 2
+            figure.quad(
+                top=ys[idx],
+                bottom=0,
+                left=1.5,
+                right=2.5,
+                color='#E0D448',
+                legend_label='biallelic'
+            )
+            xs = xs[~idx]
+            ys = ys[~idx]
         figure.quad(
             top=ys,
             bottom=0,
             left=xs-0.5,
             right=xs+0.5,
-            color='#d2691e'
+            color='#86CCC3',
+            legend_label='multiallelic'
         )
+        figure.legend.label_text_font_size = '16px'
         bokeh.io.export_png(figure, filename=f'{ukb}/export_scripts/results/allele_count_thresh_{thresh}.png')
         bokeh.io.export_svg(figure, filename=f'{ukb}/export_scripts/results/allele_count_thresh_{thresh}.svg')
 

@@ -43,7 +43,7 @@ rule decompress_field:
     shell:
         "main_dataset/decompress_trait.py {wildcards.field_name} {wildcards.field_id} "
 
-other_ethnicities=['black', 'white_other', 'irish', 'southeast_asian', 'chinese']
+other_ethnicities=['black', 'white_other', 'irish', 'south_asian', 'chinese']
 
 rule ethnic_sample_lists:
     input:
@@ -183,7 +183,7 @@ rule filter_samples_for_phenotype:
         remove_files=glob.glob("sample_qc/common_filters/remove/*sample"),
         pheno_file=rules.load_phenotype.output.phenotype
     output:
-        samples=temporary('sample_qc/runs/{ethnicity}/{phenotype}/combined.sample'),
+        samples=temporary('sample_qc/runs/{ethnicity}/{phenotype,(?!no_phenotype)}/combined.sample'),
         readme='sample_qc/runs/{ethnicity}/{phenotype}/README.txt'
     resources:
         time='00:05:00',
@@ -1237,16 +1237,16 @@ rule finemap_write_corrs_and_run:
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
-def all_finemap_dirs(phenotype):
+def all_finemap_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
     return [
-        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}'
+        f'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{stop}/finemap_output.snp'
         for chrom, start, stop in generated_regions(phenotype)
     ]
 
 rule run_finemap_phenotype:
     input:
-        expand('{dir_}/finemap_output.snp', dir_=all_finemap_dirs, phenotype='{phenotype}')
+        finemap_outputs = lambda wildcards: all_finemap_outputs(wildcards.phenotype)
     output:
         'finemapping/finemap_results/{phenotype}/all_signals_done'
     resources:
@@ -1256,7 +1256,7 @@ rule run_finemap_phenotype:
 
 rule summarize_finemap_output:
     input:
-        finemap_dirs = lambda wildcards: [f'{dir_}/finemap_output.snp' for dir_ in all_finemap_dirs(wildcards.phenotype)]
+        finemap_outputs = lambda wildcards: all_finemap_outputs(wildcards.phenotype)
     output:
         'finemapping/finemap_results/{phenotype}/summary/summary.txt',
         'finemapping/finemap_results/{phenotype}/summary/best_STR_contribs.tab',
@@ -1306,49 +1306,60 @@ rule manhattan_finemap:
         shell(cmd)
 
 #-------------------SuSiE----------------
-def susie_mem(wildcards, attempt):
-    if attempt == 1:
-        return 30
-    else:
-        return 128
-
 def susie_load_time(wildcards, attempt):
     if attempt == 1:
         return '00:30:00'
     else:
-        return '12:00:00'
+        return '30:00:00'
 
 rule susie_load_gts:
     input:
+        rules.load_shared_covars.output.shared_covars,
+        expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='{phenotype}'),
+        expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         'association/results/{phenotype}/plink_snp/results.tab',
         'association/results/{phenotype}/my_str/results.tab',
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     output:
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
-        temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy'),
-        temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy')
+        readme=protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
+        pheno=temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.h5'),
+        gt=temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.h5'),
+        outcols=protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/colnames.txt')
     resources:
         time = susie_load_time,
-        mem_gb = susie_mem,
-        attempt = lambda wildcards, attempt: attempt
+        attempt = lambda wildcards, attempt: attempt,
+        mem_gb = 4
     shell:
         'finemapping/susie_load_gts.py '
+        '{output.readme} '
+        '{output.pheno} '
+        '{output.gt} '
+        '{output.outcols} '
         f'{str_imputation_run_name} '
-        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
         '{wildcards.end} '
+
+def susie_run_mem(wildcards, attempt):
+    if attempt == 1:
+        return 30
+    else:
+        return 128
 
 def susie_run_time(wildcards, attempt):
     if attempt == 1:
         return '00:45:00'
     else:
-        return '12:00:00'
+        return '20:00:00'
 
 rule susie_run:
     input:
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt',
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.npy',
-        'finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.npy',
+        rules.susie_load_gts.output.readme,
+        rules.susie_load_gts.output.pheno,
+        rules.susie_load_gts.output.gt,
+        rules.susie_load_gts.output.outcols, # add this to force snakemake to rerun rules that otherwise failed
     output:
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/alpha.tab'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf.tab'),
@@ -1359,34 +1370,28 @@ rule susie_run:
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lfsr.tab'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/requested_coverage.txt'),
         #also all the csN.txt files, just an unknown number of them
-        #consuming jobs should consume alpha.tab
+        #downstream jobs should consume alpha.tab
     resources:
         time = susie_run_time,
-        mem_gb = susie_mem,
+        mem_gb = susie_run_mem,
         attempt = lambda wildcards, attempt: attempt
     conda:
-        'envs/ukb_susier.env.yml'
+        'envs/ukb_r.env.yml'
     shell:
         'Rscript finemapping/susie_run.r '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
-def collect_susie_output_all_regions(wildcards):
-    assert not phenotypes.is_binary(wildcards.phenotype)
-    phenotype = wildcards.phenotype
-    files = []
-    # make sure we've loaded all input variants for all regions
-    target_files = []
-    for chrom, start, stop in generated_regions(phenotype):
-        target_files.append(
-            f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{stop}/alpha.tab'
-        )
-
-    return target_files
+def all_susie_outputs(phenotype):
+    assert not phenotypes.is_binary(phenotype)
+    return [
+        f'finemapping/susie_results/{phenotype}/{chrom}_{start}_{stop}/alpha.tab'
+        for chrom, start, stop in generated_regions(phenotype)
+    ]
 
 rule run_susie_phenotype:
     input:
-        collect_susie_output_all_regions
+        susie_outputs = lambda wildcards: all_susie_outputs(wildcards.phenotype)
     output:
         'finemapping/susie_results/{phenotype}/all_signals_done'
     resources:
@@ -1709,14 +1714,12 @@ rule summarize_loci:
     input:
         [f'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab' for chrom in range(1, 23)]
     output:
-        'export_scripts/results/allele_count_thresh_0.001.png',
-        'export_scripts/results/allele_count_thresh_0.001.svg',
-        'export_scripts/results/allele_count_thresh_0.004.png',
-        'export_scripts/results/allele_count_thresh_0.004.svg',
-        'export_scripts/results/allele_count_thresh_0.015.png',
-        'export_scripts/results/allele_count_thresh_0.015.svg',
-        'export_scripts/results/allele_count_thresh_0.06.png',
-        'export_scripts/results/allele_count_thresh_0.06.svg'
+        expand('export_scripts/results/allele_count_thresh_{thresh}.{ext}',
+                thresh={0.0004, 0.002, 0.01, 0.05},
+                ext={'svg', 'png'}),
+        expand('export_scripts/results/entropy_distribution.{ext}', ext={'svg', 'png'}),
+        expand('export_scripts/results/multiallelicness_distribution.{ext}', ext={'svg', 'png'}),
+        expand('export_scripts/results/heterozygosity_distribution.{ext}', ext={'svg', 'png'})
     resources:
         time='00:30:00',
         mem_gb=5
@@ -1736,6 +1739,14 @@ rule create_phenotypes_table:
         time='00:02:00'
     shell:
         'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
+
+#TODO
+rule create_ethnic_phenotypes_table:
+    input:
+        'workflow/phenotypes.py',
+        expand(rules.filter_samples_for_ethnicity.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity=other_ethnicities),
+        expand(rules.filter_samples_for_phenotype.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity=other_ethnicities),
+        expand(rules.subset_samples_for_phenotype.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity=other_ethnicities),
 
 rule concat_summary_tables:
     input:
@@ -1794,7 +1805,6 @@ rule validate_STRs_parent:
             fp.write(params.spot_test_json_dict)
             fp.write('\n')
             cmd = 'post_finemapping/validate_hits.py {output.strs} {output.readme} {input.pos_to_snpstr_pos} {input.strs} {input.readme} {fp.name}'
-            print(cmd)
             shell(cmd)
 
 use rule validate_STRs_parent as validate_putatively_causal_STRs with:
@@ -1812,12 +1822,12 @@ checkpoint exonic_finemapped_strs:
         'workflow/phenotypes.py',
         tables=expand(rules.summary_table.output.table, phenotype=phenotypes.phenotypes_in_use)
     output:
-        table='export_scripts/results/exonic_finemapped_STRs.tab',
-        readme='export_scripts/results/exonic_finemapped_STRs_README.txt'
+        table='post_finemapping/results/exonic_finemapped_STRs.tab',
+        readme='post_finemapping/results/exonic_finemapped_STRs_README.txt'
     resources:
         time = '00:10:00'
     run:
-        cmd = 'export_scripts/exonic_finemapped_strs.py {output.table} {output.readme} '
+        cmd = 'post_finemapping/exonic_finemapped_strs.py {output.table} {output.readme} '
         cmd += "'{" + json.dumps({phen: table for (phen, table) in zip(phenotypes.phenotypes_in_use, input.tables)}) + "}'"
         shell(cmd)
 
@@ -1851,10 +1861,8 @@ rule peak_figs:
         'workflow/phenotypes.py',
         pheno_expand('signals/peaks/PHENO_250000_5e-8.tab')
     output:
-        'export_scripts/results/peaks_by_pheno.svg',
-        'export_scripts/results/peaks_by_pheno.png',
-        'export_scripts/results/p_val_comp_jitter_scatter.png',
-        'export_scripts/results/p_val_comp_jitter_scatter.svg'
+        barplot=expand('export_scripts/results/peaks_by_pheno.{ext}', ext={'png', 'svg'}),
+        heatmap=expand('export_scripts/results/peak_p_val_heatmap.{ext}', ext={'png', 'svg'})
     resources:
         time='01:00:00',
         mem_gb=5
@@ -2037,10 +2045,8 @@ inputs_for_export_combined = [
         'export_scripts/results/validate_our_code.png',
         'export_scripts/results/panukbb_scatter.png',
         'export_scripts/results/panukbb_scatter.svg',
-        'export_scripts/results/peaks_by_pheno.svg',
-        'export_scripts/results/peaks_by_pheno.png',
-        'export_scripts/results/p_val_comp_jitter_scatter.svg',
-        'export_scripts/results/p_val_comp_jitter_scatter.png',
+        *rules.peak_figs.output.barplot,
+        *rules.peak_figs.output.heatmap,
         'export_scripts/results/allele_count_thresh_0.001.png',
         'export_scripts/results/allele_count_thresh_0.001.svg',
         'export_scripts/results/allele_count_thresh_0.004.png',

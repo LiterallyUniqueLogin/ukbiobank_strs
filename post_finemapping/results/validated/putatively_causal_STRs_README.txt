@@ -10,10 +10,10 @@ direction_of_association - "+" if an increase in STR length causes an increase i
 pcausal - FINEMAP's posterior probability of causality
 relation_to_gene - if this STR is transcribed, for each transcript what is the GENCODE gene type of that transcript (i.e. protein coding, lncRNA, etc.) and what is the GENCODE feature type of the region the STR is in (i.e. intron, exon, etc.)
 transcribed - each transcript this STR is in (if any), including the transcript's GENCODE gene type (i.e. protein coding, lncRNA, etc.) and the transcript's transcript support level (1-5 or missing)
-other_ethnic_association_ps - association p-values for the other ethnicities in the order black,southeast_asian,chinese,irish,white_other
-other_ethnic_effect_directions - direction of association (+/-) for the other ethnicities in the order black,southeast_asian,chinese,irish,white_other (NaN if that ethnicity's p > 0.05)
+other_ethnic_association_ps - association p-values for the other ethnicities in the order black,south_asian,chinese,irish,white_other
+other_ethnic_effect_directions - direction of association (+/-) for the other ethnicities in the order black,south_asian,chinese,irish,white_other (NaN if that ethnicity's p > 0.05)
 black_population_allele_frequencies - frequencies of each allele (by dosage) among the ethnicity's tested population
-southeast_asian_population_allele_frequencies - frequencies of each allele (by dosage) among the ethnicity's tested population
+south_asian_population_allele_frequencies - frequencies of each allele (by dosage) among the ethnicity's tested population
 chinese_population_allele_frequencies - frequencies of each allele (by dosage) among the ethnicity's tested population
 irish_population_allele_frequencies - frequencies of each allele (by dosage) among the ethnicity's tested population
 white_other_population_allele_frequencies - frequencies of each allele (by dosage) among the ethnicity's tested population

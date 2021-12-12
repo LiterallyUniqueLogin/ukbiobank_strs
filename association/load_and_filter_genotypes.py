@@ -8,7 +8,7 @@ and then return yield them
 
 import os
 import os.path
-from typing import Optional
+from typing import Optional, Set, Tuple
 import sys
 
 import bgen_reader
@@ -66,7 +66,9 @@ def round_vals(d, precision):
 
 def load_strs(imputation_run_name: str,
               region: str,
-              samples: np.ndarray):
+              samples: np.ndarray,
+              details: bool = True,
+              var_subset: Optional[Set[int]] = None):
     """
     Iterate over a region returning genotypes at STR loci.
 
@@ -118,21 +120,22 @@ def load_strs(imputation_run_name: str,
                 f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
 
-    yield (
-        'motif',
-        'period',
-        'ref_len',
-        'total_per_allele_dosages',
-        'total_hardcall_alleles',
-        'total_hardcall_genotypes',
-        'subset_total_per_allele_dosages',
-        'subset_total_hardcall_alleles',
-        'subset_total_hardcall_genotypes',
-        'subset_het',
-        'subset_entropy',
-        'subset_HWEP',
-        'subset_allele_dosage_r2'
-    )
+    if details:
+        yield (
+            'motif',
+            'period',
+            'ref_len',
+            'total_per_allele_dosages',
+            'total_hardcall_alleles',
+            'total_hardcall_genotypes',
+            'subset_total_per_allele_dosages',
+            'subset_total_hardcall_alleles',
+            'subset_total_hardcall_genotypes',
+            'subset_het',
+            'subset_entropy',
+            'subset_HWEP',
+            'subset_allele_dosage_r2'
+        )
     for record in vcf(region):
         if record.POS < region_start:
             # records that overlap this region but started before this region
@@ -143,20 +146,24 @@ def load_strs(imputation_run_name: str,
             # properly, this identifies and removes them
             continue
 
+        if var_subset and record.POS not in var_subset:
+            continue
+
         trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
 
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
         len_alleles = [round(allele_len, allele_len_precision) for allele_len in len_alleles]
 
-        total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
-        for p in (1, 2):
-            ap = trrecord.format[f'AP{p}']
-            total_dosages[len_alleles[0]] += np.sum(np.maximum(0, 1 - np.sum(ap, axis=1)))
-            for i in range(ap.shape[1]):
-                total_dosages[len_alleles[i+1]] += np.sum(ap[:, i])
+        if details:
+            total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
+            for p in (1, 2):
+                ap = trrecord.format[f'AP{p}']
+                total_dosages[len_alleles[0]] += np.sum(np.maximum(0, 1 - np.sum(ap, axis=1)))
+                for i in range(ap.shape[1]):
+                    total_dosages[len_alleles[i+1]] += np.sum(ap[:, i])
 
-        total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts())
-        total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts())
+            total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts())
+            total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts())
 
         if isinstance(samples, slice):
             assert samples == slice(None)
@@ -167,6 +174,7 @@ def load_strs(imputation_run_name: str,
         subset_dosage_gts = {
             _len: np.zeros((n_subset_samples, 2)) for _len in np.unique(len_alleles)
         }
+
         for p in (1, 2):
             # todo genotype dosages
             ap = trrecord.format[f'AP{p}']
@@ -179,49 +187,52 @@ def load_strs(imputation_run_name: str,
             _len: np.sum(subset_dosage_gts[_len]) for _len in subset_dosage_gts
         }
 
-        subset_total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts(samples))
-        subset_total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts(samples))
-        subset_hardcall_allele_freqs = clean_len_alleles(trrecord.GetAlleleFreqs(samples))
+        if details:
+            subset_total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts(samples))
+            subset_total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts(samples))
+            subset_hardcall_allele_freqs = clean_len_alleles(trrecord.GetAlleleFreqs(samples))
 
-        subset_het = utils.GetHeterozygosity(subset_hardcall_allele_freqs)
-        subset_entropy = utils.GetEntropy(subset_hardcall_allele_freqs)
-        subset_hwep = utils.GetHardyWeinbergBinomialTest(
-            subset_hardcall_allele_freqs,
-            subset_total_hardcall_genotypes
-        )
+            subset_het = utils.GetHeterozygosity(subset_hardcall_allele_freqs)
+            subset_entropy = utils.GetEntropy(subset_hardcall_allele_freqs)
+            subset_hwep = utils.GetHardyWeinbergBinomialTest(
+                subset_hardcall_allele_freqs,
+                subset_total_hardcall_genotypes
+            )
 
-        # https://www.cell.com/ajhg/fulltext/S0002-9297(09)00012-3#app1
-        # Browning, Brian L., and Sharon R. Browning. "A unified approach to genotype imputation and haplotype-phase inference for large data sets of trios and unrelated individuals." The American Journal of Human Genetics 84.2 (2009): 210-223.
-        # appendix 1
-        subset_allele_dosage_r2 = {}
+            # https://www.cell.com/ajhg/fulltext/S0002-9297(09)00012-3#app1
+            # Browning, Brian L., and Sharon R. Browning. "A unified approach to genotype imputation and haplotype-phase inference for large data sets of trios and unrelated individuals." The American Journal of Human Genetics 84.2 (2009): 210-223.
+            # appendix 1
+            subset_allele_dosage_r2 = {}
 
-        subset_hardcalls = np.around(trrecord.GetLengthGenotypes()[samples, :-1], allele_len_precision)
-        for length in len_alleles:
-            # calculate allele dosage r**2 for this length
-            if length in subset_allele_dosage_r2:
-                continue
+            subset_hardcalls = np.around(trrecord.GetLengthGenotypes()[samples, :-1], allele_len_precision)
+            for length in len_alleles:
+                # calculate allele dosage r**2 for this length
+                if length in subset_allele_dosage_r2:
+                    continue
 
-            calls = subset_hardcalls == length
+                calls = subset_hardcalls == length
 
-            subset_allele_dosage_r2[length] = np.corrcoef(
-                calls.reshape(-1), subset_dosage_gts[length].reshape(-1)
-            )[0,1]**2
+                subset_allele_dosage_r2[length] = np.corrcoef(
+                    calls.reshape(-1), subset_dosage_gts[length].reshape(-1)
+                )[0,1]**2
 
-        locus_details = (
-            trrecord.motif,
-            str(len(trrecord.motif)),
-            str(round(trrecord.ref_allele_length, allele_len_precision)),
-            dict_str(round_vals(total_dosages, dosage_precision)),
-            dict_str(total_hardcall_alleles),
-            dict_str(total_hardcall_genotypes),
-            dict_str(round_vals(subset_total_dosages, dosage_precision)),
-            dict_str(subset_total_hardcall_alleles),
-            dict_str(subset_total_hardcall_genotypes),
-            str(subset_het),
-            str(subset_entropy),
-            str(subset_hwep),
-            dict_str(round_vals(subset_allele_dosage_r2, r2_precision))
-        )
+            locus_details = (
+                trrecord.motif,
+                str(len(trrecord.motif)),
+                str(round(trrecord.ref_allele_length, allele_len_precision)),
+                dict_str(round_vals(total_dosages, dosage_precision)),
+                dict_str(total_hardcall_alleles),
+                dict_str(total_hardcall_genotypes),
+                dict_str(round_vals(subset_total_dosages, dosage_precision)),
+                dict_str(subset_total_hardcall_alleles),
+                dict_str(subset_total_hardcall_genotypes),
+                str(subset_het),
+                str(subset_entropy),
+                str(subset_hwep),
+                dict_str(round_vals(subset_allele_dosage_r2, r2_precision))
+            )
+        else:
+            locus_details = None
 
         mac = list(subset_total_dosages.values())
         mac.pop(np.argmax(mac))
@@ -316,7 +327,9 @@ def filtered_microarray_snps(region):
 def load_imputed_snps(region: str,
                       samples: np.ndarray,
                       info_thresh: Optional[float] = None,
-                      apply_filter: bool = True):
+                      apply_filter: bool = True,
+                      details: bool = True,
+                      var_subset: Optional[Set[Tuple[int, str, str]]] = None): # pos, ref, alt
     """
     Iterate over a region returning genotypes at SNP loci.
 
@@ -380,14 +393,15 @@ def load_imputed_snps(region: str,
                                  verbose=False,
                                  allow_complex=True)
 
-    yield (
-        'info',
-        "total_per_allele_dosages",
-        'total_hardcalls',
-        'subset_total_per_allele_dosages',
-        'subset_total_hardcalls',
-        'subset_HWEP'
-    )
+    if details:
+        yield (
+            'info',
+            "total_per_allele_dosages",
+            'total_hardcalls',
+            'subset_total_per_allele_dosages',
+            'subset_total_hardcalls',
+            'subset_HWEP'
+        )
 
     with open(mfi_fname) as mfi:
         for variant_num, pos in enumerate(bgen.positions):
@@ -401,8 +415,12 @@ def load_imputed_snps(region: str,
             if pos > end:
                 break
 
-            info_str = mfi_line.split()[-1]
             alleles = np.array(bgen.allele_ids[variant_num].split(','))
+            if var_subset and (pos, alleles[0], alleles[1]) not in var_subset:
+                continue
+
+            info_str = mfi_line.split()[-1]
+
             if info_str == 'NA':
                 yield (
                     None,
@@ -437,31 +455,34 @@ def load_imputed_snps(region: str,
             subset_total_ref_dosage = \
                     2*subset_dosages.shape[0] - subset_total_alt_dosage
 
-            hardcalls = probs.argmax(axis=1)
-            n_hom_ref = np.sum(hardcalls == 0)
-            n_het = np.sum(hardcalls == 1)
-            n_hom_alt = np.sum(hardcalls == 2)
+            if details:
+                hardcalls = probs.argmax(axis=1)
+                n_hom_ref = np.sum(hardcalls == 0)
+                n_het = np.sum(hardcalls == 1)
+                n_hom_alt = np.sum(hardcalls == 2)
 
-            subset_hardcalls = hardcalls[samples]
-            subset_n_hom_ref = np.sum(subset_hardcalls == 0)
-            subset_n_het = np.sum(subset_hardcalls == 1)
-            subset_n_hom_alt = np.sum(subset_hardcalls == 2)
+                subset_hardcalls = hardcalls[samples]
+                subset_n_hom_ref = np.sum(subset_hardcalls == 0)
+                subset_n_het = np.sum(subset_hardcalls == 1)
+                subset_n_hom_alt = np.sum(subset_hardcalls == 2)
 
-            subset_n_ref_alleles = 2*subset_n_hom_ref + subset_n_het
-            subset_frac_ref_alleles = (subset_n_ref_alleles)/(2*subset_hardcalls.shape[0])
-            subset_exp_hom_frac = subset_frac_ref_alleles**2 + (1-subset_frac_ref_alleles)**2
-            subset_hwep = scipy.stats.binom_test(subset_n_hom_ref + subset_n_hom_alt,
-                                                 n=subset_hardcalls.shape[0],
-                                                 p=subset_exp_hom_frac)
+                subset_n_ref_alleles = 2*subset_n_hom_ref + subset_n_het
+                subset_frac_ref_alleles = (subset_n_ref_alleles)/(2*subset_hardcalls.shape[0])
+                subset_exp_hom_frac = subset_frac_ref_alleles**2 + (1-subset_frac_ref_alleles)**2
+                subset_hwep = scipy.stats.binom_test(subset_n_hom_ref + subset_n_hom_alt,
+                                                     n=subset_hardcalls.shape[0],
+                                                     p=subset_exp_hom_frac)
 
-            locus_details = (
-                info_str,
-                "{" f"'ref': {total_ref_dosage}, 'alt': {total_alt_dosage}" "}",
-                '{' f"'hom_ref': {n_hom_ref}, 'het': {n_het}, 'hom_alt': {n_hom_alt}" '}',
-                '{' f"'ref': {subset_total_ref_dosage}, 'alt': {subset_total_alt_dosage}" '}',
-                '{' f"'hom_ref': {subset_n_hom_ref}, 'het': {subset_n_het}, 'hom_alt': {subset_n_hom_alt}" '}',
-                f'{subset_hwep}'
-            )
+                locus_details = (
+                    info_str,
+                    "{" f"'ref': {total_ref_dosage}, 'alt': {total_alt_dosage}" "}",
+                    '{' f"'hom_ref': {n_hom_ref}, 'het': {n_het}, 'hom_alt': {n_hom_alt}" '}',
+                    '{' f"'ref': {subset_total_ref_dosage}, 'alt': {subset_total_alt_dosage}" '}',
+                    '{' f"'hom_ref': {subset_n_hom_ref}, 'het': {subset_n_het}, 'hom_alt': {subset_n_hom_alt}" '}',
+                    f'{subset_hwep}'
+                )
+            else:
+                locus_details = None
 
             if (subset_total_alt_dosage < 20 or subset_total_ref_dosage < 20) and apply_filter:
                 yield (
