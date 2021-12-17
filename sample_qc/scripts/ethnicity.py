@@ -35,7 +35,7 @@ print(ethnicities.shape)
 for col in response_cols:
     ethnicities[ethnicities[col] == -3, col] = None
     ethnicities[ethnicities[col].is_in([4, 4001, 4002, 4003]), col] = 4 # African
-    ethnicities[ethnicities[col].is_in([3001, 3002, 3003]), col] = 3000 # SE Asian
+    ethnicities[ethnicities[col].is_in([3001, 3002, 3003]), col] = 3000 # S Asian
 
 # filter people who responded inconsistently
 for col1 in response_cols:

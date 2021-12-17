@@ -2,7 +2,6 @@
 
 import argparse
 import datetime
-import math
 import os
 import subprocess as sp
 import time
@@ -22,7 +21,6 @@ def get_str_dosages(str_dosages_dict):
 
 def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols_fname, imputation_run_name, phenotype, chrom, start_pos, end_pos):
     filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
-    outdir = f'{ukb}/finemapping/susie_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
 
     p_cutoff = 5e-4
    
@@ -37,6 +35,7 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
             f'(Filter set at {filter_set_fname})\n'
         )
 
+    print('Loading samples and phenotypes ... ', flush=True)
     with open(f'{ukb}/sample_qc/runs/white_brits/{phenotype}/combined_unrelated.sample') as samples_file:
         samples = np.array([line.strip() for line in samples_file][1:], dtype=int).reshape(-1, 1)
 
@@ -135,11 +134,12 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
             'gt_residuals',
             (pheno_covars.shape[0], len(strs_to_include) + len(snps_to_include)),
             dtype='f',
-            chunks=(5, len(strs_to_include) + len(snps_to_include))
+            chunks=(pheno_covars.shape[0], 5)
         )
 
-        print('loading and regressing STRs... ', flush=True)
         region = f'{chrom}:{start_pos}-{end_pos}'
+
+        print('loading and regressing STRs... ', flush=True)
         str_itr = lfg.load_strs(
             imputation_run_name,
             region,
@@ -148,20 +148,43 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
             var_subset=strs_to_include
         )
 
+        n_temp = 10
+        gt_temp = np.full((covars.shape[0], n_temp), np.nan)
+        stored_indexes = []
+
         start = time.time()
         for str_count, (str_dosages_dict, _, _, str_pos, str_locus_filtered, _) in enumerate(str_itr):
             str_count += 1
-            print(f'loading STR {str_count} ... ', flush=True)
+            print(f'loading STR {str_count}, time/snp: {(time.time() - start)/str_count:.2}s ... ', flush=True)
             str_name = f'STR_{str_pos}'
             if str_locus_filtered or str_name not in sorted_var_names:
                 print(str_name, strs_to_include)
                 assert False
             idx = sorted_var_names.index(str_name)
+            stored_indexes.append(idx)
             dosages = get_str_dosages(str_dosages_dict)
-            gt_residuals_dset[:, idx] = dosages - sklearn.linear_model.LinearRegression().fit(covars, dosages).predict(covars)
 
+            gt_temp[:, (str_count - 1) % n_temp] = dosages
             assert not var_inclusion[str_name]
             var_inclusion[str_name] = True
+            if str_count % n_temp == 0:
+                assert len(stored_indexes) == n_temp
+                assert not np.any(np.isnan(gt_temp))
+                residuals = gt_temp - sklearn.linear_model.LinearRegression().fit(covars, gt_temp).predict(covars)
+                for count, idx in enumerate(stored_indexes):
+                    gt_residuals_dset[:, idx] = residuals[:, count]
+                gt_temp = np.full((covars.shape[0], n_temp), np.nan)
+                stored_indexes = []
+
+        if len(stored_indexes) > 0:
+            assert not np.any(np.isnan(gt_temp[:, :len(stored_indexes)]))
+            assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
+            gt_temp = gt_temp[:, :len(stored_indexes)]
+            residuals = gt_temp - sklearn.linear_model.LinearRegression().fit(covars, gt_temp).predict(covars)
+            for count, idx in enumerate(stored_indexes):
+                gt_residuals_dset[:, idx] = residuals[:, count]
+        gt_temp = np.full((covars.shape[0], n_temp), np.nan)
+        stored_indexes = []
 
         print(f"Time: {time.time() - start}s")
         if sum(var_inclusion.values()) != len(strs_to_include):
@@ -177,20 +200,41 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
             details=False,
             var_subset=snps_to_include
         )
-        start = time.time()
         for snp_count, (snp_dosages, alleles, _, snp_pos, snp_filtered, _) in enumerate(snp_itr):
             snp_count += 1
-            if snp_count % 10 == 0:
-                print(f'loading SNP {snp_count} ... ', flush=True)
+            if snp_count % n_temp == 0:
+                if snp_count > 3:
+                    print(f'loading SNP {snp_count}, time/snp: {(time.time() - start)/snp_count:.2}s ... ', flush=True)
+                else:
+                    print(f'loading SNP {snp_count} ... ', flush=True)
+            if snp_count == 3:
+                start = time.time()
             snp_name = f'SNP_{snp_pos}_{alleles[0]}_{alleles[1]}'
             if snp_filtered or snp_name not in sorted_var_names:
                 print(snp_name, snps_to_include)
                 assert False
             idx = sorted_var_names.index(snp_name)
+            stored_indexes.append(idx)
             dosages = snp_dosages[:, 1] + 2*snp_dosages[:, 2]
-            gt_residuals_dset[:, idx] = dosages - sklearn.linear_model.LinearRegression().fit(covars, dosages).predict(covars)
+            gt_temp[:, (snp_count - 1) % n_temp] = dosages
             assert not var_inclusion[snp_name]
             var_inclusion[snp_name] = True
+            if snp_count % n_temp == 0:
+                assert len(stored_indexes) == n_temp
+                assert not np.any(np.isnan(gt_temp))
+                residuals = gt_temp - sklearn.linear_model.LinearRegression().fit(covars, gt_temp).predict(covars)
+                for count, idx in enumerate(stored_indexes):
+                    gt_residuals_dset[:, idx] = residuals[:, count]
+                gt_temp = np.full((covars.shape[0], n_temp), np.nan)
+                stored_indexes = []
+
+        if len(stored_indexes) > 0:
+            assert not np.any(np.isnan(gt_temp[:, :len(stored_indexes)]))
+            assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
+            gt_temp = gt_temp[:, :len(stored_indexes)]
+            residuals = gt_temp - sklearn.linear_model.LinearRegression().fit(covars, gt_temp).predict(covars)
+            for count, idx in enumerate(stored_indexes):
+                gt_residuals_dset[:, idx] = residuals[:, count]
 
         print(f"Time: {time.time() - start}s")
         if sum(var_inclusion.values()) != len(var_inclusion):

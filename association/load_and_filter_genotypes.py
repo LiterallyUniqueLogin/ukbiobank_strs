@@ -447,8 +447,9 @@ def load_imputed_snps(region: str,
             assert not np.any(missing)
 
             dosages = probs[:, 1] + 2*probs[:, 2]
-            total_alt_dosage = np.sum(dosages)
-            total_ref_dosage = 2*dosages.shape[0] - total_alt_dosage
+            if details:
+                total_alt_dosage = np.sum(dosages)
+                total_ref_dosage = 2*dosages.shape[0] - total_alt_dosage
 
             subset_dosages = dosages[samples]
             subset_total_alt_dosage = np.sum(subset_dosages)

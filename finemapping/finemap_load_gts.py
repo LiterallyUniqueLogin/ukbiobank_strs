@@ -34,7 +34,7 @@ def load_gts(workdir, outdir, phenotype, chrom, start_pos, end_pos, str_imputati
 
     assert np.all((imp_snp_samples == str_samples)[(str_samples > 0) & (imp_snp_samples > 0)])
 
-    with open(f'{ukb}/sample_qc/runs/{phenotype}/combined_unrelated.sample') as samples_file:
+    with open(f'{ukb}/sample_qc/runs/white_brits/{phenotype}/combined_unrelated.sample') as samples_file:
         samples = np.array([line.strip() for line in samples_file][1:], dtype=int).reshape(-1, 1)
 
     samples_indicator = np.concatenate((samples, samples), axis=1)

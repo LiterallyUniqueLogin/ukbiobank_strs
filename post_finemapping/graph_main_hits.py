@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import datetime
-import json
 
 import bokeh.io
 import bokeh.models
@@ -11,7 +9,6 @@ import bokeh.plotting
 import numpy as np
 import polars as pl
 
-import graphing_utils
 import region_plots
 import phenotypes
 
@@ -19,7 +16,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outfile')
     parser.add_argument('ext')
-    parser.add_argument('hits_table') #cols chrom, start_pos, phenotype, association_p_value
+    #cols chrom, start_pos, phenotype, association_p_value, multiallelicness, repeat_unit, pcausal,
+    #relation_to_gene, other_ethnic_effect_directions
+    parser.add_argument('hits_table')
     parser.add_argument('snpstr_correspondence_table') #cols chrom, pos, end_pos, snpstr_pos
     #parser.add_argument('per_pheno_summary_tables', help='json dict from pheno to summary table')
     #parser.add_argument('per_pheno_results', help='json dict from pheno to results file')
@@ -118,6 +117,7 @@ def main():
         color='grey',
         #fill_color=None,
         source=bokeh.models.ColumnDataSource({col: multi_assocs[col] for col in multi_assocs.columns}),
+        legend_label = 'Same signal multiple phenos'
     )
 
     # x axis
@@ -166,9 +166,10 @@ def main():
         line_width=1,
         color=df['color']
     )
+    circles = []
     for color, legend in (('blue', 'serum biomarker'), ('red', 'haematology phenotype')):
         color_df = df.filter(pl.col('color') == color)
-        circles = results_plot.circle(
+        circles.append(results_plot.circle(
             'plot_pos',
             'association_p_value',
             size='size',
@@ -177,16 +178,17 @@ def main():
             line_width=1,
             source=bokeh.models.ColumnDataSource({col: color_df[col] for col in color_df.columns}),
             legend_label = legend
-        )
+        ))
 
 
     if args.ext == 'html':
-        hover_tool = bokeh.models.tools.HoverTool(renderers = [circles])
+        hover_tool = bokeh.models.tools.HoverTool(renderers = circles)
         hover_tool.tooltips = [
             ('phenotype', '@phenotype'),
             ('chrom', '@chr'),
             ('pos', '@pos'),
             ('repeat_unit', '@repeat_unit'),
+            ('effect_direction', '@direction_of_association'),
             ('-log10(p_val)', '@association_p_value'),
             ('p_causal', '@pcausal'),
             ('relation_to_gene', '@relation_to_gene'),

@@ -27,9 +27,11 @@ cluster:
     --mem={resources.mem_gb}G
     --time=$(if [ "$PARTITION" != debug ] ; then echo {resources.time} ; else echo "00:29:30" ; fi)
     --parsable
+    # $(if (({resources.long} != 0)) ; then echo '--qos shared-oneweek' ; fi)
 default-resources:
   - threads=1
   - mem_gb=2
+    # - long=0
   - attempt=0 # this doesn't correspond to the retry attempt. That needs to be manually set in the snakefile
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
 restart-times: 1

@@ -8,6 +8,8 @@ phenotype = args[1]
 chrom = args[2]
 start = args[3]
 end = args[4]
+L = strtoi(args[5])
+max_iter = strtoi(args[6])
 
 dir = paste(
     ukb, '/finemapping/susie_results/', phenotype, '/', chrom, '_', start, '_', end,
@@ -17,7 +19,7 @@ pheno_residuals = as.vector(h5read(paste(dir, '/pheno_residuals.h5', sep=''), 'p
 gt_residuals = t(h5read(paste(dir, '/gt_residuals.h5', sep=''), 'gt_residuals'))
 
 coverage=0.9
-fitted = susie(gt_residuals, pheno_residuals, L=10, scaled_prior_variance = 0.005, min_abs_corr = 0, coverage=coverage)
+fitted = susie(gt_residuals, pheno_residuals, L=L, max_iter=max_iter, scaled_prior_variance = 0.005, min_abs_corr = 0, coverage=coverage, verbose=TRUE)
 #save(fitted, file = paste(dir, '/susie_fit.RData', sep=''))
 
 write.table(fitted$alpha, paste(dir, '/alpha.tab', sep=''), sep='\t', row.names=FALSE, col.names=FALSE) # get pips per variable by 1-apply(1-alpha, 1, prod)

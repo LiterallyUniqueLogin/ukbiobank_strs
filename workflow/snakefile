@@ -5,6 +5,7 @@ import json
 import pathlib
 import shutil
 import tempfile
+import time
 
 import numpy as np
 import pandas as pd
@@ -32,7 +33,7 @@ def pheno_expand(string):
 
 rule decompress_field:
     input:
-        # TODO ancient is temp
+        # TODO temp
         ancient('main_dataset/raw_data/ukb46781.enc_ukb'),
         ancient('main_dataset/raw_data/ukb46782.enc_ukb')
     output:
@@ -177,13 +178,14 @@ rule plot_phenotype_by_age:
         'traits/plot_phenotype.py {wildcards.phenotype} age'
 
 # doesn't filter for relatedness, only QC problems
+ruleorder: filter_samples_for_ethnicity > filter_samples_for_phenotype
 rule filter_samples_for_phenotype:
     input:
         start_file='sample_qc/common_filters/ethnicity/{ethnicity}.sample',
         remove_files=glob.glob("sample_qc/common_filters/remove/*sample"),
         pheno_file=rules.load_phenotype.output.phenotype
     output:
-        samples=temporary('sample_qc/runs/{ethnicity}/{phenotype,(?!no_phenotype)}/combined.sample'),
+        samples=temporary('sample_qc/runs/{ethnicity}/{phenotype}/combined.sample'),
         readme='sample_qc/runs/{ethnicity}/{phenotype}/README.txt'
     resources:
         time='00:05:00',
@@ -222,7 +224,6 @@ rule subset_samples_for_phenotype:
         '{input.samples} '
         '{params.binary_flag} '
 
-# TODO update
 rule transform_phenotype_subset:
     input:
         rules.load_phenotype.output.phenotype,
@@ -967,7 +968,8 @@ checkpoint generate_regions:
         'signals/regions.py {wildcards.phenotype} {input.strs} {input.imputed_snps} {output.table} '
 
 def generated_regions(phenotype):
-    checkpoints.generate_regions.get(phenotype=phenotype)
+    # TODO temp
+    #checkpoints.generate_regions.get(phenotype=phenotype)
     df = pl.scan_csv(
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
@@ -1310,7 +1312,7 @@ def susie_load_time(wildcards, attempt):
     if attempt == 1:
         return '00:30:00'
     else:
-        return '30:00:00'
+        return '47:30:00'
 
 rule susie_load_gts:
     input:
@@ -1329,7 +1331,8 @@ rule susie_load_gts:
     resources:
         time = susie_load_time,
         attempt = lambda wildcards, attempt: attempt,
-        mem_gb = 4
+        mem_gb = 4,
+        # long = lambda wildcards, attempt: 1 if attempt > 1 else 0
     shell:
         'finemapping/susie_load_gts.py '
         '{output.readme} '
@@ -1374,13 +1377,17 @@ rule susie_run:
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
-        attempt = lambda wildcards, attempt: attempt
+        attempt = lambda wildcards, attempt: attempt,
+        L = 10,
+        max_iter = 100
     conda:
         'envs/ukb_r.env.yml'
     shell:
         'Rscript finemapping/susie_run.r '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
+        '{resources.L} '
+        '{resources.max_iter} '
 
 def all_susie_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
@@ -1740,13 +1747,45 @@ rule create_phenotypes_table:
     shell:
         'export_scripts/make_pheno_table.py {phenotypes.phenotypes_in_use} '
 
-#TODO
-rule create_ethnic_phenotypes_table:
+def ethnicity_associations_readme_inputs():
+    return {
+        f'{ethnicity}__{pheno}':
+        expand(rules.load_phenotype.output.readme, ethnicity=ethnicity, phenotype=pheno)[0]
+        for pheno in phenotypes.phenotypes_in_use
+        for ethnicity in other_ethnicities
+    }
+
+def ethnicity_associations_sample_inputs():
+    return {
+        f'{ethnicity}__{pheno}':
+        expand(rules.subset_samples_for_phenotype.output.samples, ethnicity=ethnicity, phenotype=pheno)[0]
+        for pheno in phenotypes.phenotypes_in_use
+        for ethnicity in other_ethnicities
+    }
+
+rule document_ethnicity_associations:
     input:
         'workflow/phenotypes.py',
-        expand(rules.filter_samples_for_ethnicity.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity=other_ethnicities),
-        expand(rules.filter_samples_for_phenotype.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity=other_ethnicities),
-        expand(rules.subset_samples_for_phenotype.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity=other_ethnicities),
+        *ethnicity_associations_readme_inputs().values(),
+        *ethnicity_associations_sample_inputs().values()
+    output:
+        table=protected('export_scripts/results/ethnicity_associations.tab'),
+        readme=protected('export_scripts/results/ethnicity_associations_README.txt')
+    resources:
+        time='00:10:00'
+    run:
+        with tempfile.NamedTemporaryFile(mode='w') as readmes, \
+                tempfile.NamedTemporaryFile(mode='w') as samples:
+            readmes.write(json.dumps(ethnicity_associations_readme_inputs()))
+            readmes.write('\n')
+            samples.write(json.dumps(ethnicity_associations_sample_inputs()))
+            samples.write('\n')
+            cmd = (
+                'export_scripts/document_ethnicity_associations.py '
+                '{readmes.name} '
+                '{samples.name} ' 
+            )
+            shell(cmd)
 
 rule concat_summary_tables:
     input:
@@ -1871,6 +1910,19 @@ rule peak_figs:
 
 
 ######################### Export Files ########################
+
+rule graph_main_hits:
+    input:
+        snpstr_mapping='snpstr/flank_trimmed_vcf/vars.tab',
+        hits=rules.validate_putatively_causal_STRs.output.strs,
+    output:
+        graph='post_finemapping/results/results_graph.{ext}'
+    shell:
+        'post_finemapping/graph_main_hits.py '
+        '{output.graph} '
+        '{wildcards.ext} '
+        '{input.hits} '
+        '{input.snpstr_mapping} '
 
 def link_file(input_, output_):
     input_ = '../'*output_.count('/') + input_
@@ -2034,29 +2086,36 @@ rule export_curated_hit_highlights:
         shell(f'touch {output.complete}')
 
 inputs_for_export_combined = [
-        'export_scripts/results/phenotypes.tab',
-        'export_scripts/results/phenotypes_README.txt',
-        rules.validate_putatively_causal_STRs.output.strs,
-        rules.validate_putatively_causal_STRs.output.readme,
-        'export_scripts/results/curated_STRs.tab',
-        'export_scripts/results/curated_STRs_README.txt',
-        rules.validate_exonic_STRs.output.strs,
-        rules.validate_exonic_STRs.output.readme,
-        'export_scripts/results/validate_our_code.png',
-        'export_scripts/results/panukbb_scatter.png',
-        'export_scripts/results/panukbb_scatter.svg',
-        *rules.peak_figs.output.barplot,
-        *rules.peak_figs.output.heatmap,
-        'export_scripts/results/allele_count_thresh_0.001.png',
-        'export_scripts/results/allele_count_thresh_0.001.svg',
-        'export_scripts/results/allele_count_thresh_0.004.png',
-        'export_scripts/results/allele_count_thresh_0.004.svg',
-        'export_scripts/results/allele_count_thresh_0.015.png',
-        'export_scripts/results/allele_count_thresh_0.015.svg',
-        'export_scripts/results/allele_count_thresh_0.06.png',
-        'export_scripts/results/allele_count_thresh_0.06.svg',
-        'export_scripts/results/finemapping_summary_all_phenotypes.tab'
+    'export_scripts/results/phenotypes.tab',
+    'export_scripts/results/phenotypes_README.txt',
+    rules.validate_putatively_causal_STRs.output.strs,
+    rules.validate_putatively_causal_STRs.output.readme,
+    'export_scripts/results/curated_STRs.tab',
+    'export_scripts/results/curated_STRs_README.txt',
+    rules.validate_exonic_STRs.output.strs,
+    rules.validate_exonic_STRs.output.readme,
+    'export_scripts/results/validate_our_code.png',
+    'export_scripts/results/panukbb_scatter.png',
+    'export_scripts/results/panukbb_scatter.svg',
+    *rules.peak_figs.output.barplot,
+    *rules.peak_figs.output.heatmap,
+    'export_scripts/results/allele_count_thresh_0.001.png',
+    'export_scripts/results/allele_count_thresh_0.001.svg',
+    'export_scripts/results/allele_count_thresh_0.004.png',
+    'export_scripts/results/allele_count_thresh_0.004.svg',
+    'export_scripts/results/allele_count_thresh_0.015.png',
+    'export_scripts/results/allele_count_thresh_0.015.svg',
+    'export_scripts/results/allele_count_thresh_0.06.png',
+    'export_scripts/results/allele_count_thresh_0.06.svg',
+    'export_scripts/results/finemapping_summary_all_phenotypes.tab',
+    *expand(rules.graph_main_hits.output.graph, ext={'html', 'svg'}),
+    *rules.enrichments.output
 ]
+
+for fname in inputs_for_export_combined:
+    if not isinstance(fname, str):
+        print(f'input_for_export_combined {fname} is not a string!')
+        assert False
 
 rule export_combined_summaries_and_figures:
     input:
@@ -2086,3 +2145,13 @@ rule export_all:
         'export/combined/curated_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
+
+rule test:
+    output:
+        'foo'
+    resources:
+        time='00:50:00',
+    run:
+        print(resources.time)
+        time.sleep(10)
+        assert False
