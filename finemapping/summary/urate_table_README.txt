@@ -1,6 +1,6 @@
-table.tab contains one row for each variant that was not filtered prior to association testing and either was reported as an association in literature, or I manually marked it as interesting or both had association p-value >= 5e-8 and FINEMAP posterior probability of causaility >= 0.05
+This table contains one row for each variant that was not filtered prior to association testing and either was reported as an association in literature, or I manually marked it as interesting or both had association p-value >= 5e-8 and either FINEMAP posterior probability of causaility >= 0.05or SuSiE posterior probability of causaility >= 0.05
 
-table.tab contains the following columns:
+This table contains the following columns:
 chrom
 signal_region - {start bp}_{end bp} of region of association the STR resides in, 1-based, inclusive
 start_pos - 1-based, inclusive
@@ -26,7 +26,9 @@ association_p_value - linear regression of rank inverse normalized phenotype val
 direction_of_association - + if an increase in STR length causes an increase in phenotype, - if the reverse, NaN if p-value > 0.05
 Δphenotype_per_additional_repeat_unit - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in umol/L
 Δphenotype_per_s.d._increase_in_repeat_size - linear regression on raw phenotypes vs repeat length on QC'ed sample subset, no covariates included, phenotype measured in umol/L
-pcausal - FINEMAP posterior probability of causality
+FINEMAP_pcausal - FINEMAP posterior probability of causality
+SuSiE_pcausal - SuSiE posterior probability of causality, accumulated across all credible sets in the region
+SuSiE_CS_pcausal - SuSiE posterior probability of causality, just from the single credible set this variant was identified in. 
 mentioned_in_literature - Whether or not this we know of a citation saying this STR is likely causal for this trait. False here means we have not checked whether or not this is reported in the literature, not that it has not.
 literature_inclusion_url - If mentioned_in_literature, then the corresponding ULR. Otherwise NA. 
 included_only_due_to_literature - NA if not mentioned in literature. True if the locus would have been filtered, but is included due to literature. False otherwise. 

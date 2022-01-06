@@ -40,7 +40,7 @@ def main():
     cols = {
         'chrom',
         'start_pos',
-        'pcausal',
+        'FINEMAP_pcausal',
         'subset_multiallelicness'
     }
     for col in cols:
@@ -55,7 +55,7 @@ def main():
     tooltips = [
         ('chrom', '@chrom'),
         ('pos', '@start_pos'),
-        ('posterior prob causality', '@pcausal'),
+        ('posterior prob causality', '@FINEMAP_pcausal'),
         ('multiallelicness', '@subset_multiallelicness'),
         ('effect size per standard deviation change in repeat size', '@effect_size'),
     ]
@@ -107,7 +107,7 @@ def main():
     source.data['display_size'] = display_size
     plot.circle(
         'subset_multiallelicness',
-        'pcausal',
+        'FINEMAP_pcausal',
         source=source,
         size='display_size',
         alpha=0.8

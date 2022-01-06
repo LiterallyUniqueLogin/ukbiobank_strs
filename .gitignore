@@ -46,6 +46,8 @@ twistd.pid
 .snakemake
 *.npy
 *Rplots.pdf
+.RData
+.Rhistory
 *.gff3
 dag.svg
 export/*
@@ -54,3 +56,4 @@ temp*
 .nextflow*
 work
 foo*
+.snakemake_conda

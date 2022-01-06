@@ -146,7 +146,7 @@ def load_strs(imputation_run_name: str,
             # properly, this identifies and removes them
             continue
 
-        if var_subset and record.POS not in var_subset:
+        if var_subset is not None and record.POS not in var_subset:
             continue
 
         trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
@@ -416,7 +416,7 @@ def load_imputed_snps(region: str,
                 break
 
             alleles = np.array(bgen.allele_ids[variant_num].split(','))
-            if var_subset and (pos, alleles[0], alleles[1]) not in var_subset:
+            if var_subset is not None and (pos, alleles[0], alleles[1]) not in var_subset:
                 continue
 
             info_str = mfi_line.split()[-1]

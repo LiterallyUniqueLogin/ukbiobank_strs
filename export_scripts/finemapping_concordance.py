@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+
 import glob
 import os
 import os.path
@@ -14,7 +15,9 @@ import polars as pl
 
 ukb = os.environ['UKB']
 
-cutoff = .8
+corr_cutoff = .8
+# TODO finemap cutoff
+# finemap_pip_cutoff = .8
 
 def main():
     parser = argparse.ArgumentParser()
@@ -25,7 +28,9 @@ def main():
     susie_cs_min_abs_corrs = []
     finemap_cs_coverages = []
     unconverged_regions = []
-    underexplored_regions = []
+    #underexplored_regions = []
+    unfinished_regions = []
+    cses_per_region = {}
 
     n_regions = 0
     for phenotype in phenotypes:
@@ -36,11 +41,17 @@ def main():
         for chrom, start, end, any_strs in zip(regions_df['chrom'], regions_df['start'], regions_df['end'], regions_df['any_strs']):
             if not any_strs:
                 continue
-            with open(f'{ukb}/finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/converged.txt') as converged_file:
+            converged_fname = f'{ukb}/finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/converged.txt'
+            if not os.path.exists(converged_fname):
+                unfinished_regions.append((phenotype, chrom, start, end))
+                continue
+            with open(converged_fname) as converged_file:
                 if not next(converged_file).strip() == 'TRUE':
                     unconverged_regions.append((phenotype, chrom, start, end))
                     continue
             print(f'Loading {phenotype} region {chrom}:{start}-{end}', flush=True)
+            region_name = f'{phenotype}_{chrom}_{start}_{end}'
+            cses_per_region[region_name] = 0
             n_regions += 1
             with open(f'{ukb}/finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/colnames.txt') as var_file:
                 susie_vars = [line.strip() for line in var_file]
@@ -57,7 +68,7 @@ def main():
                 'varname': susie_vars,
                 'susie_pip': susie_pips,
                 'susie_alpha': np.zeros(len(susie_vars)),
-                'susie_cs': [False]*len(susie_vars),
+                'susie_cs': [-1]*len(susie_vars),
                 'susie_idx': susie_idx,
                 **{ f'alpha_{i}': alphas[:, i] for i in range(n_alphas) }
             }).lazy()
@@ -73,6 +84,8 @@ def main():
                 finemap_df,
                 how='inner',
                 on=['varname']
+            ).with_column(
+                pl.lit(f'{chrom}_{start}_{end}').alias('region')
             ).sort('susie_idx')
 
             real_cs_count = 0
@@ -98,33 +111,60 @@ def main():
                       .otherwise(pl.col('susie_alpha'))
                       .alias('susie_alpha')
                 )
-                if min_abs_corr < cutoff:
+                if min_abs_corr < corr_cutoff:
                     continue
+                cses_per_region[region_name] += 1
                 real_cs_count += 1
+                # could worry about variants being in multiple CSes
                 df = df.with_column(
                     pl.when(pl.col('susie_idx').is_in(cs_susie_idx))
-                      .then(True)
+                      .then(cs_id)
                       .otherwise(pl.col('susie_cs'))
                       .alias('susie_cs')
                 )
+            '''
             if real_cs_count >= 10:
                 underexplored_regions.append((phenotype, chrom, start, end))
+            '''
             all_dfs.append(df)
     del df, susie_df, finemap_df
     susie_cs_min_abs_corrs = np.array(susie_cs_min_abs_corrs)
     finemap_cs_coverages = np.array(finemap_cs_coverages)
+    cses_per_region = np.array(list(cses_per_region.values()))
 
     all_dfs = [df.select(
         pl.col('*').exclude('^alpha.*$')
     ) for df in all_dfs]
     total_df = pl.concat(all_dfs).collect()
 
+    finemap_pip_threshold = .9
+    finemap_hits_per_region = total_df.with_column(
+        (pl.col('finemap_pip') >= finemap_pip_threshold).alias('finemap_hit')
+    ).groupby('region').agg(
+        pl.col('finemap_hit').sum().alias('n_finemap_hits')
+    ).select('n_finemap_hits').to_numpy()
+
+    calced_cses_per_region = sorted(total_df.filter(
+        pl.col('susie_cs') >= 0
+    ).groupby([
+        'susie_cs', 'region'
+    ]).agg(
+        pl.col('region').alias('foo')
+    ).groupby('region').agg(
+        pl.col('region').count().alias('n_cses')
+    ).to_dict()['n_cses'])
+    #assert sorted([var for var in cses_per_region if var > 0]) == calced_cses_per_region
+    print(sorted([var for var in cses_per_region if var > 0]))
+    print(calced_cses_per_region)
+
     print(f'n regions {n_regions}')
-    print(f'n CSes over cutoff {cutoff}: {sum(susie_cs_min_abs_corrs >= cutoff)}')
+    print(f'avg cses per region {np.mean(cses_per_region)}, ({np.std(cses_per_region)})')
+    print(f'avg finemap hits per region {np.mean(finemap_hits_per_region)}, ({np.std(finemap_hits_per_region)})')
+    print(f'n CSes min_abs_corr over cutoff {corr_cutoff}: {sum(susie_cs_min_abs_corrs >= corr_cutoff)}')
     print(f'n vars: {total_df.select(pl.col("varname").count())[-1].to_numpy()}')
-    print(f'n cutoff cs vars: {total_df.select(pl.col("susie_cs").sum()).to_numpy()}')
+    print(f'n vars in above cutoff CSes: {total_df.select(pl.col("susie_cs").sum()).to_numpy()}')
     print(f'unconverged regions: {unconverged_regions}')
-    print(f'underexplored regions: {underexplored_regions}')
+    #print(f'underexplored regions: {underexplored_regions}')
 
     fig = bokeh.plotting.figure(
         width=1200,
@@ -140,8 +180,8 @@ def main():
     fig.toolbar_location = None
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
-    ys = [np.sum((left_edge < susie_cs_min_abs_corrs) & (susie_cs_min_abs_corrs < left_edge + step)) for left_edge in left_edges]
-    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+0.01)
+    ys = [np.sum((left_edge <= susie_cs_min_abs_corrs) & (susie_cs_min_abs_corrs < left_edge + step)) for left_edge in left_edges]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     print('Exporting cs plots', flush=True)
     bokeh.io.export_png(fig, filename=f'{ukb}/export_scripts/results/cs_min_abs_corrs.png')
@@ -150,7 +190,47 @@ def main():
     fig = bokeh.plotting.figure(
         width=1200,
         height=1200,
-        title=f'FINEMAP total PIPs for SuSiE CSes with min_abs_corr >= {cutoff}',
+        title=f'Number of SuSie CSes min absolute corr >= {corr_cutoff} per region',
+        x_axis_label='# cses in the region',
+        y_axis_label='# regions',
+    )
+    fig.axis.axis_label_text_font_size = '30px'
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.grid.grid_line_color = None
+    fig.toolbar_location = None
+    left_edges = np.arange(0, max(cses_per_region)+1)
+    ys = [np.sum((left_edge <= cses_per_region) & (cses_per_region < left_edge + 1)) for left_edge in left_edges]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+1)
+
+    print('Exporting cs per region plots', flush=True)
+    bokeh.io.export_png(fig, filename=f'{ukb}/export_scripts/results/cses_per_region.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/export_scripts/results/cses_per_region.svg')
+
+    fig = bokeh.plotting.figure(
+        width=1200,
+        height=1200,
+        title=f'Number of FINEMAP vars with PIP >= {finemap_pip_threshold} per region',
+        x_axis_label='# hits in the region',
+        y_axis_label='# regions',
+    )
+    fig.axis.axis_label_text_font_size = '30px'
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.grid.grid_line_color = None
+    fig.toolbar_location = None
+    left_edges = np.arange(0, max(finemap_hits_per_region)+1)
+    ys = [np.sum((left_edge <= finemap_hits_per_region) & (finemap_hits_per_region < left_edge + 1)) for left_edge in left_edges]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+1)
+
+    print('Exporting finemap hits per region plots', flush=True)
+    bokeh.io.export_png(fig, filename=f'{ukb}/export_scripts/results/finemap_hits_per_region.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/export_scripts/results/finemap_hits_per_region.svg')
+
+    fig = bokeh.plotting.figure(
+        width=1200,
+        height=1200,
+        title=f'FINEMAP total PIPs for SuSiE CSes with min_abs_corr >= {corr_cutoff}',
         x_axis_label='FINEMAP PIPs',
         y_axis_label='# credible sets',
     )
@@ -160,17 +240,101 @@ def main():
     fig.xgrid.grid_line_color = None
     fig.toolbar.logo = None
     fig.toolbar_location = None
-    include = susie_cs_min_abs_corrs >= cutoff
+    include = susie_cs_min_abs_corrs >= corr_cutoff
     max_total_pip = max(1, np.max(finemap_cs_coverages[include]))
     step = 0.01
     left_edges = np.arange(0, max_total_pip + step, step)
-    ys = [np.sum((left_edge < finemap_cs_coverages[include]) & (finemap_cs_coverages[include] < left_edge + step)) for left_edge in left_edges]
-    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+0.01)
+    ys = [np.sum((left_edge <= finemap_cs_coverages[include]) & (finemap_cs_coverages[include] < left_edge + step)) for left_edge in left_edges]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
-    print('Exporting finemap CS PIP plots', flush=True)
+    print('Exporting FINEMAP CS PIP plots', flush=True)
     bokeh.io.export_png(fig, filename=f'{ukb}/export_scripts/results/susie_cs_finemap_total_pips.png')
     bokeh.io.export_svg(fig, filename=f'{ukb}/export_scripts/results/susie_cs_finemap_total_pips.svg')
 
+    finemap_pip_threshold_for_cs = .8
+    total_cses = np.sum(include)
+    total_cses_large_finemap_pip = np.sum(finemap_cs_coverages[include] >= finemap_pip_threshold_for_cs)
+    print(f'SuSiE CSes with min_abs_corr >= {corr_cutoff} with FINEMAP total PIP >= {finemap_pip_threshold_for_cs}: {total_cses_large_finemap_pip} ({total_cses_large_finemap_pip/total_cses:%})')
+
+    susie_pip_threshold_for_finemap = .3
+    n_replicates_from_finemap = total_df.filter(
+        (pl.col('susie_cs') >= 0)  &
+        (pl.col('susie_pip') >= susie_pip_threshold_for_finemap) &
+        (pl.col('finemap_pip') >= finemap_pip_threshold)
+    ).shape[0]
+    n_finemap_total = total_df.filter(
+        pl.col('finemap_pip') >= finemap_pip_threshold
+    ).shape[0]
+    print(f'FINEMAP hits with PIP >= {finemap_pip_threshold} in a SuSiE CS with abs corr >= {corr_cutoff} and SuSiE PIP >= {susie_pip_threshold_for_finemap}: {n_replicates_from_finemap} ({n_replicates_from_finemap/n_finemap_total:%})')
+
+    var_thresh1 = .8
+    var_thresh2 = .3
+    for susie_thresh in (var_thresh1, var_thresh2):
+        for finemap_thresh in (var_thresh1, var_thresh2):
+            count = total_df.filter(
+                (pl.col('susie_cs') >= 0) &
+                (pl.col('susie_pip') >= susie_thresh) &
+                (pl.col('finemap_pip') >= finemap_thresh)
+            ).shape[0]
+            print(f'Vars in a SuSiE CS with SuSIE PIP >= {susie_thresh} and with FINEMAP PIP >= {finemap_thresh}: {count}')
+        
+    for susie_thresh in (var_thresh1, var_thresh2):
+        count = total_df.filter(
+            (pl.col('susie_cs') >= 0) &
+            (pl.col('susie_pip') >= susie_thresh) &
+            (pl.col('finemap_pip') < var_thresh2)
+        ).shape[0]
+        print(f'Vars in a SuSiE CS with SuSIE PIP >= {susie_thresh} with FINEMAP PIP < {var_thresh2}: {count}')
+    for finemap_thresh in (var_thresh1, var_thresh2):
+        count = total_df.filter(
+            (pl.col('finemap_pip') >= finemap_thresh) & (
+                (pl.col('susie_cs') == 0) |
+                (pl.col('susie_pip') < var_thresh2)
+            )
+        ).shape[0]
+        print(f'Vars with FINEMAP PIP >= {finemap_thresh} either not in a SuSiE CS or having SuSiE PIP <= {var_thresh2}: {count}')
+
+    # instead of a plot of FINEMAP vs SuSiE PIPs, summarize as a table
+    '''
+    fig = bokeh.plotting.figure(
+        width=1200,
+        height=1200,
+        title=f'SuSiE PIPs for vars with FINEMAP  PIP >= {cutoff}',
+        x_axis_label='SuSiE PIPs',
+        y_axis_label='# variants',
+    )
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.ygrid.grid_line_color = None
+    fig.xgrid.grid_line_color = None
+    fig.toolbar.logo = None
+    fig.toolbar_location = None
+    susie_pips = total_df.filter(pl.col('finemap_pip') >= cutoff).select('susie_pip')
+    step = 0.01
+    left_edges = np.arange(0, 1 + step, step)
+    ys = [np.sum((left_edge <= susie_pips) & (susie_pips < left_edge + step)) for left_edge in left_edges]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+0.01)
+
+    print('Exporting FIENMAP vs SuSiE PIP plots', flush=True)
+    bokeh.io.export_png(fig, filename=f'{ukb}/export_scripts/results/finemap_pip_vs_susie_pip.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/export_scripts/results/finemap_pip_vs_susie_pip.svg')
+
+    in_cses_avg = total_df.filter(
+        pl.col('finemap_pip') >= cutoff
+    ).with_column(
+        pl.col('susie_cs').cast(int)
+    ).mean()[0, 'susie_cs']
+
+    print(
+        f'Percentage of vars with FINEMAP PIP >= {cutoff} in SuSiE CSes '
+        f'with corr >= {corr_cutoff}: {in_cses_avg:.2%}',
+        flush=True
+    )
+    '''
+
+    # Not going to report susie alphas v pips - just know that they're similar if we look
+    # at vars in good credible sets and not otherwise
+    '''
     for vartype in '', 'STR', 'SNP':
         for all_ in True, False:
             # susie v finemap
@@ -181,7 +345,7 @@ def main():
             else:
                 title_inset = vartype
             if not all_:
-                title_inset += f' credible-set-var (min_abs_corr >= {cutoff})'
+                title_inset += f' credible-set-var (min_abs_corr >= {corr_cutoff})'
             ax.set_title(f'SuSiE vs FINEMAP {title_inset} PIPs')
             ax.set_aspect('equal', adjustable='box')
             ax.set_xlabel('FINEMAP PIPs')
@@ -213,7 +377,7 @@ def main():
             else:
                 title_inset = vartype
             if not all_:
-                title_inset += f' credible-set-var (min_abs_corr >= {cutoff})'
+                title_inset += f' credible-set-var (min_abs_corr >= {corr_cutoff})'
             ax.set_title(f'SuSiE alpha vs PIP {title_inset}')
             ax.set_aspect('equal', adjustable='box')
             ax.set_xlabel('SuSiE alpha')
@@ -236,7 +400,7 @@ def main():
             plt.savefig(f'{out_fname}.svg')
             print(f'Exporting var plot {out_fname}.png', flush=True)
             plt.savefig(f'{out_fname}.png')
-
+    '''
 
 
 if __name__ == '__main__':

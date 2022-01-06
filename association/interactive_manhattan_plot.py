@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import ast
 import copy
-import math
 import os
 import os.path
 import time
@@ -892,12 +890,12 @@ def main():
 
     if not bool(args.my_plink_comparison):
         my_str_results = region_plots.load_my_str_results(
-            phenotype, binary, f'{ukb}/association/plots/input/{phenotype}/my_str{runtype_suffix}_results.tab',
+            phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab',
             f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}_conditional/{condition}.tab' if condition else None
         )
         plink_snp_results = region_plots.load_plink_results(
-            phenotype, binary, f'{ukb}/association/plots/input/{phenotype}/plink_snp{runtype_suffix}_results_with_mfi.npy',
-            f'{ukb}/association/plots/input/{phenotype}/plink_snp{runtype_suffix}_conditional_{condition}_results_with_mfi.npy' if condition else None
+            phenotype, binary, f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}/results.tab',
+            f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}_conditional/{condition}/plink2.{"rin_" if not binary else ""}{phenotype}.glm.linear.done' if condition else None
         )
         gwas_catalog, gwas_catalog_ids = region_plots.load_gwas_catalog(phenotype)
 
@@ -928,10 +926,10 @@ def main():
             conditioned_strs = region_plots.get_conditioned_strs(condition)
 
             unconditioned_str_results = region_plots.load_my_str_results(
-                phenotype, binary, f'{ukb}/association/plots/input/{phenotype}/my_str{runtype_suffix}_results.tab'
+                phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab'
             )
             unconditioned_snp_results = region_plots.load_plink_results(
-                phenotype, binary, f'{ukb}/association/plots/input/{phenotype}/plink_snp{runtype_suffix}_results_with_mfi.npy'
+                phenotype, binary, f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}/results.tab'
             )
 
         if bool(args.peaks_spacing):

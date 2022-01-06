@@ -36,7 +36,11 @@ def main():
         'association_p_value\n'
         'direction_of_association - "+" if an increase in STR length causes an '
         'increase in phenotype, "-" if the reverse\n'
-        "pcausal - FINEMAP's posterior probability of causality\n"
+        "FINEMAP_pcausal - FINEMAP's posterior probability of causality\n"
+        "SuSiE_pcausal - SuSiE's posterior probability of causality, accumulated across all "
+        "credible sets in the region.\n"
+        "SuSiE_CS_pcausal - SuSiE's posterior probability of causality, from the single "
+        "credible set this variant was identified in.\n"
         'relation_to_gene - if this STR is transcribed, for each transcript '
         'what is the GENCODE gene type of that transcript (i.e. protein coding, '
         'lncRNA, etc.) and what is the GENCODE feature type of the region the STR '
@@ -48,8 +52,9 @@ def main():
 
     with open(f'{ukb}/post_finemapping/results/putatively_causal_STRs_README.txt', 'w') as readme:
         readme.write(
-            'Any STR x phenotype association that has p-value <= 1e-10 and '
-            'FINEMAP posterior probability of causality >= 0.8\n'
+            'Any STR x phenotype association that has p-value <= 1e-10 and either '
+            'FINEMAP posterior probability of causality >= 0.8 or '
+            'SuSiE CS posterior probability of causality >= 0.33\n'
             + col_descs
         )
 
@@ -67,7 +72,9 @@ def main():
         'subset_multiallelicness',
         'association_p_value',
         'direction_of_association',
-        'pcausal',
+        'FINEMAP_pcausal',
+        'SuSiE_pcausal',
+        'SuSiE_CS_pcausal',
         'relation_to_gene',
         'transcribed'
     ]
@@ -82,7 +89,8 @@ def main():
                     split = header.strip().split('\t')
                     indices = [split.index(col) for col in cols]
                     association_p_value_index = split.index('association_p_value')
-                    pcausal_index = split.index('pcausal')
+                    finemap_pcausal_index = split.index('FINEMAP_pcausal')
+                    susie_cs_pcausal_index = split.index('SuSiE_CS_pcausal')
                     allele_dosage_index = split.index('subset_total_per_allele_dosages')
                     subset_multiallelicness_index = split.index('subset_multiallelicness')
                     curated_index = split.index('curated')
@@ -105,7 +113,10 @@ def main():
                     association_p_value = float(split[association_p_value_index])
                     if association_p_value != 0 and -np.log10(association_p_value) < 10:
                         continue
-                    if split[pcausal_index] != 'NA' and float(split[pcausal_index]) < .8:
+                    if (
+                        (split[finemap_pcausal_index] == 'NA' or float(split[finemap_pcausal_index]) < .8) and
+                        (split[susie_cs_pcausal_index] == 'NA' or float(split[susie_cs_pcausal_index]) < .33)
+                    ):
                         continue
                     if split[only_curated_index] == 'True' or split[only_lit_index] == 'True':
                         continue

@@ -3,11 +3,11 @@
 import argparse
 import datetime
 import os
-import subprocess as sp
 import time
 
 import h5py
 import numpy as np
+import polars as pl
 import sklearn.linear_model
 
 import load_and_filter_genotypes as lfg
@@ -23,7 +23,7 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
     filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
 
     p_cutoff = 5e-4
-   
+  
     today = datetime.datetime.now().strftime("%Y_%M_%D")
     with open(outreadme_fname, 'w') as readme:
         readme.write(
@@ -70,52 +70,53 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
     strs_to_include = set()
     snps_to_include = set()
 
-    str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    with open(str_results_fname) as str_results:
-        header = next(str_results).strip().split('\t')
-    str_p_idx = header.index(f'p_{phenotype}')
-
-    out = sp.run(
-        f"grep -P '^{chrom}\t' {str_results_fname} | "
-        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${str_p_idx + 1} <= {p_cutoff}) "
-        " { print $2 } }' ",
-        shell=True,
-        check = True,
-        capture_output=True
-    )
-    for line in out.stdout.decode().split('\n'):
-        if line.strip() != '':
-            strs_to_include.add(int(line.strip()))
+    strs_to_include = pl.scan_csv(
+        f'{ukb}/association/results/{phenotype}/my_str/results.tab',
+        sep='\t'
+    ).filter(
+        (pl.col('chrom') == chrom) &
+        (pl.col('pos') >= start_pos) &
+        (pl.col('pos') <= end_pos) &
+        (pl.col(f'p_{phenotype}') <= p_cutoff)
+    ).select(pl.col('pos')).collect().to_numpy().flatten()
 
     assert len(strs_to_include) != 0
-    
+
     snps_to_filter = set()
-    with open(filter_set_fname) as filter_file:
-        next(filter_file) # skip header
-        for line in filter_file:
-            pos, ref, alt = line.strip().split('\t')[3:6]
-            snps_to_filter.add((int(pos), ref, alt))
+    snps_to_filter = pl.scan_csv(
+        filter_set_fname,
+        sep='\t'
+    ).select([
+        pl.col('snp_pos'),
+        pl.col('snp_ref'),
+        pl.col('snp_alt'),
+        pl.lit('1').alias('join_marker')
+    ])
 
-    snp_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
-    with open(snp_results_fname) as snp_results:
-        header = next(snp_results).strip().split('\t')
-    snp_p_idx = header.index('P')
-
-    out = sp.run(
-        f"grep -P '^{chrom}\t' {snp_results_fname} | "
-        f"awk '{{ if ({start_pos} <= $2 && $2 <= {end_pos} && ${snp_p_idx + 1} != \"NA\" && ${snp_p_idx + 1} <= {p_cutoff}) "
-        " { print $2 \" \" $4 \" \" $5 } }' ",
-        shell=True,
-        check = True,
-        capture_output=True
+    snps_to_include = pl.scan_csv(
+        f'{ukb}/association/results/{phenotype}/plink_snp/results.tab',
+        sep='\t',
+        null_values='NA'
+    ).filter(
+        (pl.col('#CHROM') == chrom) &
+        (pl.col('POS') >= start_pos) &
+        (pl.col('POS') <= end_pos) &
+        (pl.col('P') <= p_cutoff)
+    ).join(
+        snps_to_filter,
+        how = 'left',
+        left_on = ['POS', 'REF', 'ALT'],
+        right_on = ['snp_pos', 'snp_ref', 'snp_alt']
+    ).filter(
+        pl.col('join_marker').is_null()
+    ).select([
+        pl.col('POS'),
+        pl.col('REF'),
+        pl.col('ALT')
+    ]).collect().pipe(
+        lambda df: list(zip(*df.to_dict().values()))
     )
-    for line in out.stdout.decode().split('\n'):
-        if line.strip() == '':
-            continue
-        snp = tuple(line.strip().split())
-        snp = tuple([int(snp[0]), snp[1], snp[2]])
-        if snp not in snps_to_filter:
-            snps_to_include.add(snp)
+    # returns a list of tuples
 
     snp_sort_tuples = set((pos, 'SNP', ref, alt) for (pos, ref, alt) in snps_to_include)
     str_sort_tuples = set((pos, 'STR') for pos in strs_to_include)

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-import glob
 import os
 
 import numpy as np
+
+import phenotypes
 
 ukb = os.environ['UKB']
 
@@ -15,7 +16,7 @@ def to_float(f):
 
 snps = []
 strs = []
-fnames = glob.glob(f'{ukb}/signals/peaks/*_250000_5e-8.tab')
+fnames = [f'{ukb}/signals/peaks/{phenotype}_250000_5e-8.tab' for phenotype in phenotypes.phenotypes_in_use]
 for fname in fnames:
     with open(fname) as peaks:
         header = next(peaks).strip().split('\t')
@@ -30,9 +31,9 @@ for fname in fnames:
             other_p_val = to_float(other_p_val)
 
             if np.isnan(p_val):
-                p_val = 0
+                p_val = 1
             if np.isnan(other_p_val):
-                other_p_val = 0
+                other_p_val = 1
 
             if var_type == 'SNP':
                 snps.append(p_val)
@@ -46,27 +47,8 @@ strs = np.array(strs)
 
 print(f'n peaks: {len(snps)}')
 print(f'n peaks per pheno: {len(snps)/len(fnames)}')
-print(f'% peaks only STR: {np.sum(snps == 0)/len(snps)}')
+print(f'% peaks only STR: {np.sum(snps == 1)/len(snps)}')
+print(f'% peaks only SNP: {np.sum(strs == 1)/len(strs)}')
 
-print('Subsetting to peaks that have a SNP')
-strs = strs[snps != 0]
-snps = snps[snps != 0]
-
-for cutoff in .8, .9, 1:
-    print(f'fraction STR peaks >= {cutoff} fraction of SNP peak {np.sum(snps*cutoff <= strs)/len(snps)}')
-    for sig_thresh in 20, 30, 50:
-        sig_idx = (snps >= sig_thresh) | (strs >= sig_thresh)
-        print(f'fraction STR peaks >= {cutoff} fraction of SNP peak among peaks <= 1e-{sig_thresh} {np.sum((snps*cutoff <= strs)[sig_idx])/np.sum(sig_idx)}')
-
-
-non_capped_idx = (snps < 300) & (strs < 300)
-
-snps = snps[non_capped_idx]
-strs = strs[non_capped_idx]
-
-for cutoff in .8, .9, 1:
-    print(f'fraction STR peaks >= {cutoff} fraction of SNP peak {np.sum(snps*cutoff <= strs)/len(snps)}')
-    for sig_thresh in 20, 30, 50:
-        sig_idx = (snps >= sig_thresh) | (strs >= sig_thresh)
-        print(f'fraction STR peaks >= {cutoff} fraction of SNP peak among peaks <= 1e-{sig_thresh} {np.sum((snps*cutoff <= strs)[sig_idx])/np.sum(sig_idx)}')
+print('Strongest STR peak with no SNP:', np.max(strs[snps == 1]))
 

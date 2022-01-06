@@ -1,6 +1,7 @@
 import collections
 import csv
 import glob
+import itertools
 import json
 import pathlib
 import shutil
@@ -188,7 +189,7 @@ rule filter_samples_for_phenotype:
         samples=temporary('sample_qc/runs/{ethnicity}/{phenotype}/combined.sample'),
         readme='sample_qc/runs/{ethnicity}/{phenotype}/README.txt'
     resources:
-        time='00:05:00',
+        time='00:05:00'
     shell:
         'sample_qc/scripts/combine.py '
         '{output.samples} '
@@ -257,6 +258,22 @@ rule plot_str_locus:
             '{wildcards.dosage_fraction_threshold} '
             f"--unit '{unit}' "
         )
+
+rule length_confusion:
+    input:
+        expand(
+            rules.subset_samples_for_phenotype.output.samples,
+            ethnicity='white_brits',
+            phenotype='no_phenotype'
+        ),
+        'array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
+    output:
+        'side_analyses/length_confusion/chr{chrom}.tab'
+    resources:
+        time='47:30:00',
+        mem_gb = 4
+    shell:
+        'side_analyses/length_confusion/length_confusion.py {wildcards.chrom}'
 
 ##################### Running and Plotting Associations ###########################
 
@@ -611,81 +628,7 @@ rule append_mfi_to_comparison_logistic_plink_run:
     shell:
         'association/append_mfi_to_plink_snp.py {input[0]} {output[0]} --binary logistic '
 
-INTERACTIVE_MANHATTAN_GWAS_THRESHOLD = 0.00005
-
-def subset_gwas_results(
-        input_file,
-        output_file,
-        p_val_col,
-        threshold = INTERACTIVE_MANHATTAN_GWAS_THRESHOLD):
-    shell(
-        f"head -n 1 {input_file} > {output_file}.temp && "
-        f'tail -n +2 {input_file} | '
-        "awk '{{ if ($" + str(p_val_col) + " < " + str(threshold) + ") {{ print }} }}' "
-        ">> {output_file}.temp && "
-        f"mv {output_file}.temp {output_file} "
-    )
-
-rule subset_my_gwas_results:
-    input:
-        'association/results/{phenotype}/my_{gwas_type}/results.tab'
-    output:
-        subsetted_results='association/plots/input/{phenotype}/my_{gwas_type}_results.tab'
-    resources:
-        time='01:00:00'
-    run:
-        subset_gwas_results(
-             f"association/results/{wildcards.phenotype}/my_{wildcards.gwas_type}/results.tab",
-             f"association/plots/input/{wildcards.phenotype}/my_{wildcards.gwas_type}_results.tab",
-             5
-         )
-
-rule subset_plink_gwas_results:
-    input:
-        'association/results/{phenotype}/plink_snp{suffix}/results.tab'
-    output:
-        subsetted_tab='association/plots/input/{phenotype}/plink_snp{suffix,|_linear|logistic}_results.tab'
-    resources:
-        time='08:00:00'
-    run:
-        if wildcards.suffix == '':
-            assert not phenotypes.is_binary(wildcards.phenotype)
-            p_val_col = 14
-        else:
-            assert phenotypes.is_binary(wildcards.phenotype)
-            if wildcards.suffix == '_linear':
-                p_val_col = 11
-            else:
-                assert wildcards.suffix == '_logistic'
-                p_val_col = 14
-
-        subset_gwas_results(
-             f'{input[0]}',
-             f'{output[0]}',
-             p_val_col
-        )
-
-rule append_mfi_to_subsetted_plink_results:
-    input:
-        rules.subset_plink_gwas_results.output.subsetted_tab
-    output:
-        mfi_npy='association/plots/input/{phenotype}/plink_snp{suffix,[^.]*}_results_with_mfi.npy'
-    resources:
-        time='01:00:00',
-        mem_gb = 50
-    run:
-        cmd = 'association/append_mfi_to_plink_snp.py {input[0]} {output[0]} '
-        if wildcards.suffix == '':
-            assert not phenotypes.is_binary(wildcards.phenotype)
-        elif wildcards.suffix == '_linear':
-            assert phenotypes.is_binary(wildcards.phenotype)
-            cmd += '--binary linear '
-        else:
-            assert phenotypes.is_binary(wildcards.phenotype)
-            assert wildcards.suffix == '_logistic'
-            cmd += '--binary logistic '
-        shell(cmd)
-
+# TODO double check these doesn't use subset_gwas_results files
 rule compare_my_to_plink_continuous_gwas:
     input:
         "traits/phenotypes/white_brits/eosinophil_count_unit.txt",
@@ -758,14 +701,14 @@ rule compare_my_to_plink_binary_logistic_gwas:
         '--chrom 21 --start 10000001 --end 11000000 '
 
 def manhattan_inputs(wildcards):
-    prefix = f'association/plots/input/{wildcards.phenotype}'
+    prefix = f'association/results/{wildcards.phenotype}'
     if wildcards.binary_type:
         runtype = wildcards.binary_type.replace(".", "_")
     else:
         runtype = ""
     return [
-        f'{prefix}/my_str{runtype}_results.tab',
-        f'{prefix}/plink_snp{runtype}_results_with_mfi.npy'
+        f'{prefix}/my_str{runtype}/results.tab',
+        f'{prefix}/plink_snp{runtype}/results.tab'
     ]
 
 rule manhattan:
@@ -789,8 +732,8 @@ rule manhattan:
 rule region_manhattan:
     input:
         "traits/phenotypes/white_brits/{phenotype}_unit.txt",
-        'association/plots/input/{phenotype}/my_str_results.tab',
-        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy'
+        'association/results/{phenotype}/my_str/results.tab',
+        'association/results/{phenotype}/plink_snp/results.tab'
     output:
         'association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
     resources:
@@ -844,7 +787,7 @@ rule run_conditional_my_str_gwas:
     params:
         binary_flag = lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary logistic'
     resources:
-        time='12:00:00',
+        time='3:00:00',
         mem_gb=9,
         threads=4
     shell:
@@ -888,8 +831,8 @@ rule run_continuous_conditional_plink_gwas:
     output:
         results='association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
     resources:
-        time='24:00:00',
-        mem_gb=110,
+        time='01:00:00',
+        mem_gb=56,
         threads=28
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
@@ -913,24 +856,13 @@ rule run_binary_conditional_plink_gwas:
         'BINARY=set '
         'association/plink_association.sh'
 
-rule append_mfi_to_conditional_plink_results:
-    input:
-        'association/results/{phenotype}/plink_snp_conditional/chr{condition}/plink2.rin_{phenotype}.glm.linear.done'
-    output:
-        mfi_npy='association/plots/input/{phenotype,[^/]+}/plink_snp_conditional_chr{condition,[^/.]+}_results_with_mfi.npy'
-    resources:
-        time='01:00:00',
-        mem_gb = 50
-    shell:
-        'association/append_mfi_to_plink_snp.py {input[0]} {output[0]}'
-
 rule manhattan_conditional:
     input:
         "traits/phenotypes/white_brits/{phenotype}_unit.txt",
-        'association/plots/input/{phenotype}/my_str_results.tab',
+        'association/results/{phenotype}/my_str/results.tab',
         'association/results/{phenotype}/my_str_conditional/chr{condition}.tab',
-        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
-        rules.append_mfi_to_conditional_plink_results.output.mfi_npy,
+        'association/results/{phenotype}/plink_snp/results.tab',
+        'association/results/{phenotype}/plink_snp_conditional/chr{condition}/plink2.rin_{phenotype}.glm.linear.done'
     output:
         manhattan='association/plots/{phenotype,[^.]+}.manhattan.chr{condition,[^.]+}.{ext,html|png|svg}'
     resources:
@@ -974,72 +906,44 @@ def generated_regions(phenotype):
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
     ).filter('any_strs').collect()
-    return list(zip(df['chrom'], df['start'], df['end']))
+    return [
+        (chrom, start, end) for (chrom, start, end) in 
+        zip(df['chrom'], df['start'], df['end'])
+        if not (
+            phenotype == 'urate' and
+            chrom == 4 and
+            start == 8165642 and
+            end == 11717761
+        )
+    ]
 
 def n_regions_no_strs(phenotype):
     checkpoints.generate_regions.get(phenotype=phenotype)
     return pl.scan_csv(
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
-    ).select((~pl.col('any_strs')).sum()).collect()
-
-def peak_snp_input_inputs(wildcards):
-    if not phenotypes.is_binary(wildcards.phenotype):
-        runtype_suffix = ''
-    else:
-        runtype_suffix = '_logistic'
-    return f'association/results/{wildcards.phenotype}/plink_snp{runtype_suffix}/results.tab'
-
-rule peak_snp_inputs:
-    input:
-        peak_snp_input_inputs
-    output:
-        temporary('signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab')
-        #'signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab'
-    resources:
-        time='01:00:00'
-    run:
-        subset_gwas_results(
-            input[0],
-            output[0],
-            14 if not phenotypes.is_binary(wildcards.phenotype) else 11,
-            threshold = float(wildcards.thresh)
-        )
-
-def peak_str_input_inputs(wildcards):
-    if not phenotypes.is_binary(wildcards.phenotype):
-        runtype_suffix = ''
-    else:
-        runtype_suffix = '_logistic'
-    return f'association/results/{wildcards.phenotype}/my_str{runtype_suffix}/results.tab'
-
-rule peak_str_inputs:
-    input:
-        peak_str_input_inputs
-    output:
-        temporary('signals/peak_inputs/{phenotype}_str_{thresh}.tab')
-        #'signals/peak_inputs/{phenotype}_str_{thresh}.tab'
-    resources:
-        time='01:00:00'
-    run:
-        subset_gwas_results(
-            input[0],
-            output[0],
-            5,
-            threshold = float(wildcards.thresh)
-        )
+    ).select((~pl.col('any_strs')).sum()).collect()[0, 0]
 
 rule generate_peaks:
     input:
-        strs='signals/peak_inputs/{phenotype}_str_{thresh}.tab',
-        imputed_snps='signals/peak_inputs/{phenotype}_imputed_snp_{thresh}.tab'
+        strs=(lambda wildcards: expand(
+            rules.concatenate_my_str_gwas.output.results,
+            phenotype=wildcards.phenotype,
+            suffix=('' if not phenotypes.is_binary(wildcards.phenotype) else '_linear')
+        )),
+        imputed_snps=(lambda wildcards: expand(
+            rules.concatenate_linear_plink_gwas.output.results,
+            phenotype=wildcards.phenotype,
+            suffix=('' if not phenotypes.is_binary(wildcards.phenotype) else '_linear')
+        )),
     output:
         readme=protected('signals/peaks/{phenotype}_{spacing}_{thresh}_README.txt'),
         peaks=protected('signals/peaks/{phenotype}_{spacing}_{thresh}.tab')
     resources:
         time='01:00:00'
     shell:
-        'signals/peaks.py {wildcards.phenotype} {wildcards.spacing} {input.strs} {input.imputed_snps} '
+        'signals/peaks.py {wildcards.phenotype} {wildcards.spacing} {wildcards.thresh} '
+        '{input.strs} {input.imputed_snps} '
         '{output.readme} {output.peaks} '
 
 rule region_peak_comparison:
@@ -1058,10 +962,10 @@ rule peak_stats:
         'workflow/phenotypes.py',
         [fname for phenotype in phenotypes.phenotypes_in_use
          for fname in 
-         (f'signals/peaks/{phenotype}_500000_5e-8.tab',
-          f'signals/peaks/{phenotype}_500000_5e-9.tab',
-          f'signals/peaks/{phenotype}_500000_5e-10.tab',
-          f'signals/peaks/{phenotype}_2000000_5e-8.tab')]
+         (f'signals/peaks/{phenotype}_250000_5e-8.tab',
+          f'signals/peaks/{phenotype}_250000_5e-9.tab',
+          f'signals/peaks/{phenotype}_250000_5e-10.tab',
+          f'signals/peaks/{phenotype}_1000000_5e-8.tab')]
     output:
         'signals/peak_stats_summary.txt',
     resources:
@@ -1094,9 +998,17 @@ rule peak_manhattan:
 rule linear_overview_manhattan:
     input:
         my_str_run_readme=expand(rules.write_my_gwas_readme.output.readme, run_type='str', phenotype='{phenotype}', conditional='', binary=''),
-        my_str_results=expand(rules.subset_my_gwas_results.output.subsetted_results, gwas_type='str', phenotype='{phenotype}'),
+        my_str_results=(lambda wildcards: expand(
+            rules.concatenate_my_str_gwas.output.results,
+            phenotype=wildcards.phenotype,
+            suffix=('' if not phenotypes.is_binary(wildcards.phenotype) else '_linear')
+        )),
         plink_snp_log_file=expand(rules.run_linear_rin_plink_gwas.output.plinklog, chrom=21, suffix='', phenotype='{phenotype}'),
-        plink_snp_results=expand(rules.append_mfi_to_subsetted_plink_results.output.mfi_npy, suffix='', phenotype='{phenotype}'),
+        plink_snp_results=(lambda wildcards: expand(
+            rules.concatenate_linear_plink_gwas.output.results,
+            phenotype=wildcards.phenotype,
+            suffix=('' if not phenotypes.is_binary(wildcards.phenotype) else '_linear')
+        )),
         peaks_fname=expand(rules.generate_peaks.output.peaks, spacing=10000000, thresh='5e-8', phenotype='{phenotype}')
     output:
         manhattan='association/plots/{phenotype,[^.]*}.overview.manhattan.png'
@@ -1246,15 +1158,11 @@ def all_finemap_outputs(phenotype):
         for chrom, start, stop in generated_regions(phenotype)
     ]
 
-rule run_finemap_phenotype:
+rule finemap_all_phenotypes:
     input:
-        finemap_outputs = lambda wildcards: all_finemap_outputs(wildcards.phenotype)
-    output:
-        'finemapping/finemap_results/{phenotype}/all_signals_done'
-    resources:
-        time='00:01:00'
-    shell:
-        'touch finemapping/finemap_results/{wildcards.phenotype}/all_signals_done'
+        itertools.chain.from_iterable(
+            all_finemap_outputs(phenotype) for phenotype in phenotypes.phenotypes_in_use
+        )
 
 rule summarize_finemap_output:
     input:
@@ -1268,6 +1176,11 @@ rule summarize_finemap_output:
         'finemapping/finemap_results/{phenotype}/summary/single_str_contrib_fractions.png',
         'finemapping/finemap_results/{phenotype}/summary/str_rank.png',
         all_STR_contribs = 'finemapping/finemap_results/{phenotype}/summary/all_STR_contribs.tab'
+    params:
+        finemap_dirs = lambda wildcards: [
+            '/'.join(fname.split('/')[:-1])
+            for fname in all_finemap_outputs(wildcards.phenotype)
+        ]
     resources:
         time='00:30:00'
     run:
@@ -1276,7 +1189,7 @@ rule summarize_finemap_output:
             '{wildcards.phenotype} '
             'finemapping/finemap_results/{wildcards.phenotype}/summary '
             + str(n_regions_no_strs(wildcards.phenotype)) + 
-            ' {input.finemap_dirs} '
+            ' {params.finemap_dirs} '
         )
 
 rule all_summaries:
@@ -1286,27 +1199,19 @@ rule all_summaries:
 rule manhattan_finemap:
     input:
         "traits/phenotypes/white_brits/{phenotype}_unit.txt",
-        'association/plots/input/{phenotype}/my_str_results.tab',
-        'association/plots/input/{phenotype}/plink_snp_results_with_mfi.npy',
+        'association/results/{phenotype}/my_str/results.tab',
+        'association/results/{phenotype}/plink_snp/results.tab',
         'signals/regions/{phenotype}.tab',
-        'finemapping/finemap_results/{phenotype}/all_signals_done'
+        lambda wildcards: all_finemap_outputs(wildcards.phenotype)
     output:
-        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.FINEMAP.{ext}'
+        manhattan='association/plots/{phenotype}.manhattan.FINEMAP.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
-    run:
-        cmd = (
-            'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
-            '--finemap-signals '
-        )
-        if not phenotypes.is_binary(wildcards.phenotype):
-            assert wildcards.binary_type == ''
-        else:
-            assert wildcards.binary_type != ''
-            cmd += f'--binary {wildcards.binary_type[1:]} '
-        shell(cmd)
-
+    shell:
+        'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
+        '--finemap-signals '
+        
 #-------------------SuSiE----------------
 def susie_load_time(wildcards, attempt):
     if attempt == 1:
@@ -1345,17 +1250,27 @@ rule susie_load_gts:
         '{wildcards.start} '
         '{wildcards.end} '
 
+# mem backoff this way works - jobs fail in under 10 minutes due to oom before restarting
 def susie_run_mem(wildcards, attempt):
+    return 16 * attempt
+    '''
     if attempt == 1:
         return 30
     else:
         return 128
+    '''
 
 def susie_run_time(wildcards, attempt):
+    return '47:30:00'
+    '''
     if attempt == 1:
         return '00:45:00'
     else:
         return '20:00:00'
+    '''
+
+# TODO temp, should use checkpoint and a command to produce this
+maxxed_pheno_regions = set(zip(*pl.read_csv('maxxed_regions.tab', sep='\t').to_dict().values()))
 
 rule susie_run:
     input:
@@ -1364,7 +1279,6 @@ rule susie_run:
         rules.susie_load_gts.output.gt,
         rules.susie_load_gts.output.outcols, # add this to force snakemake to rerun rules that otherwise failed
     output:
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/alpha.tab'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf.tab'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf_variable.tab'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/sigma2.txt'),
@@ -1372,22 +1286,26 @@ rule susie_run:
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/converged.txt'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lfsr.tab'),
         protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/requested_coverage.txt'),
+        alpha=protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/alpha.tab'),
         #also all the csN.txt files, just an unknown number of them
         #downstream jobs should consume alpha.tab
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
         attempt = lambda wildcards, attempt: attempt,
-        L = 10,
-        max_iter = 100
+    params:
+        L=50,
+        max_iter=500
+        #L=lambda wildcards: 10 if (wildcards.phenotype, int(wildcards.chrom), int(wildcards.start), int(wildcards.end)) not in maxxed_pheno_regions else 30,
+        #max_iter=lambda wildcards: 100 if (wildcards.phenotype, int(wildcards.chrom), int(wildcards.start), int(wildcards.end)) not in maxxed_pheno_regions else 500
     conda:
         'envs/ukb_r.env.yml'
     shell:
         'Rscript finemapping/susie_run.r '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
-        '{resources.L} '
-        '{resources.max_iter} '
+        '{params.L} '
+        '{params.max_iter} '
 
 def all_susie_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
@@ -1396,19 +1314,65 @@ def all_susie_outputs(phenotype):
         for chrom, start, stop in generated_regions(phenotype)
     ]
 
-rule run_susie_phenotype:
-    input:
-        susie_outputs = lambda wildcards: all_susie_outputs(wildcards.phenotype)
-    output:
-        'finemapping/susie_results/{phenotype}/all_signals_done'
-    resources:
-        time='00:01:00'
-    shell:
-        'touch finemapping/susie_results/{wildcards.phenotype}/all_signals_done'
-
 rule susie_all_phenotypes:
     input:
-        pheno_expand('finemapping/susie_results/PHENO/all_signals_done')
+        itertools.chain.from_iterable(
+            all_susie_outputs(phenotype) for phenotype in phenotypes.phenotypes_in_use
+        )
+
+rule susie_find_reruns:
+    input:
+        rules.susie_all_phenotypes.input
+    output:
+        'finemapping/susie_results/susie_rerun_regions.txt'
+    params:
+        pheno_to_region_fname_json=json.dumps({
+            pheno: expand(rules.generate_regions.output.table, phenotype=pheno)[0]
+            for pheno in phenotypes.phenotypes_in_use
+        }),
+        pheno_to_susie_results_dir_json=json.dumps({
+            pheno: '/'.join(expand(
+                rules.susie_run.output.alpha,
+                phenotype=pheno,
+                chrom='{chrom}',
+                start='{start}',
+                end='{end}'
+            )[0].split('/')[:-2]) # cut off the {chrom}_{start}_{end}/alpha.tab at the end
+            for pheno in phenotypes.phenotypes_in_use
+        })
+    shell:
+        'finemapping/susie_find_reruns.py '
+        '{output[0]} '
+        "'{params.pheno_to_region_fname_json}' "
+        "'{params.pheno_to_susie_results_dir_json}' "
+
+rule summarize_susie_output:
+    input:
+        rules.susie_all_phenotypes.input
+    output:
+        table='finemapping/susie_results/summary.tab'
+    params:
+        json_dirs_list = lambda _ :
+            json.dumps([
+                [
+                    phenotype,
+                    f'{chrom}_{start}_{stop}',
+                    '/'.join(expand(
+                        rules.susie_run.output.alpha, phenotype=phenotype, chrom=chrom,
+                        start=start, end=stop
+                    )[0].split('/')[:-1])
+                ] for phenotype in phenotypes.phenotypes_in_use
+                for chrom, start, stop in generated_regions(phenotype)
+            ])
+    resources:
+        time='1:00:00'
+    run:
+        with tempfile.NamedTemporaryFile(mode='w') as dirs_file:
+            dirs_file.write(params.json_dirs_list)
+            dirs_file.write('\n')
+            shell(
+                f"finemapping/summarize_susie_results.py {dirs_file.name} {output.table} "
+            )
 
 # ----- finemapping summaries ----------
 rule sort_gencode:
@@ -1629,6 +1593,8 @@ rule enrichments:
         'post_finemapping/results/FINEMAP_unit_is_AAAG_relative_rate.svg',
         'post_finemapping/results/FINEMAP_unit_is_AAGG_relative_rate.svg',
         'post_finemapping/results/FINEMAP_unit_is_AATG_relative_rate.svg',
+    resources:
+        time='2:00:00'
     shell:
         './post_finemapping/enrichments.py {phenotypes.phenotypes_in_use} ' 
 
@@ -1648,7 +1614,8 @@ checkpoint summary_table:
         chr_expand('side_analyses/str_annotations/intersects_UTR/chrCHR.tab'),
         chr_expand('side_analyses/str_annotations/intersects_transcript/chrCHR.tab'),
         results = expand(rules.concatenate_my_str_gwas.output.results, suffix='', phenotype='{phenotype}'),
-        all_STR_contribs = rules.summarize_finemap_output.output.all_STR_contribs,
+        all_finemap_STR_contribs = rules.summarize_finemap_output.output.all_STR_contribs,
+        susie_results = rules.summarize_susie_output.output.table,
     output:
         readme = 'finemapping/summary/{phenotype}_table_README.txt',
         table = 'finemapping/summary/{phenotype}_table.tab',
@@ -1682,7 +1649,8 @@ checkpoint summary_table:
             f'{output.readme} '
             f'{output.table} '
             f'{input.results} '
-            f'{input.all_STR_contribs} '
+            f'{input.all_finemap_STR_contribs} '
+            f'{input.susie_results} '
         )
         if STRs:
             command += ' --previous-STR-findings ' + STRs
@@ -1703,6 +1671,124 @@ rule finemap_signal_strengths:
         'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
 
 ######################### Create Files to Export ########################
+
+rule finemapping_concordance:
+    input:
+        rules.susie_all_phenotypes.input,
+        rules.finemap_all_phenotypes.input
+    output:
+        cs_min_abs_corrs=expand('export_scripts/results/cs_min_abs_corrs.{ext}', ext={'svg', 'png'}),
+        cses_per_region=expand('export_scripts/results/cses_per_region.{ext}', ext={'svg', 'png'}),
+        finemap_hits_per_region=expand('export_scripts/results/finemap_hits_per_region.{ext}', ext={'svg', 'png'}),
+    shell:
+        'export_scripts/finemapping_concordance.py {phenotypes.phenotypes_in_use}'
+        
+
+rule white_ld_heatmap:
+    input:
+        data=expand("array_imputed/pfile_converted/chr{chrom}.{ext}", chrom='{chrom}', ext={'pgen','psam','pvar'}),
+        samples=expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits')
+    output:
+        plink1_conversion=temp(expand(
+            'post_finemapping/intermediate_results/plink1_chrom_regions/'
+            'white_brits_{phenotype}_{chrom}_{start}_{end}_{str_pos}/data.{ext}',
+            phenotype='{phenotype}',
+            chrom='{chrom}',
+            start='{start}',
+            end='{end}',
+            str_pos='{str_pos}',
+            ext={'bed', 'bim', 'fam'}
+        )),
+        ld_file=temp(
+            'post_finemapping/intermediate_results/plink1_chrom_regions/'
+            'white_brits_{phenotype}_{chrom}_{start}_{end}_{str_pos}/ld.gz'
+        ),
+        variants=temp(
+            'post_finemapping/intermediate_results/plink1_chrom_regions/'
+            'white_brits_{phenotype}_{chrom}_{start}_{end}_{str_pos}/var_subset.txt'
+        ),
+        ld_heatmap='post_finemapping/results/ld_heatmap_white_brits__{phenotype}_{chrom}_{start}_{end}_{str_pos}.png'
+    resources:
+        time='1:00:00',
+        mem_gb=40
+    shell:
+        'post_finemapping/run_my_haploview.sh '
+        '{output.ld_heatmap} '
+        'white_brits '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+        '{wildcards.str_pos} '
+
+
+ruleorder: white_ld_heatmap > ethnic_ld_heatmap 
+rule ethnic_ld_heatmap:
+    input:
+        data=expand("array_imputed/pfile_converted/chr{chrom}.{ext}", chrom='{chrom}', ext={'pgen','psam','pvar'}),
+        samples=rules.subset_samples_for_phenotype.output.samples,
+        variants=rules.white_ld_heatmap.output.variants
+    output:
+        plink1_conversion=temp(expand(
+            'post_finemapping/intermediate_results/plink1_chrom_regions/'
+            '{ethnicity}_{phenotype}_{chrom}_{start}_{end}_{str_pos}/data.{ext}',
+            ethnicity='{ethnicity}',
+            phenotype='{phenotype}',
+            chrom='{chrom}',
+            start='{start}',
+            end='{end}',
+            str_pos='{str_pos}',
+            ext={'bed', 'bim', 'fam'}
+        )),
+        ld_file=temp(
+            'post_finemapping/intermediate_results/plink1_chrom_regions/'
+            '{ethnicity}_{phenotype}_{chrom}_{start}_{end}_{str_pos}/ld.gz'
+        ),
+        ld_heatmap='post_finemapping/results/ld_heatmap_{ethnicity}__{phenotype}_{chrom}_{start}_{end}_{str_pos}.png'
+    resources:
+        time='1:00:00',
+        mem_gb=40
+    shell:
+        'post_finemapping/run_my_haploview.sh '
+        '{output.ld_heatmap} '
+        '{wildcards.ethnicity} '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+        '{wildcards.str_pos} '
+        '{input.variants} '
+
+rule region_ld_heatmap:
+    input:
+        rules.white_ld_heatmap.output.ld_heatmap,
+        expand(
+            rules.ethnic_ld_heatmap.output.ld_heatmap,
+            ethnicity=other_ethnicities,
+            phenotype='{phenotype}',
+            chrom='{chrom}',
+            start='{start}',
+            end='{end}',
+            str_pos='{str_pos}',
+        )
+    output:
+        marker_file='post_finemapping/results/.ld_heatmap_{phenotype}_{chrom}_{start}_{end}_{str_pos}.done'
+    resources:
+        time='00:05:00'
+    shell:
+        'touch {output.marker_file}'
+
+rule confusion_matrix:
+    input:
+        white_brits=expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='no_phenotype')[0]
+    output:
+        png='export_scripts/results/{chrom}_{pos}_confusion_matrix.png',
+        pdf='export_scripts/results/{chrom}_{pos}_confusion_matrix.pdf'
+    resources:
+        time='00:10:00'
+    shell:
+        'association/check_locus_imputation.py '
+        '{wildcards.chrom} {wildcards.pos} {input.white_brits} {output.png} '
 
 rule locus_summary_inputs:
     input:
@@ -1737,8 +1823,8 @@ rule create_phenotypes_table:
     input:
         'workflow/phenotypes.py',
         expand(rules.filter_samples_for_ethnicity.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity='white_brits'),
-        pheno_expand('signals/peaks/PHENO_500000_5e-8.tab'),
-        pheno_expand('signals/comparison/PHENO.done')
+        pheno_expand('signals/peaks/PHENO_250000_5e-8.tab'),
+        #pheno_expand('signals/comparison/PHENO.done') TODO one will fail, okay with that
     output:
         'export_scripts/results/phenotypes.tab',
         'export_scripts/results/phenotypes_README.txt'
@@ -1880,6 +1966,7 @@ use rule validate_STRs_parent as validate_exonic_STRs with:
         strs='post_finemapping/results/validated/exonic_finemapped_STRs.tab',
         readme='post_finemapping/results/validated/exonic_finemapped_STRs_README.txt'
 
+# TODO double check these doesn't use subset_gwas_results files
 rule assoc_figures:
     input:
         'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
@@ -1917,6 +2004,8 @@ rule graph_main_hits:
         hits=rules.validate_putatively_causal_STRs.output.strs,
     output:
         graph='post_finemapping/results/results_graph.{ext}'
+    resources:
+        time='00:30:00'
     shell:
         'post_finemapping/graph_main_hits.py '
         '{output.graph} '
@@ -1985,7 +2074,8 @@ def phenotype_hit_highlights(wildcards):
         (
             results['mentioned_in_literature'] |
             results['curated'] |
-            (results['pcausal'] >= 0.8)
+            (results['FINEMAP_pcausal'] >= 0.8) |
+            (results['SuSiE_CS_pcausal'] >= 0.33)
         )
     ]
     return (
@@ -2010,6 +2100,18 @@ def phenotype_hit_highlights(wildcards):
             chrom=results['chrom'],
             pos=results['SNPSTR_start_pos'],
             dosage_fraction_threshold=['0.001']*results.shape[0]
+        ),
+        *expand(
+            rules.confusion_matrix.output.png,
+            zip,
+            chrom=results['chrom'],
+            pos=results['SNPSTR_start_pos'],
+        ),
+        *expand(
+            rules.confusion_matrix.output.pdf,
+            zip,
+            chrom=results['chrom'],
+            pos=results['SNPSTR_start_pos'],
         )
     )
 
@@ -2155,3 +2257,7 @@ rule test:
         print(resources.time)
         time.sleep(10)
         assert False
+
+rule test2:
+    output:
+        'bar'

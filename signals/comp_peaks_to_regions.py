@@ -14,16 +14,22 @@ def main():
     phenotype = args.phenotype
 
     regions = []
+    region_p_vals = {}
     with open(f'{ukb}/signals/regions/{phenotype}.tab') as regions_itr:
         next(regions_itr)
         for line in regions_itr:
-            regions.append(tuple(int(el) for el in line.strip().split('\t')[:-1]))
+            region = tuple(int(el) for el in line.strip().split('\t')[:-1])
+            regions.append(region)
+            region_p_vals[region] = 1
     peaks = []
+    peak_p_vals = {}
     with open(f'{ukb}/signals/peaks/{phenotype}_250000_5e-8.tab') as peaks_itr:
         next(peaks_itr)
         for line in peaks_itr:
             split = line.split('\t')
-            peaks.append((int(split[0]), int(split[1]), 0))
+            peak = (int(split[0]), int(split[1]), 0)
+            peaks.append(peak)
+            peak_p_vals[peak] = float(split[3])
 
     print('Checking each region contains a peak ...')
     for region in regions:
@@ -45,6 +51,7 @@ def main():
             continue
         idx = bisect.bisect(regions, peak)
         region = regions[idx - 1]
+        region_p_vals[region] = min(region_p_vals[region], peak_p_vals[peak])
         if (peak[0] != region[0] or
             peak[1] <= region[1] or
             peak[1] >= region[2]):
@@ -52,6 +59,8 @@ def main():
             assert False
 
     print('Done.')
+    print('Min p-value regions:')
+    print([k for (k, v) in region_p_vals.items() if v <= 1e-300])
 
     pathlib.Path(f'{ukb}/signals/comparison/{phenotype}.done').touch()
 

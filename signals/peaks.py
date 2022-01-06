@@ -1,60 +1,64 @@
 #!/usr/bin/env python3
 
 import argparse
+import itertools
 import os
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import sortedcontainers
 
 import python_array_utils as utils
 
 ukb = os.environ['UKB']
 
-def get_snp_loci(plink_imputed_snp_fname):
-    cols = ['#CHROM', 'POS', 'REF', 'ALT', 'P', 'ERRCODE']
-    dtypes = utils.get_dtypes(plink_imputed_snp_fname)
-    dtypes = {col: dtypes[col] for col in cols}
-    csv = utils.df_to_recarray(pd.read_csv(
+def get_snp_loci(plink_imputed_snp_fname, thresh):
+    csv = pl.scan_csv(
         plink_imputed_snp_fname,
-        header=0,
-        delimiter='\t',
-        usecols=cols,
-        dtype=dtypes
-    ))
+        sep='\t',
+        null_values='NA'
+    ).filter(
+        pl.col('P') <= thresh
+    ).with_column(
+        pl.when(pl.col('P') <= 1e-300)
+          .then(0)
+          .otherwise(pl.col('P'))
+          .alias('P')
+    ).filter(
+        pl.col('ERRCODE') != 'CONST_OMITTED_ALLELE'
+    ).collect()
 
-    # round to zero past this point
-    csv['P'][csv['P'] <= 1e-300] = 0
+    assert np.all((csv['ERRCODE'] == '.').to_numpy())
 
-    csv = csv[csv['ERRCODE'] != 'CONST_OMITTED_ALLELE']
-
-    assert np.all(csv['ERRCODE'] == '.')
-
+    dict_csv = csv.to_dict(as_series = False)
     return sortedcontainers.SortedSet(
-        iterable = ((row['P'], row['#CHROM'], row['POS'], 'SNP', row['REF'], row['ALT']) for row in iter(csv))
+        iterable = zip(dict_csv['P'], dict_csv['#CHROM'], dict_csv['POS'], itertools.repeat('SNP'), dict_csv['REF'], dict_csv['ALT'])
     )
 
-def get_str_loci(phenotype, my_str_fname):
+def get_str_loci(phenotype, my_str_fname, thresh):
     p_col = f'p_{phenotype}'
-    csv = utils.df_to_recarray(pd.read_csv(
+    csv = pl.scan_csv(
         my_str_fname,
-        header=0,
-        delimiter='\t',
-        usecols=['chrom', 'pos', p_col],
-        dtype=utils.get_dtypes(my_str_fname)
-    ))
-
-    # round to zero past this point
-    csv[p_col][csv[p_col] <= 1e-300] = 0
+        sep='\t',
+        dtypes={'alleles': str, 'locus_filtered': str}
+    ).filter(
+        pl.col(p_col) <= thresh
+    ).with_column(
+        pl.when(pl.col(p_col) <= 1e-300)
+          .then(0)
+          .otherwise(pl.col(p_col))
+          .alias(p_col)
+    ).collect().to_dict(as_series=False)
 
     return sortedcontainers.SortedSet(
-        iterable = ((row[p_col], row['chrom'], row['pos'], 'STR') for row in iter(csv)),
+        iterable = zip(csv[p_col], csv['chrom'], csv['pos'], itertools.repeat('STR'))
     )
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
     parser.add_argument('spacing', type=int)
+    parser.add_argument('thresh', type=float)
     parser.add_argument('my_str_fname')
     parser.add_argument('plink_imputed_snp_fname')
     parser.add_argument('readme_fname')
@@ -65,10 +69,10 @@ def main():
     spacing = args.spacing
 
     print("Loading snps ... ", end='', flush=True)
-    snp_loci = get_snp_loci(args.plink_imputed_snp_fname)
+    snp_loci = get_snp_loci(args.plink_imputed_snp_fname, args.thresh)
     print('done', flush=True)
     print("Loading strs ... ", end='', flush=True)
-    str_loci = get_str_loci(phenotype, args.my_str_fname)
+    str_loci = get_str_loci(phenotype, args.my_str_fname, args.thresh)
     print('done', flush=True)
 
     # p_val, chrom, pos, type, other
@@ -92,7 +96,7 @@ def main():
             '* choose SNPs over STRs\n'
             '* choose SNPs with shorter reference alleles\n'
             '* choose SNPs with lexicographically earlier alternate alleles\n'
-            f'This is continued until all variants are examined. '
+            f'This is continued until all variants with p_value < {args.thresh} are examined.\n'
             f'STR/SNP peak varaints within {spacing} of variants of the other type that pass the '
             'p-value threshold are marked as being tagged by the other type of variants.'
         )
@@ -127,7 +131,7 @@ def main():
                 lower_peak[1] >= locus_as_peak[1] - spacing
             ):
                 if lower_peak_p_val > locus_p_val:
-                    print('del lower')
+                    #print('del lower')
                     # Remove slope element
                     del_lower = True
                 elif lower_peak[2] != locus_as_peak[2]:
@@ -147,7 +151,7 @@ def main():
                 upper_peak[1] - spacing <= locus_as_peak[1]
             ):
                 if upper_peak_p_val > locus_p_val:
-                    print('del upper')
+                    #print('del upper')
                     # Remove slope element
                     del_upper = True
                 elif upper_peak[2] != locus_as_peak[2]:

@@ -21,7 +21,7 @@ def prep_dict(d):
 def rename_column_pd(df, old_name, new_name):
     df.rename(columns = {old_name: new_name}, inplace = True)
 
-def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contribs_fname, literature_STRs, literature_STR_URL_list, cool_loci):
+def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_finemap_contribs_fname, all_STR_susie_contribs_fname, literature_STRs, literature_STR_URL_list, cool_loci):
     col_dphen_unit = 'Δphenotype_per_additional_repeat_unit'
     col_dphen_sd = 'Δphenotype_per_s.d._increase_in_repeat_size'
 
@@ -71,7 +71,11 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
         (col_dphen_sd, 'linear regression on raw phenotypes vs repeat length on '
          f"QC'ed sample subset, no covariates included, phenotype measured in {unit}"),
-        ('pcausal', 'FINEMAP posterior probability of causality'),
+        ('FINEMAP_pcausal', 'FINEMAP posterior probability of causality'),
+        ('SuSiE_pcausal', 'SuSiE posterior probability of causality, accumulated across all '
+        'credible sets in the region'),
+        ('SuSiE_CS_pcausal', 'SuSiE posterior probability of causality, just from the single '
+         'credible set this variant was identified in. '),
         ('mentioned_in_literature', 'Whether or not this we know of a citation '
          'saying this STR is likely causal for this trait. False here means we have '
          'not checked whether or not this is reported in the literature, not that it has not.'),
@@ -113,12 +117,13 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     ]
 
     readme.write(
-        'table.tab contains one row for each variant that was not filtered prior to association '
+        'This table contains one row for each variant that was not filtered prior to association '
         'testing and either was reported as an association in literature, or I manually marked it as interesting '
         'or both had association p-value >= 5e-8 and '
-        'FINEMAP posterior probability of causaility >= 0.05\n'
+        'either FINEMAP posterior probability of causaility >= 0.05'
+        'or SuSiE posterior probability of causaility >= 0.05\n'
         '\n'
-        'table.tab contains the following columns:\n'
+        'This table contains the following columns:\n'
     )
     for column, description in columns:
         readme.write(column)
@@ -129,19 +134,40 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     readme.write('\n')
 
     print("Reading finemapping output ...", flush=True)
-    # chrom, signal_region, SNPSTR_start_pos, pcausal
-    signals = pd.read_csv(
-        all_STR_contribs_fname,
+    # chrom, signal_region, SNPSTR_start_pos, FINEMAP_pcausal
+    finemap_signals = pd.read_csv(
+        all_STR_finemap_contribs_fname,
         skiprows = 1,
         delimiter='\t',
-        dtype=utils.get_dtypes(all_STR_contribs_fname)
+        dtype=utils.get_dtypes(all_STR_finemap_contribs_fname)
     )
-    rename_column_pd(signals, 'signal', 'signal_region')
+    rename_column_pd(finemap_signals, 'signal', 'signal_region')
+    rename_column_pd(finemap_signals, 'pcausal', 'FINEMAP_pcausal')
+
+    # snpstr_start_pos, region, SuSiE_pcausal, SuSiE_CS_pcausaul
+    susie_signals = pd.read_csv(
+        all_STR_susie_contribs_fname,
+        delimiter='\t'
+    )
+    susie_signals = susie_signals[susie_signals['phenotype'] == phenotype]
+    rename_column_pd(susie_signals, 'susie_pip', 'SuSiE_pcausal')
+    rename_column_pd(susie_signals, 'susie_cs_pip', 'SuSiE_CS_pcausal')
+    susie_signals.drop(columns=['phenotype', 'cs_num'])
+
+    signals = finemap_signals.merge(
+        susie_signals,
+        how='outer',
+        left_on=['signal_region', 'STR'],
+        right_on=['region', 'var_name']
+    )
 
     signal_split = signals['signal_region'].str.split('_', n=1, expand=True)
     signals['chrom'] = signal_split[0].astype(int)
     str_split = signals['STR'].str.split('_', n=1, expand=True)
     signals['pos'] = str_split[1].astype(int)
+   
+    # make sure there are no loci in separate signal regions
+    assert signals[['chrom', 'pos', 'signal_region']].drop_duplicates().shape[0] == signals.shape[0]
 
     '''
     chrom
@@ -215,8 +241,13 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
         only_lit[idx] = 'True'
     for idx in np.nonzero(
         literature_STR_rows &
-        ~np.isnan(signals['pcausal'].to_numpy()) &
-        (signals['pcausal'].to_numpy() >= 0.05)
+        ((
+            ~np.isnan(signals['FINEMAP_pcausal'].to_numpy()) &
+            (signals['FINEMAP_pcausal'].to_numpy() >= 0.05)
+        ) | (
+            ~np.isnan(signals['SuSiE_pcausal'].to_numpy()) &
+            (signals['SuSiE_pcausal'].to_numpy() >= 0.05)
+        ))
     )[0]:
         only_lit[idx] = 'False'
 
@@ -242,8 +273,13 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
         only_cool[idx] = 'True'
     for idx in np.nonzero(
         cool_loci_rows &
-        ~np.isnan(signals['pcausal'].to_numpy()) &
-        (signals['pcausal'].to_numpy() >= 0.05)
+        ((
+            ~np.isnan(signals['FINEMAP_pcausal'].to_numpy()) &
+            (signals['FINEMAP_pcausal'].to_numpy() >= 0.05)
+        ) | (
+            ~np.isnan(signals['SuSiE_pcausal'].to_numpy()) &
+            (signals['SuSiE_pcausal'].to_numpy() >= 0.05)
+        ))
     )[0]:
         only_cool[idx] = 'False'
 
@@ -252,10 +288,16 @@ def main(table_out, readme, phenotype, unit, my_STR_results_fname, all_STR_contr
     signals = signals[
         literature_STR_rows |
         cool_loci_rows | (
-            ~np.isnan(signals['pcausal'].to_numpy()) &
-            (signals['pcausal'].to_numpy() >= 0.05) &
+            ((
+                ~np.isnan(signals['FINEMAP_pcausal'].to_numpy()) &
+                (signals['FINEMAP_pcausal'].to_numpy() >= 0.05)
+            ) | (
+                ~np.isnan(signals['SuSiE_pcausal'].to_numpy()) &
+                (signals['SuSiE_pcausal'].to_numpy() >= 0.05)
+            )) &
             (signals['association_p_value'].to_numpy() < 5e-8)
-    )]
+        )
+    ]
 
     signals.reset_index(inplace=True)
     nrows = signals.shape[0]
@@ -552,7 +594,8 @@ if __name__ == '__main__':
     parser.add_argument('readme_out')
     parser.add_argument('table_out')
     parser.add_argument('my_STR_results_fname')
-    parser.add_argument('all_STR_contribs_fname')
+    parser.add_argument('all_STR_finemap_contribs_fname')
+    parser.add_argument('all_STR_susie_contribs_fname')
     parser.add_argument('--previous-STR-findings', nargs='+', default=[])
     parser.add_argument('--previous-STR-finding-URLs', nargs='+', default=[])
     parser.add_argument('--cool-loci', nargs='+', default=[])
@@ -564,4 +607,4 @@ if __name__ == '__main__':
     assert len(previous_STRs) == len(previous_STR_URLs)
 
     with open(args.readme_out, 'w') as readme:
-        main(args.table_out, readme, phenotype, args.unit, args.my_STR_results_fname, args.all_STR_contribs_fname, previous_STRs, previous_STR_URLs, args.cool_loci)
+        main(args.table_out, readme, phenotype, args.unit, args.my_STR_results_fname, args.all_STR_finemap_contribs_fname, args.all_STR_susie_contribs_fname, previous_STRs, previous_STR_URLs, args.cool_loci)

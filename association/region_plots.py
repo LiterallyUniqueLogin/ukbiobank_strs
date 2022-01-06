@@ -1,7 +1,5 @@
-import argparse
 import ast
 import copy
-import math
 import os
 import os.path
 import time
@@ -23,7 +21,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-import graphing_utils
 import python_array_utils as utils
 
 ukb = os.environ['UKB']
@@ -36,6 +33,16 @@ chr_lens = np.genfromtxt(
 )
 
 max_p_val = 300 # in -log10
+
+def fix_cols(cols):
+    col_sightings = {}
+    for col in cols:
+        if col not in col_sightings:
+            col_sightings[col] = 1
+            yield col
+        else:
+            yield col + '__' + str(col_sightings[col])
+            col_sightings[col] += 1
 
 def get_conditioned_strs(condition):
     splits = condition.split('_')
@@ -117,13 +124,12 @@ my_str_results_rename = {
 def load_my_str_results(phenotype, binary, unconditional_results_fname, conditional_results_fname = None):
     print(f"Loading my STR results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
-    unconditional_results = pd.read_csv(
+    unconditional_results = pl.scan_csv(
         unconditional_results_fname,
-        header=0,
-        delimiter='\t',
-        encoding='UTF-8',
-        dtype=utils.get_dtypes(unconditional_results_fname, {'locus_filtered': str})
-    )
+        sep='\t',
+        with_column_names=lambda cols: list(fix_cols(cols)),
+        dtypes={'alleles': str, 'locus_filtered': str}
+    ).filter(pl.col(f'p_{phenotype}') <  5e-5).collect().to_pandas()
 
     if not conditional_results_fname:
         results = unconditional_results
@@ -233,13 +239,55 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
 
-    unconditional_results = pd.DataFrame.from_records(np.load(unconditional_results_fname))
+    if binary:
+        binary_colnames = {
+            'A1_CASE_CT': 'alt_case_count',
+            'A1_CTRL_CT': 'alt_control_count',
+            'FIRTH?': 'firth?'
+        }
+    else:
+        binary_colnames = {}
+    start_time = time.time()
+    unconditional_results = pl.scan_csv(
+        unconditional_results_fname,
+        sep='\t',
+        null_values='NA'
+    ).filter(
+        pl.col('P') <  5e-5
+    ).rename({
+        '#CHROM': 'chr',
+        'POS': 'pos',
+        'ID': 'id',
+        'REF': 'ref',
+        'ALT': 'alt',
+        'P': 'p_val',
+        'ERRCODE': 'error',
+        # these last three only occur in logistic regression
+        **binary_colnames
+    }).select([
+        pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error', *binary_colnames.values()]
+    ]).collect().to_pandas()
+
     if not conditional_results_fname:
         results = unconditional_results
     else:
-        results = pd.DataFrame.from_records(np.load(
-            conditional_results_fname
-        ))
+        results = pl.scan_csv(
+            conditional_results_fname,
+            sep='\t',
+            null_values='NA'
+        ).rename({
+            '#CHROM': 'chr',
+            'POS': 'pos',
+            'ID': 'id',
+            'REF': 'ref',
+            'ALT': 'alt',
+            'P': 'p_val',
+            'ERRCODE': 'error',
+            # these last three only occur in logistic regression
+            **binary_colnames
+        }).select([
+            pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error', *binary_colnames.values()]
+        ]).collect().to_pandas()
 
         unconditional_results['p_val'] = np.maximum(unconditional_results['p_val'], 1 / 10**max_p_val)
         unconditional_results['p_val'] = -np.log10(unconditional_results['p_val'])
@@ -496,7 +544,7 @@ def export(bokeh_plot, outfname, ext, title=None):
         assert ext == 'html'
         html = bokeh.embed.file_html(bokeh_plot, bokeh.resources.CDN, title)
         with open(outfname, 'w') as outfile:
-                outfile.write(html)
+            outfile.write(html)
 
 def add_x_navigate(bokeh_plot):
     wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")
