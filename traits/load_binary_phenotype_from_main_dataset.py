@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('ethnicity')
 parser.add_argument('phenotype_name')
 parser.add_argument('phenotype_field_id')
+parser.add_argument('--zero-one-neg-nan', action='store_true')
 
 args = parser.parse_args()
 
@@ -49,6 +50,17 @@ def load_date_data_field(fname, extra_field = False):
     float_array[missing_times, 1] = np.nan
     return float_array
 
+def load_0_1_neg_nan_field(fname):
+    data = np.genfromtxt(
+        fname,
+        skip_header = 1,
+        delimiter='\t'
+    )[:, [1,2]]
+    # don't include participants who didn't respond
+    data = data[~np.isnan(data[:, 1]), :]
+    # don't include participants who responded "don't know" or "won't tell"
+    data = data[data[:, 1] >= 0, :]
+    return data
 
 with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_unit.txt', 'w') as unit_file:
     unit_file.write('binary_0=control_1=case\n')
@@ -66,12 +78,14 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
         "missing values for all control samples.\n"
     )
 
-    # cols: id, date first reported
-    data = load_date_data_field(data_fname)
-
-    # cols: id, is_case
-    data[:, 1] = ~np.isnan(data[:, 1])
-
+    if not args.zero_one_neg_nan:
+        # cols: id, date first reported
+        data = load_date_data_field(data_fname)
+        # cols: id, is_case
+        data[:, 1] = ~np.isnan(data[:, 1])
+    else:
+        # cols: id, is_case
+        data = load_0_1_neg_nan_field(data_fname)
 
     year_of_birth = np.genfromtxt(
         f'{ukb}/main_dataset/extracted_data/year_of_birth_34.txt',

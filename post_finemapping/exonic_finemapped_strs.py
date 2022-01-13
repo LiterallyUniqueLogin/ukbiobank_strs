@@ -13,7 +13,7 @@ def main():
     with open(args.outreadme, 'w') as readme:
         readme.write(
             'Anything in the summary tables (i.e. association p-value <= 5e-8) that has FINEMAP pcausal '
-            '>= 0.5 and is <= 10bp from the nearest exon boundary of an exon of a transcript that '
+            '>= 0.5 or SuSiE CS pcausal and is <= 10bp from the nearest exon boundary of an exon of a transcript that '
             'has support >=2\n'
         )
 
@@ -25,7 +25,8 @@ def main():
                     header = next(table)
                     split = header.strip().split('\t')
                     nearby_exons_idx = split.index('nearby_exons')
-                    pcausal_idx = split.index('pcausal')
+                    finemap_pcausal_idx = split.index('FINEMAP_pcausal')
+                    susie_pcausal_idx = split.index('SuSiE_CS_pcausal')
                     outfile.write('phenotype\t')
                     outfile.write(header)
                 else:
@@ -36,7 +37,10 @@ def main():
 
                 for line in table:
                     split = line.strip().split('\t')
-                    if split[pcausal_idx] != 'NA' and float(split[pcausal_idx]) < 0.5:
+                    if (
+                        (split[susie_pcausal_idx] == 'NA' or float(split[susie_pcausal_idx]) < 0.5) and
+                        (split[finemap_pcausal_idx] == 'NA' or float(split[finemap_pcausal_idx]) < 0.5)
+                    ):
                         continue
                     exons = split[nearby_exons_idx]
                     if exons == 'none':

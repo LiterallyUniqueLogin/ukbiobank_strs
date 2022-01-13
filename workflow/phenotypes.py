@@ -58,7 +58,15 @@ pheno_descs = {
     'type_2_diabetes_E11': PhenotypeDescription(
         '130708',
         unit = 'binary_date_first_reported'
-    )
+    ),
+    'intestinal_malabsorption_K90': PhenotypeDescription(
+        '131688',
+        unit = 'binary_date_first_reported'
+    ),
+    'coeliac_or_gluten_sensitivity': PhenotypeDescription(
+        '21068',
+        unit = 'binary_0_1_neg_nan'
+    ),
 }
 
 # haematology phenotypes https://biobank.ndph.ox.ac.uk/showcase/label.cgi?id=100081

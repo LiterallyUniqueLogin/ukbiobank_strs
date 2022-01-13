@@ -25,7 +25,6 @@ import numpy.ma
 import numpy.random
 import pandas as pd
 
-import graphing_utils
 import python_array_utils as utils
 import region_plots
 
@@ -34,10 +33,6 @@ ukb = os.environ['UKB']
 # python stops being able to distinguish between small numbers and zero at 1e-324 == 0
 # so cutoff a bit before then
 max_p_val = 300 # in -log10
-
-def get_conditioned_isnps(condition):
-    splits = condition.split('_')
-    return splits[(splits.index('ISNP')+1):(splits.index('ASNP')-1)]
 
 def create_source_dict(
         data: np.recarray,
@@ -127,9 +122,6 @@ def make_manhattan_plots(
         stat = 'fraction'
 
     conditioning = conditioned_strs or conditioned_isnps
-    if conditioned_isnps:
-        print("Can't handle conditioned_isnps at the moment")
-        exit()
 
     if return_figure:
         assert outfname[0] == '.'
@@ -435,14 +427,21 @@ def make_manhattan_plots(
             size=7,
             muted_alpha=0.1
         )
+    condition_color='#CD00E0'
     if conditioned_isnps:
-        pass #TODO
+        manhattan_plot.circle(
+            [snp[0] for snp in conditioned_isnps],
+            [0]*len(conditioned_isnps),
+            legend_label='Conditioned-on SNPs',
+            color=condition_color,
+            size=20
+        )
     if conditioned_strs:
         manhattan_plot.square_pin(
-            [int(STR) for STR in conditioned_strs],
+            conditioned_strs,
             [0]*len(conditioned_strs),
             legend_label='Conditioned-on STRs',
-            color=(0, 158, 115),
+            color=condition_color,
             size=20
         )
 
@@ -832,41 +831,51 @@ def main():
     parser.add_argument("--chrom", type=int)
     parser.add_argument("--start", type=int)
     parser.add_argument("--end", type=int)
-    parser.add_argument("--condition")
+    parser.add_argument('--conditioned-STRs', nargs='*', type=int)
+    parser.add_argument('--conditioned-imputed-SNPs', nargs='*')
     parser.add_argument('--finemap-signals', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     parser.add_argument('--plink-snp-fname')
     parser.add_argument('--peaks-spacing', type=int)
     parser.add_argument('--peaks-thresh', type=str)
+    parser.add_argument('--unit')
     args = parser.parse_args()
 
     phenotype = args.phenotype
     ext = args.ext
     binary = args.binary
-    condition = args.condition
+    chrom = args.chrom
+    start = args.start
+    end = args.end
+    condition = bool(args.conditioned_imputed_SNPs) or bool(args.conditioned_STRs)
 
     if not args.binary:
         run_suffix = ''
     else:
         run_suffix = '.' + binary
 
-    assert args.finemap_signals + args.my_plink_comparison + bool(condition) + bool(args.peaks_spacing) <= 1
+    assert args.finemap_signals + args.my_plink_comparison + condition + bool(args.peaks_spacing) <= 1
 
     assert bool(args.peaks_spacing) == bool(args.peaks_thresh)
 
-    assert bool(args.start) == bool(args.end)
-    if bool(args.start):
-        assert bool(args.chrom)
+    assert bool(start) == bool(end)
+    if bool(start):
+        assert bool(chrom)
 
-    if bool(args.condition):
-        # will parse chrom, start, end from the condition string itself
-        assert not bool(args.chrom)
+    if condition:
+        assert bool(chrom) and bool(start)
         assert ext == 'png'
+        conditioned_isnps = []
+        for SNP in args.conditioned_imputed_SNPs:
+            pos, ref, alt = SNP.split('_')
+            pos = int(pos)
+            conditioned_isnps.append((pos, ref, alt))
+        conditioned_strs = args.conditioned_STRs
     else:
         conditioned_isnps = conditioned_strs = None
 
     if args.my_plink_comparison:
-        assert bool(args.chrom)
+        assert bool(chrom)
     if bool(args.plink_snp_fname) or args.only_mine or args.only_plink:
         assert args.my_plink_comparison
     assert args.only_mine + args.only_plink <= 1
@@ -876,7 +885,7 @@ def main():
         str_finemap_signals = None
         finemap_regions = None
 
-    if not args.my_plink_comparison and not args.condition:
+    if not args.my_plink_comparison and not condition:
         my_str_run_date = region_plots.get_my_str_run_date(
             f'{ukb}/association/results/{phenotype}/my_str{run_suffix.replace(".", "_")}/README.txt'
         )
@@ -889,41 +898,29 @@ def main():
         runtype_suffix = ''
 
     if not bool(args.my_plink_comparison):
+        if condition:
+            condition_string = f'chr{chrom}_{start}_{end}_STR{"_".join(["", *[str(STR) for STR in args.conditioned_STRs], ""])}_ISNP{"_".join(["", *args.conditioned_imputed_SNPs, ""])}_ASNP'
         my_str_results = region_plots.load_my_str_results(
             phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab',
-            f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}_conditional/{condition}.tab' if condition else None
+            f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}_conditional/{condition_string}.tab' if condition else None
         )
         plink_snp_results = region_plots.load_plink_results(
             phenotype, binary, f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}/results.tab',
-            f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}_conditional/{condition}/plink2.{"rin_" if not binary else ""}{phenotype}.glm.linear.done' if condition else None
+            f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}_conditional/{condition_string}/plink2.{"rin_" if not binary else ""}{phenotype}.glm.linear.done' if condition else None
         )
         gwas_catalog, gwas_catalog_ids = region_plots.load_gwas_catalog(phenotype)
 
         my_snp_results = None
         my_snp_run_date = None
-        if not condition and not args.chrom:
-            chrom = None
-            start = None
-            end = None
+        if not condition and not chrom:
             outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{ext}'
-        elif args.chrom:
-            chrom = args.chrom
-            if args.start:
-                start = args.start
-                end = args.end
+        elif not condition and chrom:
+            if start:
                 outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.chr{chrom}_{start}_{end}.{ext}'
             else:
-                start = None
-                end = None
                 outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.chr{chrom}.{ext}'
         else:
-            chrom, start, end = condition.split('_')[:3]
-            chrom = int(chrom[3:])
-            start = int(start)
-            end = int(end)
-            outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{condition}.{ext}'
-            conditioned_isnps = get_conditioned_isnps(condition)
-            conditioned_strs = region_plots.get_conditioned_strs(condition)
+            outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{condition_string}.{ext}'
 
             unconditioned_str_results = region_plots.load_my_str_results(
                 phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab'
@@ -982,9 +979,6 @@ def main():
                     out_files.append(f'{finemap_loc}/{region_chrom}_{region_start}_{region_end}/finemap_output.snp')
             snp_finemap_signals, str_finemap_signals, finemap_regions = region_plots.load_finemap_signals(out_files)
     else:
-        chrom = args.chrom
-        start = args.start
-        end = args.end
         gwas_catalog = gwas_catalog_ids = None
         my_str_results = my_str_run_date = None
 
@@ -1026,8 +1020,11 @@ def main():
     else:
         plink_snp_run_date = None
 
-    with open(f'{ukb}/traits/phenotypes/white_brits/{phenotype}_unit.txt') as unit_file:
-        unit = next(unit_file).strip()
+    if args.unit:
+        unit = args.unit
+    else:
+        with open(f'{ukb}/traits/phenotypes/white_brits/{phenotype}_unit.txt') as unit_file:
+            unit = next(unit_file).strip()
 
     if not condition:
         make_manhattan_plots(
@@ -1075,7 +1072,6 @@ def main():
             conditioned_isnps = conditioned_isnps,
             conditioned_strs = conditioned_strs,
             return_figure = True,
-            legend=False
         )
         unconditioned_man = make_manhattan_plots(
             '.png',
@@ -1098,7 +1094,8 @@ def main():
             finemap_regions = finemap_regions,
             conditioned_isnps = None,
             conditioned_strs = None,
-            return_figure = True
+            return_figure = True,
+            legend=False
         )
         layout = bokeh.layouts.grid([unconditioned_man, conditioned_man])
         conditioned_man.y_range = unconditioned_man.y_range

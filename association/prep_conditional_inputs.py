@@ -64,23 +64,19 @@ for STR in args.STRs:
     gts.append(this_var_gts)
 
 for iSNP in args.imputed_SNPs:
-    itr = lfg.load_imputed_snps(f'{args.chr}:{iSNP}-{iSNP}', slice(None))
+    pos, ref, alt = iSNP.split('_')
+    itr = lfg.load_imputed_snps(f'{args.chr}:{pos}-{pos}', slice(None))
     next(itr) # ignore names of locus_details
     try:
-        dosages, unique_alleles, chrom, pos, locus_filtered, locus_details = next(itr)
+        unique_alleles = []
+        while not np.all(unique_alleles == [ref, alt]):
+            dosages, unique_alleles, chrom, outpos, locus_filtered, locus_details = next(itr)
     except StopIteration as si:
-        raise ValueError(f"Did not find an imputed SNP at position {iSNP}") from si
+        raise ValueError(f"Did not find imputed SNP {iSNP}") from si
 
-    assert pos == int(iSNP)
     if locus_filtered:
-        raise ValueError(f"imputed SNP at position {iSNP} was filtered for reason {locus_filtered}")
-
-    try:
-        next(itr)
-    except StopIteration:
-        pass
-    else:
-        raise ValueError(f"Expected only one imputed SNP at position {iSNP}")
+        raise ValueError(f"imputed SNP {iSNP} was filtered for reason {locus_filtered}")
+    assert outpos == int(pos)
 
     variant_names.append(f"imputed_SNP_{iSNP}")
     this_var_gts = dosages[:, 1] + 2*dosages[:, 2]

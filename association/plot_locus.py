@@ -3,7 +3,6 @@
 import argparse
 import ast
 import os
-import subprocess as sp
 import sys
 
 import bokeh.io
@@ -11,6 +10,7 @@ import bokeh.models
 import bokeh.plotting
 import cyvcf2
 import numpy as np
+import polars as pl
 
 import python_array_utils as utils
 
@@ -19,8 +19,22 @@ sys.path.insert(0, f'{ukb}/../trtools/repo')
 
 import trtools.utils.tr_harmonizer as trh
 
+
+def fix_cols(cols):
+    col_sightings = {}
+    for col in cols:
+        if col not in col_sightings:
+            col_sightings[col] = 1
+            yield col
+        else:
+            yield col + '__' + str(col_sightings[col])
+            col_sightings[col] += 1
+
 parser = argparse.ArgumentParser()
-parser.add_argument('imputation_run_name')
+parser.add_argument('outloc')
+parser.add_argument('imputed_vcf')
+parser.add_argument('assoc_results')
+parser.add_argument('pheno_data')
 parser.add_argument('chrom', type=int)
 parser.add_argument('pos', type=int)
 parser.add_argument('phenotype')
@@ -54,26 +68,26 @@ figure.axis.axis_label_text_font_size = '18px'
 figure.axis.major_label_text_font_size = '14px'
 
 if not args.binary:
-    run_type = 'my_str'
+    stat_name = 'mean'
 else:
-    run_type = 'my_str_linear'
-results_fname = f'{ukb}/association/results/{args.phenotype}/{run_type}/results.tab'
-with open(results_fname) as results:
-    header = next(results).strip().split('\t')
+    stat_name = 'fraction'
 
-out = sp.run(
-    f'grep -P "^{args.chrom}\t{args.pos}" {results_fname}',
-    shell=True,
-    check=True,
-    capture_output=True
-)
-print(out.stderr.decode(), flush=True)
-if out.stderr:
-    exit()
-
-result = out.stdout.decode().strip().split('\t')
-
-pheno_data = np.load(f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{args.phenotype}.npy')
+print(args.assoc_results)
+result = pl.scan_csv(
+    args.assoc_results,
+    sep='\t',
+    dtypes={'locus_filtered': str}
+).filter(
+    (pl.col('chrom') == args.chrom) & (pl.col('pos') == args.pos)
+).collect().select([ # have to collect first due to some sort of bug
+    'motif',
+    '0.05_significance_CI',
+    '5e-8_significance_CI',
+    f'{stat_name}_{args.phenotype}_per_single_dosage',
+])
+assert result.shape[0] == 1
+    
+pheno_data = np.load(args.pheno_data)
 
 bgen_samples = []
 with open(f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample') as samplefile:
@@ -89,7 +103,7 @@ merged_arr = utils.merge_arrays(samples_array, pheno_data)
 unfiltered_subset = ~np.isnan(merged_arr[:, 1])
 n_samples = np.sum(unfiltered_subset)
 
-vcf = cyvcf2.VCF(f'{ukb}/str_imputed/runs/{args.imputation_run_name}/vcfs/annotated_strs/chr{args.chrom}.vcf.gz')
+vcf = cyvcf2.VCF(args.imputed_vcf)
 found_rec = False
 for record in vcf(f'{args.chrom}:{args.pos}-{args.pos}'):
     if record.POS < args.pos:
@@ -130,13 +144,9 @@ for allele in alleles_copy:
         alleles.remove(allele)
 alleles = sorted(alleles)
 
-if not args.binary:
-    stat_name = 'mean'
-else:
-    stat_name = 'fraction'
-mean_per_dosage = {float(allele): val for allele, val in ast.literal_eval(result[header.index(f'{stat_name}_{args.phenotype}_per_single_dosage')]).items()}
-ci5e_2 = {float(allele): val for allele, val in ast.literal_eval(result[header.index('0.05_significance_CI')]).items()}
-ci5e_8 = {float(allele): val for allele, val in ast.literal_eval(result[header.index('5e-8_significance_CI')]).items()}
+mean_per_dosage = {float(allele): val for allele, val in ast.literal_eval(result[f'{stat_name}_{args.phenotype}_per_single_dosage'].to_numpy()[0]).items()}
+ci5e_2 = {float(allele): val for allele, val in ast.literal_eval(result['0.05_significance_CI'].to_numpy()[0]).items()}
+ci5e_8 = {float(allele): val for allele, val in ast.literal_eval(result['5e-8_significance_CI'].to_numpy()[0]).items()}
 y_min = min(ci5e_8[allele][0] for allele in alleles)
 y_max = max(ci5e_8[allele][1] for allele in alleles)
 
@@ -150,7 +160,7 @@ figure.legend.label_text_font_size = '10px'
 figure.y_range = bokeh.models.Range1d(y_min - 0.05*(y_max-y_min), y_max + 0.05*(y_max-y_min))
 
 figure.add_layout(
-    bokeh.models.Title(text=f'STR {args.chrom}:{args.pos} Repeat Unit:{result[header.index("motif")]}', align="center", text_font_size='18px'), "above"
+    bokeh.models.Title(text=f'STR {args.chrom}:{args.pos} Repeat Unit:{result["motif"].to_numpy()[0]}', align="center", text_font_size='18px'), "above"
 )
 figure.add_layout(
     bokeh.models.Title(text=args.phenotype.replace('_', ' ').capitalize() + " vs genotype", align="center", text_font_size='18px'), "above"
@@ -161,5 +171,5 @@ figure.add_layout(bokeh.models.Title(text="People contribute to each genotype ba
 figure.add_layout(bokeh.models.Title(text="Only considers tested individuals", align="center"), "below")
 figure.add_layout(bokeh.models.Title(text=f"Genotypes with dosages less than {100*args.dosage_fraction_threshold}% of the population are omitted", align="center"), "below")
 
-bokeh.io.export_svg(figure, filename=f'{ukb}/association/locus_plots/{args.phenotype}_{args.chrom}_{args.pos}_{args.dosage_fraction_threshold}.svg')
-bokeh.io.export_png(figure, filename=f'{ukb}/association/locus_plots/{args.phenotype}_{args.chrom}_{args.pos}_{args.dosage_fraction_threshold}.png')
+bokeh.io.export_svg(figure, filename=f'{args.outloc}.svg')
+bokeh.io.export_png(figure, filename=f'{args.outloc}.png')
