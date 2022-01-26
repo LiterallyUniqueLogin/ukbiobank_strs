@@ -4,7 +4,6 @@ import argparse
 import csv
 import datetime
 import os
-import pathlib
 
 import python_file_utils as file_utils
 

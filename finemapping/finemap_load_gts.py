@@ -15,8 +15,6 @@ import load_and_filter_genotypes as lfg
 
 ukb = os.environ['UKB']
 
-inclusion_threshold = 0.05
-
 def load_gts(workdir, outdir, phenotype, chrom, start_pos, end_pos, str_imputation_run_name):
     '''
     write finemap_input.master

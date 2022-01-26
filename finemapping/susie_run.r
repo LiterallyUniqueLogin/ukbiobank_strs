@@ -1,26 +1,71 @@
 library(susieR)
 library(rhdf5)
+library(argparse)
 
-ukb = Sys.getenv("UKB")
-args = commandArgs(trailingOnly=TRUE)
+parser = ArgumentParser()
+parser$add_argument('outdir')
+parser$add_argument('pheno_residuals')
+parser$add_argument('gt_residuals')
+parser$add_argument('L', type='integer')
+parser$add_argument('max_iter', type='integer')
+parser$add_argument('--snp-p-over-str-p', type='double', default=NULL)
+parser$add_argument('--varnames-file')
+parser$add_argument('--tol', type='double', default=0.001)
+parser$add_argument('--scaled-prior-variance', type='double', default=0.005)
+parser$add_argument('--residual-variance', type='double')
+args = parser$parse_args()
 
-phenotype = args[1]
-chrom = args[2]
-start = args[3]
-end = args[4]
-L = strtoi(args[5])
-max_iter = strtoi(args[6])
+dir = args$outdir
+print(args)
 
-dir = paste(
-    ukb, '/finemapping/susie_results/', phenotype, '/', chrom, '_', start, '_', end,
-sep='')
+pheno_residuals = as.vector(h5read(args$pheno_residuals, 'pheno_residuals'))
+gt_residuals = t(h5read(args$gt_residuals, 'gt_residuals'))
 
-pheno_residuals = as.vector(h5read(paste(dir, '/pheno_residuals.h5', sep=''), 'pheno_residuals'))
-gt_residuals = t(h5read(paste(dir, '/gt_residuals.h5', sep=''), 'gt_residuals'))
+stopifnot(is.null(args$snp_p_over_str_p) == is.null(args$varnames_file))
+
+if (!is.null(args$snp_p_over_str_p)) {
+  str_poses = c()
+  # from https://stackoverflow.com/questions/12626637/read-a-text-file-in-r-line-by-line
+  con = file(args$varnames_file, 'r')
+  while ( TRUE ) {
+    line = readLines(con, n=1)
+    if (length(line) == 0) {
+      break
+    }
+    str_poses = c(str_poses, startsWith(line, 'STR'))
+  }
+  prior_weights = double(length(str_poses))
+  prior_weights[str_poses] = 1
+  prior_weights[!str_poses] = args$snp_p_over_str_p
+  prior_weights = prior_weights/sum(prior_weights)
+  print('prior weights')
+  print(prior_weights)
+} else {
+  prior_weights = NULL
+}
+
+if (!is.null(args$residual_variance)) {
+  residual_variance = var(pheno_residuals)*args$residual_variance
+  print('residual_variance')
+  print(residual_variance)
+} else {
+  residual_variance = NULL
+}
 
 coverage=0.9
-fitted = susie(gt_residuals, pheno_residuals, L=L, max_iter=max_iter, scaled_prior_variance = 0.005, min_abs_corr = 0, coverage=coverage, verbose=TRUE)
-#save(fitted, file = paste(dir, '/susie_fit.RData', sep=''))
+fitted = susie(
+  gt_residuals,
+  pheno_residuals,
+  L=args$L,
+  max_iter=args$max_iter,
+  prior_weights = prior_weights,
+  scaled_prior_variance = args$scaled_prior_variance,
+  tol = args$tol,
+  residual_variance = residual_variance,
+  min_abs_corr = 0,
+  coverage=coverage,
+  verbose=TRUE
+)
 
 write.table(fitted$alpha, paste(dir, '/alpha.tab', sep=''), sep='\t', row.names=FALSE, col.names=FALSE) # get pips per variable by 1-apply(1-alpha, 1, prod)
 write.table(fitted$lbf, paste(dir, '/lbf.tab', sep=''), sep='\t', row.names=FALSE, col.names=FALSE) #log bayes factor of each cs

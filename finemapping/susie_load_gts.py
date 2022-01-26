@@ -19,7 +19,7 @@ def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for
                    _len, dosages in str_dosages_dict.items()], axis=0)
 
-def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols_fname, imputation_run_name, phenotype, chrom, start_pos, end_pos):
+def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols_fname, imputation_run_name, phenotype, chrom, start_pos, end_pos, hardcalls):
     filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
 
     p_cutoff = 5e-4
@@ -30,6 +30,7 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
             f'Run date: {today}\n'
             'Loading STR and SNP gts and the phenotype values, regressing out '
             'covariates from all of those, then running SuSiE. '
+            f'{"Using dosages" if not hardcalls else "Using hardcalls"}. '
             f'Variants for which association tests were skipped or with p > {p_cutoff} are excluded. '
             'SNPs in the filter set are also skipped. '
             f'(Filter set at {filter_set_fname})\n'
@@ -146,7 +147,8 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
             region,
             sample_idx,
             details=False,
-            var_subset=strs_to_include
+            var_subset=strs_to_include,
+            hardcalls=hardcalls
         )
 
         n_temp = 10
@@ -154,7 +156,7 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
         stored_indexes = []
 
         start = time.time()
-        for str_count, (str_dosages_dict, _, _, str_pos, str_locus_filtered, _) in enumerate(str_itr):
+        for str_count, (str_dosages_or_hardcalls, _, _, str_pos, str_locus_filtered, _) in enumerate(str_itr):
             str_count += 1
             print(f'loading STR {str_count}, time/snp: {(time.time() - start)/str_count:.2}s ... ', flush=True)
             str_name = f'STR_{str_pos}'
@@ -163,9 +165,12 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
                 assert False
             idx = sorted_var_names.index(str_name)
             stored_indexes.append(idx)
-            dosages = get_str_dosages(str_dosages_dict)
+            if not hardcalls:
+                gts = get_str_dosages(str_dosages_or_hardcalls)
+            else:
+                gts = np.sum(str_dosages_or_hardcalls, axis=1)
 
-            gt_temp[:, (str_count - 1) % n_temp] = dosages
+            gt_temp[:, (str_count - 1) % n_temp] = gts
             assert not var_inclusion[str_name]
             var_inclusion[str_name] = True
             if str_count % n_temp == 0:
@@ -197,11 +202,12 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
         snp_itr = lfg.load_imputed_snps(
             region,
             sample_idx,
-            apply_filter = False,
+            apply_filter=False,
             details=False,
-            var_subset=snps_to_include
+            var_subset=snps_to_include,
+            hardcalls = hardcalls
         )
-        for snp_count, (snp_dosages, alleles, _, snp_pos, snp_filtered, _) in enumerate(snp_itr):
+        for snp_count, (snp_dosages_or_hardcalls, alleles, _, snp_pos, snp_filtered, _) in enumerate(snp_itr):
             snp_count += 1
             if snp_count % n_temp == 0:
                 if snp_count > 3:
@@ -216,8 +222,11 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
                 assert False
             idx = sorted_var_names.index(snp_name)
             stored_indexes.append(idx)
-            dosages = snp_dosages[:, 1] + 2*snp_dosages[:, 2]
-            gt_temp[:, (snp_count - 1) % n_temp] = dosages
+            if not hardcalls:
+                dosages = snp_dosages_or_hardcalls[:, 1] + 2*snp_dosages_or_hardcalls[:, 2]
+                gt_temp[:, (snp_count - 1) % n_temp] = dosages
+            else:
+                gt_temp[:, (snp_count - 1) % n_temp] = snp_dosages_or_hardcalls
             assert not var_inclusion[snp_name]
             var_inclusion[snp_name] = True
             if snp_count % n_temp == 0:
@@ -258,6 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('chrom')
     parser.add_argument('start')
     parser.add_argument('end')
+    parser.add_argument('--hardcalls', action='store_true')
     args = parser.parse_args()
 
-    load_gts(args.outreadme, args.pheno_residuals_fname, args.gt_residuals_fname, args.outcols, args.imputation_run_name, args.phenotype, args.chrom, args.start, args.end)
+    load_gts(args.outreadme, args.pheno_residuals_fname, args.gt_residuals_fname, args.outcols, args.imputation_run_name, args.phenotype, args.chrom, args.start, args.end, args.hardcalls)

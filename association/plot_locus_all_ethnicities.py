@@ -126,7 +126,6 @@ for ethnicity in ethnicities:
             ))
 
     assert np.isclose(sum(subset_summed_dosages.values()), n_samples)
-
     alleles = list(subset_summed_dosages.keys())
     alleles_copy = alleles.copy()
     for allele in alleles_copy:

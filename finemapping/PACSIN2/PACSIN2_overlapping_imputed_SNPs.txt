@@ -1,0 +1,10 @@
+# None of these are filtered
+22      43385873        22:43385873_AATAT_A     AATAT   A (two repeat shrinkages)
+22      43385875        rs72487666      T       A (unclear, in between polyA and TA)
+22      43385876        rs777237331     ATAT    A
+22      43385889        22:43385889_TATAC_T     TATAC   T (shrinkage of TA and CA by 1)
+22      43385891        rs71328664      T       C (unclear, in between TA and CA)
+22      43385897        rs551736365     C       G (phased with alt allele 11)
+22      43385905        22:43385905_CAT_C       CAT     C (shrinkage of T(A/G) by 1)
+22      43385907        rs113343471     T       C (unclear, in between TA and CA)
+22      43385924        rs761166454     G       C 

@@ -68,7 +68,8 @@ def load_strs(imputation_run_name: str,
               region: str,
               samples: np.ndarray,
               details: bool = True,
-              var_subset: Optional[Set[int]] = None):
+              var_subset: Optional[Set[int]] = None,
+              hardcalls = False):
     """
     Iterate over a region returning genotypes at STR loci.
 
@@ -93,6 +94,8 @@ def load_strs(imputation_run_name: str,
         Length dosage are measured in number of repeats.
 
         None if locus_filtered is not None
+    
+        If hardcalls, then instead of that just an array nx2 of length alleles
     unique_alleles: np.ndarray
         Array of unique length alleles (measured in number of repeats),
         same length as the dosages dict
@@ -103,16 +106,24 @@ def load_strs(imputation_run_name: str,
         None if the locus is not filtered, otherwise
         a string explaining why.
         'MAC<20' if the minor allele dosage is less than 20
-        after sample subsetting, per plink's standard
+        after sample subsetting, per plink's standard.
+
+        None if hardcalls.
     locus_details:
         tuple of strings with the same length as the first yield
         with the corresponding order.
+
+        None if hardcalls.
+        
 
     Notes
     -----
     Hardcalls mentioned in the locus details are phased hardcalls, and in some
     corner cases will not correspond to the maximum likelihood unphased allele.
     """
+
+    if hardcalls:
+        assert var_subset is not None and not details
 
     chrom, region_poses = region.split(':')
     region_start, _ = [int(pos) for pos in region_poses.split('-')]
@@ -153,6 +164,10 @@ def load_strs(imputation_run_name: str,
 
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
         len_alleles = [round(allele_len, allele_len_precision) for allele_len in len_alleles]
+
+        if hardcalls:
+            yield (trrecord.GetLengthGenotypes()[samples, :-1], np.unique(len_alleles), trrecord.chrom, trrecord.pos, None, None)
+            continue
 
         if details:
             total_dosages = {_len: 0 for _len in np.unique(len_alleles)}
@@ -329,7 +344,8 @@ def load_imputed_snps(region: str,
                       info_thresh: Optional[float] = None,
                       apply_filter: bool = True,
                       details: bool = True,
-                      var_subset: Optional[Set[Tuple[int, str, str]]] = None): # pos, ref, alt
+                      var_subset: Optional[Set[Tuple[int, str, str]]] = None,
+                      hardcalls=False): # pos, ref, alt
     """
     Iterate over a region returning genotypes at SNP loci.
 
@@ -355,6 +371,8 @@ def load_imputed_snps(region: str,
         which contain the probabilites of each genotype.
 
         None if locus_filtered is not None
+
+        If hardcalls, then instead of that just an array nx2 of length alleles
     unique_alleles: np.ndarray
         Array of unique length alleles, same length as the dosages dict
     chrom: str
@@ -369,9 +387,13 @@ def load_imputed_snps(region: str,
         after sample subsetting, per plink's standard
         'info<{thresh}' if an info thresh
         is set and this locus is under that
+
+        None if hardcalls
     locus_details:
         tuple of strings with the same length as the first yield
         with the corresponding order.
+
+        None if hardcalls
 
     Notes
     -----
@@ -384,6 +406,9 @@ def load_imputed_snps(region: str,
     currently doesn't matter as hard calls are)
     """
     assert (not apply_filter) or info_thresh is None
+
+    if hardcalls:
+        assert var_subset is not None and not details
 
     chrom, posses = region.split(':')
     start, end = tuple(int(val) for val in posses.split('-'))
@@ -417,6 +442,17 @@ def load_imputed_snps(region: str,
 
             alleles = np.array(bgen.allele_ids[variant_num].split(','))
             if var_subset is not None and (pos, alleles[0], alleles[1]) not in var_subset:
+                continue
+
+            if hardcalls:
+                probs, missing, ploidy = bgen.read(
+                    variant_num,
+                    return_missings=True,
+                    return_ploidies=True
+                )
+                probs = np.squeeze(probs)[samples, :]
+                gts = np.argmax(probs, axis=1)
+                yield (gts, alleles, chrom, pos, None, None)
                 continue
 
             info_str = mfi_line.split()[-1]

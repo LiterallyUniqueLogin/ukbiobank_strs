@@ -4,6 +4,7 @@ import glob
 import itertools
 import json
 import pathlib
+import os.path
 import shutil
 import tempfile
 import time
@@ -1325,15 +1326,19 @@ rule susie_load_gts:
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     output:
-        readme=protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
-        pheno=temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.h5'),
-        gt=temporary('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.h5'),
-        outcols=protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/colnames.txt')
+        readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
+        #pheno=temporary('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.h5'),
+        #gt=temporary('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.h5'),
+        pheno='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.h5',
+        gt='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.h5',
+        outcols=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/colnames.txt')
     resources:
-        time = susie_load_time,
+        #time = susie_load_time,
+        time = '47:30:00',
         attempt = lambda wildcards, attempt: attempt,
         mem_gb = 4,
-        # long = lambda wildcards, attempt: 1 if attempt > 1 else 0
+    params:
+        hardcalls_flag = lambda wildcards: '--hardcalls' if wildcards.hardcalls else ''
     shell:
         'finemapping/susie_load_gts.py '
         '{output.readme} '
@@ -1345,63 +1350,229 @@ rule susie_load_gts:
         '{wildcards.chrom} '
         '{wildcards.start} '
         '{wildcards.end} '
+        '{params.hardcalls_flag} '
+
+rule susie_load_all_gts_mean_platelet_volume:
+    input:
+        [
+            f'finemapping/susie_results/mean_platelet_volume/{chrom}_{start}_{stop}/gt_residuals.h5'
+            for chrom, start, stop in generated_regions('mean_platelet_volume')
+        ]
 
 # mem backoff this way works - jobs fail in under 10 minutes due to oom before restarting
 def susie_run_mem(wildcards, attempt):
     return 16 * attempt
-    '''
-    if attempt == 1:
-        return 30
-    else:
-        return 128
-    '''
+
+def susie_mpv_light_regions():
+    if susie_mpv_light_regions.cache:
+        return susie_mpv_light_regions.cache
+    for chrom, start, stop in generated_regions('mean_platelet_volume'):
+        colfile = f'finemapping/susie_results/mean_platelet_volume/{chrom}_{start}_{stop}/colnames.txt'
+        if not os.path.exists(colfile):
+            continue
+        with open(colfile) as f:
+            n_vars = len(f.readlines())
+            if n_vars > 1000:
+                continue
+        if (chrom, start, stop) in {
+            (1, 153787623, 154553683),
+            (11, 47107038, 48326643),
+            (4, 57571805, 58032587),
+            (5, 140185448, 141542287),
+            (3, 168523039, 169284136)
+        }:
+            continue
+        susie_mpv_light_regions.cache.add((chrom, start, stop))
+    return susie_mpv_light_regions.cache
+susie_mpv_light_regions.cache = set()
 
 def susie_run_time(wildcards, attempt):
-    return '47:30:00'
-    '''
-    if attempt == 1:
-        return '00:45:00'
+    if wildcards.phenotype == 'mean_platelet_volume':
+        if (int(wildcards.chrom), int(wildcards.start), int(wildcards.end)) in set(susie_mpv_light_regions()):
+            return '02:00:00'
+        return '47:30:00'
     else:
-        return '20:00:00'
+        if attempt == 1:
+            return '02:00:00'
+        else:
+            return '47:30:00'
     '''
-
-# TODO temp, should use checkpoint and a command to produce this
-maxxed_pheno_regions = set(zip(*pl.read_csv('maxxed_regions.tab', sep='\t').to_dict().values()))
+    else:
+        with open(f'finemapping/susie_results/{wildcards.phenotype}/{wildcards.chrom}_{wildcards.start}_{wildcards.end}/colnames.txt') as f:
+            n_vars = len(f.readlines())
+        if n_vars <= 1000:
+            return '02:00:00'
+        return '47:30:00'
+    '''
+        
+def susie_outputs(dirname):
+    return dict(
+        lbf=f'{dirname}/lbf.tab',
+        lbf_variable=f'{dirname}/lbf_variable.tab',
+        sigma2=f'{dirname}/sigma2.txt',
+        V=f'{dirname}/V.tab',
+        converged=f'{dirname}/converged.txt',
+        lfsr=f'{dirname}/lfsr.tab',
+        requested_coverage=f'{dirname}/requested_coverage.txt',
+        alpha=f'{dirname}/alpha.tab',
+    )
+    #also all the csN.txt files, just an unknown number of them
+    #downstream jobs should consume alpha.tab
 
 rule susie_run:
     input:
-        rules.susie_load_gts.output.readme,
-        rules.susie_load_gts.output.pheno,
-        rules.susie_load_gts.output.gt,
-        rules.susie_load_gts.output.outcols, # add this to force snakemake to rerun rules that otherwise failed
+        pheno=rules.susie_load_gts.output.pheno,
+        gt=rules.susie_load_gts.output.gt,
     output:
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf.tab'),
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lbf_variable.tab'),
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/sigma2.txt'),
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/V.tab'),
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/converged.txt'),
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/lfsr.tab'),
-        protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/requested_coverage.txt'),
-        alpha=protected('finemapping/susie_results/{phenotype}/{chrom}_{start}_{end}/alpha.tab'),
-        #also all the csN.txt files, just an unknown number of them
-        #downstream jobs should consume alpha.tab
+        **susie_outputs('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}')
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
         attempt = lambda wildcards, attempt: attempt,
     params:
         L=50,
-        max_iter=500
-        #L=lambda wildcards: 10 if (wildcards.phenotype, int(wildcards.chrom), int(wildcards.start), int(wildcards.end)) not in maxxed_pheno_regions else 30,
-        #max_iter=lambda wildcards: 100 if (wildcards.phenotype, int(wildcards.chrom), int(wildcards.start), int(wildcards.end)) not in maxxed_pheno_regions else 500
+        max_iter=500,
+        outdir=lambda wildcards, output: '/'.join(output.alpha.split('/')[:-1])
     conda:
         'envs/ukb_r.env.yml'
     shell:
         'Rscript finemapping/susie_run.r '
-        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
-        '{wildcards.end} '
+        '{params.outdir} '
+        '{input.pheno} '
+        '{input.gt} '
         '{params.L} '
         '{params.max_iter} '
+
+
+'''
+TODO deal with apply filter
+rule susie_run_mvp_light_hardcalls:
+    input:
+        [
+        expand(rules.susie_run.output.alpha, chrom=chrom, start=start, end=end, hardcalls='hardcall_', phenotype='mean_platelet_volume')[0]
+        for chrom, start, end in susie_mpv_light_regions()
+        ]
+'''
+
+rule susie_run_change_tol:
+    input:
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+    output:
+        **susie_outputs('finemapping/susie_results/{phenotype}_tol_{tol}/{chrom}_{start}_{end}')
+    resources:
+        time = susie_run_time,
+        mem_gb = susie_run_mem,
+        attempt = lambda wildcards, attempt: attempt,
+    params:
+        L=50,
+        max_iter=500,
+        outdir=lambda wildcards, output: '/'.join(output.alpha.split('/')[:-1])
+    conda:
+        'envs/ukb_r.env.yml'
+    shell:
+        'Rscript finemapping/susie_run.r '
+        '{params.outdir} '
+        '{input.pheno} '
+        '{input.gt} '
+        '{params.L} '
+        '{params.max_iter} '
+        '--tol {wildcards.tol} '
+
+rule susie_run_change_snp_str_ratio:
+    input:
+        cols=expand(rules.susie_load_gts.output.outcols, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+    output:
+        **susie_outputs('finemapping/susie_results/{phenotype}_snp_str_ratio_{ratio}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}')
+    resources:
+        time = susie_run_time,
+        mem_gb = susie_run_mem,
+        attempt = lambda wildcards, attempt: attempt,
+    params:
+        L=50,
+        max_iter=500,
+        outdir=lambda wildcards, output: '/'.join(output.alpha.split('/')[:-1])
+    conda:
+        'envs/ukb_r.env.yml'
+    shell:
+        'Rscript finemapping/susie_run.r '
+        '{params.outdir} '
+        '{input.pheno} '
+        '{input.gt} '
+        '{params.L} '
+        '{params.max_iter} '
+        '--snp-p-over-str-p {wildcards.ratio} --varnames-file {input.cols}'
+
+rule susie_run_change_residual_variance:
+    input:
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+    output:
+        **susie_outputs('finemapping/susie_results/{phenotype}_res_var_{res_var}/{chrom}_{start}_{end}')
+    resources:
+        time = susie_run_time,
+        mem_gb = susie_run_mem,
+        attempt = lambda wildcards, attempt: attempt,
+    params:
+        L=50,
+        max_iter=500,
+        outdir=lambda wildcards, output: '/'.join(output.alpha.split('/')[:-1])
+    conda:
+        'envs/ukb_r.env.yml'
+    shell:
+        'Rscript finemapping/susie_run.r '
+        '{params.outdir} '
+        '{input.pheno} '
+        '{input.gt} '
+        '{params.L} '
+        '{params.max_iter} '
+        '--residual-variance {wildcards.res_var} '
+
+rule susie_run_change_prior_variance:
+    input:
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls=''),
+    output:
+        **susie_outputs('finemapping/susie_results/{phenotype}_prior_var_{prior_var}/{chrom}_{start}_{end}')
+    resources:
+        time = susie_run_time,
+        mem_gb = susie_run_mem,
+        attempt = lambda wildcards, attempt: attempt,
+    params:
+        L=50,
+        max_iter=500,
+        outdir=lambda wildcards, output: '/'.join(output.alpha.split('/')[:-1])
+    conda:
+        'envs/ukb_r.env.yml'
+    shell:
+        'Rscript finemapping/susie_run.r '
+        '{params.outdir} '
+        '{input.pheno} '
+        '{input.gt} '
+        '{params.L} '
+        '{params.max_iter} '
+        '--scaled-prior-variance {wildcards.prior_var} '
+
+'''
+rule all_susie_light_tol_test_mpv:
+    input:
+        sum([
+            expand(rules.susie_run_change_tol.output.alpha, tol=0.001, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end)
+            for chrom, start, end in susie_mpv_light_regions()
+        ], [])
+
+rule all_susie_test_light_mpv:
+    input:
+        sum([
+            expand(rules.susie_run_change_snp_str_ratio.output.alpha, ratio={1.5, 4}, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end) +
+            expand(rules.susie_run_change_tol.output.alpha, tol=0.0001, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end) +
+            expand(rules.susie_run_change_prior_variance.output.alpha, prior_var={0.2, 0.0005}, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end) +
+            expand(rules.susie_run_change_residual_variance.output.alpha, res_var={.95, .8}, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end)
+            for chrom, start, end in susie_mpv_light_regions()
+        ], [])
+'''
 
 def all_susie_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
@@ -1412,10 +1583,11 @@ def all_susie_outputs(phenotype):
 
 rule susie_all_phenotypes:
     input:
-        itertools.chain.from_iterable(
+        sum([
             all_susie_outputs(phenotype) for phenotype in phenotypes.phenotypes_in_use
-        )
+        ], [])
 
+'''
 rule susie_find_reruns:
     input:
         rules.susie_all_phenotypes.input
@@ -1441,6 +1613,7 @@ rule susie_find_reruns:
         '{output[0]} '
         "'{params.pheno_to_region_fname_json}' "
         "'{params.pheno_to_susie_results_dir_json}' "
+'''
 
 rule summarize_susie_output:
     input:
@@ -2105,6 +2278,105 @@ rule replication_by_finemapper:
         mem_gb=1
     shell:
         'post_finemapping/replication_by_finemapper.py {input.hits}'
+
+
+def putatively_causal_regions():
+    # should have a checkpoint get here, but don't cause slow
+    causal_df = pl.scan_csv(
+        rules.concat_and_filter_summary_tables.output.causal_STRs, sep='\t'
+    )
+    pheno_summaries = []
+    for phenotype in phenotypes.phenotypes_in_use:
+        pheno_summary = pl.scan_csv(
+            expand(rules.summary_table.output.table, phenotype=phenotype)[0],
+            sep='\t'
+        ).with_column(
+            pl.lit(phenotype).alias('phenotype')
+        ).select([
+            'phenotype', 'chrom', 'start_pos', 'signal_region'
+        ])
+        pheno_summaries.append(pheno_summary)
+    causal_df = causal_df.join(
+        pl.concat(pheno_summaries),
+        how='left',
+        on=['phenotype', 'chrom', 'start_pos']
+    ).with_columns([
+        pl.col('signal_region').str.extract('^([0-9]+)_([0-9]+)', 2).cast(int).alias('region_start'),
+        pl.col('signal_region').str.extract('^(([0-9]+)_){2}([0-9]+)', 3).cast(int).alias('region_end'),
+    ]).select([
+        'phenotype', 'chrom', 'region_start', 'region_end'
+    ]).drop_duplicates().collect().to_dict(False)
+            
+    phenos, chroms, starts, ends = [
+        causal_df[col] for col in ('phenotype', 'chrom', 'region_start', 'region_end')
+    ]
+    return list(zip(phenos, chroms, starts, ends))
+
+'''
+for pheno, chrom, start, end in putatively_causal_regions():
+    dir_ = f'finemapping/susie_results/{pheno}/{chrom}_{start}_{end}'
+    if os.path.exists(f'{dir_}/README.txt'):
+        assert not os.path.exists(f'{dir_}/README.txt.normal_run')
+        assert os.path.exists(f'{dir_}/colnames.txt')
+        assert not os.path.exists(f'{dir_}/colnames.txt.normal_run')
+        os.rename(f'{dir_}/README.txt', f'{dir_}/README.txt.normal_run')
+        os.rename(f'{dir_}/colnames.txt', f'{dir_}/colnames.txt.normal_run')
+'''
+
+rule check_susie_region:
+    output:
+        txt='post_finemapping/intermediate_results/susie_var_discrep_{phenotype}_{chrom}_{start}_{end}.txt'
+    resources:
+        mem_gb=2,
+        time='00:10:00'
+    shell:
+        'finemapping/susie_variant_discrepancy.py '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+
+rule check_susie_all:
+    input:
+        [expand(rules.check_susie_region.output.txt, phenotype=phenotype, chrom=chrom, start=start, end=end)[0]
+         for phenotype, chrom, start, end in putatively_causal_regions()]
+
+rule check_finemap_region:
+    output:
+        txt='post_finemapping/intermediate_results/finemap_var_discrep_{phenotype}_{chrom}_{start}_{end}.txt'
+    resources:
+        mem_gb=2,
+        time='00:10:00'
+    shell:
+        'finemapping/finemap_variant_discrepancy.py '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+
+rule check_finemap_all:
+    input:
+        [expand(rules.check_finemap_region.output.txt, phenotype=phenotype, chrom=chrom, start=start, end=end)[0]
+         for phenotype, chrom, start, end in putatively_causal_regions()]
+        
+
+rule susie_ratio_test_putatively_causal_results:
+    input:
+        #should use concat and filter summary tables as input, not because its a checkpoint which are insanely slow
+        sum([
+            expand(rules.susie_run_change_snp_str_ratio.output.alpha, ratio=4, phenotype=phenotype, chrom=chrom, start=start, end=end)
+            for (phenotype, chrom, start, end) in putatively_causal_regions()
+        ], [])
+
+rule susie_hardcall_test_putatively_causal_results:
+    input:
+        #should use concat and filter summary tables as input, not because its a checkpoint which are insanely slow
+        sum([
+            expand(rules.susie_run.output.alpha, phenotype=phenotype, chrom=chrom, start=start, end=end, hardcalls='hardcall_')
+            for (phenotype, chrom, start, end) in putatively_causal_regions()
+            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428), ('alkaline_phosphatase', 1, 24309348)}
+        ], [])
+
 
 ######################### Export Files ########################
 

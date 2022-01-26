@@ -1,0 +1,91 @@
+Can't compare directly to the finemapping results we're using 'cause they use slightly different variants
+(3 STRs which have p-val exactly 5e-4, many SNPs which my code filtered but we're no longer using
+my code's filters)
+So instead compare to tol_0.001 which is the default run anyway
+All variants shared now
+
+401 regions so far, need to exclude mean_platelet_volume_3_168523039_169284136 for the time being
+48239 variants with p <= 5e-8: 45020 SNPs, 3219 STRs (6.6%)
+
+
+Baseline: 419 CSes with a variant passing the p-val thresh and also min abs corr >= 0.8 from 296 regions
+Recall: total CS pip is required to be >= .9 (this is not true once we p-val thresh the vars)
+161 CSes have >= 95% PIP after p-val filter
+208 CSes have 90-95% PIP after p-val filter (i.e. retain the original 90% threshold)
+18 CSes have 80-90% PIP after p-val filter
+13 CSes have 50-80% PIP after p-val filter
+19 CSes have <50% PIP after p-val filter
+
+Among p-val threshed variants in those CSes:
+109 variants have PIP >= 90%, 8 are STRs
+13 variants have 80-90% PIP, no STRs
+43 variants have 50-80% PIP, 1 STR
+69 variants have 35-50% PIP, 2 STRs
+129 variants have 20-35% PIP, 11 STRs
+973 variants have 05-20% PIP, 33 STRs
+(STRs are 4.1% for PIP at least 5%, 7.3% for PIP at least 90%)
+15 total CSes are attributable to STRs from the above
+300 total CSes to SNPs
+
+Diff with tol 0.0001:
+All baseline CSes stay within +/-3% of previous
+No alphas change by more than +/-2%
+No new vars with >= 5% PIP
+
+Diff with ratio 1.5:
+1 baseline CS changes from 90% to 5% - this is mostly lost from many correlated SNPs
+6 baseline CSes change between 10% and 5%
+30 variables with changes 5%-20%, none above that. 21 are STRs. Single STRs account for 4 of the CSes that changed 5-10%, One such SNP accounts for another. 6th must be more incremental changes.
+This still means that the rest of these STR's PIPs (~15) are being reallocated within their CSes without CS total changing:
+A CS with little total alpha diff shifts 15% poitns to the top SNP, only half coming from two STRs, the rest from scattered SNPs
+
+Total alpha loss is 210% - 160% attributable to STRs
+Total alpha gain in new vars with >= 5% PIP - 414% - almost all attributable to SNPs
+
+Diff with ratio 4:
+1 baseline CS changes from 90% to 5% (same as above)
+5 baseline CSes change between 10-20%
+9 baseline CSes change between 5-10%
+(this includes 4 of the 5 minor changes above, but one 7% change above becomes only a 3% change here)
+1 STR loses 35%
+7 STRs and a SPN lose in the 20-27% range
+22 more in the 10-20% range, mostly STRs
+31 more inn the 5-10% range, mostly STRs, STRs lose, SNPs gain or lose
+
+Total alpha loss is 560% - about 5 and a half CSes
+That is basically the same as the total alpha loss among STRs
+
+Total alpha gain in new vars with >= 5% PIP - 384% - almost all attributable to SNPs
+
+Diff with res var 0.95:
+1 baseline CS changes from 90% to 5% (same as above)
+That's it
+About 10 vars lose in the 5-15% range explaining that CS
+
+Diff with res var 0.8:
+4 baseline CSes change by 85+% - 3 in the same region (yet unrepresented), plus the one above
+That's it, nothing else above 5%
+20 vars in the 5-25% explaining those CSes
+
+Total alpha loss : 200%
+Total new alpha gain: 285%
+
+Diff with prior var 0.0005:
+Literal zero change, CS or var
+
+Diff with prior var 0.2:
+Literal zero change, CS or var
+
+Diff with hardcalls:
+11 baseline CSes drop by 90+% (one from the trio from res var 0.8, not the reoccuring one above)
+2 more 80-90% (the remaining 2 from the trio from res var 0.8)
+2 more 50-80%
+9 in the 10-30% range
+50 in the 5-10% range
+Var diff:
+
+268 vars with >= 5% abs diff - 21 are STRs - total change for STRs is -0.3%
+Summed (non abs) diff for those vars is -1,400% i.e. loss of about 14 and a half CSes
+Sum over STRs is -0.3% - i.e. almost all loss comes from SNPs
+
+Gain of 28 and a half CSes - 1.15% from STRs
