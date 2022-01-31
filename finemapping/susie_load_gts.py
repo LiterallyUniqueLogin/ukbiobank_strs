@@ -12,6 +12,7 @@ import sklearn.linear_model
 
 import load_and_filter_genotypes as lfg
 import python_array_utils as utils
+import sample_utils
 
 ukb = os.environ['UKB']
 
@@ -37,24 +38,15 @@ def load_gts(outreadme_fname, pheno_residuals_fname, gt_residuals_fname, outcols
         )
 
     print('Loading samples and phenotypes ... ', flush=True)
-    with open(f'{ukb}/sample_qc/runs/white_brits/{phenotype}/combined_unrelated.sample') as samples_file:
-        samples = np.array([line.strip() for line in samples_file][1:], dtype=int).reshape(-1, 1)
-
-    imp_snp_samples_filepath = f'{ukb}/array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
-    with open(imp_snp_samples_filepath) as imp_snp_samples_file:
-        imp_snp_samples = np.array([line.split()[0] for line in imp_snp_samples_file][2:], dtype=int).reshape(-1, 1)
-
-    samples_indicator = np.concatenate((samples, samples), axis=1)
-    samples_merge = utils.merge_arrays(imp_snp_samples, samples_indicator)
-    assert samples_merge.shape[1] == 2
-    sample_idx = ~np.isnan(samples_merge[:, 1])
+    sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
 
     pheno_covars = np.load(f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{phenotype}.npy')
     shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
     covars = utils.merge_arrays(pheno_covars, shared_covars)
 
     # reorder samples to the proper order
-    covars = utils.merge_arrays(samples_merge[sample_idx, 0:1], covars)
+    ordered_samples = sample_utils.get_ordered_samples_phenotype('white_brits', phenotype)
+    covars = utils.merge_arrays(ordered_samples.reshape(-1, 1), covars)
     pheno_vals = covars[:, 1]
     covars = covars[:, 2:]
 

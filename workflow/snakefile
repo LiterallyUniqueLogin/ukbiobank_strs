@@ -2305,7 +2305,11 @@ def putatively_causal_regions():
         pl.col('signal_region').str.extract('^(([0-9]+)_){2}([0-9]+)', 3).cast(int).alias('region_end'),
     ]).select([
         'phenotype', 'chrom', 'region_start', 'region_end'
-    ]).drop_duplicates().collect().to_dict(False)
+    ]).filter(
+        (pl.col('phenotype') != 'total_bilirubin') |
+        (pl.col('chrom') != 12) |
+        (pl.col('region_start') != 19976272)
+    ).drop_duplicates().collect().to_dict(False)
             
     phenos, chroms, starts, ends = [
         causal_df[col] for col in ('phenotype', 'chrom', 'region_start', 'region_end')

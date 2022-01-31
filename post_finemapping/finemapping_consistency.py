@@ -18,12 +18,11 @@ ukb = os.environ['UKB']
 corr_cutoff = .8
 p_val_thresh = 5e-8
 
-def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None):
+def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None, regions = None):
     dfs = []
     unconverged_regions = []
     underexplored_regions = []
-    #unfinished_regions = []
-    count = 0
+    unfinished_regions = []
 
     str_assocs = pl.scan_csv(
         f'{ukb}/association/results/{phenotype}/my_str/results.tab',
@@ -33,9 +32,8 @@ def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None):
         'chrom',
         'pos',
         pl.col(f'p_{phenotype}').alias('p_val'),
-        pl.lit(True).alias('is_STR'),
-        pl.lit(None).cast(int).alias('reflen'),
-        pl.lit(None).cast(int).alias('altlen')
+        ('STR_' + pl.col('pos').cast(str)).alias('varname'),
+        pl.lit(True).alias('is_STR')
     ])
 
     snp_assocs = pl.scan_csv(
@@ -45,50 +43,48 @@ def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None):
     ).select([
         pl.col('#CHROM').alias('chrom'),
         pl.col('POS').alias('pos'),
-        pl.col('REF').str.lengths().cast(int).alias('reflen'),
-        pl.col('ALT').str.lengths().cast(int).alias('altlen'),
+        ('SNP_' + pl.col('POS').cast(str) + '_' + pl.col('REF') + '_' +  pl.col('ALT')).alias('varname'),
         pl.col('P').alias('p_val'),
-    ]).groupby(['chrom', 'pos', 'reflen', 'altlen']).agg([
-        pl.col('p_val').min().alias('p_val'),
     ]).with_columns([
         pl.lit(phenotype).alias('phenotype'),
         pl.lit(False).alias('is_STR')
-    ]).select(['phenotype', 'chrom', 'pos', 'p_val', 'is_STR', 'reflen', 'altlen'])
+    ]).select(['phenotype', 'chrom', 'pos', 'p_val', 'varname', 'is_STR'])
 
-    assocs = pl.concat([str_assocs, snp_assocs])#.filter(pl.col('p_val') <= p_val_thresh)
+    assocs = pl.concat([str_assocs, snp_assocs])
 
-    dirlist = os.listdir(results_regions_dir)
-    for dir_ in dirlist:
-        match = re.match('^([0-9]+)_([0-9]+)_([0-9]+)$', dir_)
-        if not match:
-            continue
-        chrom, start, end = [int(match[idx]) for idx in (1,2,3)]
+    if regions is None:
+        regions = []
+        dirlist = os.listdir(results_regions_dir)
+        for dir_ in dirlist:
+            match = re.match('^([0-9]+)_[0-9]+_[0-9]+$', dir_)
+            if not match:
+                continue
+            regions.append((dir_, match[1]))
+    for (region, chrom) in regions:
         if colnames_regions_dir:
-            assert os.path.exists(f'{colnames_regions_dir}/{chrom}_{start}_{end}')
-        if os.path.exists(f'{results_regions_dir}/{chrom}_{start}_{end}/no_strs'):
+            assert os.path.exists(f'{colnames_regions_dir}/{region}')
+        if os.path.exists(f'{results_regions_dir}/{region}/no_strs'):
             continue
 
-        converged_fname = f'{results_regions_dir}/{chrom}_{start}_{end}/converged.txt'
+        converged_fname = f'{results_regions_dir}/{region}/converged.txt'
         if not os.path.exists(converged_fname):
-            #unfinished_regions.append((phenotype, chrom, start, end))
+            unfinished_regions.append((phenotype, region))
             continue
         with open(converged_fname) as converged_file:
             if not next(converged_file).strip() == 'TRUE':
-                unconverged_regions.append((phenotype, chrom, start, end))
+                unconverged_regions.append((phenotype, region))
                 continue
         #print(f'Loading mean_platelet_volume region {chrom}:{start}-{end}', flush=True)
         if not colnames_regions_dir:
-            colnames_fname = f'{results_regions_dir}/{chrom}_{start}_{end}/colnames.txt'
+            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
         else:
-            colnames_fname = f'{colnames_regions_dir}/{chrom}_{start}_{end}/colnames.txt'
-        '''
+            colnames_fname = f'{colnames_regions_dir}/{region}/colnames.txt'
         if not os.path.exists(colnames_fname):
             colnames_fname = f'{colnames_fname}.normal_run'
-        '''
         with open(colnames_fname) as var_file:
             susie_vars = [line.strip() for line in var_file if line.strip()]
         alphas = pl.scan_csv(
-            f'{results_regions_dir}/{chrom}_{start}_{end}/alpha.tab',
+            f'{results_regions_dir}/{region}/alpha.tab',
             sep='\t',
             has_header=False
         ).collect().to_numpy().T
@@ -104,22 +100,18 @@ def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None):
             'susie_alpha': np.zeros(len(susie_vars)),
             'susie_cs': [-1]*len(susie_vars),
             'susie_idx': susie_idx,
-            #**{ f'alpha_{i}': alphas[:, i] for i in range(n_alphas) }
+            **{ f'alpha_{i}': alphas[:, i] for i in range(n_alphas) }
         }).lazy()
 
         df = susie_df.with_columns([
             pl.col('varname').str.extract('^[^_]*_([^_]*)', 1).cast(int).alias('pos'),
-            pl.col('varname').str.extract('^[^_]*_[^_]*_([^_]*)_.*', 1).str.lengths().cast(int).alias('reflen'),
-            pl.col('varname').str.extract('^[^_]*_[^_]*_[^_]*_([^_]*)', 1).str.lengths().cast(int).alias('altlen'),
-            pl.col('varname').str.contains('^STR').alias('is_STR'),
-            pl.lit(f'{phenotype}_{chrom}_{start}_{end}').alias('region'),
+            pl.lit(f'{phenotype}_{region}').alias('region'),
             pl.lit(chrom).alias('chrom').cast(int),
             pl.lit(phenotype).alias('phenotype')
-        ])#.sort('susie_idx')
+        ]).sort('susie_idx')
 
         real_cs_count = 0
-        for cs_fname in glob.glob(f'{results_regions_dir}/{chrom}_{start}_{end}/cs*.txt'):
-            break
+        for cs_fname in glob.glob(f'{results_regions_dir}/{region}/cs*.txt'):
             cs_id = int(cs_fname.split('cs')[-1].split('.')[0])
             with open(cs_fname) as cs_file:
                 # susie uses 1 based indexing, python uses 0
@@ -141,7 +133,7 @@ def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None):
                 continue
             real_cs_count += 1
             if real_cs_count == 50:
-                underexplored_regions.append((phenotype, chrom, start, end))
+                underexplored_regions.append((phenotype, region))
             # could worry about variants being in multiple CSes
             df = df.with_column(
                 pl.when(pl.col('susie_idx').is_in(cs_susie_idx))
@@ -150,36 +142,31 @@ def load_susie(phenotype, results_regions_dir, colnames_regions_dir = None):
                   .alias('susie_cs')
             )
         dfs.append(df)
-        count += 1
-        if count == 2:
-            break
+
+    print('unconverged_regions: ', unconverged_regions)
+    print('underexplored_regions: ', underexplored_regions)
+    print('unfinished_regions: ', unfinished_regions)
+
     dfs = [df.select(
         pl.col('*').exclude('^alpha.*$')
     ) for df in dfs]
-    #print(pl.concat(dfs).filter((pl.col('varname') == 'SNP_25436941_T_C') | (pl.col('varname') == 'STR_25436639') | (pl.col('varname') == 'SNP_116396404_G_A') | (pl.col('varname') == 'STR_116545022')).collect().to_pandas())
-    #print(assocs.filter(((pl.col('pos') == 25436941) & ~pl.col('is_STR')) | ((pl.col('pos') == 25436639) & pl.col('is_STR')) | ((pl.col('pos') == 116396404) & ~pl.col('is_STR')) | ((pl.col('pos') == 116545022) & pl.col('is_STR'))).collect().to_pandas())
     total_df = pl.concat(dfs).join(
         assocs,
         how='left',
-        on=['phenotype', 'chrom', 'is_STR', 'pos', 'reflen', 'altlen']
-    )#.collect()
-    print(total_df.describe_optimized_plan())
-    total_df = total_df.collect()
-    print(total_df.to_pandas())#filter((pl.col('varname') == 'SNP_25436941_T_C') | (pl.col('varname') == 'STR_25436639') | (pl.col('varname') == 'SNP_116396404_G_A') | (pl.col('varname') == 'STR_116545022')).rechunk().to_pandas())
-    exit()
-    print('unconverged_regions: ', unconverged_regions)
-    print('underexplored_regions: ', underexplored_regions)
+        on=['phenotype', 'chrom', 'varname']
+    ).drop('pos_right').collect()
+    assert np.all(~np.isnan(total_df['p_val'].to_numpy()))
     return total_df
 
 def get_putatively_causal_regions():
     causal_df = pl.scan_csv(
-        '{ukb}/post_finemappinng/results/validated/putatively_causal_hits.tab',
+        f'{ukb}/post_finemapping/results/validated/putatively_causal_STRs.tab',
         sep='\t'
     )
     pheno_summaries = []
     for phenotype in phenotypes.phenotypes_in_use:
         pheno_summary = pl.scan_csv(
-            f'{ukb}/finemapping/sumarry/{phenotype}_table.tab',
+            f'{ukb}/finemapping/summary/{phenotype}_table.tab',
             sep='\t'
         ).with_column(
             pl.lit(phenotype).alias('phenotype')
@@ -192,24 +179,52 @@ def get_putatively_causal_regions():
         how='left',
         on=['phenotype', 'chrom', 'start_pos']
     ).select([
-        'phenotype', 'signal_region'
+        'phenotype', 'signal_region', 'chrom'
     ]).drop_duplicates().collect().to_dict(False)
 
-    phenos, regions = [
-        causal_df[col] for col in ('phenotype', 'signal_region')
+    phenos, regions, chroms = [
+        causal_df[col] for col in ('phenotype', 'signal_region', 'chrom')
     ]
-    return list(zip(phenos, regions))
+    return list(zip(phenos, regions, chroms))
 
 
-'''
 def putatively_causal_hits_comparison():
     putatively_causal_regions = get_putatively_causal_regions()
-    for phenotype in phenotypes.phenotypes_in_use:
-    .select([
-        'phenotype',
+    phenos_to_regions = {}
+    for pheno in phenotypes.phenotypes_in_use:
+        phenos_to_regions[pheno] = []
+    for (pheno, region, chrom) in putatively_causal_regions:
+        phenos_to_regions[pheno].append((region, chrom))
+    original_susies = []
+    hardcall_susies = []
+    #for count, (pheno, regions) in [(0, ('alanine_aminotransferase', phenos_to_regions['alanine_aminotransferase'])), (1, ('total_bilirubin', phenos_to_regions['total_bilirubin']))]:
+    for count, (pheno, regions) in enumerate(phenos_to_regions.items()):
+        if len(regions) == 0:
+            continue
+        print(f"Loading phenotype #{count} ({pheno})", flush=True)
+        original_susies.append(load_susie(pheno, f'{ukb}/finemapping/susie_results/{pheno}', regions=regions))
+        hardcall_susies.append(load_susie(pheno, f'{ukb}/finemapping/susie_hardcall_results/{pheno}', regions=regions))
+
+    original_susie = pl.concat(original_susies)
+    hardcall_susie = pl.concat(hardcall_susies)
+        
+    assert 1 == original_susie.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
+    assert 1 == hardcall_susie.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
+
+    joined = hardcall_susie.join(
+        original_susie,
+        how='outer',
+        on = ['phenotype', 'chrom', 'varname']
+    )
+    assert 1 == joined.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
+    joined = joined.drop(['susie_idx', 'susie_pip'])
+    joined.to_csv(f'{ukb}/post_finemapping/intermediate_results/susie_putative_hardcall_comparison.tab', sep='\t')
+
+def mpv_comparison():
+    original_susie_regions_dir = f'{ukb}/finemapping/susie_results/mean_platelet_volume'
     print("Loading baseline", flush=True)
     baseline = f'{ukb}/finemapping/susie_results/mean_platelet_volume_tol_0.001'
-    original_susie = load_susie('mean_platelet_volume', original_susie_regions_dir, baseline).select([
+    original_susie = load_susie('mean_platelet_volume', baseline, original_susie_regions_dir).select([
         'phenotype', 'chrom', 'varname',
         pl.col('susie_alpha').alias('susie_baseline_alpha'),
         pl.col('susie_cs').alias('susie_baseline_cs')
@@ -228,41 +243,6 @@ def putatively_causal_hits_comparison():
         (f'{ukb}/finemapping/susie_results/mean_platelet_volume_res_var_0.8', 'res_var_0.8'),
     ]:
         print(f"Loading {other_name}", flush=True)
-        other_susie = load_susie('mean_platelet_volume', original_susie_regions_dir, other_susie_dir)
-        assert 1 == other_susie.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
-        joined = other_susie.join(
-            original_susie,
-            how='outer',
-            on = ['phenotype', 'chrom', 'varname']
-        )
-        assert 1 == joined.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
-        joined = joined.drop(['altlen', 'reflen', 'susie_idx', 'susie_pip', 'phenotype'])
-        joined.to_csv(f'{ukb}/post_finemapping/intermediate_results/susie_{other_name}_comparison.tab', sep='\t')
-'''
-
-def mpv_comparison():
-    original_susie_regions_dir = f'{ukb}/finemapping/susie_results/mean_platelet_volume'
-    print("Loading baseline", flush=True)
-    baseline = f'{ukb}/finemapping/susie_results/mean_platelet_volume_tol_0.001'
-    original_susie = load_susie('mean_platelet_volume', baseline, original_susie_regions_dir).select([
-        'phenotype', 'chrom', 'varname',
-        pl.col('susie_alpha').alias('susie_baseline_alpha'),
-        pl.col('susie_cs').alias('susie_baseline_cs')
-    ])
-
-    assert 1 == original_susie.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
-
-    for other_susie_dir, other_name in [
-        (f'{ukb}/finemapping/susie_hardcall_results/mean_platelet_volume', 'hardcall'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_tol_0.0001', 'tol_0.0001'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_snp_str_ratio_1.5', 'ratio_1.5'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_snp_str_ratio_4', 'ratio_4'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_prior_var_0.2', 'prior_var_0.2'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_prior_var_0.0005', 'prior_var_0.0005'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_res_var_0.95', 'res_var_0.95'),
-        #(f'{ukb}/finemapping/susie_results/mean_platelet_volume_res_var_0.8', 'res_var_0.8'),
-    ]:
-        print(f"Loading {other_name}", flush=True)
         other_susie = load_susie('mean_platelet_volume', other_susie_dir, original_susie_regions_dir)
         assert 1 == other_susie.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
         joined = other_susie.join(
@@ -271,8 +251,8 @@ def mpv_comparison():
             on = ['phenotype', 'chrom', 'varname']
         )
         assert 1 == joined.groupby(['phenotype', 'chrom', 'varname']).agg([pl.col('chrom').count().alias('count')]).sort('count')['count'].to_numpy()[-1]
-        joined = joined.drop(['altlen', 'reflen', 'susie_idx', 'susie_pip', 'phenotype'])
-        joined.to_csv(f'{ukb}/post_finemapping/intermediate_results/susie_{other_name}_comparison.tab', sep='\t')
+        joined = joined.drop(['susie_idx', 'susie_pip', 'phenotype'])
+        joined.to_csv(f'{ukb}/post_finemapping/intermediate_results/susie_mpv_{other_name}_comparison.tab', sep='\t')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -58,5 +58,4 @@ work
 foo*
 .snakemake_conda
 *.h5
-/munged*tab
-/*problem*
+polars_repro

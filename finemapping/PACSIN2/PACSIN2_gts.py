@@ -62,10 +62,12 @@ varnames = [
 assert np.all(np.sum(allele_details[:, 1:-1], axis=1) == allele_details[:, 0])
 
 def load_dosages(var, gts):
+    both_aps = []
     for chrom in range(1, 3):
         aps = var.format(f'AP{chrom}')
         ref_aps = np.maximum(0, 1 - np.sum(aps, axis=1))
         aps = np.hstack((ref_aps.reshape(-1, 1), aps))
+        both_aps.append(aps)
         assert aps.shape[1] == allele_details.shape[0]
         for a in range(allele_details.shape[0]):
             for len_ in range(5):
@@ -73,10 +75,13 @@ def load_dosages(var, gts):
             snp = allele_details[a, -1]
             if snp != 0:
                 gts[:, 4 + snp] += aps[:, a]
+    both_aps = np.stack(both_aps, axis=1)
+    np.save(f'{ukb}/finemapping/PACSIN2/idx_dosages.npy', both_aps)
     np.save(f'{ukb}/finemapping/PACSIN2/dosages.npy', gts)
 
 def load_hardcalls(var, gts):
     alleles = var.genotype.array()[:, :-1]
+    np.save(f'{ukb}/finemapping/PACSIN2/idx_hardcalls.npy', alleles)
     for chrom in range(2):
         for a in range(allele_details.shape[0]):
             samps = alleles[:, chrom] == a
