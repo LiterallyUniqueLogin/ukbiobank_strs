@@ -406,7 +406,6 @@ rule run_str_spot_test:
         shared_covars=rules.load_shared_covars.output.shared_covars,
         untransformed_phenotype=rules.load_phenotype.output.phenotype,
         transformed_phenotype=rules.transform_phenotype_subset.output.phenotype,
-        sample_fname = sample_fname,
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
@@ -440,7 +439,6 @@ rule run_str_spot_test:
             '--pheno-and-covars {input.transformed_phenotype} '
             '--shared-covars {input.shared_covars} '
             '--untransformed-phenotypes {input.untransformed_phenotype} '
-            '--sample-file {input.sample_fname} '
             f'--imputation-run-name {str_imputation_run_name} '
             f'{binary_flag} '
         )
@@ -751,34 +749,9 @@ def plot_white_brits_assoc_input(wildcards):
     else:
         return expand(rules.run_str_spot_test.output.result, ethnicity='white_brits', chrom=wildcards.chrom, pos=wildcards.pos, phenotype=wildcards.phenotype)
 
-ruleorder: plot_white_brits_str_locus > plot_ethnic_str_locus 
-rule plot_white_brits_str_locus:
-    input:
-        vcf=f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
-        assoc_results=lambda wildcards: plot_white_brits_assoc_input(wildcards), #expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
-        pheno_data=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits')
-    output:
-        svg='association/locus_plots/white_brits/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg',
-        png='association/locus_plots/white_brits/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.png'
-    resources:
-        time='00:30:00'
-    params:
-        unit = lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
-        outloc= lambda wildcards, output: output.svg[:-4],
-        binary_flag=lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary'
-    shell:
-        'association/plot_locus.py '
-        '{params.outloc} '
-        '{input.vcf} {input.assoc_results} {input.pheno_data} '
-        '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
-        '{wildcards.dosage_fraction_threshold} '
-        "--unit '{params.unit}' "
-        '{params.binary_flag} '
-
 # These currently don't work with binary phenos
 rule plot_ethnic_str_locus:
     input:
-        vcf=f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         assoc_result=rules.run_str_spot_test.output.result,
         pheno_data=rules.transform_phenotype_subset.output.phenotype
     output:
@@ -789,10 +762,11 @@ rule plot_ethnic_str_locus:
     params:
         unit = lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
         outloc= lambda wildcards, output: output.svg[:-4]
+        #binary_flag=lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary'
     shell:
         'association/plot_locus.py '
         '{params.outloc} '
-        '{input.vcf} {input.assoc_result} {input.pheno_data} '
+        '{input.assoc_result} {input.pheno_data} '
         '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
         '{wildcards.dosage_fraction_threshold} '
         "--unit '{params.unit}' "
@@ -888,7 +862,6 @@ rule run_conditional_my_str_gwas:
         '--shared-covars {input.shared_covars} '
         '--untransformed-phenotypes {input.untransformed_phenotype} '
         '--conditional-covars {input.conditional_covars} '
-        '--sample-file {input.sample_fname} '
         f'--imputation-run-name {str_imputation_run_name} '
         '{params.binary_flag} '
 

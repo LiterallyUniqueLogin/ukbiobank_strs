@@ -14,22 +14,23 @@ import statsmodels.stats.weightstats
 
 import load_and_filter_genotypes
 import python_array_utils as utils
+import sample_utils
 import weighted_binom_conf
 
 project_temp = os.environ['PROJECT_TEMP']
 
 def perform_regional_gwas_helper(
-        outfile,
-        pheno_and_covars_fname,
-        shared_covars_fname,
-        sample_fname,
-        untransformed_phenotypes_fname,
-        phenotype,
-        binary,
-        region,
-        runtype,
-        imputation_run_name,
-        conditional_covars_fname = None):
+    outfile,
+    pheno_and_covars_fname,
+    shared_covars_fname,
+    untransformed_phenotypes_fname,
+    get_genotype_iter,
+    phenotype,
+    binary,
+    region,
+    runtype,
+    conditional_covars_fname = None
+):
 
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
                   f"p_{phenotype}\tcoeff_{phenotype}\t")
@@ -53,13 +54,7 @@ def perform_regional_gwas_helper(
         covars = utils.merge_arrays(covars, gt_covars)
 
     # order samples according to order in genetics files
-    bgen_samples = []
-    with open(sample_fname) as samplefile:
-        for num, line in enumerate(samplefile):
-            if num <= 1:
-                # skip first two lines
-                continue
-            bgen_samples.append(line.split()[0])
+    bgen_samples = sample_utils.get_all_samples()
     assert len(bgen_samples) == 487409
     samples_array = np.array(bgen_samples, dtype=float).reshape(-1, 1)
     merge = utils.merge_arrays(samples_array, covars)
@@ -73,18 +68,8 @@ def perform_regional_gwas_helper(
     ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
     ori_phenotypes = ori_phenotypes[unfiltered_samples]
 
-    if runtype == 'strs':
-        genotype_iter = load_and_filter_genotypes.load_strs(
-            imputation_run_name, region, unfiltered_samples
-        )
-    elif runtype == 'imputed-snps':
-        genotype_iter = load_and_filter_genotypes.load_imputed_snps(
-            region, unfiltered_samples
-        )
-    else:
-        raise ValueError("not implemented for this runtype")
-
     # first yield is special
+    genotype_iter = get_genotype_iter(unfiltered_samples)
     extra_detail_fields = next(genotype_iter)
     outfile.write('\t'.join(extra_detail_fields) + '\t')
 
@@ -98,9 +83,12 @@ def perform_regional_gwas_helper(
                   '5e-8_significance_CI')
 
     if runtype == 'strs':
-        outfile.write(f'\t{stat}_{phenotype}_per_paired_dosage\t'
-                      '0.05_significance_CI\t'
-                      '5e-8_significance_CI')
+        outfile.write(
+            '\ttotal_subset_dosage_per_summed_gt\t'
+            f'{stat}_{phenotype}_per_paired_dosage\t'
+            '0.05_significance_CI\t'
+            '5e-8_significance_CI'
+        )
     outfile.write('\n')
     outfile.flush()
 
@@ -165,11 +153,15 @@ def perform_regional_gwas_helper(
             paired_dosages = {}
             for len1 in unique_alleles:
                 for len2 in unique_alleles:
+                    if len1 > len2:
+                        continue
                     if len1 != len2:
                         dosages = (dosage_gts[len1][:, 0]*dosage_gts[len2][:, 1] +
                                    dosage_gts[len1][:, 1]*dosage_gts[len2][:, 0])
                     else:
                         dosages = dosage_gts[len1][:, 0]*dosage_gts[len1][:, 1]
+                    if np.sum(dosages) <= 0:
+                        continue
                     if len1 + len2 not in single_dosages:
                         single_dosages[len1 + len2] = dosages
                     else:
@@ -232,6 +224,7 @@ def perform_regional_gwas_helper(
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_stat) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\t')
+            outfile.write(load_and_filter_genotypes.dict_str({key: np.sum(arr) for key, arr in single_dosages.items()}) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_stat) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_95_CI) + '\t')
             outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_GWAS_CI) + '\n')
@@ -286,11 +279,22 @@ def perform_regional_gwas_helper(
         print(f"No variants found in the region {region}\n", flush=True)
 
 
-def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, sample_fname, untransformed_phenotypes_fname, phenotype, binary, region, runtype, imputation_run_name, conditional_covars_fname):
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, runtype, imputation_run_name, conditional_covars_fname):
+    if runtype == 'strs':
+        get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
+            imputation_run_name, region, samples
+        )
+    elif runtype == 'imputed-snps':
+        get_genotype_iter = lambda samples: load_and_filter_genotypes.load_imputed_snps(
+            region, samples
+        )
+    else:
+        raise ValueError("not implemented for this runtype")
+
     with tempfile.NamedTemporaryFile(dir=project_temp, mode='w+') as temp_outfile:
         print(f"Writing output to temp file {temp_outfile.name}", flush=True)
         perform_regional_gwas_helper(
-            temp_outfile, pheno_and_covars_fname, shared_covars_fname, sample_fname, untransformed_phenotypes_fname, phenotype, binary, region, runtype, imputation_run_name, conditional_covars_fname
+            temp_outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, get_genotype_iter, phenotype, binary, region, runtype, conditional_covars_fname
         )
 
         print(f"Copying {temp_outfile.name} to {outfile}")
@@ -351,7 +355,6 @@ def main():
     parser.add_argument('--shared-covars')
     parser.add_argument('--conditional-covars')
     parser.add_argument('--untransformed-phenotypes')
-    parser.add_argument('--sample-file')
     parser.add_argument('--imputation-run-name')
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
@@ -366,7 +369,6 @@ def main():
         (args.region is not None) ==
         (args.pheno_and_covars is not None) ==
         (args.shared_covars is not None) ==
-        (args.sample_file is not None) ==
         (args.untransformed_phenotypes is not None)
     )
 
@@ -386,7 +388,6 @@ def main():
             args.outfile,
             args.pheno_and_covars,
             args.shared_covars,
-            args.sample_file,
             args.untransformed_phenotypes,
             args.phenotype,
             args.binary,

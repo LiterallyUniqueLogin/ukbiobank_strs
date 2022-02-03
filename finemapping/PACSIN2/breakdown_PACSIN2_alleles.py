@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
+import os
 import re
 
-with open('post_finemapping/PACSIN2_alleles.txt') as f:
+ukb = os.environ['UKB']
+
+with open(f'{ukb}/finemapping/PACSIN2/PACSIN2_alleles.txt') as f:
     ref, alt_alleles = next(f).strip().split()
     alt_alleles = alt_alleles.split(',')
     alleles = [ref] + alt_alleles

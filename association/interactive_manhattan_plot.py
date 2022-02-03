@@ -808,19 +808,6 @@ def make_manhattan_plots(
         bokeh.io.export_png(manhattan_plot, filename=outfname)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
-my_results_rename = {
-    0: 'chr',
-    3: 'filtered',
-    4: 'p_val',
-    5: 'coeff_phenotype'
-}
-my_str_results_rename = {
-    -5: 'CI5e_2SingleDosagePhenotype',
-    -4: 'CI5e_8SingleDosagePhenotype',
-    -2: 'CI5e_2PairedDosagePhenotype',
-    -1: 'CI5e_8PairedDosagePhenotype'
-}
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')

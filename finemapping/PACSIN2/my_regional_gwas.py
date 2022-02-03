@@ -1,0 +1,1 @@
+../../association/my_regional_gwas.py

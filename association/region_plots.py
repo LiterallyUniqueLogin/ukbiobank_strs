@@ -38,7 +38,7 @@ def fix_cols(cols):
     col_sightings = {}
     for col in cols:
         if col not in col_sightings:
-            col_sightings[col] = 1
+            col_sightings[col] = 2
             yield col
         else:
             yield col + '__' + str(col_sightings[col])
@@ -115,10 +115,8 @@ my_results_rename = {
     5: 'coeff_phenotype'
 }
 my_str_results_rename = {
-    -5: 'CI5e_2SingleDosagePhenotype',
-    -4: 'CI5e_8SingleDosagePhenotype',
-    -2: 'CI5e_2PairedDosagePhenotype',
-    -1: 'CI5e_8PairedDosagePhenotype'
+    '0.05_significance_CI': 'CI5e_2SingleDosagePhenotype',
+    '5e-8_significance_CI': 'CI5e_8SingleDosagePhenotype',
 }
 
 def load_my_str_results(phenotype, binary, unconditional_results_fname, conditional_results_fname = None):
@@ -161,10 +159,10 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
     rename_dict = {}
     for idx, name in my_results_rename.items():
         rename_dict[results.columns[idx]] = name
-    for idx, name in my_str_results_rename.items():
+    for old_name, new_name in my_str_results_rename.items():
         if conditional_results_fname:
             idx -=1
-        rename_dict[results.columns[idx]] = name
+        rename_dict[results.columns.index(old_name)] = new_name
     for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',
                 'subset_total_per_allele_dosages', 'subset_total_hardcall_alleles',
                 'subset_allele_dosage_r2'):

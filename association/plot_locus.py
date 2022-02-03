@@ -8,11 +8,11 @@ import sys
 import bokeh.io
 import bokeh.models
 import bokeh.plotting
-import cyvcf2
 import numpy as np
 import polars as pl
 
 import python_array_utils as utils
+import sample_utils
 
 ukb = os.environ['UKB']
 sys.path.insert(0, f'{ukb}/../trtools/repo')
@@ -32,11 +32,10 @@ def fix_cols(cols):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('outloc')
-parser.add_argument('imputed_vcf')
 parser.add_argument('assoc_results')
 parser.add_argument('pheno_data')
 parser.add_argument('chrom', type=int)
-parser.add_argument('pos', type=int)
+parser.add_argument('pos')
 parser.add_argument('phenotype')
 parser.add_argument('dosage_fraction_threshold', type=float)
 parser.add_argument('--unit')
@@ -45,8 +44,7 @@ args = parser.parse_args()
 
 assert bool(args.unit) or args.binary
 
-if args.dosage_fraction_threshold is not None:
-    assert 0 <= args.dosage_fraction_threshold <= 1
+assert 0 <= args.dosage_fraction_threshold <= 1
 
 if not args.binary:
     y_axis_label='Mean ' + args.phenotype.replace('_', ' ') + f' ({args.unit})'
@@ -72,7 +70,6 @@ if not args.binary:
 else:
     stat_name = 'fraction'
 
-print(args.assoc_results)
 result = pl.scan_csv(
     args.assoc_results,
     sep='\t',
@@ -84,18 +81,13 @@ result = pl.scan_csv(
     '0.05_significance_CI',
     '5e-8_significance_CI',
     f'{stat_name}_{args.phenotype}_per_single_dosage',
+    'total_subset_dosage_per_summed_gt'
 ])
 assert result.shape[0] == 1
     
 pheno_data = np.load(args.pheno_data)
 
-bgen_samples = []
-with open(f'{ukb}/microarray/ukb46122_hap_chr1_v2_s487314.sample') as samplefile:
-    for num, line in enumerate(samplefile):
-        if num <= 1:
-            # skip first two lines
-            continue
-        bgen_samples.append(line.split()[0])
+bgen_samples = sample_utils.get_all_samples()
 assert len(bgen_samples) == 487409
 samples_array = np.array(bgen_samples, dtype=float).reshape(-1, 1)
 
@@ -103,39 +95,12 @@ merged_arr = utils.merge_arrays(samples_array, pheno_data)
 unfiltered_subset = ~np.isnan(merged_arr[:, 1])
 n_samples = np.sum(unfiltered_subset)
 
-vcf = cyvcf2.VCF(args.imputed_vcf)
-found_rec = False
-for record in vcf(f'{args.chrom}:{args.pos}-{args.pos}'):
-    if record.POS < args.pos:
-        continue
-    if record.INFO.get('PERIOD') is None:
-        continue
-
-    assert not found_rec
-    found_rec = True
-
-    trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
-
-    len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
-    len_alleles = [round(allele_len, 2) for allele_len in len_alleles]
-
-    ap1 = trrecord.format['AP1']
-    ap1 = np.concatenate((1 - np.sum(ap1, axis=1).reshape(-1, 1), ap1), axis=1)
-    ap2 = trrecord.format['AP2']
-    ap2 = np.concatenate((1 - np.sum(ap2, axis=1).reshape(-1, 1), ap2), axis=1)
-
-# TODO this needs better testing
-subset_summed_dosage_fractions = {}
-for aidx1, len_allele1 in enumerate(len_alleles):
-    for aidx2, len_allele2 in enumerate(len_alleles):
-        summed_len = len_allele1 + len_allele2
-        if summed_len not in subset_summed_dosage_fractions:
-            subset_summed_dosage_fractions[summed_len] = 0
-        subset_summed_dosage_fractions[summed_len] += np.sum(np.multiply(
-            ap1[unfiltered_subset, aidx1], ap2[unfiltered_subset, aidx2]
-        ))/n_samples
-
-assert np.isclose(sum(subset_summed_dosage_fractions.values()), 1)
+subset_summed_dosage_fractions = {
+    float(allele): val for allele, val in
+    ast.literal_eval(result['total_subset_dosage_per_summed_gt'].to_numpy()[0]).items()
+}
+total_dosage = np.sum(list(subset_summed_dosage_fractions.values()))
+subset_summed_dosage_fractions = {key: val/total_dosage for key, val in subset_summed_dosage_fractions.items()}
 
 alleles = list(subset_summed_dosage_fractions.keys())
 alleles_copy = alleles.copy()
