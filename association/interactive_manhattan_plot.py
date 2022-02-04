@@ -125,7 +125,6 @@ def make_manhattan_plots(
 
     if return_figure:
         assert outfname[0] == '.'
-        assert ext != 'html'
 
     plot_my_str_data = my_str_data is not None
     plot_my_snp_data = my_snp_data is not None
@@ -810,6 +809,7 @@ def make_manhattan_plots(
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('outfname')
     parser.add_argument('phenotype')
     parser.add_argument('ext', help='file extension', choices=['png', 'html'])
     parser.add_argument("--my-plink-comparison", action='store_true', default=False)
@@ -820,6 +820,8 @@ def main():
     parser.add_argument("--end", type=int)
     parser.add_argument('--conditioned-STRs', nargs='*', type=int)
     parser.add_argument('--conditioned-imputed-SNPs', nargs='*')
+    parser.add_argument('--conditional-STR-results')
+    parser.add_argument('--conditional-imputed-SNP-results')
     parser.add_argument('--finemap-signals', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     parser.add_argument('--plink-snp-fname')
@@ -836,6 +838,8 @@ def main():
     end = args.end
     condition = bool(args.conditioned_imputed_SNPs) or bool(args.conditioned_STRs)
 
+    assert condition == (args.conditional_STR_results is not None) == (args.conditional_imputed_SNP_results is not None)
+
     if not args.binary:
         run_suffix = ''
     else:
@@ -851,7 +855,6 @@ def main():
 
     if condition:
         assert bool(chrom) and bool(start)
-        assert ext == 'png'
         conditioned_isnps = []
         for SNP in args.conditioned_imputed_SNPs:
             pos, ref, alt = SNP.split('_')
@@ -889,26 +892,17 @@ def main():
             condition_string = f'chr{chrom}_{start}_{end}_STR{"_".join(["", *[str(STR) for STR in args.conditioned_STRs], ""])}_ISNP{"_".join(["", *args.conditioned_imputed_SNPs, ""])}_ASNP'
         my_str_results = region_plots.load_my_str_results(
             phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab',
-            f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}_conditional/{condition_string}.tab' if condition else None
+            args.conditional_STR_results
         )
         plink_snp_results = region_plots.load_plink_results(
             phenotype, binary, f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}/results.tab',
-            f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}_conditional/{condition_string}/plink2.{"rin_" if not binary else ""}{phenotype}.glm.linear.done' if condition else None
+            args.conditional_imputed_SNP_results
         )
         gwas_catalog, gwas_catalog_ids = region_plots.load_gwas_catalog(phenotype)
 
         my_snp_results = None
         my_snp_run_date = None
-        if not condition and not chrom:
-            outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{ext}'
-        elif not condition and chrom:
-            if start:
-                outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.chr{chrom}_{start}_{end}.{ext}'
-            else:
-                outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.chr{chrom}.{ext}'
-        else:
-            outfname = f'{ukb}/association/plots/{phenotype}{run_suffix}.manhattan.{condition_string}.{ext}'
-
+        if condition:
             unconditioned_str_results = region_plots.load_my_str_results(
                 phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab'
             )
@@ -919,8 +913,6 @@ def main():
         if bool(args.peaks_spacing):
             print("Adding peak data ... ", end='', flush=True)
             start_time = time.time()
-            # change the output file
-            outfname = '.'.join(outfname.split('.')[:-1]) + f'.peaks_{args.peaks_spacing}_{args.peaks_thresh}.{ext}'
 
             peaks_fname = f'{ukb}/signals/peaks/{phenotype}_{args.peaks_spacing}_{args.peaks_thresh}.tab'
             peaks = pd.read_csv(
@@ -953,8 +945,6 @@ def main():
             plink_snp_results = utils.df_to_recarray(plink_snp_results)
             print(f"done ({time.time() - start_time:.2e}s)", flush=True)
         elif args.finemap_signals:
-            # change the output file
-            outfname = '.'.join(outfname.split('.')[:-1]) + f'.FINEMAP.{ext}'
             finemap_loc = f'{ukb}/finemapping/finemap_results/{phenotype}'
             out_files = []
             with open(f'{ukb}/signals/regions/{phenotype}.tab') as regions:
@@ -981,7 +971,6 @@ def main():
                 phenotype, binary, chrom, start, end
             )
         else:
-            outfname = f'{ukb}/association/plots/{out_runtype}_plink_snp.{ext}'
             my_snp_results = None
 
         if not args.only_mine:
@@ -990,11 +979,7 @@ def main():
             )
             plink_snp_results = plink_snp_results[plink_snp_results['chr'] == chrom]
         else:
-            outfname = f'{ukb}/association/plots/{out_runtype}_my_imputed_snp.{ext}'
             plink_snp_results = None
-
-        if not args.only_mine and not args.only_plink:
-            outfname = f'{ukb}/association/plots/{out_runtype}_my_imputed_snp_vs_plink.{ext}'
 
         with open(f'{ukb}/association/results/{phenotype}/my_imputed_snp{readme_suffix}/README.txt') as README:
             date_line = next(README)
@@ -1015,7 +1000,7 @@ def main():
 
     if not condition:
         make_manhattan_plots(
-            outfname,
+            args.outfname,
             phenotype,
             binary,
             unit,
@@ -1038,7 +1023,7 @@ def main():
         )
     else:
         conditioned_man = make_manhattan_plots(
-            '.png',
+            f'.{ext}',
             phenotype,
             binary,
             unit,
@@ -1061,7 +1046,7 @@ def main():
             return_figure = True,
         )
         unconditioned_man = make_manhattan_plots(
-            '.png',
+            f'.{ext}',
             phenotype,
             binary,
             unit,
@@ -1085,12 +1070,23 @@ def main():
             legend=False
         )
         layout = bokeh.layouts.grid([unconditioned_man, conditioned_man])
+        conditioned_man.x_range = unconditioned_man.x_range
         conditioned_man.y_range = unconditioned_man.y_range
         conditioned_man.title.text = 'Conditional ' + conditioned_man.title.text
         for man in (unconditioned_man, conditioned_man):
             man.background_fill_color = None
             man.border_fill_color = None
-        bokeh.io.export_png(layout, filename=outfname)
+
+        if ext == 'png':
+            for man in unconditioned_man, conditioned_man:
+                man.toolbar_location = None
+            bokeh.io.export_png(layout, filename=args.outfname)
+        else:
+            assert ext == 'html'
+            html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'conditional manhattan')
+            with open(args.outfname, 'w') as outfile:
+                outfile.write(html)
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,1 @@
+../finemapping/PACSIN2/PACSIN2_varnames.py

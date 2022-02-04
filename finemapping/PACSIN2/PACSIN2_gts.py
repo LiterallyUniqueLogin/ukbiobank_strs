@@ -6,6 +6,8 @@ import argparse
 import cyvcf2
 import numpy as np
 
+from PACSIN2_varnames import varnames
+
 ukb = os.environ['UKB']
 
 # total len, len polyA, len TA, len CA, len T(A/G), SNP category
@@ -46,18 +48,7 @@ allele_details = np.array([
 [55, 3, 18, 16, 18, 0],
 [55, 3, 20, 14, 18, 0],
 ])
-varnames = [
-    'PACSIN2_compound_repeat_len',
-    'PACSIN2_A_STR_partial_len',
-    'PACSIN2_TA_STR_len',
-    'PACSIN2_CA_STR_len',
-    'PACSIN2_T(A|G)_STR_partial_len',
-    'PACSIN2_SNP_43385897_C_G',
-    'PACSIN2_SNP_43385885_T_C',
-    'PACSIN2_SNP_43385893_C_A_SNP_43385924_G_C',
-    'PACSIN2_SNP_43385903_C_A',
-    'PACSIN2_SNP_43385917_T_G'
-]
+
 
 assert np.all(np.sum(allele_details[:, 1:-1], axis=1) == allele_details[:, 0])
 
@@ -92,7 +83,7 @@ def load_dosages(var, nsamples):
 def load_hardcalls(var, nsamples):
     alleles = var.genotype.array()[:, :-1]
     np.save(f'{ukb}/finemapping/PACSIN2/gts/idx_hardcalls.npy', alleles)
-    gts = np.zeroes((nsamples, 10))
+    gts = np.zeros((nsamples, 10))
     for chrom in range(2):
         for a in range(allele_details.shape[0]):
             samps = alleles[:, chrom] == a

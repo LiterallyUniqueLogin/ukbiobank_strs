@@ -159,10 +159,7 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
     rename_dict = {}
     for idx, name in my_results_rename.items():
         rename_dict[results.columns[idx]] = name
-    for old_name, new_name in my_str_results_rename.items():
-        if conditional_results_fname:
-            idx -=1
-        rename_dict[results.columns.index(old_name)] = new_name
+    rename_dict.update(my_str_results_rename)
     for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',
                 'subset_total_per_allele_dosages', 'subset_total_hardcall_alleles',
                 'subset_allele_dosage_r2'):

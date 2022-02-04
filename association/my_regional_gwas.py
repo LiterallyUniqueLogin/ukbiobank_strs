@@ -62,6 +62,7 @@ def perform_regional_gwas_helper(
 
     outcome = merge[unfiltered_samples, 1].copy()
     covars = merge[unfiltered_samples, :]
+    covars = (covars - np.mean(covars, axis=0))/np.std(covars, axis=0)
     covars[:, 1] = 1 # reuse the column that was the outcome as the intercept
     
     ori_phenotypes = np.load(untransformed_phenotypes_fname)
@@ -118,6 +119,7 @@ def perform_regional_gwas_helper(
                           _len, dosages in dosage_gts.items()], axis=0)
         else:
             gts = dosage_gts[:, 1] + 2*dosage_gts[:, 2]
+        gts = (gts - np.mean(gts))/np.std(gts)
         covars[:, 0] = gts
 
         if not binary or binary == 'linear':
@@ -125,7 +127,7 @@ def perform_regional_gwas_helper(
             model = OLS(
                 outcome,
                 covars,
-                missing='drop'
+                missing='drop',
             )
             reg_result = model.fit()
             pval = reg_result.pvalues[0]

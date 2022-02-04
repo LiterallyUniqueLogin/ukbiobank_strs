@@ -620,12 +620,12 @@ rule compare_my_to_plink_continuous_gwas:
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
         'association/plots/input/eosinophil_count/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/continuous_my_imputed_snp_vs_plink.html'
+        manhattan='association/plots/continuous_my_imputed_snp_vs_plink.html'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py eosinophil_count html --my-plink-comparison --chrom 21 '
+        'association/interactive_manhattan_plot.py {output.manhattan} eosinophil_count html --my-plink-comparison --chrom 21 '
 
 rule compare_my_to_plink_continuous_gwas_figure_plink_only:
     input:
@@ -633,12 +633,12 @@ rule compare_my_to_plink_continuous_gwas_figure_plink_only:
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
         'association/plots/input/eosinophil_count/plink_snp_results_with_mfi.npy'
     output:
-        'association/plots/continuous_plink_snp.png'
+        manhattan='association/plots/continuous_plink_snp.png'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py eosinophil_count png '
+        'association/interactive_manhattan_plot.py {output.manhattan} eosinophil_count png '
         '--my-plink-comparison --chrom 21 --only-plink '
 
 rule compare_my_to_plink_continuous_gwas_figure_mine_only:
@@ -646,12 +646,12 @@ rule compare_my_to_plink_continuous_gwas_figure_mine_only:
         "traits/phenotypes/white_brits/eosinophil_count_unit.txt",
         'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
     output:
-        'association/plots/continuous_my_imputed_snp.png'
+        manhattan='association/plots/continuous_my_imputed_snp.png'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py eosinophil_count png '
+        'association/interactive_manhattan_plot.py {output.manhattan} eosinophil_count png '
         '--my-plink-comparison --chrom 21 --only-mine'
 
 rule compare_my_to_plink_binary_linear_gwas:
@@ -661,12 +661,12 @@ rule compare_my_to_plink_binary_linear_gwas:
         # it's okay to ask for plink snp for the entire genome because we'll want that anyway
         'association/plots/input/afib_and_flutter_I48/plink_snp_linear_results_with_mfi.npy'
     output:
-        'association/plots/binary_linear_my_imputed_snp_vs_plink.html'
+        manhattan='association/plots/binary_linear_my_imputed_snp_vs_plink.html'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py afib_and_flutter_I48 html --my-plink-comparison --binary linear '
+        'association/interactive_manhattan_plot.py {output.manhattan} afib_and_flutter_I48 html --my-plink-comparison --binary linear '
         '--chrom 21 --start 10000001 --end 11000000 '
 
 rule compare_my_to_plink_binary_logistic_gwas:
@@ -675,12 +675,12 @@ rule compare_my_to_plink_binary_logistic_gwas:
         'association/plots/input/afib_and_flutter_I48/my_imputed_snp_logistic_chr21_10000001_11000000_results.tab',
         plink_snp_fname='association/plots/input/afib_and_flutter_I48/plink_snp_logistic_chr21_10000001_11000000_results_with_mfi.npy'
     output:
-        'association/plots/binary_logistic_my_imputed_snp_vs_plink.html'
+        manhattan='association/plots/binary_logistic_my_imputed_snp_vs_plink.html'
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py afib_and_flutter_I48 html --my-plink-comparison --binary logistic '
+        'association/interactive_manhattan_plot.py {output.manhattan} afib_and_flutter_I48 html --my-plink-comparison --binary logistic '
         '--plink-snp-fname {input.plink_snp_fname} '
         '--chrom 21 --start 10000001 --end 11000000 '
 
@@ -700,12 +700,12 @@ rule manhattan:
         "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         manhattan_inputs
     output:
-        'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.{ext,[^.]+}'
+        manhattan='association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.{ext,[^.]+}'
     resources:
         time='00:30:00',
         mem_gb=50
     run:
-        cmd = 'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
+        cmd = 'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
         if not phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.binary_type == ''
         else:
@@ -719,13 +719,13 @@ rule region_manhattan:
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
     output:
-        'association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.chr{chrom}_{start,[^_]+}_{end,[^_]+}.{ext}'
+        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.chr{chrom,[0-9]+}_{start,[^_]+}_{end,[^_]+}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
     run:
         cmd = (
-            'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
+            'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
             '--chrom {wildcards.chrom} '
             '--start {wildcards.start} '
             '--end {wildcards.end} '
@@ -820,20 +820,41 @@ def imputed_SNPs_as_input(imputed_SNPs):
     return out
 
 rule prep_conditional_input:
+    input:
+        lambda wildcards: [] if not wildcards.PACSIN2_STRs else glob.glob('finemapping/PACSIN2/gts/*')
     output:
-        npy='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.npy',
-        varnames='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_varnames.txt',
-        readme='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_README.txt'
+        npy     ='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.npy',
+        varnames='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_varnames.txt',
+        readme  ='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_README.txt'
     resources:
         time='00:30:00'
-    run:
-        command = 'association/prep_conditional_inputs.py {wildcards.phenotype} {wildcards.chrom} '
-        if wildcards.STRs:
-            command += f'--imputation-run-name {str_imputation_run_name} --STRs ' 
-            command += wildcards.STRs.replace('_', ' ') + ' '
-        if wildcards.imputed_SNPs:
-            command += '--imputed-SNPs ' + imputed_SNPs_as_input(wildcards.imputed_SNPs)
-        shell(command)
+    params:
+        imputed_snps_flag = lambda wildcards: (
+            '--imputed-SNPs ' + imputed_SNPs_as_input(wildcards.imputed_SNPs)
+            if wildcards.imputed_SNPs
+            else ''
+        ),
+        strs_flags =  lambda wildcards: (
+            f'--imputation-run-name {str_imputation_run_name} --STRs ' 
+            + wildcards.STRs.replace('_', ' ')
+            if wildcards.STRs
+            else ''
+        ),
+        PACSIN2_flag =  lambda wildcards: (
+            f'--PACSIN2-STRs ' 
+            + wildcards.PACSIN2_STRs[9:].replace('_', ' ')
+            if wildcards.PACSIN2_STRs
+            else ''
+        ),
+        outprefix = lambda wildcards, output: output.npy.split('.')[0]
+    shell:
+        'association/prep_conditional_inputs.py '
+        '{params.outprefix} '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{params.strs_flags} '
+        '{params.imputed_snps_flag} '
+        '{params.PACSIN2_flag} '
 
 rule run_conditional_my_str_gwas:
     input:
@@ -845,7 +866,7 @@ rule run_conditional_my_str_gwas:
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        results='association/results/{phenotype}/my_str_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.tab'
+        results='association/results/{phenotype}/my_str_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.tab'
     params:
         binary_flag = lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary logistic'
     resources:
@@ -867,20 +888,22 @@ rule run_conditional_my_str_gwas:
 
 rule prep_conditional_plink_input:
     input:
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP.npy',
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_varnames.txt',
-        'traits/shared_covars/shared_covars.npy',
-        'traits/shared_covars/covar_names.txt',
+        rules.prep_conditional_input.output.npy,
+        rules.prep_conditional_input.output.varnames,
+        rules.load_shared_covars.output.shared_covars,
+        rules.load_shared_covars.output.covar_names,
         expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
         expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
     output:
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP_plink.tab'
+        result='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_plink.tab'
+    params:
+        condition = lambda wildcards, output: output.result.split('/')[-1].split('_plink')[0]
     resources:
         time='00:30:00'
     run:
         cmd = (
             'association/prep_plink_input.py {wildcards.phenotype} '
-            '--conditional chr{wildcards.chrom}_STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP '
+            '--conditional {params.condition} '
         )
         if phenotypes.is_binary(wildcards.phenotype):
             cmd += '--binary '
@@ -888,56 +911,74 @@ rule prep_conditional_plink_input:
 
 rule run_continuous_conditional_plink_gwas:
     input:
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{imputed_SNPs}__ASNP_plink.tab'
+        rules.prep_conditional_plink_input.output.result
     output:
-        results='association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.linear.done'
+        results='association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}/plink2.rin_{phenotype}.glm.linear.done'
+    params:
+        condition = lambda wildcards, output: 'STR' + output.results.split('/')[-2].split('STR', maxsplit=1)[1]
     resources:
         time='01:00:00',
         mem_gb=56,
         threads=28
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
-        'CONDITIONAL=STR{wildcards.STRs}__ISNP{wildcards.imputed_SNPs}__ASNP '
+        'CONDITIONAL={params.condition} '
         'START={wildcards.start} END={wildcards.end} '
         'association/plink_association.sh'
 
 rule run_binary_conditional_plink_gwas:
     input:
-        'association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs}__ISNP{ISNPs}__ASNP_plink.tab'
+        rules.prep_conditional_plink_input.output.result
     output:
-        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP/plink2.rin_{phenotype}.glm.logistic.hybrid.done'
+        'association/results/{phenotype}/plink_snp_conditional/chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{ISNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}/plink2.rin_{phenotype}.glm.logistic.hybrid.done'
+    params:
+        condition = lambda wildcards, output: 'STR' + output.results.split('/')[-2].split('STR', maxsplit=1)[1]
     resources:
         time='24:00:00',
         mem_gb=110,
         threads=28
     shell:
         'PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} '
-        'CONDITIONAL=STR{wildcards.STRs}__ISNP{wildcards.ISNPs}__ASNP '
+        'CONDITIONAL={params.condition} '
         'START={wildcards.start} END={wildcards.end} '
         'BINARY=set '
         'association/plink_association.sh'
+
+def manhattan_conditional_conditioned_STRs_param(wildcards):
+    conditioned_STRs = ''
+    if wildcards.STRs:
+        conditioned_STRs = wildcards.STRs.replace('_', ' ')
+    if wildcards.PACSIN2_STRs:
+        conditioned_STRs += ' '
+        conditioned_STRs += wildcards.PACSIN2_STRs[9:].replace('_', ' ')
+    return conditioned_STRs
+
 
 # currently doesn't work for binary phenotypes
 rule manhattan_conditional:
     input:
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
-        rules.run_conditional_my_str_gwas.output.results,
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
-        rules.run_continuous_conditional_plink_gwas.output.results,
+        conditional_STR_results=rules.run_conditional_my_str_gwas.output.results,
+        conditional_imputed_SNP_results=rules.run_continuous_conditional_plink_gwas.output.results,
     output:
-        manhattan='association/plots/{phenotype,[^.]+}.manhattan.chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP.{ext,html|png|svg}'
+        manhattan='association/plots/{phenotype,[^.]+}.manhattan.chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.{ext,html|png|svg}'
     params:
         unit=lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
         conditioned_imputed_SNPs = lambda wildcards: imputed_SNPs_as_input(wildcards.imputed_SNPs),
-        conditioned_STRs = lambda wildcards: wildcards.STRs.replace('_', ' ')
+        conditioned_STRs = manhattan_conditional_conditioned_STRs_param
     resources:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
+        'association/interactive_manhattan_plot.py '
+        '{output.manhattan} '
+        '{wildcards.phenotype} {wildcards.ext} '
         ' --unit "{params.unit}" '
         '--conditioned-STRs {params.conditioned_STRs} '
         '--conditioned-imputed-SNPs {params.conditioned_imputed_SNPs} '
+        '--conditional-STR-results {input.conditional_STR_results} '
+        '--conditional-imputed-SNP-results {input.conditional_imputed_SNP_results} '
         '--chrom {wildcards.chrom} '
         '--start {wildcards.start} '
         '--end {wildcards.end} '
@@ -1049,13 +1090,13 @@ rule peak_manhattan:
         manhattan_inputs,
         'signals/peaks/{phenotype}_{spacing}_{thresh}.tab'
     output:
-        'association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.peaks_{spacing}_{thresh}.{ext,[^.]+}'
+        manhattan='association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.peaks_{spacing}_{thresh}.{ext,[^.]+}'
     resources:
         time='00:30:00',
         mem_gb=50
     run:
         cmd = (
-            'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
+            'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
             '--peaks-spacing {wildcards.spacing} --peaks-thresh {wildcards.thresh} '
         )
         if not phenotypes.is_binary(wildcards.phenotype):
@@ -1279,7 +1320,7 @@ rule manhattan_finemap:
         time='00:30:00',
         mem_gb=50
     shell:
-        'association/interactive_manhattan_plot.py {wildcards.phenotype} {wildcards.ext} '
+        'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
         '--finemap-signals '
         
 #-------------------SuSiE----------------
@@ -2628,4 +2669,6 @@ rule test:
 
 rule test2:
     output:
-        'bar'
+        bar='bar{asdf,.*}'
+    params:
+        foo = lambda wildcards, output: print(output.bar)
