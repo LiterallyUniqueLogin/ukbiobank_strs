@@ -21,7 +21,7 @@ def temp_dir(name, args):
         if not first:
             dname += ','
         first = False
-        dname += k + '=' + str(v)
+        dname += k.replace('/', '_') + '=' + str(v).replace('/', '_')
     dname += '-'
     return tempfile.TemporaryDirectory(prefix=dname, dir=project_temp)
 

@@ -5,17 +5,37 @@ import csv
 import datetime
 import os
 
+import numpy as np
+
 import python_file_utils as file_utils
+import sample_utils
 
 ukb = os.environ['UKB']
 
 inclusion_threshold = 0.05
 
-def write_input_variants(workdir, readme, phenotype, chrom, start_pos, end_pos):
+def write_input_variants(workdir, outdir, readme, phenotype, chrom, start_pos, end_pos):
     '''
     write README.txt
     write finemap_input.z
+    write finemap_innput.master
     '''
+
+    sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
+    n_samples = np.sum(sample_idx)
+
+    with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
+        finemap_master.write(
+            'z;ld;snp;config;cred;log;n_samples\n'
+            f'{outdir}/finemap_input.z;'
+            f'{outdir}/all_variants.ld;'
+            f'{outdir}/finemap_output.snp;'
+            f'{outdir}/finemap_output.config;'
+            f'{outdir}/finemap_output.cred;'
+            f'{outdir}/finemap_output.log;'
+            f'{n_samples}'
+        )
+
     plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
     str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
     filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
@@ -132,7 +152,7 @@ def main():
 
     with file_utils.temp_dir('finemap_write_input_variants', args) as tempdir:
         with open(f'{tempdir}/README.txt', 'w') as readme:
-            write_input_variants(tempdir, readme, phenotype, chrom, start_pos, end_pos)
+            write_input_variants(tempdir, outdir, readme, phenotype, chrom, start_pos, end_pos)
         file_utils.move_files(tempdir, outdir)
 
 if __name__ == '__main__':

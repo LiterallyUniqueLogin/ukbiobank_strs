@@ -15,14 +15,13 @@ def correlate_chunks(gts, lds, n_variants, chunk_len, chunk_idx1, chunk_idx2):
     slice1 = slice(chunk_idx1*chunk_len, min((chunk_idx1+1)*chunk_len, n_variants))
     len_slice1 = slice1.stop - slice1.start
     slice2 = slice(chunk_idx2*chunk_len, min((chunk_idx2+1)*chunk_len, n_variants))
-    gt1s = gts[slice1, :]
-    gt2s = gts[slice2, :]
-    corrs = np.corrcoef(gt1s, gt2s)
+    gt1s = gts[:, slice1]
+    gt2s = gts[:, slice2]
+    corrs = np.corrcoef(gt1s.T, gt2s.T)
     lds[slice1, slice2] = corrs[:len_slice1, len_slice1:]
     lds[slice2, slice1] = corrs[len_slice1:, :len_slice1]
     print(f"Done with correlating chunks {chunk_idx1}, {chunk_idx2}", flush=True)
     assert not np.any(np.isnan(corrs))
-
 
 def calc_corrs(workdir, outdir):
     '''
@@ -34,7 +33,7 @@ def calc_corrs(workdir, outdir):
     with h5py.File(f'{outdir}/gts.h5') as gtsh5, \
             h5py.File(f'{workdir}/lds.h5', 'w') as ldh5:
         gts = gtsh5['gts']
-        n_variants = gts.shape[0]
+        n_variants = gts.shape[1]
         n_chunks = math.ceil(n_variants/chunk_len)
 
         lds = ldh5.create_dataset('ld', (n_variants, n_variants), chunks=True)

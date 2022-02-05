@@ -1197,8 +1197,9 @@ rule finemap_write_input_variants:
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     output:
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'),
+        readme=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
+        zfile=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'),
+        master=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
     resources:
         time = '00:30:00'
     shell:
@@ -1209,18 +1210,24 @@ rule finemap_write_input_variants:
 rule finemap_load_gts:
     input:
         expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits'),
-        'finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.z'
+        zfile=rules.finemap_write_input_variants.output.zfile
     output:
-        protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/finemap_input.master'),
-        temporary('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5')
+        gts='finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/gts.h5',
+        readme=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start}_{end}/load_gts_README.txt'),
     resources:
         mem_gb = 6,
         time = '02:00:00'
     shell:
-        'finemapping/finemap_load_gts.py '
-        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
-        '{wildcards.end} '
+        'finemapping/finemapping_load_gts.py '
+        '{output.readme} '
+        '{output.gts} '
         f'{str_imputation_run_name} '
+        '{input.zfile} '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+        '--varname-header '
 
 def finemap_corrs_time(wildcards, attempt):
     if attempt == 1:
@@ -1340,7 +1347,8 @@ rule susie_load_gts:
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     output:
-        readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/README.txt'),
+        choose_vars_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/choose_vars_README.txt'),
+        load_gts_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/load_gts_README.txt'),
         #pheno=temporary('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.h5'),
         #gt=temporary('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/gt_residuals.h5'),
         pheno='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start}_{end}/pheno_residuals.h5',
@@ -1354,16 +1362,25 @@ rule susie_load_gts:
     params:
         hardcalls_flag = lambda wildcards: '--hardcalls' if wildcards.hardcalls else ''
     shell:
-        'finemapping/susie_load_gts.py '
-        '{output.readme} '
-        '{output.pheno} '
-        '{output.gt} '
+        'finemapping/susie_choose_vars.py '
+        '{output.choose_vars_readme} '
         '{output.outcols} '
-        f'{str_imputation_run_name} '
         '{wildcards.phenotype} '
         '{wildcards.chrom} '
         '{wildcards.start} '
         '{wildcards.end} '
+        ' ; '
+        'finemapping/finemapping_load_gts.py '
+        '{output.load_gts_readme} '
+        '{output.gt} '
+        f'{str_imputation_run_name} '
+        '{output.outcols} '
+        '{wildcards.phenotype} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+        '--residuals '
+        '--pheno-file {output.pheno} '
         '{params.hardcalls_flag} '
 
 rule susie_load_all_gts_mean_platelet_volume:
