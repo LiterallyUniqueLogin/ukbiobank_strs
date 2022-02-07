@@ -43,6 +43,7 @@ def calc_corrs(workdir, outdir):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('outdir')
     parser.add_argument('phenotype')
     parser.add_argument('chrom', type=int)
     parser.add_argument('start_pos', type=int)
@@ -55,11 +56,9 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
-
     with file_utils.temp_dir('finemap_calc_corrs', args) as tempdir:
-        calc_corrs(tempdir, outdir)
-        file_utils.move_files(tempdir, outdir)
+        calc_corrs(tempdir, args.outdir)
+        file_utils.move_files(tempdir, args.outdir)
 
 if __name__ == '__main__':
     main()

@@ -6,6 +6,7 @@ import datetime
 import os
 
 import numpy as np
+import polars as pl
 
 import python_file_utils as file_utils
 import sample_utils
@@ -14,7 +15,7 @@ ukb = os.environ['UKB']
 
 inclusion_threshold = 0.05
 
-def write_input_variants(workdir, outdir, readme, phenotype, chrom, start_pos, end_pos):
+def write_input_variants(workdir, outdir, readme, phenotype, chrom, start_pos, end_pos, use_PACSIN2):
     '''
     write README.txt
     write finemap_input.z
@@ -81,6 +82,8 @@ def write_input_variants(workdir, outdir, readme, phenotype, chrom, start_pos, e
                         # duplicated row, just ignore
                         continue
                     raise ValueError(f"Two STR poses at the same location {result_pos}!")
+                if use_PACSIN2 and result_pos == 43385872:
+                    continue
                 prev_str_pos = result_pos
                 prev_result = result
                 any_strs = True
@@ -134,12 +137,27 @@ def write_input_variants(workdir, outdir, readme, phenotype, chrom, start_pos, e
                     f'SNP_{result_pos}_{ref}_{alt} {result_chrom:02} {result_pos} {ref} {alt} nan {beta} {se}\n'
                 )
 
+        if use_PACSIN2:
+            pacsin2_results = pl.read_csv(
+                f'{ukb}/association/spot_test/white_brits/{phenotype}/PACSIN2.tab',
+                sep='\t'
+            )
+            for pos in [43385866, 43385875, 43385893]:
+                rec = pacsin2_results.filter(pl.col('pos') ==  pos)
+                assert rec.shape[0] == 1
+                beta = rec[f'coeff_{phenotype}'].to_numpy()[0]
+                se = rec[f'se_{phenotype}'].to_numpy()[0]
+                finemap_input_z.write(
+                    f'PACSIN2_STR_{pos} 22 {pos} nan nan nan {beta} {se}\n'
+                )
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('outdir')
     parser.add_argument('phenotype')
     parser.add_argument('chrom', type=int)
     parser.add_argument('start_pos', type=int)
     parser.add_argument('end_pos', type=int)
+    parser.add_argument('--three-PACSIN2-STRs', action='store_true', default=False)
     args = parser.parse_args()
 
     phenotype = args.phenotype
@@ -148,12 +166,10 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
-
     with file_utils.temp_dir('finemap_write_input_variants', args) as tempdir:
         with open(f'{tempdir}/README.txt', 'w') as readme:
-            write_input_variants(tempdir, outdir, readme, phenotype, chrom, start_pos, end_pos)
-        file_utils.move_files(tempdir, outdir)
+            write_input_variants(tempdir, args.outdir, readme, phenotype, chrom, start_pos, end_pos, args.three_PACSIN2_STRs)
+        file_utils.move_files(tempdir, args.outdir)
 
 if __name__ == '__main__':
     main()

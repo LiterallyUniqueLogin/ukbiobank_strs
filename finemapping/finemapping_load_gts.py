@@ -15,6 +15,7 @@ import sklearn.linear_model
 import load_and_filter_genotypes as lfg
 import python_array_utils as utils
 import sample_utils
+import load_PACSIN2
 
 ukb = os.environ['UKB']
 project_temp = os.environ['PROJECT_TEMP']
@@ -82,38 +83,22 @@ def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenot
     
     strs_to_include = set()
     snps_to_include = set()
+    pacsin2_vars = set()
     for varname in varnames:
         if varname[:3] == 'STR':
             strs_to_include.add(int(varname.split('_', 1)[1]))
-        else:
-            assert varname[:3] == 'SNP'
+        elif varname[:3] == 'SNP':
             splits = varname.split('_')
             assert len(splits) == 4
             snps_to_include.add((int(splits[1]), splits[2], splits[3]))
-    
+        else:
+            assert varname[:7] == 'PACSIN2'
+            pacsin2_vars.add(int(varname.split('_', 2)[2]))
     print(f'# STRs: {len(strs_to_include)} # SNPs: {len(snps_to_include)}', flush=True)
 
     var_inclusion = { var_name : False for var_name in varnames }
 
     region = f'{chrom}:{start_pos}-{end_pos}'
-    if take_residuals:
-        print('loading and regressing STRs... ', flush=True)
-    else:
-        print('loading STRs... ', flush=True)
-
-    str_itr = lfg.load_strs(
-        imputation_run_name,
-        region,
-        sample_idx,
-        details=False,
-        var_subset=strs_to_include,
-        hardcalls=hardcalls
-    )
-
-    n_temp = 10
-    gt_temp = np.full((n_samples, n_temp), np.nan)
-    stored_indexes = []
-
     chunk_len = 2**6
     with h5py.File(gts_fname, 'w') as gts_file:
         if len(varnames) >= chunk_len:
@@ -130,7 +115,55 @@ def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenot
                 dtype='f',
             )
 
+        n_temp = 10
+        gt_temp = np.full((n_samples, n_temp), np.nan)
+        stored_indexes = []
+
+        if len(pacsin2_vars) > 0:
+            if not take_residuals:
+                print('loading PACSIN2 STRs ... ', flush=True)
+            else:
+                print('loading and regressing PACSIN2 STRs ... ', flush=True)
+            PACSIN2_count = 0
+            PACSIN2_itr = load_PACSIN2.get_gt_itr(sample_idx)
+            next(PACSIN2_itr) # skip details
+            for (PACSIN2_dosages_or_hardcalls, _, _, PACSIN2_pos, _, _) in PACSIN2_itr:
+                if PACSIN2_pos not in pacsin2_vars:
+                    continue
+                PACSIN2_count += 1
+                PACSIN2_name = f'PACSIN2_STR_{PACSIN2_pos}'
+                assert PACSIN2_name in varnames
+                del var_inclusion[PACSIN2_name]
+                idx = varnames.index(PACSIN2_name)
+                stored_indexes.append(idx)
+                if not hardcalls:
+                    gts = get_str_dosages(PACSIN2_dosages_or_hardcalls)
+                else:
+                    gts = np.sum(PACSIN2_dosages_or_hardcalls, axis=1)
+
+                gt_temp[:, (PACSIN2_count - 1) % n_temp] = gts
+
+            assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
+            gt_temp = gt_temp[:, :len(stored_indexes)]
+            store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
+            print('done!', flush=True)
+            gt_temp = np.full((n_samples, n_temp), np.nan)
+            stored_indexes = []
+
+        if take_residuals:
+            print('loading and regressing STRs... ', flush=True)
+        else:
+            print('loading STRs... ', flush=True)
+
         start = time.time()
+        str_itr = lfg.load_strs(
+            imputation_run_name,
+            region,
+            sample_idx,
+            details=False,
+            var_subset=strs_to_include,
+            hardcalls=hardcalls
+        )
         for str_count, (str_dosages_or_hardcalls, _, _, str_pos, str_locus_filtered, _) in enumerate(str_itr):
             str_count += 1
             print(f'loading STR {str_count}, time/snp: {(time.time() - start)/str_count:.2}s ... ', flush=True)
@@ -212,13 +245,15 @@ def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenot
             assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
             gt_temp = gt_temp[:, :len(stored_indexes)]
             store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
-            
+
         print(f"Time: {time.time() - start}s")
         if sum(var_inclusion.values()) != len(var_inclusion):
             print(var_inclusion)
             print(snps_to_include)
             assert False
 
+
+ 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('readme')
@@ -238,7 +273,7 @@ if __name__ == '__main__':
     if args.pheno_file:
         assert args.residuals
     with tempfile.TemporaryDirectory(prefix='finemapping_load_gts', dir=project_temp) as tempdir:
-        print('tempdir name: {tempdir.name}', flush=True)
+        print(f'tempdir name: {tempdir}', flush=True)
         readme = tempdir + '/' + args.readme.split('/')[-1]
         gts_file = tempdir + '/' + args.gts_file.split('/')[-1]
         if args.pheno_file:

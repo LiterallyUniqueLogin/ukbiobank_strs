@@ -46,6 +46,7 @@ def run_finemap(outdir):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('outdir')
     parser.add_argument('phenotype')
     parser.add_argument('chrom', type=int)
     parser.add_argument('start_pos', type=int)
@@ -58,12 +59,10 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    outdir = f'{ukb}/finemapping/finemap_results/{phenotype}/{chrom}_{start_pos}_{end_pos}'
-
     with file_utils.temp_dir('finemap_write_corrs_and_run', args) as tempdir:
-        write_corrs(tempdir, outdir)
-        file_utils.move_files(tempdir, outdir)
-    run_finemap(outdir)
+        write_corrs(tempdir, args.outdir)
+        file_utils.move_files(tempdir, args.outdir)
+    run_finemap(args.outdir)
 
 if __name__ == '__main__':
     main()

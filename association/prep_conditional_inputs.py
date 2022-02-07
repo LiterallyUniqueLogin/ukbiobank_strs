@@ -6,9 +6,8 @@ import os
 import numpy as np
 
 import load_and_filter_genotypes as lfg
-import PACSIN2_varnames
 import sample_utils
-import test_PACSIN2
+import load_PACSIN2
 
 def process_STR(itr, pos):
     try:
@@ -35,7 +34,7 @@ def process_STR(itr, pos):
     return (this_var_gts, f"STR_{pos}")
 
 def PACSIN2_itr(pos):
-    itr = test_PACSIN2.get_gt_itr(slice(None))
+    itr = load_PACSIN2.get_gt_itr(slice(None))
     next(itr)
     for dosage_dict, unique_alleles, chrom, found_pos, locus_filtered, locus_details in itr:
         if found_pos != pos:
