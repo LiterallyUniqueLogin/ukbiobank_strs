@@ -113,7 +113,8 @@ def make_manhattan_plots(
         conditioned_isnps,
         *,
         return_figure = False,
-        legend=True):
+        legend=True,
+        publication=False):
     ext = outfname.split('.')[-1]
 
     if not binary:
@@ -168,9 +169,9 @@ def make_manhattan_plots(
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
         for source in (my_str_source, *my_str_sources.values()):
-            source.data['size'] = np.full(source.data['pos'].shape, 6)
+            source.data['size'] = np.full(source.data['pos'].shape, 12)
             if plot_peaks:
-                source.data['size'][source.data['is_peak']] = 15
+                source.data['size'][source.data['is_peak']] = 20
 
     if plot_my_snp_data:
         my_snp_source, my_snp_sources = create_source_dict(
@@ -199,9 +200,9 @@ def make_manhattan_plots(
         sources.append(plink_snp_source)
         source_dicts.append(plink_snp_sources)
         for source in (plink_snp_source, *plink_snp_sources.values()):
-            source.data['size'] = np.full(source.data['pos'].shape, 5)
+            source.data['size'] = np.full(source.data['pos'].shape, 10)
             if plot_peaks:
-                source.data['size'][source.data['is_peak']] = 15
+                source.data['size'][source.data['is_peak']] = 20
 
     if plot_gwas_catalog:
         catalog_source, catalog_sources = create_source_dict(np.rec.fromarrays((
@@ -290,7 +291,7 @@ def make_manhattan_plots(
     manhattan_plot = bokeh.plotting.figure(
         width=1200,
         height=900,
-        title=(phenotype.capitalize() + ' Manhattan Plot'),
+        title=(phenotype.capitalize().replace('_', ' ')),
         x_axis_label=x_axis_label,
         y_axis_label='-log10(p-value)',
         tools='xzoom_in,xzoom_out,save',
@@ -780,15 +781,16 @@ def make_manhattan_plots(
                 manhattan_plot
             ])
 
-    if my_str_run_date:
-        region_plots.display_my_str_run_date(manhattan_plot, my_str_run_date)
-    if my_snp_run_date:
-        manhattan_plot.add_layout(bokeh.models.Title(
-            text=f"My SNP code run date: {my_snp_run_date}",
-            align='right'
-        ), 'below')
-    if plink_snp_run_date:
-        region_plots.display_plink_snp_run_date(manhattan_plot, plink_snp_run_date)
+    if not publication:
+        if my_str_run_date:
+            region_plots.display_my_str_run_date(manhattan_plot, my_str_run_date)
+        if my_snp_run_date:
+            manhattan_plot.add_layout(bokeh.models.Title(
+                text=f"My SNP code run date: {my_snp_run_date}",
+                align='right'
+            ), 'below')
+        if plink_snp_run_date:
+            region_plots.display_plink_snp_run_date(manhattan_plot, plink_snp_run_date)
 
     manhattan_plot.legend.click_policy="mute"
 
@@ -828,6 +830,7 @@ def main():
     parser.add_argument('--peaks-spacing', type=int)
     parser.add_argument('--peaks-thresh', type=str)
     parser.add_argument('--unit')
+    parser.add_argument('--publication', action='store_true', default=False)
     args = parser.parse_args()
 
     phenotype = args.phenotype
@@ -1019,7 +1022,8 @@ def main():
             str_finemap_signals = str_finemap_signals,
             finemap_regions = finemap_regions,
             conditioned_isnps = conditioned_isnps,
-            conditioned_strs = conditioned_strs
+            conditioned_strs = conditioned_strs,
+            publication=args.publication
         )
     else:
         conditioned_man = make_manhattan_plots(
@@ -1044,6 +1048,7 @@ def main():
             conditioned_isnps = conditioned_isnps,
             conditioned_strs = conditioned_strs,
             return_figure = True,
+            publication=args.publication
         )
         unconditioned_man = make_manhattan_plots(
             f'.{ext}',
@@ -1067,7 +1072,8 @@ def main():
             conditioned_isnps = None,
             conditioned_strs = None,
             return_figure = True,
-            legend=False
+            legend=False,
+            publication=args.publication
         )
         layout = bokeh.layouts.grid([unconditioned_man, conditioned_man])
         conditioned_man.x_range = unconditioned_man.x_range

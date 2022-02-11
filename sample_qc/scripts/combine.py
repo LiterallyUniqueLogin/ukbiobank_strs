@@ -5,16 +5,16 @@ import argparse
 import datetime
 import sys
 
-import numpy as np
-
 parser = argparse.ArgumentParser()
 parser.add_argument('outsamples')
 parser.add_argument('outreadme')
 parser.add_argument('start_samples_fname')
 parser.add_argument('remove_fnames', nargs='+')
+parser.add_argument('--subpop')
 parser.add_argument('--pheno-file')
+
 args = parser.parse_args()
-pheno_file = args.pheno_file
+subpop = args.subpop
 
 def error(msg):
     print(f"Error: {msg}", file=sys.stderr)
@@ -24,10 +24,8 @@ with open(args.outreadme, 'w') as readme:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
     readme.write(f"Run date: {today}\n")
 
-    if pheno_file:
-        readme.write(f"Loading list of samples with phenotyeps from {pheno_file}\n")
-    else:
-        readme.write('Not subsetting to samples for any specific phenotype')
+    if subpop:
+        readme.write(f"Subsetting to the subpopulation in file {subpop}\n")
 
     remove_fnames = args.remove_fnames
     assert len(remove_fnames) > 0
@@ -37,9 +35,11 @@ with open(args.outreadme, 'w') as readme:
     for remove_fname in remove_fnames:
         readme.write(remove_fname + '\n')
 
-if pheno_file:
-    phen_array = np.load(pheno_file)
-    samples = set(phen_array[:, 0].astype(int).astype(str))
+if subpop:
+    with open(subpop) as subpop_file:
+        samples = {line.strip() for line in subpop_file.readlines()[1:] if line.strip()}
+else:
+    samples = None
 
 start_lines = {"ID_1 ID_2 missing sex", "ID", "ID_1"}
 with open(args.start_samples_fname) as start_samples:
@@ -60,7 +60,7 @@ with open(args.start_samples_fname) as start_samples:
         sample_id = line.split()[0]
         current_keep[sample_id] = line
 
-    if not pheno_file:
+    if samples is None:
         samples = set(current_keep)
     else:
         samples = samples.intersection(current_keep)

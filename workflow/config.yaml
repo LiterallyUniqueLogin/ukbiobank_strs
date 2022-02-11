@@ -21,7 +21,7 @@ cluster:
     --export ALL
     --nodes 1
     --job-name={rule}-{wildcards}
-    --output=logs/{rule}/{rule}-{wildcards}-%j.out
+    --output=logs/{rule}/{rule}-$(echo {wildcards} | sed -e 's_/_<slash>_g')-%j.out
     $(if (({resources.attempt} != 1)) ; then echo '--mail-type FAIL --mail-user jbmargoliash@ucsd.edu' ; fi)
     --ntasks-per-node={resources.threads}
     --mem={resources.mem_gb}G

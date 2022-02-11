@@ -24,22 +24,15 @@ def primus_command(infile, outdir):
 parser = argparse.ArgumentParser()
 parser.add_argument('outfile')
 parser.add_argument('kinship_file')
-parser.add_argument('filtered_samples_fname')
+parser.add_argument('pheno_file')
 parser.add_argument('--binary-pheno')
 args = parser.parse_args()
 
 with tempfile.TemporaryDirectory() as output_dir:
     print('Temp dir name: ', output_dir)
 
-    all_samples = set()
-    with open(args.filtered_samples_fname) as sample_file:
-        header = True
-        for line in sample_file:
-            if header:
-                header = False
-                continue
-            sample_id = line.strip()
-            all_samples.add(sample_id)
+    all_samples = {str(int(id_)) for id_ in np.load(args.pheno_file)[:, 0]}
+
     print(f"Done reading original sample file. Total num samples: {len(all_samples)}")
 
     kinship_subset_fname = f'{output_dir}/kinship_subset.dat'

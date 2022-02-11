@@ -12,6 +12,8 @@ import python_array_utils as utils
 ukb = os.environ['UKB']
 
 parser = argparse.ArgumentParser()
+parser.add_argument('outprefix')
+parser.add_argument('samples')
 parser.add_argument('ethnicity')
 parser.add_argument('phenotype_name')
 parser.add_argument('phenotype_field_id')
@@ -21,6 +23,7 @@ args = parser.parse_args()
 
 phenotype = args.phenotype_name
 ethnicity = args.ethnicity
+outprefix = args.outprefix
 
 def load_date_data_field(fname, extra_field = False):
     names=['skip1', 'id', 'date', 'skip2']
@@ -62,13 +65,13 @@ def load_0_1_neg_nan_field(fname):
     data = data[data[:, 1] >= 0, :]
     return data
 
-with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_unit.txt', 'w') as unit_file:
+with open(f'{outprefix}_unit.txt', 'w') as unit_file:
     unit_file.write('binary_0=control_1=case\n')
 
-with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_covar_names.txt', 'w') as covar_names:
+with open(f'{outprefix}_covar_names.txt', 'w') as covar_names:
     covar_names.write('current_age_or_age_at_death\n')
 
-with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as readme:
+with open(f'{outprefix}_README.txt', 'w') as readme:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
     data_fname = f'{ukb}/main_dataset/extracted_data/{phenotype}_{args.phenotype_field_id}.txt'
     readme.write(f"Run date: {today}\n")
@@ -86,6 +89,20 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
     else:
         # cols: id, is_case
         data = load_0_1_neg_nan_field(data_fname)
+
+    readme.write(f"Subsetting to samples at {args.samples}\n")
+    # load samples that have passed qc
+    samples = np.genfromtxt(
+        args.samples,
+        skip_header=1
+    )
+
+    # TODO test this
+    # subset to those samples
+    data = utils.merge_arrays(
+        samples.reshape(-1, 1),
+        data
+    )
 
     year_of_birth = np.genfromtxt(
         f'{ukb}/main_dataset/extracted_data/year_of_birth_34.txt',
@@ -152,5 +169,5 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
         'that date minus their birth date (year, month, day=1), measured in days.\n'
     )
 
-    np.save(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}.npy', data)
+    np.save(f'{outprefix}.npy', data)
 

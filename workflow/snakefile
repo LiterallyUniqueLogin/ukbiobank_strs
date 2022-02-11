@@ -25,11 +25,42 @@ chr_lens = np.genfromtxt(
 
 str_imputation_run_name = 'first_pass'
 
+wildcard_constraints:
+    chrom='[0-9]+',
+    pos='[0-9]+',
+    phenotype='[^/]+',
+    ethnicity='white_brits|black|south_asian|chinese|irish|white_other',
+    subpop_prefix='|subpop_',
+    subpop='|[^/]+/'
+
 def chr_expand(string):
     return [string.replace('CHR', str(chrom)) for chrom in range(1, 23)]
 
 def pheno_expand(string):
     return [string.replace('PHENO', phenotype) for phenotype in phenotypes.phenotypes_in_use]
+
+def assert_both_or_neither(a, b):
+    if a == '' and b == '':
+        return False
+    elif a != '' and b != '':
+        return True
+    else:
+        print(a, b)
+        assert False
+
+def subpop_assert(wildcards):
+    return assert_both_or_neither(wildcards.subpop_prefix, wildcards.subpop)
+
+def get_subpop_flag(wildcards, input):
+    if wildcards.subpop == '':
+        return ''
+    assert wildcards.subpop[-1:] == '/'
+    return f'--subpop {input.subpop}'
+
+def get_subpop_input(wildcards):
+    if wildcards.subpop == '':
+        return []
+    return f'sample_qc/subpops/{wildcards.subpop[:-1]}.txt'
 
 ################## Loading and collating data ############################
 
@@ -70,14 +101,19 @@ rule ethnic_sample_lists:
 rule filter_samples_for_ethnicity:
     input:
         start_file='sample_qc/common_filters/ethnicity/{ethnicity}.sample',
-        remove_files=glob.glob("sample_qc/common_filters/remove/*sample")
+        remove_files=glob.glob("sample_qc/common_filters/remove/*sample"),
+        subpop = get_subpop_input
     output:
-        samples='sample_qc/runs/{ethnicity}/no_phenotype/combined.sample',
-        readme='sample_qc/runs/{ethnicity}/no_phenotype/README.txt'
+        samples='sample_qc/{subpop_prefix}runs/{subpop}{ethnicity}/no_phenotype/combined.sample',
+        readme='sample_qc/{subpop_prefix}runs/{subpop}{ethnicity}/no_phenotype/README.txt'
+    params:
+        is_subpop = subpop_assert,
+        subpop_flag = get_subpop_flag
     resources:
         time='00:05:00',
     shell:
         'sample_qc/scripts/combine.py {output.samples} {output.readme} {input.start_file} {input.remove_files} '
+        '{params.subpop_flag} '
 
 rule load_shared_covars:
     input:
@@ -112,49 +148,71 @@ def input_fields_for_phenotype(wildcards):
         ])
     return fields
 
+def assert_known_phenotype(phenotype):
+    if phenotype in phenotypes.pheno_descs:
+        return True
+    else:
+        raise ValueError(f"Couldn't identify phenotype {phenotype}")
+
+def load_phenotype_binary_flag(phenotype):
+    unit = phenotypes.pheno_descs[phenotype].unit
+    if not phenotypes.is_binary(phenotype):
+        return ''
+    elif unit == 'binary_date_first_reported':
+        return ''
+    elif unit == 'binary_0_1_neg_nan':
+        return '--zero-one-neg-nan'
+    else:
+        raise ValueError("Unexpected binary unit type")
+
 rule load_phenotype:
     input:
         "traits/shared_covars/assessment_ages.npy",
-        rules.filter_samples_for_ethnicity.output.samples,
-        input_fields_for_phenotype
+        input_fields_for_phenotype,
+        samples = rules.filter_samples_for_ethnicity.output.samples,
+        subpop = get_subpop_input
     output:
-        phenotype=protected("traits/phenotypes/{ethnicity}/{phenotype}.npy"),
-        readme=protected("traits/phenotypes/{ethnicity}/{phenotype}_README.txt"),
-        unit=protected("traits/phenotypes/{ethnicity}/{phenotype}_unit.txt"),
-        covar_names=protected("traits/phenotypes/{ethnicity}/{phenotype}_covar_names.txt")
+        phenotype=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}.npy"),
+        readme=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}_README.txt"),
+        unit=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}_unit.txt"),
+        covar_names=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}_covar_names.txt")
     resources:
         time='00:05:00'
-    run:
-        phenotype = wildcards.phenotype
-        ethnicity = wildcards.ethnicity
-        if phenotype in phenotypes.pheno_descs:
-            args = phenotypes.pheno_descs[phenotype]
-            if 'binary' in args.unit:
-                if args.unit not in {'binary_date_first_reported', 'binary_0_1_neg_nan'}:
-                    raise ValueError("Only type of binary field understood is binary_date_first_reported")
-                flag = ''
-                if args.unit =='binary_0_1_neg_nan':
-                    flag = '--zero-one-neg-nan'
-                shell(
-                    'traits/load_binary_phenotype_from_main_dataset.py '
-                    f'{ethnicity} {phenotype} {args.data_field_id} {flag} '
-                )
-            else:
-                base_command = (
-                    "traits/load_continuous_phenotype_from_main_dataset.py "
-                    f"{ethnicity} {phenotype} {args.data_field_id} '{args.unit}' "
-                )
-                if not args.categorical_covars:
-                    shell(base_command)
-                else:
-                    shell(
-                        base_command + " --categorical-covars "
-                        + " ".join(f'{name},{ID}' for name, ID in args.categorical_covars) + " "
-                    )
-        else:
-            raise ValueError(f"Couldn't identify phenotype {phenotype}")
+    params:
+        known_phenotype = lambda wildcards: assert_known_phenotype(wildcards.phenotype),
+        command = lambda wildcards: (
+            'traits/load_continuous_phenotype_from_main_dataset.py'
+            if not phenotypes.is_binary(wildcards.phenotype) else
+            'traits/load_binary_phenotype_from_main_dataset.py'
+        ),
+        data_field_id = lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].data_field_id,
+        unit_param = lambda wildcards: (
+            f"'{phenotypes.pheno_descs[wildcards.phenotype].unit}'"
+            if not phenotypes.is_binary(wildcards.phenotype) else
+            ''
+        ),
+        binary_flag = lambda wildcards: load_phenotype_binary_flag(wildcards.phenotype),
+        categorical_flag = lambda wildcards: (
+            '' if not phenotypes.pheno_descs[wildcards.phenotype].categorical_covars else
+            '--categorical-covars ' + " ".join(
+                f'{name},{ID}' for name, ID in 
+                phenotypes.pheno_descs[wildcards.phenotype].categorical_covars
+            )
+        ),
+        is_subpop = subpop_assert,
+        outprefix = lambda wildcards, output: output.phenotype.rsplit('.', maxsplit=1)[0]
+    shell:
+        '{params.command} '
+        '{params.outprefix} '
+        '{input.samples} '
+        '{wildcards.ethnicity} '
+        '{wildcards.phenotype} '
+        '{params.data_field_id} '
+        '{params.unit_param} '
+        '{params.binary_flag} '
+        '{params.categorical_flag} '
 
-# TODO update for ethnicity
+# TODO update for ethnicity and subpop
 rule plot_phenotype_by_sex:
     input:
         "traits/shared_covars/shared_covars.npy",
@@ -169,7 +227,7 @@ rule plot_phenotype_by_sex:
     shell:
         'traits/plot_phenotype.py {wildcards.phenotype} sex'
 
-# TODO update for ethnicity
+# TODO update for ethnicity and subpop
 rule plot_phenotype_by_age:
     input:
         "traits/phenotypes/{phenotype}.npy",
@@ -183,74 +241,64 @@ rule plot_phenotype_by_age:
     shell:
         'traits/plot_phenotype.py {wildcards.phenotype} age'
 
-# doesn't filter for relatedness, only QC problems
-ruleorder: filter_samples_for_ethnicity > filter_samples_for_phenotype
-rule filter_samples_for_phenotype:
-    input:
-        start_file='sample_qc/common_filters/ethnicity/{ethnicity}.sample',
-        remove_files=glob.glob("sample_qc/common_filters/remove/*sample"),
-        pheno_file=rules.load_phenotype.output.phenotype
-    output:
-        samples=temporary('sample_qc/runs/{ethnicity}/{phenotype}/combined.sample'),
-        readme='sample_qc/runs/{ethnicity}/{phenotype}/README.txt'
-    resources:
-        time='00:05:00'
-    shell:
-        'sample_qc/scripts/combine.py '
-        '{output.samples} '
-        '{output.readme} '
-        '{input.start_file} '
-        '{input.remove_files} '
-        '--pheno-file {input.pheno_file} '
-
 #subset to unrelated samples
 rule subset_samples_for_phenotype:
     input:
         kinship_file="misc_data/ukbgene/ukb46122_rel_s488282.dat",
-        samples=rules.filter_samples_for_phenotype.output.samples,
+        pheno_file=rules.load_phenotype.output.phenotype,
         phenotype=( # only actually necessary for binary phenotypes
             lambda wildcards: [rules.load_phenotype.output.phenotype]
                 if wildcards.phenotype != 'no_phenotype'
                 else []
         )
     output:
-        samples=protected("sample_qc/runs/{ethnicity}/{phenotype}/combined_unrelated.sample")
+        samples=protected("sample_qc/{subpop_prefix}runs/{subpop}{ethnicity}/{phenotype}/combined_unrelated.sample")
     params:
         binary_flag = (
             lambda wildcards, input:
                 '' if wildcards.phenotype == 'no_phenotype' or not phenotypes.is_binary(wildcards.phenotype)
                 else f'--binary-pheno {input.phenotype} '
-        )
+        ),
+        is_subpop = subpop_assert
     resources:
         time='24:00:00'
     shell:
         'sample_qc/scripts/unrelated_individuals.py '
         '{output.samples} '
         '{input.kinship_file} '
-        '{input.samples} '
+        '{input.pheno_file} '
         '{params.binary_flag} '
 
 rule transform_phenotype_subset:
     input:
-        rules.load_phenotype.output.phenotype,
-        rules.subset_samples_for_phenotype.output.samples,
+        pheno=rules.load_phenotype.output.phenotype,
+        samples=rules.subset_samples_for_phenotype.output.samples,
     output:
-        readme=protected("traits/subset_transformed_phenotypes/{ethnicity}/{phenotype}_README.txt"),
-        phenotype=protected("traits/subset_transformed_phenotypes/{ethnicity}/{phenotype}.npy")
+        readme=protected("traits/{subpop_prefix}subset_transformed_phenotypes/{subpop}{ethnicity}/{phenotype}_README.txt"),
+        phenotype=protected("traits/{subpop_prefix}subset_transformed_phenotypes/{subpop}{ethnicity}/{phenotype}.npy")
     resources:
         time='00:05:00'
-    run:
-        cmd = 'traits/transform_traits.py {wildcards.phenotype} {wildcards.ethnicity} '
-        if phenotypes.is_binary(wildcards.phenotype):
-            cmd += '--binary '
-        shell(cmd)
+    params:
+        is_subpop = subpop_assert,
+        binary_flag = lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary',
+        outprefix = lambda wildcards, output: output.phenotype.split('.')[0]
+    shell:
+        'traits/transform_traits.py '
+        '{params.outprefix} ' 
+        '{input.pheno} '
+        '{input.samples} '
+        '{wildcards.phenotype} '
+        '{wildcards.ethnicity} '
+        '{params.binary_flag} '
 
 rule length_confusion:
     input:
         expand(
             rules.subset_samples_for_phenotype.output.samples,
             ethnicity='white_brits',
-            phenotype='no_phenotype'
+            phenotype='no_phenotype',
+            subpop='',
+            subpop_prefix=''
         ),
         'array_imputed/ukb46122_imp_chr1_v3_s487283.sample'
     output:
@@ -409,47 +457,41 @@ rule run_str_spot_test:
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
-        result=protected('association/spot_test/{ethnicity}/{phenotype}/chr{chrom}_{pos}.tab'),
-        readme=protected('association/spot_test/{ethnicity}/{phenotype}/chr{chrom}_{pos}_README.txt'),
+        result=protected('association/{subpop_prefix}spot_test/{subpop}{ethnicity}/{phenotype}/chr{chrom}_{pos}.tab'),
+        readme=protected('association/{subpop_prefix}spot_test/{subpop}{ethnicity}/{phenotype}/chr{chrom}_{pos}_README.txt'),
     resources:
         time='00:20:00',
         mem_gb=lambda wildcards: 9 if not phenotypes.is_binary(wildcards.phenotype) else 40
-    run:
-        if not phenotypes.is_binary(wildcards.phenotype):
-            binary_flag = ''
-        else:
-            binary_flag = '--binary logistic'
-
-        shell(
-            'association/my_regional_gwas.py '
-            '{output.readme} '
-            'strs '
-            '{wildcards.phenotype} '
-            '--readme '
-            f'--imputation-run-name {str_imputation_run_name} '
-            f'{binary_flag} '
-        )
-
-        shell(
-            'association/my_regional_gwas.py '
-            '{output.result} '
-            'strs '
-            '{wildcards.phenotype} '
-            '--region {wildcards.chrom}:{wildcards.pos}-{wildcards.pos} '
-            '--pheno-and-covars {input.transformed_phenotype} '
-            '--shared-covars {input.shared_covars} '
-            '--untransformed-phenotypes {input.untransformed_phenotype} '
-            f'--imputation-run-name {str_imputation_run_name} '
-            f'{binary_flag} '
-        )
+    params:
+        is_subpop = subpop_assert,
+        binary_flag = lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary logistic'
+    shell:
+        'association/my_regional_gwas.py '
+        '{output.readme} '
+        'strs '
+        '{wildcards.phenotype} '
+        '--readme '
+        f'--imputation-run-name {str_imputation_run_name} '
+        '{params.binary_flag} '
+        ' ; '
+        'association/my_regional_gwas.py '
+        '{output.result} '
+        'strs '
+        '{wildcards.phenotype} '
+        '--region {wildcards.chrom}:{wildcards.pos}-{wildcards.pos} '
+        '--pheno-and-covars {input.transformed_phenotype} '
+        '--shared-covars {input.shared_covars} '
+        '--untransformed-phenotypes {input.untransformed_phenotype} '
+        f'--imputation-run-name {str_imputation_run_name} '
+        '{params.binary_flag} '
 
 # TODO update for new syntax
 rule run_regional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
-        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
         run_timestamp=expand(rules.write_my_gwas_readme.output.timestamp, run_type='str', binary='{binary}', phenotype='{phenotype}'),
-        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
@@ -492,8 +534,8 @@ rule prep_continuous_plink_input:
     input:
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
         'association/results/{phenotype}/plink_snp{suffix,|_linear}/input/transformed_phenotype_and_covars.tab'
     resources:
@@ -512,8 +554,8 @@ rule prep_binary_plink_input:
     input:
         'traits/shared_covars/shared_covars.npy',
         'traits/shared_covars/covar_names.txt',
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
         'association/results/{phenotype}/plink_snp_logistic/input/transformed_phenotype_and_covars.tab'
     resources:
@@ -589,7 +631,7 @@ rule concatenate_linear_plink_gwas:
     input:
         concatenate_whole_genome_plink_gwas_input
     output:
-        results=protected('association/results/{phenotype,[^/]+}/plink_snp{suffix,|_linear}/results.tab')
+        results=protected('association/results/{phenotype}/plink_snp{suffix,|_linear}/results.tab')
     resources:
         time='04:00:00'
     run:
@@ -700,7 +742,7 @@ rule manhattan:
         "traits/phenotypes/white_brits/{phenotype}_unit.txt",
         manhattan_inputs
     output:
-        manhattan='association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.{ext,[^.]+}'
+        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.{ext,[^.]+}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -719,24 +761,20 @@ rule region_manhattan:
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
     output:
-        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.chr{chrom,[0-9]+}_{start,[^_]+}_{end,[^_]+}.{ext}'
+        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.chr{chrom}_{start,[^_]+}_{end,[^_]+}{pub,|_pub}.{ext}'
     resources:
         time='00:30:00',
         mem_gb=50
-    run:
-        cmd = (
-            'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
-            '--chrom {wildcards.chrom} '
-            '--start {wildcards.start} '
-            '--end {wildcards.end} '
-        )
-        if not phenotypes.is_binary(wildcards.phenotype):
-            assert wildcards.binary_type == ''
-        else:
-            assert wildcards.binary_type != ''
-            cmd += f'--binary {wildcards.binary_type[1:]} '
-        shell(cmd)
-
+    params:
+        binary_flag = lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary {wildcards.binary_type[1:]}',
+        pub_flag = lambda wildcards: '' if not wildcards.pub else '--publication'
+    shell:
+        'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
+        '--chrom {wildcards.chrom} '
+        '--start {wildcards.start} '
+        '--end {wildcards.end} '
+        '{params.binary_flag} '
+        '{params.pub_flag} '
 
 def plot_white_brits_assoc_input(wildcards):
     if not phenotypes.is_binary(wildcards.phenotype):
@@ -755,13 +793,15 @@ rule plot_ethnic_str_locus:
         assoc_result=rules.run_str_spot_test.output.result,
         pheno_data=rules.transform_phenotype_subset.output.phenotype
     output:
-        svg='association/locus_plots/{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.svg',
-        png='association/locus_plots/{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold}.png'
+        svg='association/{subpop_prefix}locus_plots/{subpop}{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold,[^_]+}{pub,|_pub}.svg',
+        png='association/{subpop_prefix}locus_plots/{subpop}{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold,[^_]+}{pub,|_pub}.png'
     resources:
         time='00:30:00'
     params:
         unit = lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
-        outloc= lambda wildcards, output: output.svg[:-4]
+        outloc= lambda wildcards, output: output.svg[:-4],
+        pub_flag = lambda wildcards: '' if not wildcards.pub else '--publication',
+        is_subpop = subpop_assert
         #binary_flag=lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary'
     shell:
         'association/plot_locus.py '
@@ -770,16 +810,17 @@ rule plot_ethnic_str_locus:
         '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
         '{wildcards.dosage_fraction_threshold} '
         "--unit '{params.unit}' "
+        '{params.pub_flag} '
 
 rule plot_str_all_ethnicities:
     input:
         vcf=f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         white_brits_assoc_results=expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix='')[0],
-        ethnic_assoc_result=expand(rules.run_str_spot_test.output.result, ethnicity=other_ethnicities, phenotype='{phenotype}', chrom='{chrom}', pos='{pos}'),
-        pheno_data=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity=all_ethnicities, phenotype='{phenotype}')
+        ethnic_assoc_result=expand(rules.run_str_spot_test.output.result, ethnicity=other_ethnicities, phenotype='{phenotype}', chrom='{chrom}', pos='{pos}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        pheno_data=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity=all_ethnicities, phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
-        svg='association/locus_plots/all/{phenotype}_{chrom}_{pos}_{dosage_cutoff}.svg',
-        png='association/locus_plots/all/{phenotype}_{chrom}_{pos}_{dosage_cutoff}.png'
+        svg='association/{subpop_prefix}locus_plots/{subpop}all/{phenotype}_{chrom}_{pos}_{dosage_cutoff,[0-9]+}{pub,|_pub}.svg',
+        png='association/{subpop_prefix}locus_plots/{subpop}all/{phenotype}_{chrom}_{pos}_{dosage_cutoff,[0-9]+}{pub,|_pub}.png'
     resources:
         time='00:30:00'
     params:
@@ -791,7 +832,8 @@ rule plot_str_all_ethnicities:
         })),
         pheno_data_d = (lambda wildcards, input: json.dumps({
             **{ethnicity: expand(rules.transform_phenotype_subset.output.phenotype, ethnicity=ethnicity, phenotype=wildcards.phenotype)[0] for ethnicity in all_ethnicities}
-        }))
+        })),
+        pub_flag = lambda wildcards: '' if not wildcards.pub else '--publication'
     shell:
         'association/plot_locus_all_ethnicities.py '
         '{params.outloc} '
@@ -799,6 +841,7 @@ rule plot_str_all_ethnicities:
         '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
         '{wildcards.dosage_cutoff} '
         "--unit '{params.unit}' "
+        '{params.pub_flag} '
 
 
 ################### Running and Plotting Conditional Associations ######################
@@ -859,8 +902,8 @@ rule prep_conditional_input:
 rule run_conditional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
-        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
-        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
         conditional_covars=rules.prep_conditional_input.output.npy,
         sample_fname = sample_fname,
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
@@ -892,8 +935,8 @@ rule prep_conditional_plink_input:
         rules.prep_conditional_input.output.varnames,
         rules.load_shared_covars.output.shared_covars,
         rules.load_shared_covars.output.covar_names,
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits'),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}')
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
         result='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_plink.tab'
     params:
@@ -962,7 +1005,7 @@ rule manhattan_conditional:
         conditional_STR_results=rules.run_conditional_my_str_gwas.output.results,
         conditional_imputed_SNP_results=rules.run_continuous_conditional_plink_gwas.output.results,
     output:
-        manhattan='association/plots/{phenotype,[^.]+}.manhattan.chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.{ext,html|png|svg}'
+        manhattan='association/plots/{phenotype}.manhattan.chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.{ext,html|png|svg}'
     params:
         unit=lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
         conditioned_imputed_SNPs = lambda wildcards: imputed_SNPs_as_input(wildcards.imputed_SNPs),
@@ -1090,7 +1133,7 @@ rule peak_manhattan:
         manhattan_inputs,
         'signals/peaks/{phenotype}_{spacing}_{thresh}.tab'
     output:
-        manhattan='association/plots/{phenotype,[^.]*}{binary_type,|.linear|.logistic}.manhattan.peaks_{spacing}_{thresh}.{ext,[^.]+}'
+        manhattan='association/plots/{phenotype}{binary_type,|.linear|.logistic}.manhattan.peaks_{spacing}_{thresh}.{ext,[^.]+}'
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1122,7 +1165,7 @@ rule linear_overview_manhattan:
         )),
         peaks_fname=expand(rules.generate_peaks.output.peaks, spacing=10000000, thresh='5e-8', phenotype='{phenotype}')
     output:
-        manhattan='association/plots/{phenotype,[^.]*}.overview.manhattan.png'
+        manhattan='association/plots/{phenotype}.overview.manhattan.png'
     resources:
         time='00:30:00',
         mem_gb=75
@@ -1197,9 +1240,9 @@ rule finemap_write_input_variants:
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
     output:
-        readme=protected('finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/README.txt'),
-        zfile=protected('finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.z'),
-        master=protected('finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.master'),
+        readme=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/README.txt'),
+        zfile=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.z'),
+        master=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.master'),
     resources:
         time = '00:30:00'
     params:
@@ -1214,12 +1257,12 @@ rule finemap_write_input_variants:
 
 rule finemap_load_gts:
     input:
-        expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits'),
+        expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
         zfile=rules.finemap_write_input_variants.output.zfile,
         pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*')
     output:
-        gts='finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/gts.h5',
-        readme=protected('finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
+        gts='finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/gts.h5',
+        readme=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
     resources:
         mem_gb = 6,
         time = '02:00:00'
@@ -1245,7 +1288,7 @@ rule finemap_calc_corrs:
     input:
         rules.finemap_load_gts.output.gts
     output:
-        corrs='finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/lds.h5'
+        corrs='finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/lds.h5'
     resources:
         time = finemap_corrs_time,
         mem_gb = 4,
@@ -1264,9 +1307,9 @@ rule finemap_write_corrs_and_run:
         rules.finemap_write_input_variants.output.zfile,
         rules.finemap_calc_corrs.output.corrs
     output:
-        lds='finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/all_variants.ld',
-        snp_file=protected('finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.snp'),
-        config=protected('finemapping/finemap_results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.config')
+        lds='finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/all_variants.ld',
+        snp_file=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.snp'),
+        config=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.config')
     resources:
         time = finemap_corrs_time,
         mem_gb = 8,
@@ -1351,19 +1394,19 @@ def susie_load_time(wildcards, attempt):
 rule susie_load_gts:
     input:
         rules.load_shared_covars.output.shared_covars,
-        expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='{phenotype}'),
-        expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}'),
+        expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix=''),
+        expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab',
         pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*')
     output:
-        choose_vars_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/choose_vars_README.txt'),
-        load_gts_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
-        pheno='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/pheno_residuals.h5',
-        gt='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/gt_residuals.h5',
-        outcols=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/colnames.txt')
+        choose_vars_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/choose_vars_README.txt'),
+        load_gts_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
+        pheno='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/pheno_residuals.h5',
+        gt='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/gt_residuals.h5',
+        outcols=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/colnames.txt')
     resources:
         #time = susie_load_time,
         time = '47:30:00',
@@ -1467,7 +1510,7 @@ rule susie_run:
         pheno=rules.susie_load_gts.output.pheno,
         gt=rules.susie_load_gts.output.gt,
     output:
-        **susie_outputs('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}')
+        **susie_outputs('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}')
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
@@ -1528,7 +1571,7 @@ rule susie_run_change_snp_str_ratio:
         pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
         gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
     output:
-        **susie_outputs('finemapping/susie_results/{phenotype}_snp_str_ratio_{ratio}/{chrom,[0-9]+}_{start,[0-9]+}_{end,[0-9]+}')
+        **susie_outputs('finemapping/susie_results/{phenotype}_snp_str_ratio_{ratio}/{chrom}_{start,[0-9]+}_{end,[0-9]+}')
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
@@ -1999,7 +2042,7 @@ rule finemapping_concordance:
 rule white_ld_heatmap:
     input:
         data=expand("array_imputed/pfile_converted/chr{chrom}.{ext}", chrom='{chrom}', ext={'pgen','psam','pvar'}),
-        samples=expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits')
+        samples=expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix='')
     output:
         plink1_conversion=temp(expand(
             'post_finemapping/intermediate_results/plink1_chrom_regions/'
@@ -2092,7 +2135,7 @@ rule region_ld_heatmap:
 
 rule confusion_matrix:
     input:
-        white_brits=expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='no_phenotype')[0]
+        white_brits=expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='no_phenotype', subpop='', subpop_prefix='')[0]
     output:
         png='export_scripts/results/{chrom}_{pos}_confusion_matrix.png',
         pdf='export_scripts/results/{chrom}_{pos}_confusion_matrix.pdf'
@@ -2105,7 +2148,7 @@ rule confusion_matrix:
 rule locus_summary_inputs:
     input:
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
-        all_white_brits=expand(rules.filter_samples_for_ethnicity.output.samples, phenotype='no_phenotype', ethnicity='white_brits')
+        all_white_brits=expand(rules.filter_samples_for_ethnicity.output.samples, phenotype='no_phenotype', ethnicity='white_brits', subpop='', subpop_prefix='')
     output:
         'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab'
     resources:
@@ -2134,7 +2177,7 @@ rule summarize_loci:
 rule create_phenotypes_table:
     input:
         'workflow/phenotypes.py',
-        expand(rules.filter_samples_for_ethnicity.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity='white_brits'),
+        expand(rules.filter_samples_for_ethnicity.output.samples, phenotype=phenotypes.phenotypes_in_use, ethnicity='white_brits', subpop='', subpop_prefix=''),
         pheno_expand('signals/peaks/PHENO_250000_5e-8.tab'),
         #pheno_expand('signals/comparison/PHENO.done') TODO one will fail, okay with that
     output:
@@ -2148,7 +2191,7 @@ rule create_phenotypes_table:
 def ethnicity_associations_readme_inputs():
     return {
         f'{ethnicity}__{pheno}':
-        expand(rules.load_phenotype.output.readme, ethnicity=ethnicity, phenotype=pheno)[0]
+        expand(rules.load_phenotype.output.readme, ethnicity=ethnicity, phenotype=pheno, subpop='', subpop_prefix='')[0]
         for pheno in phenotypes.phenotypes_in_use
         for ethnicity in other_ethnicities
     }
@@ -2156,7 +2199,7 @@ def ethnicity_associations_readme_inputs():
 def ethnicity_associations_sample_inputs():
     return {
         f'{ethnicity}__{pheno}':
-        expand(rules.subset_samples_for_phenotype.output.samples, ethnicity=ethnicity, phenotype=pheno)[0]
+        expand(rules.subset_samples_for_phenotype.output.samples, ethnicity=ethnicity, phenotype=pheno, subpop='', subpop_prefix='')[0]
         for pheno in phenotypes.phenotypes_in_use
         for ethnicity in other_ethnicities
     }
@@ -2698,6 +2741,6 @@ rule test:
 
 rule test2:
     output:
-        bar='bar{asdf,.*}'
+        bar='bar{asdf}'
     params:
         foo = lambda wildcards, output: print(output.bar)

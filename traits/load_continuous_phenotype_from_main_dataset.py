@@ -22,6 +22,8 @@ for key, value in assessment_dict.items():
     reverse_assessment_dict[value] = key
 
 parser = argparse.ArgumentParser()
+parser.add_argument('outprefix')
+parser.add_argument('samples')
 parser.add_argument('ethnicity')
 parser.add_argument('phenotype_name')
 parser.add_argument('phenotype_field_id')
@@ -38,12 +40,13 @@ assert 'binary' not in args.unit
 
 phenotype = args.phenotype_name
 ethnicity = args.ethnicity
+outprefix = args.outprefix
 
-with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_unit.txt', 'w') as unit_file:
+with open(f'{outprefix}_unit.txt', 'w') as unit_file:
     unit_file.write(f'{args.unit}\n')
 
-with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as readme, \
-        open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_covar_names.txt', 'w') as covar_names:
+with open(f'{outprefix}_README.txt', 'w') as readme, \
+        open(f'{outprefix}_covar_names.txt', 'w') as covar_names:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
     data_fname = f'{ukb}/main_dataset/extracted_data/{phenotype}_{args.phenotype_field_id}.txt'
     readme.write(f"Run date: {today}\n")
@@ -60,10 +63,10 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
     # drop first and last rows which because of the way data is extracted
     # and then read by numpy are always nans
 
-    readme.write("Subsetting to qc'ed samples of this ethnicity\n")
+    readme.write(f"Subsetting to samples at {args.samples}\n")
     # load samples that have passed qc
     samples = np.genfromtxt(
-        f'{ukb}/sample_qc/runs/{ethnicity}/no_phenotype/combined.sample',
+        args.samples,
         skip_header=1
     )
 
@@ -293,5 +296,5 @@ with open(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}_README.txt', 'w') as
     else:
         readme.write('All samples have all covariates.\n')
 
-    np.save(f'{ukb}/traits/phenotypes/{ethnicity}/{phenotype}.npy', data)
+    np.save(f'{outprefix}.npy', data)
 

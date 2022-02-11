@@ -1,0 +1,5 @@
+age
+pheno_from_repeat_assessment_1
+cystatin_c_aliquot_is_0
+cystatin_c_aliquot_is_2
+cystatin_c_aliquot_is_3

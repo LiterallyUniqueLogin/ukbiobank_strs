@@ -40,6 +40,7 @@ parser.add_argument('phenotype')
 parser.add_argument('dosage_fraction_threshold', type=float)
 parser.add_argument('--unit')
 parser.add_argument('--binary', action='store_true', default=False)
+parser.add_argument('--publication', default=False, action='store_true')
 args = parser.parse_args()
 
 assert bool(args.unit) or args.binary
@@ -125,16 +126,17 @@ figure.legend.label_text_font_size = '10px'
 figure.y_range = bokeh.models.Range1d(y_min - 0.05*(y_max-y_min), y_max + 0.05*(y_max-y_min))
 
 figure.add_layout(
-    bokeh.models.Title(text=f'STR {args.chrom}:{args.pos} Repeat Unit:{result["motif"].to_numpy()[0]}', align="center", text_font_size='18px'), "above"
+    bokeh.models.Title(text=f'STR {args.chrom}:{args.pos}', align="center", text_font_size='18px'), "above"
 )
 figure.add_layout(
     bokeh.models.Title(text=args.phenotype.replace('_', ' ').capitalize() + " vs genotype", align="center", text_font_size='18px'), "above"
 )
 
-figure.add_layout(bokeh.models.Title(text="Phenotype values are unadjusted for covariates", align="center"), "below")
-figure.add_layout(bokeh.models.Title(text="People contribute to each genotype based on their prob. of having that genotype", align="center"), "below")
-figure.add_layout(bokeh.models.Title(text="Only considers tested individuals", align="center"), "below")
-figure.add_layout(bokeh.models.Title(text=f"Genotypes with dosages less than {100*args.dosage_fraction_threshold}% of the population are omitted", align="center"), "below")
+if not args.publication:
+    figure.add_layout(bokeh.models.Title(text="Phenotype values are unadjusted for covariates", align="center"), "below")
+    figure.add_layout(bokeh.models.Title(text="People contribute to each genotype based on their prob. of having that genotype", align="center"), "below")
+    figure.add_layout(bokeh.models.Title(text="Only considers tested individuals", align="center"), "below")
+    figure.add_layout(bokeh.models.Title(text=f"Genotypes with dosages less than {100*args.dosage_fraction_threshold}% of the population are omitted", align="center"), "below")
 
 bokeh.io.export_svg(figure, filename=f'{args.outloc}.svg')
 bokeh.io.export_png(figure, filename=f'{args.outloc}.png')

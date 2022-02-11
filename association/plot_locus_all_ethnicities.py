@@ -42,6 +42,7 @@ parser.add_argument('phenotype')
 parser.add_argument('dosage_cutoff', type=float)
 parser.add_argument('--unit')
 parser.add_argument('--binary', action='store_true', default=False)
+parser.add_argument('--publication', default=False, action='store_true')
 args = parser.parse_args()
 
 assert bool(args.unit) or args.binary
@@ -142,7 +143,7 @@ for ethnicity in ethnicities:
     fig_kws = dict(
         width = 600,
         height = 600,
-        y_axis_label=y_axis_label,
+        y_axis_label=y_axis_label if not figs else None,
         x_axis_label='Sum of allele lengths (repeat copies)',
         title=f'{ethnicity} (n={n_samples})'
     )
@@ -171,7 +172,7 @@ for ethnicity in ethnicities:
 
 headers = []
 headers.append(bokeh.models.Div(
-    text=f'STR {args.chrom}:{args.pos} Repeat Unit:{result["motif"].to_numpy()[0]}',
+    text=f'STR {args.chrom}:{args.pos}',
     align="start",
     #text_font_size='18px',
     height=70,
@@ -187,37 +188,40 @@ headers.append(bokeh.models.Div(
     style={'font-size': '400%'}
 ))
 
-footers = []
-footers.append(bokeh.models.Div(
-    text="Phenotype values are unadjusted for covariates",
-    align="end",
-    height=20,
-    sizing_mode='stretch_width',
-    style={'font-size': '200%'}
-))
-footers.append(bokeh.models.Div(
-    text="People contribute to each genotype based on their prob. of having that genotype",
-    align="end",
-    height=20,
-    sizing_mode='stretch_width',
-    style={'font-size': '200%'}
-))
-footers.append(bokeh.models.Div(
-    text="Only considers tested individuals",
-    align="end",
-    height=20,
-    sizing_mode='stretch_width',
-    style={'font-size': '200%'}
-))
-footers.append(bokeh.models.Div(
-    text=f"Genotypes with dosages less than {int(args.dosage_cutoff)} are omitted",
-    align="end",
-    height=20,
-    sizing_mode='stretch_width',
-    style={'font-size': '200%'}
-))
+if not args.publication:
+    footers = []
+    footers.append(bokeh.models.Div(
+        text="Phenotype values are unadjusted for covariates",
+        align="end",
+        height=20,
+        sizing_mode='stretch_width',
+        style={'font-size': '200%'}
+    ))
+    footers.append(bokeh.models.Div(
+        text="People contribute to each genotype based on their prob. of having that genotype",
+        align="end",
+        height=20,
+        sizing_mode='stretch_width',
+        style={'font-size': '200%'}
+    ))
+    footers.append(bokeh.models.Div(
+        text="Only considers tested individuals",
+        align="end",
+        height=20,
+        sizing_mode='stretch_width',
+        style={'font-size': '200%'}
+    ))
+    footers.append(bokeh.models.Div(
+        text=f"Genotypes with dosages less than {int(args.dosage_cutoff)} are omitted",
+        align="end",
+        height=20,
+        sizing_mode='stretch_width',
+        style={'font-size': '200%'}
+    ))
 
-total_fig = bokeh.layouts.column(*headers, bokeh.layouts.row(figs), *footers)
+    total_fig = bokeh.layouts.column(*headers, bokeh.layouts.row(figs), *footers)
+else:
+    total_fig = bokeh.layouts.column(*headers, bokeh.layouts.row(figs))
 
 bokeh.io.export_svg(total_fig, filename=f'{args.outloc}.svg')
 bokeh.io.export_png(total_fig, filename=f'{args.outloc}.png')

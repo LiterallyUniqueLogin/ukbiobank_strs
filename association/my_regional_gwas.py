@@ -119,6 +119,7 @@ def perform_regional_gwas_helper(
                           _len, dosages in dosage_gts.items()], axis=0)
         else:
             gts = dosage_gts[:, 1] + 2*dosage_gts[:, 2]
+        std = np.std(gts)
         gts = (gts - np.mean(gts))/np.std(gts)
         covars[:, 0] = gts
 
@@ -134,7 +135,7 @@ def perform_regional_gwas_helper(
             coef = reg_result.params[0]
             se = reg_result.bse[0]
             rsquared = reg_result.rsquared
-            outfile.write(f"{pval:.2e}\t{coef}\t{se}\t{rsquared}\t")
+            outfile.write(f"{pval:.2e}\t{coef/std}\t{se}\t{rsquared}\t")
         else:
             model = sm.GLM(
                 outcome,
@@ -145,7 +146,7 @@ def perform_regional_gwas_helper(
             reg_result = model.fit()
             pval = reg_result.pvalues[0]
             coef = reg_result.params[0]
-            outfile.write(f'{pval:.2e}\t{coef}\tnan\tnan\t')
+            outfile.write(f'{pval:.2e}\t{coef/std}\tnan\tnan\t')
 
         outfile.write('\t'.join(locus_details) + '\t')
 

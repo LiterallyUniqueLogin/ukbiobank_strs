@@ -30,6 +30,31 @@ pheno_descs = {
         unit = 'cm',
         previous_STR_findings = [("3:53128363", 'https://www.nature.com/articles/s41588-019-0521-9')]
     ),
+    'waist_circumference': PhenotypeDescription(
+        '48',
+        unit = 'cm'
+    ),
+    'hip_circumference': PhenotypeDescription(
+        '49',
+        unit = 'cm'
+    ),
+    'BMI': PhenotypeDescription(
+        # computed from height and weight measurements
+        '21001',
+        unit = 'kg/m^2'
+    ),
+    'BMI_by_impedance': PhenotypeDescription(
+        '23104',
+        unit = 'kg/m^2'
+    ),
+    'whole_body_fat_mass': PhenotypeDescription(
+        '23100',
+        unit = 'kg'
+    ),
+    'whole_body_fat_free_mass': PhenotypeDescription(
+        '23101',
+        unit = 'kg'
+    ),
     # blood pressure - combine 4079, 94, 4080, 93,  with covars 36,37 - all category 100011
     # --- Spirometry ---
     # could study FEV and FVC z-scores (20257, 20256)
@@ -55,8 +80,24 @@ pheno_descs = {
         '130736',
         unit = 'binary_date_first_reported',
     ),
+    'type_1_diabetes_E10': PhenotypeDescription(
+        '130706',
+        unit = 'binary_date_first_reported'
+    ),
     'type_2_diabetes_E11': PhenotypeDescription(
         '130708',
+        unit = 'binary_date_first_reported'
+    ),
+    'malnutrition_diabetes_E12': PhenotypeDescription(
+        '130710',
+        unit = 'binary_date_first_reported'
+    ),
+    'other_specified_diabetes_E13': PhenotypeDescription(
+        '130712',
+        unit = 'binary_date_first_reported'
+    ),
+    'unspecified_diabetes_E14': PhenotypeDescription(
+        '130714',
         unit = 'binary_date_first_reported'
     ),
     'intestinal_malabsorption_K90': PhenotypeDescription(
