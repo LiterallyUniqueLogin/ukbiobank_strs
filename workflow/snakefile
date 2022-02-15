@@ -1063,11 +1063,17 @@ def generated_regions(phenotype):
     return [
         (chrom, start, end) for (chrom, start, end) in 
         zip(df['chrom'], df['start'], df['end'])
-        if not (
+        # remove a few for being too slow for finemapping
+        if not ((
             phenotype == 'urate' and
             chrom == 4 and
             start == 8165642 and
             end == 11717761
+        ) or (
+            phenotype == 'total_bilirubin' and
+            chrom == 12 and
+            start == 19976272 and
+            end == 22524428
         )
     ]
 
@@ -1320,8 +1326,6 @@ rule finemap_write_corrs_and_run:
     shell:
         'finemapping/finemap_write_corrs_and_run.py '
         '{params.outdir} '
-        '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
-        '{wildcards.end} '
 
 def all_finemap_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
@@ -1395,7 +1399,7 @@ rule susie_load_gts:
     input:
         rules.load_shared_covars.output.shared_covars,
         expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix=''),
-        expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix=''),
         f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz',
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
@@ -2395,7 +2399,7 @@ def putatively_causal_regions():
         (pl.col('phenotype') != 'total_bilirubin') |
         (pl.col('chrom') != 12) |
         (pl.col('region_start') != 19976272)
-    ).drop_duplicates().collect().to_dict(False)
+    ).distinct().collect().to_dict(False)
             
     phenos, chroms, starts, ends = [
         causal_df[col] for col in ('phenotype', 'chrom', 'region_start', 'region_end')
