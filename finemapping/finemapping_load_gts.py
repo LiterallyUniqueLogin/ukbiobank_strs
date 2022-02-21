@@ -166,7 +166,7 @@ def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenot
         )
         for str_count, (str_dosages_or_hardcalls, _, _, str_pos, str_locus_filtered, _) in enumerate(str_itr):
             str_count += 1
-            print(f'loading STR {str_count}, time/snp: {(time.time() - start)/str_count:.2}s ... ', flush=True)
+            print(f'loading STR {str_count}, time/STR: {(time.time() - start)/str_count:.2}s ... ', flush=True)
             str_name = f'STR_{str_pos}'
             if str_locus_filtered or str_name not in varnames:
                 print(str_name, strs_to_include)

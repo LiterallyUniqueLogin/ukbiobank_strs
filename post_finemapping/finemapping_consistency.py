@@ -37,7 +37,9 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None)
             regions.append((dir_, match[1]))
     for (region, chrom) in regions:
         if colnames_regions_dir:
-            assert os.path.exists(f'{colnames_regions_dir}/{region}')
+            if not os.path.exists(f'{colnames_regions_dir}/{region}'):
+                print(f'{colnames_regions_dir}/{region}')
+                assert False
         if os.path.exists(f'{results_regions_dir}/{region}/no_strs'):
             continue
 
@@ -125,6 +127,53 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None)
     ) for df in dfs]
     return pl.concat(dfs).drop(['susie_idx'])
 
+def load_finemap(results_regions_dir, regions = None):
+    unfinished_regions = []
+    underexplored_regions = []
+    dfs = []
+
+    if regions is None:
+        regions = []
+        dirlist = os.listdir(results_regions_dir)
+        for dir_ in dirlist:
+            match = re.match('^([0-9]+)_[0-9]+_[0-9]+$', dir_)
+            if not match:
+                continue
+            regions.append((dir_, match[1]))
+    for (region, chrom) in regions:
+        if os.path.exists(f'{results_regions_dir}/{region}/no_strs'):
+            continue
+        if not os.path.exists(f'{results_regions_dir}/{region}/finemap_output.snp') or os.stat(f'{results_regions_dir}/{region}/finemap_output.snp').st_size == 0:
+            unfinished_regions.append(region)
+            continue
+        with open(f'{results_regions_dir}/{region}/finemap_output.log_sss') as log:
+            found_n_causal = False
+            for line in log:
+                if 'n-causal' not in line:
+                    continue
+                found_n_causal = True
+                n_causal = int(line.split()[-1])
+                if os.path.exists(f'{results_regions_dir}/{region}/finemap_output.cred{n_causal}'):
+                    underexplored_regions.append(region)
+                break
+            assert found_n_causal
+
+        df = pl.scan_csv(
+            f'{results_regions_dir}/{region}/finemap_output.snp',
+            sep=' '
+        ).select([
+            pl.col('rsid').alias('varname'),
+            pl.col('prob').alias('finemap_pip'),
+            pl.lit(region).alias('region'),
+            pl.lit(chrom).alias('chrom').cast(int)
+        ])
+        dfs.append(df)
+
+    print('unfinished_regions: ', unfinished_regions)
+    print('underexplored_regions: ', underexplored_regions)
+    return pl.concat(dfs)
+
+
 def get_putatively_causal_regions():
     causal_df = pl.scan_csv(
         f'{ukb}/post_finemapping/results/validated/putatively_causal_STRs.tab',
@@ -145,7 +194,9 @@ def get_putatively_causal_regions():
         pl.concat(pheno_summaries),
         how='left',
         on=['phenotype', 'chrom', 'start_pos']
-    ).filter(~(
+    ).select([
+        'phenotype', 'signal_region', 'chrom'
+    ]).distinct().filter(~(
         (
             (pl.col('phenotype') == 'total_bilirubin') &
             (pl.col('signal_region') == '12_19976272_22524428')
@@ -154,9 +205,7 @@ def get_putatively_causal_regions():
             (pl.col('phenotype') == 'mean_platelet_volume') &
             (pl.col('signal_region') == '17_2341352_2710113')
         )
-    )).select([
-        'phenotype', 'signal_region', 'chrom'
-    ]).distinct().collect().to_dict(False)
+    )).collect().to_dict(False)
 
     phenos, regions, chroms = [
         causal_df[col] for col in ('phenotype', 'signal_region', 'chrom')
@@ -175,7 +224,7 @@ def putatively_causal_hits_df():
 
     pheno_dfs = []
     #for count, (phenotype, regions) in [(0, ('mean_platelet_volume', phenos_to_regions['mean_platelet_volume']))]:
-    #for count, (phenotype, regions) in [(0, ('alanine_aminotransferase', phenos_to_regions['alanine_aminotransferase'])), (1, ('total_bilirubin', phenos_to_regions['total_bilirubin']))]:
+    #for count, (phenotype, regions) in [(0, ('aspartate_aminotransferase', phenos_to_regions['aspartate_aminotransferase'])), (1, ('total_bilirubin', phenos_to_regions['total_bilirubin']))]:
     for count, (phenotype, regions) in enumerate(phenos_to_regions.items()):
         print(f"Loading phenotype #{count+1} ({phenotype})", flush=True)
         if len(regions) == 0:
@@ -204,17 +253,70 @@ def putatively_causal_hits_df():
         ])
         assocs = pl.concat([snp_assocs, str_assocs])
 
+        print('original SuSiE')
         original_susies = load_susie(f'{ukb}/finemapping/susie_results/{phenotype}', regions=regions)
+        print('hardcall SuSiE')
         hardcall_susies = load_susie(f'{ukb}/finemapping/susie_hardcall_results/{phenotype}', regions=regions)
+        print('ratio SuSiE')
         ratio_susies = load_susie(
             f'{ukb}/finemapping/susie_results/{phenotype}_snp_str_ratio_4',
             colnames_regions_dir=f'{ukb}/finemapping/susie_results/{phenotype}',
             regions=regions
         )
 
+        print('original FINEMAP')
+        original_finemaps     = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}', regions=regions)
+        print('ratio FINEMAP')
+        ratio_finemaps        = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.snp_str_ratio_4', regions=regions)
+        print('total prob FINEMAP')
+        total_prob_finemaps   = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.total_prob_4', regions=regions)
+        print('prior std FINEMAP')
+        prior_std_finemaps    = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.prior_std_0.005', regions=regions)
+        print('conv tol FINEMAP')
+        conv_tol_finemaps     = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.prob_conv_sss_tol_0.0001', regions=regions)
+        print('mac FINEMAP')
+        mac_finemaps          = load_finemap(f'{ukb}/finemapping/finemap_results_mac_100/{phenotype}', regions=regions)
+        print('gt threshold FINEMAP')
+        gt_threshold_finemaps = load_finemap(f'{ukb}/finemapping/finemap_results_threshold_0.0005/{phenotype}', regions=regions)
+
         print('Collecting ... ', end='', flush=True)
         start = time.time()
-        pheno_df = original_susies.join(
+        pheno_df = original_finemaps.join(
+            ratio_finemaps,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_ratio'
+        ).drop('region_ratio').join(
+            total_prob_finemaps,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_total_prob'
+        ).drop('region_total_prob').join(
+            prior_std_finemaps,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_prior_std'
+        ).drop('region_prior_std').join(
+            conv_tol_finemaps,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_conv_tol'
+        ).drop('region_conv_tol').join(
+            mac_finemaps,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_mac'
+        ).drop('region_mac').join(
+            gt_threshold_finemaps,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_gt_thresh'
+        ).drop('region_gt_thresh').join(
+            original_susies,
+            how='outer',
+            on=['chrom', 'varname'],
+            suffix='_extra'
+        ).drop('region_extra').join(
             hardcall_susies,
             how='outer',
             on = ['chrom', 'varname'],
@@ -248,19 +350,28 @@ def putatively_causal_hits_df():
         'susie_alpha_hardcall',
         'susie_cs_ratio',
         'susie_alpha_ratio',
+        'finemap_pip',
+        'finemap_pip_ratio',
+        'finemap_pip_total_prob',
+        'finemap_pip_prior_std',
+        'finemap_pip_conv_tol',
+        'finemap_pip_mac',
+        'finemap_pip_gt_thresh',
     ])
+    total_df.to_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_concordance.tab', sep='\t')
+    assert total_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
     assert np.all(~np.isnan(total_df['p_val'].to_numpy()))
-    assert np.all(~np.isnan(total_df['susie_alpha'].to_numpy()))
-    assert np.all(~np.isnan(total_df['susie_alpha_hardcall'].to_numpy()))
+    assert np.all(~np.isnan(total_df['finemap_pip'].to_numpy()))
+    assert np.all(np.isnan(total_df['susie_alpha'].to_numpy()) == np.isnan(total_df['susie_alpha_hardcall'].to_numpy()))
+    assert np.all(np.isnan(total_df['susie_alpha'].to_numpy()) == np.isnan(total_df['susie_alpha_ratio'].to_numpy()))
     assert np.all(1 == total_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
-    total_df.to_csv(f'{ukb}/post_finemapping/intermediate_results/susie_putative_hardcall_comparison.tab', sep='\t')
     return total_df
 
 def putatively_causal_hits_comparison(regenerate):
     if regenerate:
         total_df = putatively_causal_hits_df()
     else:
-        total_df = pl.read_csv(f'{ukb}/post_finemapping/intermediate_results/susie_putative_hardcall_comparison.tab', sep='\t')
+        total_df = pl.read_csv(f'{ukb}/post_finemapping/intermediate_results/putative_hardcall_comparison.tab', sep='\t')
 
     pc_STRs = total_df.filter(
         pl.col('is_STR') &
@@ -269,6 +380,7 @@ def putatively_causal_hits_comparison(regenerate):
         (pl.col('susie_alpha') >= 0.8)
     )
     print(f'SuSiE putatively causal STRs: {pc_STRs.shape[0]}')
+    print(pc_STRs)
     hard_rep = pc_STRs.filter(
         (pl.col('susie_cs_hardcall') >= 0) &
         (pl.col('susie_alpha_hardcall') >= .8)

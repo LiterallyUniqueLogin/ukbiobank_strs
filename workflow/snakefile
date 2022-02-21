@@ -28,10 +28,12 @@ str_imputation_run_name = 'first_pass'
 wildcard_constraints:
     chrom='[0-9]+',
     pos='[0-9]+',
-    phenotype='[^/]+',
+    start='[0-9]+', #also a position
+    end='[0-9]+', #also a position
+    phenotype='[^/.]+',
     ethnicity='white_brits|black|south_asian|chinese|irish|white_other',
     subpop_prefix='|subpop_',
-    subpop='|[^/]+/'
+    subpop='|[^/]+/',
 
 def chr_expand(string):
     return [string.replace('CHR', str(chrom)) for chrom in range(1, 23)]
@@ -308,6 +310,29 @@ rule length_confusion:
         mem_gb = 4
     shell:
         'side_analyses/length_confusion/length_confusion.py {wildcards.chrom}'
+
+rule calc_macs:
+    input:
+        sample_file=expand(
+            rules.subset_samples_for_phenotype.output.samples,
+            subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='{phenotype}'
+        )
+    output:
+        imputed_snp_macs='association/mac/{phenotype}/{chrom}_{start}_{end}/plink2.acount',
+        str_macs='association/mac/{phenotype}/{chrom}_{start}_{end}/str_macs.tab'
+    resources:
+        time='6:00:00',
+        mem_gb=4
+    params:
+        outdir = lambda wildcards, output: '/'.join(output.str_macs.split('/')[:-1])
+    shell:
+        'association/calc_macs.py '
+        '{params.outdir} '
+        f'{str_imputation_run_name} '
+        '{wildcards.chrom} '
+        '{wildcards.start} '
+        '{wildcards.end} '
+        '{input.sample_file} '
 
 ##################### Running and Plotting Associations ###########################
 
@@ -1074,7 +1099,7 @@ def generated_regions(phenotype):
             chrom == 12 and
             start == 19976272 and
             end == 22524428
-        )
+        ))
     ]
 
 def n_regions_no_strs(phenotype):
@@ -1244,34 +1269,53 @@ rule finemap_write_input_variants:
     input:
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
-        'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
+        'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab',
+        imputed_snp_macs=lambda wildcards: [] if not wildcards.gt_test.startswith('_mac') else rules.calc_macs.output.imputed_snp_macs,
+        str_macs=lambda wildcards: [] if not wildcards.gt_test.startswith('_mac') else rules.calc_macs.output.str_macs,
     output:
-        readme=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/README.txt'),
-        zfile=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.z'),
-        master=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.master'),
+        readme=protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}{metaparameter_test,|.snp_str_ratio_[0-9.]+|.total_prob_[0-9.]+|.prob_conv_sss_tol_[0-9.]+|.prior_std_[0-9.]+}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/README.txt'),
+        zfile= protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}{metaparameter_test,|.snp_str_ratio_[0-9.]+|.total_prob_[0-9.]+|.prob_conv_sss_tol_[0-9.]+|.prior_std_[0-9.]+}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.z'),
+        master=protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}{metaparameter_test,|.snp_str_ratio_[0-9.]+|.total_prob_[0-9.]+|.prob_conv_sss_tol_[0-9.]+|.prior_std_[0-9.]+}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/finemap_input.master'),
     resources:
-        time = '00:30:00'
+        time = '00:30:00',
+        mem_gb =6
     params:
         outdir=lambda wildcards, output: '/'.join(output.zfile.split('/')[:-1]),
-        PACSIN2_flag = lambda wildcards: '' if not wildcards.PACSIN2 else '--three-PACSIN2-STRs'
+        gts_dir=lambda wildcards, output: '/'.join(output.zfile.split('/')[:-1]).replace(wildcards.metaparameter_test, ''),
+        test_flag = lambda wildcards: (
+            '' if not wildcards.metaparameter_test or wildcards.metaparameter_test.startswith('.prob_conv_sss_tol') or wildcards.metaparameter_test.startswith('.prior_std') else
+            f'--snp-str-ratio {wildcards.metaparameter_test.split("_")[-1]}' if wildcards.metaparameter_test.startswith('.snp_str_ratio') else
+            f'--total-prob {wildcards.metaparameter_test.split("_")[-1]}' if wildcards.metaparameter_test.startswith('.total_prob') else
+            1/0
+        ),
+        PACSIN2_flag = lambda wildcards: '' if not wildcards.PACSIN2 else '--three-PACSIN2-STRs',
+        gts_flag = lambda wildcards, input: (
+            '' if not wildcards.gt_test else
+            f'--inclusion-threshold {wildcards.gt_test.split("_")[-1]}' if wildcards.gt_test.startswith('_threshold') else
+            f'--mac {wildcards.gt_test.split("_")[-1]} {input.imputed_snp_macs} {input.str_macs}' if wildcards.gt_test.startswith('_mac') else
+            1/0
+        )
     shell:
         'finemapping/finemap_write_input_variants.py '
         '{params.outdir} '
+        '{params.gts_dir} '
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
+        '{params.test_flag} '
         '{params.PACSIN2_flag} '
+        '{params.gts_flag} '
 
 rule finemap_load_gts:
     input:
         expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
-        zfile=rules.finemap_write_input_variants.output.zfile,
+        zfile=expand(rules.finemap_write_input_variants.output.zfile, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', PACSIN2='{PACSIN2}',  metaparameter_test='', gt_test='{gt_test}'),
         pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*')
     output:
-        gts='finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/gts.h5',
-        readme=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
+        gts='finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/gts.h5',
+        readme=protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
     resources:
         mem_gb = 6,
-        time = '02:00:00'
+        time = '24:00:00'
     shell:
         'finemapping/finemapping_load_gts.py '
         '{output.readme} '
@@ -1285,6 +1329,7 @@ rule finemap_load_gts:
         '--varname-header '
 
 def finemap_corrs_time(wildcards, attempt):
+    return '24:00:00' # TODO undo this
     if attempt == 1:
         return '01:00:00'
     else:
@@ -1294,7 +1339,7 @@ rule finemap_calc_corrs:
     input:
         rules.finemap_load_gts.output.gts
     output:
-        corrs='finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/lds.h5'
+        corrs='finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/lds.h5'
     resources:
         time = finemap_corrs_time,
         mem_gb = 4,
@@ -1307,25 +1352,49 @@ rule finemap_calc_corrs:
         '{wildcards.phenotype} {wildcards.chrom} {wildcards.start} '
         '{wildcards.end} '
 
-rule finemap_write_corrs_and_run:
+rule finemap_write_corrs:
     input:
-        rules.finemap_write_input_variants.output.master,
-        rules.finemap_write_input_variants.output.zfile,
         rules.finemap_calc_corrs.output.corrs
     output:
-        lds='finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/all_variants.ld',
-        snp_file=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.snp'),
-        config=protected('finemapping/finemap_results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.config')
+        lds='finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/all_variants.ld',
     resources:
         time = finemap_corrs_time,
         mem_gb = 8,
         threads = 4,
         attempt = lambda wildcards, attempt: attempt
     params:
-        outdir=lambda wildcards, output: '/'.join(output.snp_file.split('/')[:-1])
+        outdir=lambda wildcards, output: '/'.join(output.lds.split('/')[:-1])
     shell:
-        'finemapping/finemap_write_corrs_and_run.py '
+        'finemapping/finemap_write_corrs.py '
         '{params.outdir} '
+
+rule finemap_run:
+    input:
+        rules.finemap_write_input_variants.output.master,
+        rules.finemap_write_input_variants.output.zfile,
+        rules.finemap_write_corrs.output.lds
+    output:
+        snp_file=protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}{metaparameter_test,|.snp_str_ratio_[0-9.]+|.total_prob_[0-9.]+|.prob_conv_sss_tol_[0-9.]+|.prior_std_[0-9.]+}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.snp'),
+        config=  protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}{metaparameter_test,|.snp_str_ratio_[0-9.]+|.total_prob_[0-9.]+|.prob_conv_sss_tol_[0-9.]+|.prior_std_[0-9.]+}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/finemap_output.config')
+    resources:
+        # max run time for any locus was less than 36 min:
+        # grep hour $UKB/finemapping/finemap_results/*/*/finemap_output.log_sss | awk '{print $5 " " $7 " " $9}' | sort -k 1n -k 2n -k 3n 
+        #time = '1:00:00', TODO undo this
+        time = '12:00:00',
+        mem_gb = 8,
+    params:
+        outdir=lambda wildcards, output: '/'.join(output.snp_file.split('/')[:-1]),
+        test_flag = lambda wildcards: (
+            '' if not wildcards.metaparameter_test else
+            '--prior-snps' if wildcards.metaparameter_test.startswith('.snp_str_ratio') or wildcards.metaparameter_test.startswith('.total_prob') else
+            f'--prior-std {wildcards.metaparameter_test.split("_")[-1]}' if wildcards.metaparameter_test.startswith('.prior_std') else
+            f'--prob-conv-sss-tol {wildcards.metaparameter_test.split("_")[-1]}' if wildcards.metaparameter_test.startswith('.prob_conv_sss_tol') else
+            1/0
+        ),
+    shell:
+        'finemapping/finemap_run.py '
+        '{params.outdir} '
+        '{params.test_flag} '
 
 def all_finemap_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
@@ -1387,7 +1456,7 @@ rule manhattan_finemap:
     shell:
         'association/interactive_manhattan_plot.py {output.manhattan} {wildcards.phenotype} {wildcards.ext} '
         '--finemap-signals '
-        
+       
 #-------------------SuSiE----------------
 def susie_load_time(wildcards, attempt):
     if attempt == 1:
@@ -1404,13 +1473,15 @@ rule susie_load_gts:
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
         expand(rules.concatenate_my_str_gwas.output.results, phenotype='{phenotype}', suffix=''),
         'finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab',
-        pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*')
+        imputed_snp_macs=lambda wildcards: [] if not wildcards.gt_test.startswith('_mac') else rules.calc_macs.output.imputed_snp_macs,
+        str_macs=lambda wildcards: [] if not wildcards.gt_test.startswith('_mac') else rules.calc_macs.output.str_macs,
+        pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*'),
     output:
-        choose_vars_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/choose_vars_README.txt'),
-        load_gts_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
-        pheno='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/pheno_residuals.h5',
-        gt='finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/gt_residuals.h5',
-        outcols=protected('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}/colnames.txt')
+        choose_vars_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/choose_vars_README.txt'),
+        load_gts_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
+        pheno='finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/pheno_residuals.h5',
+        gt='finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/gt_residuals.h5',
+        outcols=protected('finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/colnames.txt')
     resources:
         #time = susie_load_time,
         time = '47:30:00',
@@ -1418,7 +1489,13 @@ rule susie_load_gts:
         mem_gb = 4,
     params:
         hardcalls_flag = lambda wildcards: '--hardcalls' if wildcards.hardcalls else '',
-        PACSIN2_flag = lambda wildcards: '' if not wildcards.PACSIN2 else '--three-PACSIN2-STRs'
+        PACSIN2_flag = lambda wildcards: '' if not wildcards.PACSIN2 else '--three-PACSIN2-STRs',
+        gts_flag = lambda wildcards, input: (
+            '' if not wildcards.gt_test else
+            f'--threshold {wildcards.gt_test.split("_")[-1]}' if wildcards.gt_test.startswith('_threshold') else
+            f'--mac {wildcards.gt_test.split("_")[-1]} {input.imputed_snp_macs} {input.str_macs}' if wildcards.gt_test.startswith('_mac') else
+            1/0
+        )
     shell:
         'finemapping/susie_choose_vars.py '
         '{output.choose_vars_readme} '
@@ -1427,6 +1504,7 @@ rule susie_load_gts:
         '{wildcards.chrom} '
         '{wildcards.start} '
         '{wildcards.end} '
+        '{params.gts_flag} '
         '{params.PACSIN2_flag} '
         ' ; '
         'finemapping/finemapping_load_gts.py '
@@ -1514,7 +1592,7 @@ rule susie_run:
         pheno=rules.susie_load_gts.output.pheno,
         gt=rules.susie_load_gts.output.gt,
     output:
-        **susie_outputs('finemapping/susie_{hardcalls,|hardcall_}results/{phenotype}/{chrom}_{start,[0-9]+}_{end,[0-9]+}{PACSIN2,|_three_PACSIN2_STRs}')
+        **susie_outputs('finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}')
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
@@ -1546,8 +1624,8 @@ rule susie_run_mvp_light_hardcalls:
 
 rule susie_run_change_tol:
     input:
-        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
-        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
     output:
         **susie_outputs('finemapping/susie_results/{phenotype}_tol_{tol}/{chrom}_{start}_{end}')
     resources:
@@ -1571,11 +1649,11 @@ rule susie_run_change_tol:
 
 rule susie_run_change_snp_str_ratio:
     input:
-        cols=expand(rules.susie_load_gts.output.outcols, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
-        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
-        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
+        cols=expand(rules.susie_load_gts.output.outcols, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
     output:
-        **susie_outputs('finemapping/susie_results/{phenotype}_snp_str_ratio_{ratio}/{chrom}_{start,[0-9]+}_{end,[0-9]+}')
+        **susie_outputs('finemapping/susie_results/{phenotype}_snp_str_ratio_{ratio}/{chrom}_{start}_{end}')
     resources:
         time = susie_run_time,
         mem_gb = susie_run_mem,
@@ -1597,8 +1675,8 @@ rule susie_run_change_snp_str_ratio:
 
 rule susie_run_change_residual_variance:
     input:
-        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
-        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
     output:
         **susie_outputs('finemapping/susie_results/{phenotype}_res_var_{res_var}/{chrom}_{start}_{end}')
     resources:
@@ -1622,8 +1700,8 @@ rule susie_run_change_residual_variance:
 
 rule susie_run_change_prior_variance:
     input:
-        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
-        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2=''),
+        pheno=expand(rules.susie_load_gts.output.pheno, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
+        gt=expand(rules.susie_load_gts.output.gt, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', hardcalls='', PACSIN2='', gt_test=''),
     output:
         **susie_outputs('finemapping/susie_results/{phenotype}_prior_var_{prior_var}/{chrom}_{start}_{end}')
     resources:
@@ -2042,7 +2120,8 @@ rule finemapping_concordance:
     shell:
         'export_scripts/finemapping_concordance.py {phenotypes.phenotypes_in_use}'
         
-
+"""
+TODO some undiagnosed syntax error in this section
 rule white_ld_heatmap:
     input:
         data=expand("array_imputed/pfile_converted/chr{chrom}.{ext}", chrom='{chrom}', ext={'pgen','psam','pvar'}),
@@ -2136,6 +2215,7 @@ rule region_ld_heatmap:
         time='00:05:00'
     shell:
         'touch {output.marker_file}'
+"""
 
 rule confusion_matrix:
     input:
@@ -2406,17 +2486,6 @@ def putatively_causal_regions():
     ]
     return list(zip(phenos, chroms, starts, ends))
 
-'''
-for pheno, chrom, start, end in putatively_causal_regions():
-    dir_ = f'finemapping/susie_results/{pheno}/{chrom}_{start}_{end}'
-    if os.path.exists(f'{dir_}/README.txt'):
-        assert not os.path.exists(f'{dir_}/README.txt.normal_run')
-        assert os.path.exists(f'{dir_}/colnames.txt')
-        assert not os.path.exists(f'{dir_}/colnames.txt.normal_run')
-        os.rename(f'{dir_}/README.txt', f'{dir_}/README.txt.normal_run')
-        os.rename(f'{dir_}/colnames.txt', f'{dir_}/colnames.txt.normal_run')
-'''
-
 rule check_susie_region:
     output:
         txt='post_finemapping/intermediate_results/susie_var_discrep_{phenotype}_{chrom}_{start}_{end}.txt'
@@ -2466,11 +2535,39 @@ rule susie_hardcall_test_putatively_causal_results:
     input:
         #should use concat and filter summary tables as input, not because its a checkpoint which are insanely slow
         sum([
-            expand(rules.susie_run.output.alpha, phenotype=phenotype, chrom=chrom, start=start, end=end, hardcalls='hardcall_', PACSIN2='')
+            expand(rules.susie_run.output.alpha, phenotype=phenotype, chrom=chrom, start=start, end=end, hardcalls='hardcall_', PACSIN2='', gt_test='')
             for (phenotype, chrom, start, end) in putatively_causal_regions()
-            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428), ('alkaline_phosphatase', 1, 24309348)}
+            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428)}#, ('alkaline_phosphatase', 1, 24309348)}
         ], [])
 
+rule finemap_change_prior_std_putatively_causal_results:
+    input:
+        #should use concat and filter summary tables as input, not because its a checkpoint which are insanely slow
+        sum([
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.prior_std_0.005', PACSIN2='', gt_test='')
+            for (phenotype, chrom, start, end) in putatively_causal_regions()
+            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428)}#, ('alkaline_phosphatase', 1, 24309348)}
+        ], [])
+
+rule metaparameter_tests_putatively_causal_results:
+    input:
+        #should use concat and filter summary tables as input, not because its a checkpoint which are insanely slow
+        # before running
+        # NAME      PROJECT  TG PROJECT  USED  AVAILABLE  USED BY PROJECT
+        #-----------------------------------------------------------------
+        # jmargoli  ddp268                144     166666            55171
+        sum([
+            expand(rules.susie_run_change_snp_str_ratio.output.alpha, ratio=4, phenotype=phenotype, chrom=chrom, start=start, end=end, PACSIN2='') +
+            expand(rules.susie_run.output.alpha, phenotype=phenotype, chrom=chrom, start=start, end=end, hardcalls='hardcall_', PACSIN2='', gt_test='') +
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.total_prob_4', PACSIN2='', gt_test='') + 
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.prior_std_0.005', PACSIN2='', gt_test='') + 
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.snp_str_ratio_4', PACSIN2='', gt_test='') + 
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.prob_conv_sss_tol_0.0001', PACSIN2='', gt_test='') + 
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='', PACSIN2='', gt_test='_mac_100') +
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='', PACSIN2='', gt_test='_threshold_0.0005')
+            for (phenotype, chrom, start, end) in putatively_causal_regions()
+            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428)}#, ('alkaline_phosphatase', 1, 24309348)}
+        ], [])
 
 ######################### Export Files ########################
 

@@ -17,7 +17,7 @@ cluster:
   mkdir -p logs/{rule} &&
   sbatch
     --account ddp268
-    --partition $(if [ -v PARTITION ] ; then echo $PARTITION ; else echo shared ; fi)
+    --partition $(if [ -v PARTITION ] ; then echo $PARTITION ; else echo ind-shared ; fi)
     --export ALL
     --nodes 1
     --job-name={rule}-{wildcards}
@@ -34,10 +34,10 @@ default-resources:
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
 restart-times: 1
 max-jobs-per-second: 30 #too many?
-max-status-checks-per-second: 10
+max-status-checks-per-second: 20
 latency-wait: 180
 resources: mem_gb=15000
-jobs: 4000
+jobs: 500
 #resources: mem_gb=8192
 #jobs: 4096 #this is required, but we want snakemake to be memory bound, not job bound, so set it
            #to the maximal amount

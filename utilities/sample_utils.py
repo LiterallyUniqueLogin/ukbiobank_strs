@@ -19,7 +19,7 @@ def get_all_samples():
     assert np.all(hardcall_snp_samples[compare_idxs] == imp_snp_samples[compare_idxs])
     return hardcall_snp_samples
 
-def _samples_array_with_indicator(sample_fname):
+def samples_array_with_indicator(sample_fname):
     '''
     sample_fname - a file with the first line 'ID' followed by one sample per line (7 digit number)
                   (no negatives or missings)
@@ -35,7 +35,7 @@ def _samples_array_with_indicator(sample_fname):
     return samples_merge
 
 def get_ordered_samples(sample_fname):
-    arr = _samples_array_with_indicator(sample_fname)
+    arr = samples_array_with_indicator(sample_fname)
     return arr[~np.isnan(arr[:, 1]), 0]
 
 def get_ordered_samples_ethnicity(ethnicity):
@@ -45,7 +45,7 @@ def get_ordered_samples_phenotype(ethnicity, phenotype):
     return get_ordered_samples(f'{ukb}/sample_qc/runs/{ethnicity}/{phenotype}/combined_unrelated.sample')
 
 def get_samples_idx(sample_fname):
-    return ~np.isnan(_samples_array_with_indicator(sample_fname)[:, 1])
+    return ~np.isnan(samples_array_with_indicator(sample_fname)[:, 1])
 
 def get_samples_idx_ethnicity(ethnicity):
     return get_samples_idx(f'{ukb}/sample_qc/runs/{ethnicity}/no_phenotype/combined_unrelated.sample')

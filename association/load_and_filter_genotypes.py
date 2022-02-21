@@ -428,12 +428,16 @@ def load_imputed_snps(region: str,
             'subset_HWEP'
         )
 
+    start_num = np.searchsorted(bgen.positions, start)
+
     with open(mfi_fname) as mfi:
-        for variant_num, pos in enumerate(bgen.positions):
-            try:
-                mfi_line = next(mfi)
-            except StopIteration:
-                return
+        for variant_num_offset, pos in enumerate(bgen.positions[start_num:]):
+            variant_num = variant_num_offset + start_num
+            if details or info_thresh:
+                try:
+                    mfi_line = next(mfi)
+                except StopIteration:
+                    return
 
             if pos < start:
                 continue
@@ -455,18 +459,19 @@ def load_imputed_snps(region: str,
                 yield (gts, alleles, chrom, pos, None, None)
                 continue
 
-            info_str = mfi_line.split()[-1]
+            if details or info_thresh:
+                info_str = mfi_line.split()[-1]
 
-            if info_str == 'NA':
-                yield (
-                    None,
-                    alleles,
-                    chrom,
-                    pos,
-                    'MAF=0',
-                    ('NA', '', '', '', '', '')
-                )
-                continue
+                if info_str == 'NA':
+                    yield (
+                        None,
+                        alleles,
+                        chrom,
+                        pos,
+                        'MAF=0',
+                        ('NA', '', '', '', '', '')
+                    )
+                    continue
 
             probs, missing, ploidy = bgen.read(
                 variant_num,
@@ -476,23 +481,24 @@ def load_imputed_snps(region: str,
             probs = np.squeeze(probs)
 
             # make sure the record looks as expected
+            '''
             assert len(probs.shape) == 2
             assert probs.shape[1] == 3
             assert not bgen.phased[variant_num]
             assert np.all(ploidy == 2)
             assert not np.any(missing)
+            '''
 
             dosages = probs[:, 1] + 2*probs[:, 2]
             if details:
                 total_alt_dosage = np.sum(dosages)
                 total_ref_dosage = 2*dosages.shape[0] - total_alt_dosage
 
-            subset_dosages = dosages[samples]
-            subset_total_alt_dosage = np.sum(subset_dosages)
-            subset_total_ref_dosage = \
-                    2*subset_dosages.shape[0] - subset_total_alt_dosage
+                subset_dosages = dosages[samples]
+                subset_total_alt_dosage = np.sum(subset_dosages)
+                subset_total_ref_dosage = \
+                        2*subset_dosages.shape[0] - subset_total_alt_dosage
 
-            if details:
                 hardcalls = probs.argmax(axis=1)
                 n_hom_ref = np.sum(hardcalls == 0)
                 n_het = np.sum(hardcalls == 1)
@@ -521,7 +527,7 @@ def load_imputed_snps(region: str,
             else:
                 locus_details = None
 
-            if (subset_total_alt_dosage < 20 or subset_total_ref_dosage < 20) and apply_filter:
+            if apply_filter and (subset_total_alt_dosage < 20 or subset_total_ref_dosage < 20):
                 yield (
                     None,
                     alleles,

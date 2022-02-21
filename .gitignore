@@ -59,3 +59,4 @@ foo*
 .snakemake_conda
 *.h5
 polars_repro
+scratch

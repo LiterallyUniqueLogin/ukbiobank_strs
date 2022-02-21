@@ -1,4 +1,9 @@
 finemap_results
+finemap_results_threshold_*
+finemap_results_mac_*
+finemap_results_underexplored
 susie_results
 susie_hardcall_results
 susie_results_my_filter
+susie_results_threshold_*
+susie_results_mac_*

@@ -4,17 +4,45 @@ import argparse
 import datetime
 import os
 
+import numpy as np
 import polars as pl
 
 ukb = os.environ['UKB']
 
-def load_gts(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_pos, use_PACSIN2):
+def choose_vars(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_pos, p_cutoff, mac, use_PACSIN2):
     if use_PACSIN2:
         assert int(chrom) == 22
 
     filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
 
-    p_cutoff = 5e-4
+    if mac:
+        mac_threshold = int(mac[0])
+        snp_mac_fname = mac[1]
+        str_mac_fname = mac[2]
+        snps_exclude_mac = pl.scan_csv(
+            snp_mac_fname,
+            sep='\t'
+        ).filter(
+            pl.col('ALT_CTS') < mac_threshold
+        ).select([
+            '#POS',
+            'REF',
+            'ALT'
+        ]).collect().pipe(
+            lambda df: list(zip(*df.to_dict().values()))
+        )
+
+        # need to make that look like a list of strings to polars b/c buggy, so add a single nonsense to it
+        snps_exclude_mac.append('asdf')
+
+        strs_exclude_mac = pl.scan_csv(
+            str_mac_fname,
+            sep='\t'
+        ).filter(
+            pl.col('mac') < mac_threshold
+        ).select(
+            'pos'
+        ).collect()['pos'].to_list()
 
     today = datetime.datetime.now().strftime("%Y_%M_%D")
     with open(readme_fname, 'w') as readme:
@@ -39,6 +67,9 @@ def load_gts(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_pos, 
         (pl.col('pos') <= end_pos) &
         (pl.col(f'p_{phenotype}') <= p_cutoff)
     ).select(pl.col('pos')).collect().to_numpy().flatten()
+
+    if mac:
+        strs_to_include = strs_to_include[~np.isin(strs_to_include, strs_exclude_mac)]
 
     assert len(strs_to_include) != 0
 
@@ -70,13 +101,16 @@ def load_gts(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_pos, 
     ).filter(
         pl.col('join_marker').is_null()
     ).select([
-        pl.col('POS'),
-        pl.col('REF'),
-        pl.col('ALT')
+        'POS',
+        'REF',
+        'ALT'
     ]).collect().pipe(
         lambda df: list(zip(*df.to_dict().values()))
     )
     # returns a list of tuples
+
+    if mac:
+        snps_to_include = [snps_to_include[idx] for idx in np.where(~np.isin(snps_to_include, snps_exclude_mac))[0]]
 
     snp_sort_tuples = set((pos, 'SNP', ref, alt) for (pos, ref, alt) in snps_to_include)
     str_sort_tuples = set((pos, 'STR') for pos in strs_to_include)
@@ -110,7 +144,9 @@ if __name__ == '__main__':
     parser.add_argument('chrom')
     parser.add_argument('start')
     parser.add_argument('end')
+    parser.add_argument('--threshold', default=5e-4, type=float)
+    parser.add_argument('--mac', nargs=3, default=None)
     parser.add_argument('--three-PACSIN2-STRs', action='store_true', default=False)
     args = parser.parse_args()
 
-    load_gts(args.readme, args.outcols, args.phenotype, args.chrom, args.start, args.end, args.three_PACSIN2_STRs)
+    choose_vars(args.readme, args.outcols, args.phenotype, args.chrom, args.start, args.end, args.threshold, args.mac, args.three_PACSIN2_STRs)

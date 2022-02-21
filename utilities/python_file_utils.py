@@ -2,11 +2,12 @@ import os
 import shutil
 import tempfile
 
-project_temp = os.environ['PROJECT_TEMP']
+ukb = os.environ['UKB']
+project_temp = ukb + '/scratch'
 
-def temp_dir(name, args):
+def temp_dir(outdir):
     '''
-    Returns a temporary directory that will be deletd
+    Returns a temporary directory that will be deleted
     when python finishes.
     If used in a context manager, then this is just the string
     path of that directory and will be cleaned up when exiting
@@ -15,18 +16,23 @@ def temp_dir(name, args):
     the attribution .name and the method .cleanup() to
     delete the directory.
     '''
-    dname = name + '-'
-    first = True
-    for k, v in vars(args).items():
-        if not first:
-            dname += ','
-        first = False
-        dname += k.replace('/', '_') + '=' + str(v).replace('/', '_')
-    dname += '-'
-    return tempfile.TemporaryDirectory(prefix=dname, dir=project_temp)
+    if outdir.startswith(ukb):
+        outdir = outdir[len(ukb):]
+        if outdir.startswith('/'):
+            outdir = outdir[1:]
+    split = outdir.split('/')
+    if len(split) > 1:
+        pre_dir = project_temp + '/' + '/'.join(split[:-1])
+        os.makedirs(pre_dir, exist_ok=True)
+    else:
+        pre_dir = project_temp
+   
+    print(split[-1], pre_dir)
+    tdir = tempfile.TemporaryDirectory(prefix=split[-1], dir=pre_dir)
+    print(f"Working with tempdir {tdir.name}")
+    return tdir
 
 def move_files(temp_dir, permanent_loc):
-    assert 'lustre' in temp_dir
     for fname in os.listdir(temp_dir):
         shutil.move(os.path.join(temp_dir, fname), permanent_loc)
 

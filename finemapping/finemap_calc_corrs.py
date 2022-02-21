@@ -56,7 +56,7 @@ def main():
     end_pos = args.end_pos
     assert start_pos < end_pos
 
-    with file_utils.temp_dir('finemap_calc_corrs', args) as tempdir:
+    with file_utils.temp_dir(args.outdir) as tempdir:
         calc_corrs(tempdir, args.outdir)
         file_utils.move_files(tempdir, args.outdir)
 
