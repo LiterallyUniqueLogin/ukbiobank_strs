@@ -1,0 +1,22 @@
+category	all_gwas_sig_STRs_count	#_in_cat	%_in_cat	subset_name	subset_count	#_subset_in_cat	%_subset_in_cat	p_val
+exonic_trinucs	10758	25	0.2324%	singly_finemapped	409	7	1.7115%	2.8924504278682495e-05
+exonic_trinucs	10758	25	0.2324%	doubly_finemapped	134	5	3.7313%	1.209864822352345e-05
+exonic_trinucs	10758	25	0.2324%	consistently_finemapped_but_skeptical	79	4	5.0633%	3.0303090360827945e-05
+exonic_trinucs	10758	25	0.2324%	consistently_finemapped_with_skeptical	53	4	7.5472%	6.15100614484342e-06
+AC_repeats	10758	876	8.1428%	singly_finemapped	409	52	12.7139%	0.0007959499537325428
+AC_repeats	10758	876	8.1428%	doubly_finemapped	134	19	14.1791%	0.015998398248330107
+AC_repeats	10758	876	8.1428%	consistently_finemapped_but_skeptical	79	12	15.1899%	0.03496277926781257
+AC_repeats	10758	876	8.1428%	consistently_finemapped_with_skeptical	53	8	15.0943%	0.07427454572034303
+A_repeats	10758	7941	73.8148%	singly_finemapped	409	285	69.6822%	0.0599828896396494
+A_repeats	10758	7941	73.8148%	doubly_finemapped	134	84	62.6866%	0.0043768302214308025
+A_repeats	10758	7941	73.8148%	consistently_finemapped_but_skeptical	79	52	65.8228%	0.13536362593460052
+A_repeats	10758	7941	73.8148%	consistently_finemapped_with_skeptical	53	33	62.2642%	0.07826866913789528
+transcribed_non_protein	10758	270	2.5098%	singly_finemapped	409	18	4.4010%	0.022000559591569407
+transcribed_non_protein	10758	270	2.5098%	doubly_finemapped	134	12	8.9552%	0.00013572286858610748
+transcribed_non_protein	10758	270	2.5098%	consistently_finemapped_but_skeptical	79	6	7.5949%	0.014254826585299559
+transcribed_non_protein	10758	270	2.5098%	consistently_finemapped_with_skeptical	53	2	3.7736%	0.3855671095088241
+intergenic	10758	3440	31.9762%	singly_finemapped	409	126	30.8068%	0.6434063944917666
+intergenic	10758	3440	31.9762%	doubly_finemapped	134	44	32.8358%	0.9032902557858478
+intergenic	10758	3440	31.9762%	consistently_finemapped_but_skeptical	79	26	32.9114%	0.9538922696946788
+intergenic	10758	3440	31.9762%	consistently_finemapped_with_skeptical	53	15	28.3019%	0.6586481262974664
+

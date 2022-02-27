@@ -2,31 +2,28 @@
 
 import argparse
 import math
-import os
-import os.path
 import time
-from typing import Dict, Tuple, Optional
 
 import bokeh.io
 import bokeh.models
 import bokeh.plotting
 import numpy as np
-import pandas as pd
 
 import graphing_utils
 import region_plots
 
-ukb = os.environ['UKB']
-
 overview_max_p_val = 100
 
 def make_overview_manhattan(
-        outfname,
-        phenotype,
-        my_str_results,
-        my_str_run_date,
-        plink_snp_results,
-        plink_snp_run_date):
+    outfname,
+    phenotype,
+    my_str_results,
+    my_str_run_date,
+    plink_snp_results,
+    plink_snp_run_date,
+    publication,
+    legendless
+):
     print(f"Plotting overview of phenotype {phenotype} ... ", end='', flush=True)
     start_time = time.time()
 
@@ -77,21 +74,15 @@ def make_overview_manhattan(
 
     region_plots.full_genome_x_axis(
         manhattan_plot,
-        [str_peak_dict, snp_peak_dict, str_locus_dict, snp_locus_dict, insignificant_locus_dict]
     )
+    for dict_ in [str_peak_dict, snp_peak_dict, str_locus_dict, snp_locus_dict, insignificant_locus_dict]:
+        region_plots.full_genome_pandas_df(dict_)
 
     # from https://projects.susielu.com/viz-palette
     str_color = '#FF520D'
     snp_color = '#00B8FF'
     size_ratio = 5000/1200
-    manhattan_plot.diamond(
-        'plot_pos',
-        'p_val',
-        source=bokeh.models.ColumnDataSource(insignificant_locus_dict),
-        color='color',
-        size=math.floor(size_ratio*8),
-        legend_label = 'not GWAS sig.'
-    )
+    
     manhattan_plot.diamond(
         'plot_pos',
         'p_val',
@@ -107,29 +98,72 @@ def make_overview_manhattan(
         size=math.floor(size_ratio*8),
         alpha=0.5
     )
-    manhattan_plot.diamond(
-        'plot_pos',
-        'p_val',
-        source=bokeh.models.ColumnDataSource(snp_peak_dict),
-        fill_color=snp_color,
-        legend_label = 'SNPs',
-        size=math.floor(size_ratio*15)
-    )
-    manhattan_plot.diamond(
-        'plot_pos',
-        'p_val',
-        source=bokeh.models.ColumnDataSource(str_peak_dict),
-        fill_color=str_color,
-        legend_label = 'STRs',
-        size=math.floor(size_ratio*15)
-    )
-    manhattan_plot.legend.label_text_font_size = '22px'
-    region_plots.display_my_str_run_date(manhattan_plot, my_str_run_date)
-    region_plots.display_plink_snp_run_date(manhattan_plot, plink_snp_run_date)
+    if not legendless:
+        manhattan_plot.diamond(
+            'plot_pos',
+            'p_val',
+            source=bokeh.models.ColumnDataSource(snp_peak_dict),
+            fill_color=snp_color,
+            legend_label = 'SNPs',
+            size=math.floor(size_ratio*15)
+        )
+    else:
+        manhattan_plot.diamond(
+            'plot_pos',
+            'p_val',
+            source=bokeh.models.ColumnDataSource(snp_peak_dict),
+            fill_color=snp_color,
+            size=math.floor(size_ratio*15)
+        )
+    if not legendless:
+        manhattan_plot.diamond(
+            'plot_pos',
+            'p_val',
+            source=bokeh.models.ColumnDataSource(str_peak_dict),
+            fill_color=str_color,
+            legend_label = 'STRs',
+            size=math.floor(size_ratio*15)
+        )
+    else:
+        manhattan_plot.diamond(
+            'plot_pos',
+            'p_val',
+            source=bokeh.models.ColumnDataSource(str_peak_dict),
+            fill_color=str_color,
+            size=math.floor(size_ratio*15)
+        )
+    if not legendless:
+        manhattan_plot.diamond(
+            'plot_pos',
+            'p_val',
+            source=bokeh.models.ColumnDataSource(insignificant_locus_dict),
+            color='color',
+            size=math.floor(size_ratio*8),
+            legend_label = 'not GWAS sig.'
+        )
+    else:
+        manhattan_plot.diamond(
+            'plot_pos',
+            'p_val',
+            source=bokeh.models.ColumnDataSource(insignificant_locus_dict),
+            color='color',
+            size=math.floor(size_ratio*8),
+        )
 
-    graphing_utils.resize(manhattan_plot, size_ratio)
+    if not legendless:
+        manhattan_plot.legend.label_text_font_size = '22px'
 
-    bokeh.io.export_png(manhattan_plot, filename=outfname)
+    if not publication:
+        region_plots.display_my_str_run_date(manhattan_plot, my_str_run_date)
+        region_plots.display_plink_snp_run_date(manhattan_plot, plink_snp_run_date)
+
+    graphing_utils.resize(manhattan_plot, size_ratio, legend=not legendless)
+
+    if outfname[-4:] == '.png':
+        bokeh.io.export_png(manhattan_plot, filename=outfname)
+    else:
+        assert outfname[-4:] == '.svg'
+        bokeh.io.export_svg(manhattan_plot, filename=outfname)
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
@@ -144,14 +178,20 @@ def main():
     parser.add_argument('peaks-spacing', type=int)
     parser.add_argument('peaks-thresh', type=str)
     parser.add_argument('peaks_fname')
+    parser.add_argument('--legendless', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
+    parser.add_argument('--publication', default=False, action='store_true')
     args = parser.parse_args()
 
     phenotype = args.phenotype
     binary = args.binary
 
-    my_str_run_date = region_plots.get_my_str_run_date(args.my_str_run_readme)
-    plink_snp_run_date = region_plots.get_plink_snp_run_date(args.plink_snp_log_file)
+    if not args.publication:
+        my_str_run_date = region_plots.get_my_str_run_date(args.my_str_run_readme)
+        plink_snp_run_date = region_plots.get_plink_snp_run_date(args.plink_snp_log_file)
+    else:
+        my_str_run_date = None
+        plink_snp_run_date = None
 
     my_str_results = region_plots.load_my_str_results(
         phenotype, binary, args.my_str_results
@@ -167,12 +207,14 @@ def main():
     )
 
     make_overview_manhattan(
-        f'{ukb}/association/plots/{phenotype}.overview.manhattan.png',
+        args.outfile,
         phenotype,
         my_str_results,
         my_str_run_date,
         plink_snp_results,
-        plink_snp_run_date
+        plink_snp_run_date,
+        args.publication,
+        args.legendless
     )
 
 if __name__ == "__main__":

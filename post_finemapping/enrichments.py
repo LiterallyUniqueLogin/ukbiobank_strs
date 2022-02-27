@@ -13,6 +13,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 import scipy.stats
 import scipy.stats.contingency
 
@@ -28,22 +29,23 @@ And with FINEMAP pcausal >= .9
 #def main():
 
 def binary_test(out, compare_STRs, in_category, category_string):
-    FINEMAPed = compare_STRs['FINEMAPed']
-    # marginals
-    n_strs = compare_STRs.shape[0]
-    n_cat = np.sum(in_category)
-    n_subset = np.sum(FINEMAPed)
-    # table elements
-    n_neither = np.sum(~FINEMAPed & ~in_category)
-    n_subset_not_cat = np.sum(FINEMAPed & ~in_category)
-    n_cat_not_subset = np.sum(~FINEMAPed & in_category)
-    n_subset_cat = np.sum(FINEMAPed & in_category)
-    contingency_table = [[n_neither, n_subset_not_cat], [n_cat_not_subset, n_subset_cat]]
-    if np.any(np.array(contingency_table) < 20):
-        p_val = scipy.stats.fisher_exact(contingency_table)[1]
-    else:
-        p_val = scipy.stats.chi2_contingency(contingency_table)[1]
-    out.write(f'{category_string}\t\t{n_strs}\t{n_cat}\t{n_cat/n_strs*100:.4f}%\t{n_subset}\t{n_subset_cat}\t{n_subset_cat/n_subset*100:.4f}%\t{p_val}\n')
+    for subset_name in 'singly_finemapped', 'doubly_finemapped', 'consistently_finemapped_but_skeptical', 'consistently_finemapped_with_skeptical':
+        subset = compare_STRs[subset_name].to_numpy()
+        # marginals
+        n_strs = compare_STRs.shape[0]
+        n_cat = np.sum(in_category)
+        n_subset = np.sum(subset)
+        # table elements
+        n_neither = np.sum(~subset & ~in_category)
+        n_subset_not_cat = np.sum(subset & ~in_category)
+        n_cat_not_subset = np.sum(~subset & in_category)
+        n_subset_cat = np.sum(subset & in_category)
+        contingency_table = [[n_neither, n_subset_not_cat], [n_cat_not_subset, n_subset_cat]]
+        if np.any(np.array(contingency_table) < 20):
+            p_val = scipy.stats.fisher_exact(contingency_table)[1]
+        else:
+            p_val = scipy.stats.chi2_contingency(contingency_table)[1]
+        out.write(f'{category_string}\t{n_strs}\t{n_cat}\t{n_cat/n_strs*100:.4f}%\t{subset_name}\t{n_subset}\t{n_subset_cat}\t{n_subset_cat/n_subset*100:.4f}%\t{p_val}\n')
 
 def graph_relative_rate_by_pcausal(compare_STRs, in_category, category_string):
     xs = np.arange(0.00, 1.01, 0.01)
@@ -132,52 +134,63 @@ def _BetterCDF(data_list: List[float],
     ))
     return ax.step(data, ys, where='post')
 
+'''
 parser = argparse.ArgumentParser()
 parser.add_argument('phenotypes', nargs='+')
 args = parser.parse_args()
 phenotypes = args.phenotypes
+'''
 
 # pos (start), snpstr_pos (hipstr)
-all_STRs = pd.read_csv(
+all_STRs = pl.read_csv(
     f'{ukb}/snpstr/flank_trimmed_vcf/vars.tab',
-    header=0,
-    delimiter='\t'
+    sep='\t'
 )
 # pos (hisptr)
-snpstr_strs = pd.read_csv(
+snpstr_strs = pl.scan_csv(
     f'{ukb}/snpstr/str_loci.txt',
-    header=None,
-    names=['chrom', 'pos'],
-    delimiter='\t'
+    sep='\t',
+    has_header=False,
+    with_column_names = lambda _ : ['chrom', 'pos'],
 )
 
-all_STRs = all_STRs.merge(
+all_STRs = all_STRs.lazy().join(
     snpstr_strs,
     left_on=['chrom', 'snpstr_pos'],
     right_on=['chrom', 'pos'],
     how='inner',
-    suffixes=['', '_other']
-)
-all_STRs = all_STRs[['chrom', 'pos', 'end_pos', 'snpstr_pos']]
-all_STRs.rename(columns={'snpstr_pos': 'SNPSTR_start_pos'}, inplace=True)
-all_STRs = all_STRs.drop_duplicates(subset=['chrom', 'pos']).reset_index(drop=True)
+    suffix='_other'
+).select(
+    ['chrom', 'pos', 'end_pos', 'snpstr_pos']
+).with_column(
+    pl.col('snpstr_pos').alias('SNPSTR_start_pos')
+).drop('snpstr_pos').distinct(
+    subset=['chrom', 'pos']
+).collect()
+assert ~np.any(np.isnan(all_STRs['chrom'].to_numpy()))
+assert ~np.any(np.isnan(all_STRs['pos'].to_numpy()))
+assert ~np.any(np.isnan(all_STRs['end_pos'].to_numpy()))
+assert ~np.any(np.isnan(all_STRs['SNPSTR_start_pos'].to_numpy()))
 # pos (start), end_pos, SNPSTR_start_pos (hipstr)
 
-repeat_units = pd.read_csv(
+repeat_units = pl.read_csv(
     f'{ukb}/snpstr/repeat_units.tab',
-    delimiter='\t',
-    header=0,
-    usecols=['chrom', 'snpstr_pos', 'period', 'unit']
-)
-all_STRs = all_STRs.merge(
+    sep='\t',
+    columns=['chrom', 'snpstr_pos', 'period', 'unit']
+).with_column(
+    pl.col('unit').alias('canonical_unit')
+).drop('unit')
+
+all_STRs = all_STRs.join(
     repeat_units,
     left_on=['chrom', 'SNPSTR_start_pos'],
     right_on=['chrom', 'snpstr_pos'],
     how='left',
-    suffixes=['', 'other']
+    suffix='_other'
 )
-assert ~np.any(all_STRs['period'].isnull())
+assert ~np.any(np.isnan(all_STRs['period'].to_numpy()))
 
+'''
 dna_structures = pd.read_csv(
     f'{ukb}/misc_data/stalling/canon_structure.tab',
     delimiter='\t',
@@ -191,32 +204,32 @@ all_STRs = all_STRs.merge(
     right_on=['repeat_unit'],
     suffixes=['', '_other']
 )
+'''
 
 loci_summary_dfs = []
 for chrom in range(1, 23):
-    distribution_stats = pd.read_csv(
+    distribution_stats = pl.read_csv(
         f'{ukb}/export_scripts/intermediate_results/chr{chrom}_loci_summary.tab',
-        delimiter='\t',
-        header=0,
-        index_col=None
+        sep='\t',
     )
     loci_summary_dfs.append(distribution_stats)
-loci_summaries = pd.concat(loci_summary_dfs)
+loci_summaries = pl.concat(loci_summary_dfs)
 n_before = all_STRs.shape[0]
-all_STRs = all_STRs.merge(
+all_STRs = all_STRs.join(
     loci_summaries,
     how='left',
-    left_on=['chrom', 'snpstr_pos'],
+    left_on=['chrom', 'SNPSTR_start_pos'],
     right_on=['chr', 'pos'],
-    suffixes=['', '_other']
+    suffix='_other'
 )
 assert n_before == all_STRs.shape[0]
 print('Calculating mean lens ... ', flush=True, end='')
-all_STRs['mean_len'] = [
-    sum(key*val for (key, val) in ast.literal_eval(allele_dist).items()) for allele_dist in all_STRs['allele_dist']
-]
+all_STRs = all_STRs.with_column(
+    pl.Series([sum(key*val for (key, val) in ast.literal_eval(allele_dist).items()) for allele_dist in all_STRs['allele_dist']]).alias('mean_len')
+)
 print('done', flush=True)
 
+'''
 eSTRs = pd.read_csv(
     f'{ukb}/misc_data/eSTR/eSTRs.csv',
     delimiter=',',
@@ -238,20 +251,42 @@ all_STRs = all_STRs.merge(
 )
 all_STRs['eSTR'] = ~all_STRs['eSTR_CAVIAR_score'].isnull()
 all_STRs['FM_eSTR'] = all_STRs['eSTR_CAVIAR_score'] > .3
+'''
 
+'''
 print('Getting promoters ... ', flush=True, end='')
-all_STRs['promoter'] = False
-genes = pd.read_csv(
+genes = pl.read_csv(
     f'{ukb}/misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gene.gff3',
-    delimiter='\t',
-    names=['chrom', 'start_pos', 'end_pos', 'strand', 'kvps'],
-    usecols=[0,3,4,6,8],
-    index_col=None
+    sep='\t',
+    has_header = False,
+    columns=[0,3,4,6,8],
+    dtypes={'column_1': str}
+).select([
+    pl.col('column_1').alias('chrom'),
+    pl.col('column_4').alias('start_pos'),
+    pl.col('column_5').alias('end_pos'),
+    pl.col('column_7').alias('strand'),
+    pl.col('column_9').alias('kvps')
+]).with_column(
+    pl.when(
+        pl.col('strand') == '+'
+    ).then(
+        pl.col('start_pos')
+    ).when(
+        pl.col('strand') == '-'
+    ).then(
+        pl.col('end_pos')
+    ).otherwise(
+        pl.lit(None)
+    ).alias('TSS')
+).filter(
+    pl.col('chrom').is_in([str(x) for x in range(1,23)])
 )
-genes['TSS'] = np.nan
-genes.loc[genes['strand'] == '+', 'TSS'] = genes.loc[genes['strand'] == '+', 'start_pos']
-genes.loc[genes['strand'] == '-', 'TSS'] = genes.loc[genes['strand'] == '-', 'end_pos']
-assert not np.any(genes['TSS'].isnull())
+assert not np.any(np.isnan(genes['TSS'].to_numpy()))
+'''
+
+'''
+all_STRs['promoter'] = False
 for row in range(genes.shape[0]):
     if not 'gene_type=protein_coding' in genes.loc[row, 'kvps']:
         continue
@@ -265,6 +300,9 @@ for row in range(genes.shape[0]):
         'promoter'
     ] = True
 print('done', flush=True)
+'''
+
+all_STRs = all_STRs.to_pandas()
 
 annotation_dir = f'{ukb}/side_analyses/str_annotations'
 
@@ -295,7 +333,7 @@ for fname, annotation_type in [
 
 for fname, annotation_type in [
     ('closest_downstream_protein_coding_exon_support_2', 'downstream_exon'),
-    ('closest_upstream_protein_coding_exon_support_2', 'upstream_exon'),
+    #('closest_upstream_protein_coding_exon_support_2', 'upstream_exon'),
     ('closest_downstream_protein_coding_gene', 'downstream_gene'),
     ('closest_upstream_protein_coding_gene', 'upstream_gene')
 ]:
@@ -307,13 +345,15 @@ for fname, annotation_type in [
     all_STRs[f'{annotation_type}_dist'] = np.abs(closest_df['annotation_distance'])
     print('done', flush=True)
 
+'''
 #intersection should be the same regardless of direction
 assert np.all((all_STRs['downstream_exon_dist'] == 0) == (all_STRs['upstream_exon_dist'] == 0))
 assert np.all((all_STRs['downstream_gene_dist'] == 0) == (all_STRs['upstream_gene_dist'] == 0))
+'''
 
 all_STRs['exonic'] = all_STRs['downstream_exon_dist'] == 0
 all_STRs['genic'] = all_STRs['downstream_gene_dist'] == 0
-for key in 'exonic', 'genic', 'UTR', 'UTR3', 'UTR5', 'promoter':
+for key in 'exonic', 'genic':#, 'UTR', 'UTR3', 'UTR5':#, 'promoter':
     print(f'n {key} STRS: {np.sum(all_STRs[key])}')
     print(f'n non-genic {key} STRS: {np.sum(~all_STRs.loc[all_STRs[key], "genic"])}')
 
@@ -332,31 +372,83 @@ all_STRs['intergenic'] = ~all_STRs['genic']
 for key in ('intronic', 'transcribed_non_protein'):
     print(f'n {key} STRS: {np.sum(all_STRs[key])}')
 
-gwas_sig_STR_dfs = []
-for phenotype in phenotypes:
-    print(f"Loading gwas sig STRs for pheno {phenotype} ... ", flush=True, end='')
-    df = pd.read_csv(
-        f'{ukb}/association/results/{phenotype}/my_str/results.tab',
-        header=0,
-        delimiter='\t',
-        encoding='UTF-8',
-        usecols=('chrom', 'pos', f'p_{phenotype}')
-    )
-    df = df.loc[df[f'p_{phenotype}'] <= 5e-8, :]
-    df = df[['chrom', 'pos']]
-    df['gwas_sig'] = True
-    gwas_sig_STR_dfs.append(df)
-    print('done', flush=True)
-gwas_sig_STRs = pd.concat(gwas_sig_STR_dfs).drop_duplicates(['chrom', 'pos']).reset_index(drop=True)
-all_STRs = all_STRs.merge(
-    gwas_sig_STRs,
+finemapping_results = pl.read_csv(
+    'post_finemapping/intermediate_results/finemapping_concordance.tab',
+    sep='\t'
+).filter(
+    ~pl.col('finemap_pip').is_null() &
+    ~pl.col('susie_alpha').is_null() &
+    pl.col('is_STR') &
+    (pl.col('p_val') <= 1e-10)
+).with_columns([
+    pl.when(pl.col('susie_cs') > 0).then(pl.col('susie_alpha')).otherwise(0).alias('susie_alpha'),
+    pl.when(pl.col('susie_cs_ratio') > 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_alpha_ratio'),
+    pl.when(pl.col('susie_cs_hardcall') > 0).then(pl.col('susie_alpha_hardcall')).otherwise(0).alias('susie_alpha_hardcall'),
+])
+
+susie_cols = finemapping_results.select([
+        pl.col('^susie_alpha.*$'),
+]).columns
+finemap_cols = finemapping_results.select([
+        pl.col('^finemap_pip.*$')
+]).columns
+
+either = finemapping_results.filter(
+    (pl.col('susie_alpha') >= .8) |
+    (pl.col('finemap_pip') >= .8)
+).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
+
+both = finemapping_results.filter(
+    (pl.col('susie_alpha') >= .8) &
+    (pl.col('finemap_pip') >= .8)
+).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
+
+resilient_but_ratio = finemapping_results.filter(
+    (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col]) == 8)
+).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
+
+resilient = finemapping_results.filter(
+    (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 10)
+).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
+
+# subset to STRs that were fine-mapped by both fine-mappers in a pheno with p-val <= 1e-10, then
+# mark which ones passed different fine-mapping thresholds
+compare_STRs = pl.DataFrame(all_STRs).join(
+    finemapping_results.select(['chrom', 'pos']).distinct(),
+    how='inner',
     left_on = ['chrom', 'SNPSTR_start_pos'],
     right_on = ['chrom', 'pos'],
-    how = 'left',
-    suffixes=['', '_other']
-)
-all_STRs['gwas_sig'] = ~all_STRs['gwas_sig'].isnull()
+).join(
+    either,
+    how='left',
+    left_on = ['chrom', 'SNPSTR_start_pos'],
+    right_on = ['chrom', 'pos'],
+).with_column(
+    (~pl.col('indicator').is_null()).alias('singly_finemapped')
+).drop('indicator').join(
+    both,
+    how='left',
+    left_on = ['chrom', 'SNPSTR_start_pos'],
+    right_on = ['chrom', 'pos'],
+).with_column(
+    (~pl.col('indicator').is_null()).alias('doubly_finemapped')
+).drop('indicator').join(
+    resilient_but_ratio,
+    how='left',
+    left_on = ['chrom', 'SNPSTR_start_pos'],
+    right_on = ['chrom', 'pos'],
+).with_column(
+    (~pl.col('indicator').is_null()).alias('consistently_finemapped_but_skeptical')
+).drop('indicator').join(
+    resilient,
+    how='left',
+    left_on = ['chrom', 'SNPSTR_start_pos'],
+    right_on = ['chrom', 'pos'],
+).with_column(
+    (~pl.col('indicator').is_null()).alias('consistently_finemapped_with_skeptical')
+).drop('indicator')
 
+'''
 finemap_STR_dfs = []
 for phenotype in phenotypes:
     print(f"Loading FINEMAPed STRs for pheno {phenotype} ... ", flush=True, end='')
@@ -387,6 +479,7 @@ all_STRs.to_csv(
     sep='\t',
     index=False
 )
+'''
 
 # assert only nulls are MHC
 '''
@@ -395,6 +488,8 @@ assert np.all(all_STRs.loc[all_STRs['gwas_sig'] & all_STRs['FINEMAP_pcausal'].is
 assert np.all(all_STRs.loc[all_STRs['gwas_sig'] & all_STRs['FINEMAP_pcausal'].isnull(), 'pos'] <= 33.5e6)
 '''
 
+#compare_STRs = all_STRs
+'''
 # exclude not gwas sig and non MHC
 compare_STRs = all_STRs.loc[all_STRs['gwas_sig'] & ~all_STRs['FINEMAP_pcausal'].isnull(), :].copy()
 compare_STRs['FINEMAPed'] = compare_STRs['FINEMAP_pcausal'] >= 0.9
@@ -424,8 +519,10 @@ fig.line(xs, ys, legend_label='Number STRs')
 fig.legend.label_text_font_size = '22px'
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_prob_counts.png')
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_prob_counts.svg')
+'''
 
 with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
+    '''
     out.write(
         f'From among phenotypes: {phenotypes}\n'
         'All categories are among protein coding genes, except where specified\n'
@@ -437,12 +534,19 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
         'gwas sig is p<=5e-8\n'
         'pcausal cutoff for FINEMAPed is >= 0.9, also required to be gwas sig\n'
     )
+    '''
     out.write(
-        'category\tall_gwas_sig_STRs_count\t#_in_cat\t%_in_cat\tFINEMAPed_STRs_count\t#_in_cat\t%_subset_in_cat\tp_val\n'
+        'category\tall_gwas_sig_STRs_count\t#_in_cat\t%_in_cat\tsubset_name\tsubset_count\t#_subset_in_cat\t%_subset_in_cat\tp_val\n'
     )
-    for category in 'exonic', 'UTR5', 'UTR3', 'intronic', 'intergenic', 'transcribed_non_protein', 'eSTR', 'FM_eSTR':
-        binary_test(out, compare_STRs, compare_STRs[category], category)
-        graph_relative_rate_by_pcausal(compare_STRs, compare_STRs[category], category)
+    binary_test(out, compare_STRs, compare_STRs.select((pl.col('exonic') & (pl.col('period') == 3)).alias('out'))['out'].to_numpy(), 'exonic_trinucs')
+    binary_test(out, compare_STRs, compare_STRs.select((pl.col('canonical_unit') == 'AC').alias('out'))['out'].to_numpy(), 'AC_repeats')
+    binary_test(out, compare_STRs, compare_STRs.select((pl.col('canonical_unit') == 'A').alias('out'))['out'].to_numpy(), 'A_repeats')
+    binary_test(out, compare_STRs, compare_STRs['transcribed_non_protein'].to_numpy(), 'transcribed_non_protein')
+    binary_test(out, compare_STRs, compare_STRs['intergenic'].to_numpy(), 'intergenic')
+    '''
+    for category in 'exonic', 'UTR5', 'UTR3', 'intronic', 'intergenic', 'transcribed_non_protein':#, 'eSTR', 'FM_eSTR':
+        binary_test(out, compare_STRs, compare_STRs[category].to_numpy(), category)
+        #graph_relative_rate_by_pcausal(compare_STRs, compare_STRs[category], category)
     for period in range(1,7):
         binary_test(out, compare_STRs, compare_STRs['period'] == period, f'period_is_{period}')
         graph_relative_rate_by_pcausal(compare_STRs, compare_STRs['period'] == period, f'period_is_{period}')
@@ -463,49 +567,62 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
     # every STR with more than 1k appearances in all STRs
     for repeat_unit in ('A', 'C', 'AC', 'AT', 'AG', 'AAT', 'AAC', 'AAAT', 'AAAC', 'AGAT', 'AAAG', 'AAGG', 'AATG'):
         graph_relative_rate_by_pcausal(compare_STRs, compare_STRs['canonical_unit'] == repeat_unit, f'unit_is_{repeat_unit}')
+    '''
 
     out.write('\n')
     fig, ax = plt.subplots()
-    ax.set_xlim(0, np.max(compare_STRs['mean_len']))
+    ax.set_xlim(0, np.max(compare_STRs['mean_len'].to_numpy()))
     ax.set_title('CDF of STR mean len')
     ax.set_ylabel('density')
     ax.set_xlabel('distance (bp)')
-    _BetterCDF(compare_STRs['mean_len'], ax)
+    _BetterCDF(compare_STRs['mean_len'].to_numpy(), ax)
+    '''
     p_val = scipy.stats.mannwhitneyu(compare_STRs['mean_len'], compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'])[1]
     out.write(f'Mann-Whitney p_val mean len FINEMAPed vs all gwas sig: {p_val}\n')
-    _BetterCDF(compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'], ax)
-    legends = ['gwas sig STRs', 'FINEMAPed']
+    '''
+    _BetterCDF(compare_STRs.filter('consistently_finemapped_but_skeptical')['mean_len'].to_numpy(), ax)
+    legends = ['gwas sig STRs', 'consisetnetly_finemapped_but_skeptical']
+    '''
     ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9. Both groups exclude MHC", ha="center", transform=ax.transAxes)
     ax.text(0.5, -1.1, f"Medians: {np.median(compare_STRs['mean_len'])} (gwas_sig) {np.median(compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'])} (FINEMAPed)", ha="center", transform=ax.transAxes)
+    '''
     plt.legend(legends)
     plt.savefig(f'{ukb}/post_finemapping/results/mean_len_cdf.png')
     plt.savefig(f'{ukb}/post_finemapping/results/mean_len_cdf.pdf')
 
+    '''
     out.write('\n')
     out.write('dist to nearest\tstream\tfrom among\tMann-Whitney p_val FINEMAPed vs all gwas sig\n')
-    for category, class_ in ('gene', 'intergenic'), ('exon', 'intronic'):
-        for stream in 'upstream', 'downstream':
+    '''
+    for category, class_ in [('gene', 'intergenic')]:#, ('exon', 'intronic'):
+        for stream in ['upstream']:#, 'downstream':
             col = f'{stream}_{category}_dist'
-            subbed_data = compare_STRs.loc[compare_STRs[class_], :]
+            subbed_data = compare_STRs.filter(pl.col(class_))
             fig, ax = plt.subplots()
-            ax.set_xlim(0, np.max(subbed_data[col]))
+            ax.set_xlim(0, np.max(subbed_data[col].to_numpy()))
             ax.set_title(f'CDF of {col} from within {class_} STRs')
             ax.set_ylabel('density')
             ax.set_xlabel('distance (bp)')
-            _BetterCDF(subbed_data[col], ax)
+            _BetterCDF(subbed_data[col].to_numpy(), ax)
+            '''
             p_val = scipy.stats.mannwhitneyu(subbed_data[col], subbed_data.loc[subbed_data['FINEMAPed'], col])[1]
             out.write(f'{category}\t{stream}\t{class_} STRs\t{p_val}\n')
-            _BetterCDF(subbed_data.loc[subbed_data['FINEMAPed'], col], ax)
-            legends = ['gwas sig STRs', 'FINEMAPed']
+            '''
+            _BetterCDF(subbed_data.filter(pl.col('consistently_finemapped_but_skeptical'))[col].to_numpy(), ax)
+            legends = ['gwas sig STRs', 'consistently_finemapped_but_skeptical']
+            '''
             ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9", ha="center", transform=ax.transAxes)
             ax.text(0.5, -1.1, f"Medians: {np.median(subbed_data[col])} (gwas_sig) {np.median(subbed_data.loc[subbed_data['FINEMAPed'], col])} (FINEMAPed)", ha="center", transform=ax.transAxes)
+            '''
             plt.legend(legends)
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf.png')
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf.pdf')
             ax.set_xlim(0, 50000)
+            '''
             subbed_data = subbed_data.loc[subbed_data[col] < 50000, :]
             p_val = scipy.stats.mannwhitneyu(subbed_data[col], subbed_data.loc[subbed_data['FINEMAPed'], col])[1]
             out.write(f'{category}\t{stream}\t{class_} STRs where dist < 50000\t{p_val}\n')
+            '''
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf_50kbp.png')
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf_50kbp.pdf')
 '''

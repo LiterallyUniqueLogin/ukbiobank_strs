@@ -514,9 +514,9 @@ rule run_str_spot_test:
 rule run_regional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
-        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix=''),
         run_timestamp=expand(rules.write_my_gwas_readme.output.timestamp, run_type='str', binary='{binary}', phenotype='{phenotype}'),
-        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix=''),
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
         vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi"
     output:
@@ -927,8 +927,8 @@ rule prep_conditional_input:
 rule run_conditional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
-        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
-        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
         conditional_covars=rules.prep_conditional_input.output.npy,
         sample_fname = sample_fname,
         vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
@@ -960,8 +960,8 @@ rule prep_conditional_plink_input:
         rules.prep_conditional_input.output.varnames,
         rules.load_shared_covars.output.shared_covars,
         rules.load_shared_covars.output.covar_names,
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
+        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
+        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix='')
     output:
         result='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_plink.tab'
     params:
@@ -1196,10 +1196,13 @@ rule linear_overview_manhattan:
         )),
         peaks_fname=expand(rules.generate_peaks.output.peaks, spacing=10000000, thresh='5e-8', phenotype='{phenotype}')
     output:
-        manhattan='association/plots/{phenotype}.overview.manhattan.png'
+        manhattan='association/plots/{phenotype}.overview.manhattan{legend,|.legendless}{pub,|.pub}.{ext,png|svg}'
     resources:
         time='00:30:00',
         mem_gb=75
+    params:
+        pub_flag = lambda wildcards: '' if wildcards.pub == '' else '--publication' if wildcards.pub == '.pub' else 1/0,
+        legend_flag = lambda wildcards: '' if wildcards.legend == '' else '--legendless' if wildcards.legend == '.legendless' else 1/0,
     shell:
         'association/overview_manhattan_plot.py '
         '{wildcards.phenotype} '
@@ -1211,6 +1214,8 @@ rule linear_overview_manhattan:
         '10000000 '
         '5e-8 '
         '{input.peaks_fname} '
+        '{params.pub_flag} '
+        '{params.legend_flag} '
 
 # ----------- rerunning binary logistic regression associaiton on
 # ----------- binary linear regression association regions
@@ -2246,12 +2251,18 @@ rule summarize_loci:
     input:
         [f'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab' for chrom in range(1, 23)]
     output:
-        expand('export_scripts/results/allele_count_thresh_{thresh}.{ext}',
-                thresh={0.0004, 0.002, 0.01, 0.05},
-                ext={'svg', 'png'}),
         expand('export_scripts/results/entropy_distribution.{ext}', ext={'svg', 'png'}),
         expand('export_scripts/results/multiallelicness_distribution.{ext}', ext={'svg', 'png'}),
-        expand('export_scripts/results/heterozygosity_distribution.{ext}', ext={'svg', 'png'})
+        expand('export_scripts/results/heterozygosity_distribution.{ext}', ext={'svg', 'png'}),
+        main_thresh=expand(
+            'export_scripts/results/allele_count_thresh_0.01.{ext}',
+            ext={'svg', 'png'}
+        ),
+        other_threshes=expand(
+            'export_scripts/results/allele_count_thresh_{thresh}.{ext}',
+            thresh={0.0004, 0.002, 0.05},
+            ext={'svg', 'png'}
+        ),
     resources:
         time='00:30:00',
         mem_gb=5
@@ -2605,7 +2616,7 @@ rule export_phenotype_summaries:
         rules.summary_table.output.table,
         rules.finemap_signal_strengths.output.graph,
         expand(rules.manhattan_finemap.output.manhattan, binary_type='', ext='html', phenotype='{phenotype}'),
-        rules.linear_overview_manhattan.output.manhattan
+        expand(rules.linear_overview_manhattan.output.manhattan, legend='', pub='', phenotype='{phenotype}', ext=['png', 'svg'])
     output:
         # owns all symlinks in this directory
         complete='export/phenotypes/{phenotype}/.exported'
@@ -2829,6 +2840,25 @@ rule export_all:
         'export/combined/curated_loci/.exported',
         # stand in for combined and figures 
         'export/combined/phenotypes.tab',
+
+#---------- For paper ---------------
+
+rule figure1:
+    input:
+        b=expand(rules.summarize_loci.output.main_thresh),
+        c=expand(rules.linear_overview_manhattan.output.manhattan, phenotype='total_bilirubin', pub='.pub', legend='', ext=['svg', 'png']),
+        d=expand(rules.linear_overview_manhattan.output.manhattan, phenotype='platelet_count', pub='.pub', legend='.legendless', ext=['svg', 'png']),
+        e=expand(rules.peak_figs.output.barplot),
+        f=expand(rules.peak_figs.output.heatmap),
+
+'''
+rule figure2:
+    input:
+        pass
+'''
+
+
+#----------------- testing -------------------
 
 rule test:
     output:

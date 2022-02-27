@@ -10,9 +10,11 @@ import time
 import bokeh.models
 import bokeh.io
 import bokeh.plotting
+import matplotlib.cm
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-import scipy.interpolate
+import upsetplot
 
 import phenotypes
 
@@ -367,55 +369,163 @@ def putatively_causal_hits_df():
     assert np.all(1 == total_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
     return total_df
 
+def linear_int_interpolate(c1, c2, dist):
+    c_new = []
+    for coord1, coord2 in zip(c1, c2):
+        c_new.append(coord1 + round((coord2 - coord1)*dist))
+    return c_new
+
 def putatively_causal_hits_comparison(regenerate):
     if regenerate:
         total_df = putatively_causal_hits_df()
     else:
-        total_df = pl.read_csv(f'{ukb}/post_finemapping/intermediate_results/putative_hardcall_comparison.tab', sep='\t')
+        total_df = pl.read_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_concordance.tab', sep='\t')
 
-    pc_STRs = total_df.filter(
+    total_df = total_df.filter(~pl.col('finemap_pip').is_null() & ~pl.col('susie_alpha').is_null())
+
+    total_df = total_df.with_columns([
+        pl.when(pl.col('susie_cs') > 0).then(pl.col('susie_alpha')).otherwise(0).alias('susie_alpha'),
+        pl.when(pl.col('susie_cs_ratio') > 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_alpha_ratio'),
+        pl.when(pl.col('susie_cs_hardcall') > 0).then(pl.col('susie_alpha_hardcall')).otherwise(0).alias('susie_alpha_hardcall'),
+    ])
+    total_df.filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
-        (pl.col('susie_cs') >= 0) &
-        (pl.col('susie_alpha') >= 0.8)
-    )
-    print(f'SuSiE putatively causal STRs: {pc_STRs.shape[0]}')
-    print(pc_STRs)
-    hard_rep = pc_STRs.filter(
-        (pl.col('susie_cs_hardcall') >= 0) &
-        (pl.col('susie_alpha_hardcall') >= .8)
-    )
-    print(f'That replicate through hardcalls: {hard_rep.shape[0]}')
-    ratio_rep = pc_STRs.filter(
-        (pl.col('susie_cs_ratio') >= 0) &
-        (pl.col('susie_alpha_ratio') >= .8)
-    )
-    print(f'That replicate through ratios: {ratio_rep.shape[0]}')
+        (pl.col('susie_alpha') >= .8) &
+        (pl.col('finemap_pip') >= .8)
+    ).drop('is_STR').to_csv(f'{ukb}/post_finemapping/intermediate_results/original_set.tab', sep='\t')
 
-    
-    for suffix, y_label in ('ratio', '4x prior on SNPs'), ('hardcall', 'hardcall genotyping'):
+    susie_cols = total_df.select([
+        pl.col('^susie_alpha.*$'),
+    ]).columns
+    finemap_cols = total_df.select([
+        pl.col('^finemap_pip.*$')
+    ]).columns
+    print(susie_cols + finemap_cols)
+    print(len(susie_cols + finemap_cols))
+    print('n pass threshold .8 or more in original runs and each replicate with distinct loci:')
+    pass_all_threshes = total_df.filter(
+        pl.col('is_STR') &
+        (pl.col('p_val') <= 1e-10) &
+        (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col]) == 8)
+        #(pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 10)
+    )
+    pass_all_threshes.select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).to_csv(f'{ukb}/post_finemapping/intermediate_results/best_set.tab', sep='\t')
+    print(pass_all_threshes.select(['pos', 'chrom']).shape[0])
+    exit()
+
+    for upset_thresh in .8, .9:
+        susie_cols = total_df.select([
+            pl.col('^susie_alpha.*$'),
+        ]).columns
+        susie_cols.remove('susie_alpha')
+        susie_cols.insert(len(susie_cols), 'susie_alpha')
+
+        finemap_cols = total_df.select([
+            pl.col('^finemap_pip.*$')
+        ]).columns
+        finemap_cols.remove('finemap_pip')
+        #finemap_cols.remove('finemap_pip_ratio')
+        finemap_cols.insert(len(finemap_cols), 'finemap_pip')
+
+        print('Converting to pandas ... ', flush=True)
+        for found_in_default in True, False:
+            intermediate_df = total_df.filter(
+                pl.col('is_STR') &
+                (pl.col('p_val') <= 1e-10)
+            ).with_columns([
+                pl.col('^susie_alpha.*$') >= upset_thresh,
+                pl.col('^finemap_pip.*$') >= upset_thresh 
+            ]).filter(
+                # passes thresh in at least one fine-mapping run
+                pl.sum([pl.col(col).cast(int) for col in susie_cols + finemap_cols]) > 0
+            )
+            if found_in_default:
+                intermediate_df = intermediate_df.filter(
+                    pl.col('susie_alpha') | pl.col('finemap_pip')
+                )
+            intermediate_df = intermediate_df.to_pandas()
+
+            #all plot
+            upset_df = upsetplot.from_indicators([col for col in susie_cols + finemap_cols], data=intermediate_df)
+            upsetplot.UpSet(
+                upset_df,
+                sort_categories_by=None,
+                show_counts=True,
+            ).plot()
+            plt.suptitle(f'Fine-mapping conditions breakdown')
+            plt.savefig(f'{ukb}/post_finemapping/results/upsets/all_{upset_thresh}_found_in_default_{found_in_default}.png')
+            
+            for name, upset_cols, other_col, other_name in ('susie', susie_cols, 'finemap_pip', 'FINEMAP'), ('finemap', finemap_cols, 'susie_alpha', 'SuSiE'):
+                print('Plotting upset ... ', flush=True)
+                upset_df = upsetplot.from_indicators(upset_cols, data=intermediate_df)
+                print('done.', flush=True)
+                upset = upsetplot.UpSet(
+                    upset_df,
+                    sort_categories_by=None,
+                    show_counts=True,
+                    intersection_plot_elements=0
+                )
+                upset.add_stacked_bars(
+                    by=other_col,
+                    title=f'Count, selected by default {other_name} run or not',
+                    elements=10,
+                    colors=matplotlib.cm.Pastel1
+                )
+                upset.plot()
+                plt.suptitle(f'{name} fine-mapping conditions breakdown')
+                plt.savefig(f'{ukb}/post_finemapping/results/upsets/{name}_{upset_thresh}_found_in_default_{found_in_default}.png')
+
+    exit()
+    # susie graphs
+    for mapper, suffix, y_label in [
+        ('SuSiE', 'ratio', '4x prior on SNPs'),
+        ('SuSiE', 'hardcall', 'hardcall genotyping'),
+        ('FINEMAP', 'ratio', '4x prior on SNPs'),
+        ('FINEMAP', 'conv_tol', '10x stricter convergence tolerance'),
+        ('FINEMAP', 'total_prob', 'assumption of 4 causal variants per region, not one'),
+        ('FINEMAP', 'prior_std', '10x smaller assumption of effect size'),
+        ('FINEMAP', 'mac', 'mac>=100 threshold'),
+        ('FINEMAP', 'gt_thresh', 'p_val >= 5e-4 threshold instead of 5e-2')
+    ]:
+        if mapper == 'SuSiE':
+            pip_col = 'susie_alpha'
+            other_label = 'FINEMAP PIP'
+            other_pip_col = 'finemap_pip'
+        else:
+            assert mapper == 'FINEMAP'
+            pip_col = 'finemap_pip'
+            other_label = 'SuSiE alpha'
+            other_pip_col = 'susie_alpha'
+
         cs_STRs = total_df.filter(
             pl.col('is_STR') &
             (pl.col('p_val') <= 1e-10) &
-            ((pl.col('susie_cs') >= 0) | (pl.col(f'susie_cs_{suffix}') >= 0))
-        ).sort('susie_alpha').with_column(
+            ((pl.col(pip_col) > 0) | (pl.col(f'{pip_col}_{suffix}') > 0))
+        ).sort(pip_col).with_column(
             pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
         )
         thresh = .025
-        n_both = cs_STRs.filter(
-            (pl.col('susie_alpha') >= 1-thresh) &
-            (pl.col(f'susie_alpha_{suffix}') >= 1-thresh)
-        ).shape[0]
+        both_df = cs_STRs.filter(
+            (pl.col(pip_col) >= 1-thresh) &
+            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
+        )
+        n_both = both_df.shape[0]
+        avg_both_other_pip = both_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
-        n_not_rep = cs_STRs.filter(
-            (pl.col('susie_alpha') >= 1-thresh) &
-            (pl.col(f'susie_alpha_{suffix}') <= thresh)
-        ).shape[0]
+        not_rep_df = cs_STRs.filter(
+            (pl.col(pip_col) >= 1-thresh) &
+            (pl.col(f'{pip_col}_{suffix}') <= thresh)
+        )
+        n_not_rep = not_rep_df.shape[0]
+        avg_not_rep_other_pip = not_rep_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
-        n_new = cs_STRs.filter(
-            (pl.col('susie_alpha') <= thresh) &
-            (pl.col(f'susie_alpha_{suffix}') >= 1-thresh)
-        ).shape[0]
+        new_df = cs_STRs.filter(
+            (pl.col(pip_col) <= thresh) &
+            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
+        )
+        n_new = new_df.shape[0]
+        avg_new_other_pip = new_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
         fig = bokeh.plotting.figure(
             width=1200,
@@ -423,23 +533,34 @@ def putatively_causal_hits_comparison(regenerate):
             y_axis_label = f'PIP under {y_label}',
             x_axis_label = 'original PIP',
             x_range=[0,1],
-            y_range=[0,1]
+            y_range=[0,1],
+            title=f'{mapper} metaparameter comparison'
+        )
+        fig.title.text_font_size = '30px'
+        fig.axis.axis_label_text_font_size = '26px'
+        fig.axis.major_label_text_font_size = '20px'
+        
+        palette = [
+            linear_int_interpolate((111,107,237), (219,46,40), i/254) for i in range(-1, 255)
+        ]
+        color_mapper = bokeh.models.LinearColorMapper(
+            palette = palette,
+            low=0,
+            high=1
         )
         fig.circle(
-            cs_STRs['susie_alpha'].to_numpy(),
-            cs_STRs[f'susie_alpha_{suffix}'].to_numpy(),
+            cs_STRs[pip_col].to_numpy(),
+            cs_STRs[f'{pip_col}_{suffix}'].to_numpy(),
             size = -np.log10(cs_STRs['p_val'].to_numpy())/7.5,
-            alpha = 0.25
+            alpha = 0.25,
+            color=[palette[int(step)] for step in cs_STRs[other_pip_col].to_numpy()*255]
         )
-        spline = scipy.interpolate.UnivariateSpline(
-            cs_STRs['susie_alpha'].to_numpy(),
-            cs_STRs[f'susie_alpha_{suffix}'].to_numpy()
-        )
+        
         xs = np.arange(0, 1, 0.0001)
         fig.line(
             xs,
-            spline(xs),
-            #legend_label='approximation'
+            xs,
+            line_dash='dashed'
         )
         fig.quad(
             left=[1-thresh],
@@ -450,7 +571,8 @@ def putatively_causal_hits_comparison(regenerate):
             alpha=0.25
         )
         fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_both}', align='right'
+            text=f'# STRs: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
+            text_font_size='18px'
         ), 'above')
         fig.quad(
             left=[1-thresh],
@@ -461,8 +583,10 @@ def putatively_causal_hits_comparison(regenerate):
             alpha=0.25
         )
         fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_not_rep}', align='right'
+            text=f'# STRs: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
+            text_font_size='18px'
         ), 'right')
+
         if n_new > 5:
             fig.quad(
                 left=[0],
@@ -473,13 +597,25 @@ def putatively_causal_hits_comparison(regenerate):
                 alpha=0.25
             )
             fig.add_layout(bokeh.models.Title(
-                text=f'# STRs: {n_new}', align='left'
+                text=f'# STRs: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
+                text_font_size='18px'
             ), 'above')
-            
+
+        color_bar = bokeh.models.ColorBar(
+            color_mapper = color_mapper,
+            width=70,
+            title_text_font_size = '26px',
+            title=other_label,
+            major_label_text_font_size = '20px'
+        )
+        fig.add_layout(color_bar, 'right')
+           
         fig.toolbar_location = None
         fig.background_fill_color = None
         fig.border_fill_color = None
-        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_consistency_{suffix}.png')
+        fig.grid.grid_line_color=None
+        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/{mapper.lower()}_consistency_{suffix}.png')
+        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/{mapper.lower()}_consistency_{suffix}.svg')
 
 def mpv_comparison():
     original_susie_regions_dir = f'{ukb}/finemapping/susie_results/mean_platelet_volume'

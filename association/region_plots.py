@@ -516,7 +516,9 @@ def full_genome_pandas_df(df):
         df['plot_pos'][df['chr'] >= chrom] += chr_lens[chrom - 2]
 
 def full_genome_polars_df(df):
-    df['plot_pos'] = df['pos']
+    df = df.with_column(
+        pl.col('pos').alias('plot_pos')
+    )
     for chrom in range(2, 23):
         df = df.with_column(pl
             .when(pl.col('chr') >= chrom)

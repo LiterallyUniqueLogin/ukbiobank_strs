@@ -124,7 +124,7 @@ def resize(fig, ratio, legend=True):
         resize_int(fig.legend, 'padding', ratio)
         resize_int(fig.legend, 'spacing', ratio)
         resize_int(fig.legend, 'margin', ratio)
-    for place in bokeh.models.plots._VALID_PLACES:
+    for place in bokeh.core.enums.Place:
         for obj in getattr(fig, place):
             if isinstance(obj, bokeh.models.Title):
                 resize_font(obj, 'text_font_size', ratio)
