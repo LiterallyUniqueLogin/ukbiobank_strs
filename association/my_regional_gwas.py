@@ -8,6 +8,7 @@ import tempfile
 import time
 
 import numpy as np
+import polars as pl
 import statsmodels.api as sm
 from statsmodels.regression.linear_model import OLS
 import statsmodels.stats.weightstats
@@ -17,7 +18,7 @@ import python_array_utils as utils
 import sample_utils
 import weighted_binom_conf
 
-project_temp = os.environ['PROJECT_TEMP']
+project_temp = os.environ['UKB'] + '/scratch'
 
 def perform_regional_gwas_helper(
     outfile,
@@ -135,7 +136,7 @@ def perform_regional_gwas_helper(
             coef = reg_result.params[0]
             se = reg_result.bse[0]
             rsquared = reg_result.rsquared
-            outfile.write(f"{pval:.2e}\t{coef/std}\t{se}\t{rsquared}\t")
+            outfile.write(f"{pval:.2e}\t{coef/std}\t{se/std}\t{rsquared}\t")
         else:
             model = sm.GLM(
                 outcome,
@@ -281,13 +282,48 @@ def perform_regional_gwas_helper(
     else:
         print(f"No variants found in the region {region}\n", flush=True)
 
-
-def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, runtype, imputation_run_name, conditional_covars_fname):
-    if runtype == 'strs':
-        get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
-            imputation_run_name, region, samples
+def get_genotype_iter_vars_file(imputation_run_name, vars_fname, samples):
+    with open(vars_fname) as vars_file:
+        next(vars_file)
+        try:
+            next(vars_file)
+        except StopIteration:
+            # this is a empty vars file
+            # yield only the list of details fields and then exit without yielding variants
+            itr = load_and_filter_genotypes.load_strs(
+                imputation_run_name, f'1:1-1', samples
+            )
+            yield next(itr)
+            return
+    f = pl.read_csv(vars_file, sep='\t')
+    chroms = f['chrom']
+    poses = f['pos']
+    first = True
+    for (chrom, pos) in zip(chroms, poses):
+        itr = load_and_filter_genotypes.load_strs(
+            imputation_run_name, f'{chrom}:{pos}-{pos}', samples
         )
+        # yield or skip the extra details line
+        if first:
+            yield next(itr)
+            first = False
+        else:
+            next(itr)
+        # yield the genotype
+        yield next(itr)
+
+
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, vars_file, runtype, imputation_run_name, conditional_covars_fname):
+    if runtype == 'strs':
+        if region is not None:
+            get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
+                imputation_run_name, region, samples
+            )
+        else:
+            assert vars_file is not None
+            get_genotype_iter = lambda samples: get_genotype_iter_vars_file(imputation_run_name, vars_file, samples)
     elif runtype == 'imputed-snps':
+        assert vars_file is None
         get_genotype_iter = lambda samples: load_and_filter_genotypes.load_imputed_snps(
             region, samples
         )
@@ -352,8 +388,9 @@ def main():
         choices=['imputed-snps', 'strs']
     )
     parser.add_argument('phenotype')
-    parser.add_argument('--readme', action='store_true')
+    parser.add_argument('--readme', action='store_true', default=False)
     parser.add_argument('--region')
+    parser.add_argument('--vars-file')
     parser.add_argument('--pheno-and-covars')
     parser.add_argument('--shared-covars')
     parser.add_argument('--conditional-covars')
@@ -362,17 +399,19 @@ def main():
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
 
-    assert args.readme == (args.region is None)
+    assert args.readme == (args.region is None and args.vars_file is None)
     assert (args.imputation_run_name is not None) == (args.runtype == 'strs')
+
+    assert (args.region is not None) + (args.vars_file is not None) <= 1
 
     # this would require firth regression which I've removed
     assert not ((args.runtype == 'imputed-snps') and (args.binary == 'logistic'))
 
     assert (
-        (args.region is not None) ==
-        (args.pheno_and_covars is not None) ==
-        (args.shared_covars is not None) ==
-        (args.untransformed_phenotypes is not None)
+        args.readme ==
+        (args.pheno_and_covars is None) ==
+        (args.shared_covars is None) ==
+        (args.untransformed_phenotypes is None)
     )
 
     if args.conditional_covars is not None:
@@ -395,6 +434,7 @@ def main():
             args.phenotype,
             args.binary,
             args.region,
+            args.vars_file,
             args.runtype,
             args.imputation_run_name,
             args.conditional_covars

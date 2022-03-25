@@ -409,8 +409,8 @@ rule write_my_gwas_readme:
         )
 
 def my_regional_gwas_mem_gb_req(wildcards, attempt):
-    if wildcards.suffix != '_logistic':
-        return 9
+    if wildcards.binary != '_logistic':
+        return 4
     else:
         return 40
 
@@ -510,7 +510,6 @@ rule run_str_spot_test:
         f'--imputation-run-name {str_imputation_run_name} '
         '{params.binary_flag} '
 
-# TODO update for new syntax
 rule run_regional_my_str_gwas:
     input:
         shared_covars=rules.load_shared_covars.output.shared_covars,
@@ -524,24 +523,24 @@ rule run_regional_my_str_gwas:
     resources:
         time='12:00:00',
         mem_gb=my_regional_gwas_mem_gb_req
-    run:
-        cmd = (
-            'association/my_regional_gwas.py strs {wildcards.phenotype} '
-            '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
-            f'--imputation-run-name {str_imputation_run_name} '
+    params:
+        binary_flag = lambda wildcards: (
+            '' if wildcards.binary == '' and not phenotypes.is_binary(wildcards.phenotype) else
+            '--binary linear' if wildcards.bianry == '_linear' and phenotypes.is_binary(wildcards.phenotype) else
+            '--binary logistic' if wildcards.binary == '_logistic' and phenotypes.is_binary(wildcards.phenotype) else 
+            1/0
         )
-
-        if wildcards.suffix == '':
-            assert not phenotypes.is_binary(wildcards.phenotype)
-        elif wildcards.suffix == '_linear':
-            assert phenotypes.is_binary(wildcards.phenotype)
-            cmd += '--binary linear '
-        else:
-            assert wildcards.suffix == '_logistic'
-            assert phenotypes.is_binary(wildcards.phenotype)
-            cmd += '--binary logistic '
-
-        shell(cmd)
+    shell:
+        'association/my_regional_gwas.py '
+        '{output.results} '
+        'strs '
+        '{wildcards.phenotype} '
+        '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
+        '--pheno-and-covars {input.transformed_phenotype} '
+        '--shared-covars {input.shared_covars} '
+        '--untransformed-phenotypes {input.untransformed_phenotype} '
+        f'--imputation-run-name {str_imputation_run_name} '
+        '{params.binary_flag} '
 
 rule concatenate_my_str_gwas:
     input:
@@ -1099,6 +1098,11 @@ def generated_regions(phenotype):
             chrom == 12 and
             start == 19976272 and
             end == 22524428
+        ) or (
+            phenotype == 'alkaline_phosphatase' and
+            chrom == 1 and
+            start == 19430673 and
+            end == 24309348
         ))
     ]
 
@@ -1108,6 +1112,82 @@ def n_regions_no_strs(phenotype):
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
     ).select((~pl.col('any_strs')).sum()).collect()[0, 0]
+
+rule write_finemapped_strs:
+    input:
+        table=rules.generate_regions.output.table,
+        loci='snpstr/str_loci.txt',
+    output:
+        expand(
+            'signals/strs_in_regions/{phenotype}_chr{chrom}.tab',
+            phenotype='{phenotype}',
+            chrom=range(1,23)
+        )
+    resources:
+        time='00:30:00',
+        mem_gb=4
+    params:
+        outdir=lambda wildcards, output: '/'.join(output[0].split('/')[:-1])
+    shell:
+        'signals/write_finemapped_strs.py '
+        '{params.outdir} '
+        '{wildcards.phenotype} '
+        '{input.table} '
+        '{input.loci} '
+
+rule write_all_finemapped_strs:
+    input:
+        expand(rules.write_finemapped_strs.output[0], phenotype=phenotypes.phenotypes_in_use)
+
+rule run_ethnic_finemapped_my_str_gwas:
+    input:
+        shared_covars=rules.load_shared_covars.output.shared_covars,
+        untransformed_phenotype=expand(rules.load_phenotype.output.phenotype, ethnicity='{ethnicity}', phenotype='{phenotype}', subpop='', subpop_prefix=''),
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity='{ethnicity}', phenotype='{phenotype}', subpop='', subpop_prefix=''),
+        vcf=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz",
+        vcf_idx=f"str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr{{chrom}}.vcf.gz.tbi",
+        strs='signals/strs_in_regions/{phenotype}_chr{chrom}.tab'
+    output:
+        results="association/results_finemapped_only/{ethnicity}/{phenotype}/my_str{binary,|_linear|_logistic}/batches/chr{chrom}.tab"
+    resources:
+        time='07:00:00',
+        mem_gb=my_regional_gwas_mem_gb_req
+    params:
+        binary_flag = lambda wildcards: (
+            '' if wildcards.binary == '' and not phenotypes.is_binary(wildcards.phenotype) else
+            '--binary linear' if wildcards.binary == '_linear' and phenotypes.is_binary(wildcards.phenotype) else
+            '--binary logistic' if wildcards.binary == '_logistic' and phenotypes.is_binary(wildcards.phenotype) else 
+            1/0
+        )
+    shell:
+        'association/my_regional_gwas.py '
+        '{output.results} '
+        'strs '
+        '{wildcards.phenotype} '
+        '--vars-file {input.strs} '
+        '--pheno-and-covars {input.transformed_phenotype} '
+        '--shared-covars {input.shared_covars} '
+        '--untransformed-phenotypes {input.untransformed_phenotype} '
+        f'--imputation-run-name {str_imputation_run_name} '
+        '{params.binary_flag} '
+
+rule gwas_all_finemapped_strs_all_ethnicities:
+    input:
+        expand(rules.run_ethnic_finemapped_my_str_gwas.output.results, ethnicity=other_ethnicities, phenotype=phenotypes.phenotypes_in_use, chrom=range(1,23), binary='')
+
+rule concatenate_ethnic_finemapped_my_str_gwas:
+    input:
+        expand(rules.run_ethnic_finemapped_my_str_gwas.output.results, ethnicity='{ethnicity}', phenotype='{phenotype}', chrom=range(1,23), binary='')
+    output:
+        results=protected("association/results_finemapped_only/{ethnicity}/{phenotype}/my_str{binary,|_linear|_logistic}/results.tab")
+    resources:
+        time='04:00:00'
+    run:
+        concatenate_csvs(output[0], input)
+
+rule concatenate_all_ethnic_finemapped_my_str_gwas:
+    input:
+        expand(rules.concatenate_ethnic_finemapped_my_str_gwas.output.results, ethnicity=other_ethnicities, phenotype=phenotypes.phenotypes_in_use, binary='')
 
 rule generate_peaks:
     input:
@@ -1211,8 +1291,6 @@ rule linear_overview_manhattan:
         '{input.my_str_results} '
         '{input.plink_snp_log_file} '
         '{input.plink_snp_results} '
-        '10000000 '
-        '5e-8 '
         '{input.peaks_fname} '
         '{params.pub_flag} '
         '{params.legend_flag} '
@@ -1334,7 +1412,7 @@ rule finemap_load_gts:
         '--varname-header '
 
 def finemap_corrs_time(wildcards, attempt):
-    return '24:00:00' # TODO undo this
+    return '47:30:00' #TODO undo
     if attempt == 1:
         return '01:00:00'
     else:
@@ -1728,25 +1806,6 @@ rule susie_run_change_prior_variance:
         '{params.max_iter} '
         '--scaled-prior-variance {wildcards.prior_var} '
 
-'''
-rule all_susie_light_tol_test_mpv:
-    input:
-        sum([
-            expand(rules.susie_run_change_tol.output.alpha, tol=0.001, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end)
-            for chrom, start, end in susie_mpv_light_regions()
-        ], [])
-
-rule all_susie_test_light_mpv:
-    input:
-        sum([
-            expand(rules.susie_run_change_snp_str_ratio.output.alpha, ratio={1.5, 4}, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end) +
-            expand(rules.susie_run_change_tol.output.alpha, tol=0.0001, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end) +
-            expand(rules.susie_run_change_prior_variance.output.alpha, prior_var={0.2, 0.0005}, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end) +
-            expand(rules.susie_run_change_residual_variance.output.alpha, res_var={.95, .8}, phenotype='mean_platelet_volume', chrom=chrom, start=start, end=end)
-            for chrom, start, end in susie_mpv_light_regions()
-        ], [])
-'''
-
 def all_susie_outputs(phenotype):
     assert not phenotypes.is_binary(phenotype)
     return [
@@ -1816,7 +1875,65 @@ rule summarize_susie_output:
                 f"finemapping/summarize_susie_results.py {dirs_file.name} {output.table} "
             )
 
-# ----- finemapping summaries ----------
+######################### Post finemapping analyses ########################
+
+rule first_pass_finemapping_concordance:
+    input:
+        #rules.susie_all_phenotypes.input,
+        #rules.finemap_all_phenotypes.input,
+        #expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
+        #expand(rules.concatenate_my_str_gwas.output.results,       phenotype='{phenotype}', suffix=''),
+        #rules.generate_regions.output.table,
+    output:
+        table='post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab'
+    resources:
+        time='03:00:00',
+        mem_gb=50
+    shell:
+        'post_finemapping/finemapping_consistency.py '
+        '--first-pass '
+        '--regenerate '
+        '--phenotype {wildcards.phenotype} '
+        '--no-assert '
+
+rule first_pass_finemapping_concordance_all:
+    input:
+        expand(rules.first_pass_finemapping_concordance.output.table, phenotype=phenotypes.phenotypes_in_use)
+
+rule finemapping_str_vs_snp_stats:
+    input:
+        expand(rules.first_pass_finemapping_concordance.output.table, phenotype=phenotypes.phenotypes_in_use)
+    output:
+        'post_finemapping/results/finemap_pip_cdf.svg',
+        'post_finemapping/results/finemap_pip_cdf.png',
+        'post_finemapping/results/susie_alpha_cdf.svg',
+        'post_finemapping/results/susie_alpha_cdf.png',
+        text='post_finemapping/results/snp_vs_str_stats.txt',
+    resources:
+        time='00:10:00',
+        mem_gb=50
+    params:
+        outdir=lambda wildcards, output: '/'.join(output.text.split('/')[:-1])
+    shell:
+        'post_finemapping/snp_vs_str_stats.py '
+        '{params.outdir} '
+        '{input.table} '
+
+rule all_susie_finemap_venn_diagram:
+    input:
+        table = rules.first_pass_finemapping_concordance.output.table
+    output:
+        png='export_scripts/results/all_susie_finemap_venn.png',
+        svg='export_scripts/results/all_susie_finemap_venn.svg'
+    resources:
+        time='00:10:00'
+    params:
+        outprefix = lambda wildcards, output: output.png[:-4]
+    shell:
+        'export_scripts/venn_diagram.py '
+        '{params.outprefix} '
+        '{input.table} '
+
 rule sort_gencode:
     input:
         'misc_data/gencode/gencode.v38lift37.annotation.gff3'
@@ -2112,8 +2229,6 @@ rule finemap_signal_strengths:
     shell:
         'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
 
-######################### Create Files to Export ########################
-
 rule finemapping_concordance:
     input:
         rules.susie_all_phenotypes.input,
@@ -2226,8 +2341,8 @@ rule confusion_matrix:
     input:
         white_brits=expand(rules.subset_samples_for_phenotype.output.samples, ethnicity='white_brits', phenotype='no_phenotype', subpop='', subpop_prefix='')[0]
     output:
-        png='export_scripts/results/{chrom}_{pos}_confusion_matrix.png',
-        pdf='export_scripts/results/{chrom}_{pos}_confusion_matrix.pdf'
+        png='export_scripts/results/confusion_matrix/{chrom}_{pos}_confusion_matrix.png',
+        pdf='export_scripts/results/confusion_matrix/{chrom}_{pos}_confusion_matrix.pdf'
     resources:
         time='00:10:00'
     shell:
@@ -2571,21 +2686,74 @@ rule metaparameter_tests_putatively_causal_results:
             expand(rules.susie_run_change_snp_str_ratio.output.alpha, ratio=4, phenotype=phenotype, chrom=chrom, start=start, end=end, PACSIN2='') +
             expand(rules.susie_run.output.alpha, phenotype=phenotype, chrom=chrom, start=start, end=end, hardcalls='hardcall_', PACSIN2='', gt_test='') +
             expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.total_prob_4', PACSIN2='', gt_test='') + 
-            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.prior_std_0.005', PACSIN2='', gt_test='') + 
+            expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.prior_std_0.0224', PACSIN2='', gt_test='') + 
             expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.snp_str_ratio_4', PACSIN2='', gt_test='') + 
             expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='.prob_conv_sss_tol_0.0001', PACSIN2='', gt_test='') + 
             expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='', PACSIN2='', gt_test='_mac_100') +
             expand(rules.finemap_run.output.snp_file, phenotype=phenotype, chrom=chrom, start=start, end=end, metaparameter_test='', PACSIN2='', gt_test='_threshold_0.0005')
             for (phenotype, chrom, start, end) in putatively_causal_regions()
-            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428)}#, ('alkaline_phosphatase', 1, 24309348)}
+            if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428), ('alkaline_phosphatase', 1, 24309348), ('urate', 4, 11717761)}
         ], [])
 
-######################### Export Files ########################
+rule finemapping_generate_concordant_causal_candidate_STRs:
+    '''
+    input:
+        rules.metaparameter_tests_putatively_causal_results.input,
+        rules.validate_putatively_causal_STRs.output.strs,
+        rules.susie_all_phenotypes.input,
+        rules.finemap_all_phenotypes.input,
+        expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='{phenotype}', suffix=''),
+        expand(rules.concatenate_my_str_gwas.output.results,       phenotype='{phenotype}', suffix=''),
+        rules.summary_table.output.table,
+        rules.concatenate_all_ethnic_finemapped_my_str_gwas.input
+    '''
+    output:
+        all_vars='post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab',
+    resources:
+        time='01:00:00',
+        mem_gb=50
+    shell:
+        'post_finemapping/finemapping_consistency.py '
+        '--putatively-causal-hits '
+        '--regenerate '
+        '--phenotype {wildcards.phenotype} '
+        '--no-assert '
+
+rule finemapping_summarize_concordant_causal_candidate_STRs:
+    input:
+        expand(rules.finemapping_generate_concordant_causal_candidate_STRs.output.all_vars, phenotype=phenotypes.phenotypes_in_use)
+    output:
+        passes_originals='post_finemapping/intermediate_results/original_causal_STR_candidates.tab',
+        concordant='post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab',
+        passes_strict='post_finemapping/intermediate_results/strictly_concordant_causal_STR_candidates.tab',
+    resources:
+        time='01:00:00',
+        mem_gb=50
+    shell:
+        'post_finemapping/finemapping_consistency.py '
+        '--putatively-causal-hits '
+
+rule causal_STR_candidates_table:
+    input:
+        concordante_table=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.concordant,
+        validated_table=rules.validate_putatively_causal_STRs.output.strs,
+        snpstr_mapping='snpstr/flank_trimmed_vcf/vars.tab',
+    output:
+        table='export_scripts/results/causal_STR_candidates_for_publication.tab'
+    resources:
+        time='00:10:00'
+    shell:
+        'post_finemapping/generate_publishable_candidates_table.py '
+        '{output.table} '
+        '{input.validated_table} '
+        '{input.concordant_table} '
+        '{input.snpstr_mapping} '
 
 rule graph_main_hits:
     input:
         snpstr_mapping='snpstr/flank_trimmed_vcf/vars.tab',
-        hits=rules.validate_putatively_causal_STRs.output.strs,
+        hits=rules.causal_STR_candidates_table.output.table,
+        multiallelicness=rules.validate_putatively_causal_STRs.output.strs,
     output:
         graph='post_finemapping/results/results_graph.{ext}'
     resources:
@@ -2595,7 +2763,10 @@ rule graph_main_hits:
         '{output.graph} '
         '{wildcards.ext} '
         '{input.hits} '
+        '{intput.multiallelicness} '
         '{input.snpstr_mapping} '
+
+######################### Export Files ########################
 
 def link_file(input_, output_):
     input_ = '../'*output_.count('/') + input_
@@ -2851,11 +3022,48 @@ rule figure1:
         e=expand(rules.peak_figs.output.barplot),
         f=expand(rules.peak_figs.output.heatmap),
 
-'''
 rule figure2:
     input:
-        pass
+        expand(rules.graph_main_hits.output, ext=['svg', 'png'])
+
+rule all_main_figures:
+    input:
+        rules.figure2.input,
+        rules.figure1.input
+
+rule supplemental_figure_common_alleles:
+    input:
+        expand(rules.summarize_loci.output.other_threshes)
+
+rule supplemental_figure_all_susie_finemap_venn:
+    input:
+        rules.all_susie_finemap_venn_diagram.output
+
+rule all_supplemental_figures:
+    input:
+        rules.supplemental_figure_common_alleles.input,
+        rules.supplemental_figure_all_susie_finemap_venn.input,
+
+rule supplemental_table4:
+    input:
+        # the README for this table was manually written
+        rules.causal_STR_candidates_table.input
+
+rule all_supplemental_tables:
+    input:
+        rules.supplemental_table4.input
+
 '''
+# TODO this isn't completely reflective of the published table
+rule supp_table_phenotypes:
+'''
+
+rule all_for_publication:
+    input:
+        rules.all_supplemental_figures.input,
+        rules.all_main_figures.input,
+        rules.all_supplemental_tables.input,
+
 
 
 #----------------- testing -------------------

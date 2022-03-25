@@ -1,22 +1,24 @@
 category	all_gwas_sig_STRs_count	#_in_cat	%_in_cat	subset_name	subset_count	#_subset_in_cat	%_subset_in_cat	p_val
-exonic_trinucs	10758	25	0.2324%	singly_finemapped	409	7	1.7115%	2.8924504278682495e-05
-exonic_trinucs	10758	25	0.2324%	doubly_finemapped	134	5	3.7313%	1.209864822352345e-05
-exonic_trinucs	10758	25	0.2324%	consistently_finemapped_but_skeptical	79	4	5.0633%	3.0303090360827945e-05
-exonic_trinucs	10758	25	0.2324%	consistently_finemapped_with_skeptical	53	4	7.5472%	6.15100614484342e-06
-AC_repeats	10758	876	8.1428%	singly_finemapped	409	52	12.7139%	0.0007959499537325428
-AC_repeats	10758	876	8.1428%	doubly_finemapped	134	19	14.1791%	0.015998398248330107
-AC_repeats	10758	876	8.1428%	consistently_finemapped_but_skeptical	79	12	15.1899%	0.03496277926781257
-AC_repeats	10758	876	8.1428%	consistently_finemapped_with_skeptical	53	8	15.0943%	0.07427454572034303
-A_repeats	10758	7941	73.8148%	singly_finemapped	409	285	69.6822%	0.0599828896396494
-A_repeats	10758	7941	73.8148%	doubly_finemapped	134	84	62.6866%	0.0043768302214308025
-A_repeats	10758	7941	73.8148%	consistently_finemapped_but_skeptical	79	52	65.8228%	0.13536362593460052
-A_repeats	10758	7941	73.8148%	consistently_finemapped_with_skeptical	53	33	62.2642%	0.07826866913789528
-transcribed_non_protein	10758	270	2.5098%	singly_finemapped	409	18	4.4010%	0.022000559591569407
-transcribed_non_protein	10758	270	2.5098%	doubly_finemapped	134	12	8.9552%	0.00013572286858610748
-transcribed_non_protein	10758	270	2.5098%	consistently_finemapped_but_skeptical	79	6	7.5949%	0.014254826585299559
-transcribed_non_protein	10758	270	2.5098%	consistently_finemapped_with_skeptical	53	2	3.7736%	0.3855671095088241
-intergenic	10758	3440	31.9762%	singly_finemapped	409	126	30.8068%	0.6434063944917666
-intergenic	10758	3440	31.9762%	doubly_finemapped	134	44	32.8358%	0.9032902557858478
-intergenic	10758	3440	31.9762%	consistently_finemapped_but_skeptical	79	26	32.9114%	0.9538922696946788
-intergenic	10758	3440	31.9762%	consistently_finemapped_with_skeptical	53	15	28.3019%	0.6586481262974664
+exonic_trinucs	10781	25	0.2319%	singly_finemapped	411	7	1.7032%	2.944217231701473e-05
+exonic_trinucs	10781	25	0.2319%	doubly_finemapped	136	6	4.4118%	5.246550982423048e-07
+exonic_trinucs	10781	25	0.2319%	concordantly_finemapped	93	4	4.3011%	5.713733772425808e-05
+exonic_trinucs	10781	25	0.2319%	strictly_concordantly_finemapped	53	4	7.5472%	6.099675324423012e-06
+AC_repeats	10781	877	8.1347%	singly_finemapped	411	52	12.6521%	0.0008877223457755181
+AC_repeats	10781	877	8.1347%	doubly_finemapped	136	19	13.9706%	0.017364544612972977
+AC_repeats	10781	877	8.1347%	concordantly_finemapped	93	13	13.9785%	0.05315874302146336
+AC_repeats	10781	877	8.1347%	strictly_concordantly_finemapped	53	8	15.0943%	0.07403028676706926
+A_repeats	10781	7959	73.8243%	singly_finemapped	411	287	69.8297%	0.06857631868067808
+A_repeats	10781	7959	73.8243%	doubly_finemapped	136	85	62.5000%	0.003442305187549626
+A_repeats	10781	7959	73.8243%	concordantly_finemapped	93	62	66.6667%	0.14467789515701665
+A_repeats	10781	7959	73.8243%	strictly_concordantly_finemapped	53	33	62.2642%	0.07796924679092448
+transcribed_non_protein	10781	271	2.5137%	singly_finemapped	411	18	4.3796%	0.02255942503585389
+transcribed_non_protein	10781	271	2.5137%	doubly_finemapped	136	12	8.8235%	0.00015863127520195265
+transcribed_non_protein	10781	271	2.5137%	concordantly_finemapped	93	8	8.6022%	0.0023129021621446353
+transcribed_non_protein	10781	271	2.5137%	strictly_concordantly_finemapped	53	2	3.7736%	0.38630994134576424
+intergenic	10781	3445	31.9544%	singly_finemapped	411	127	30.9002%	0.6793424952084398
+intergenic	10781	3445	31.9544%	doubly_finemapped	136	44	32.3529%	0.9937887940757343
+intergenic	10781	3445	31.9544%	concordantly_finemapped	93	30	32.2581%	1.0
+intergenic	10781	3445	31.9544%	strictly_concordantly_finemapped	53	15	28.3019%	0.6586651532815322
 
+Mann-Whitney p_val mean len concordantly fine-mapped vs all gwas sig in finemapping regions: 0.0652086918187483
+Mann-Whitney p_val dist to nearest upstream gene in intergenic STRs (capped at 50kbp), concordantly fine-mapped vs all gwas sig in finemapping regions: 0.01970778937629178

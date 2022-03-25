@@ -34,7 +34,7 @@ default-resources:
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
 restart-times: 1
 max-jobs-per-second: 30 #too many?
-max-status-checks-per-second: 20
+max-status-checks-per-second: 10
 latency-wait: 180
 resources: mem_gb=15000
 jobs: 500

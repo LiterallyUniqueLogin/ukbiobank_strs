@@ -1,0 +1,6 @@
+Among vars with p-val <= 5e-8, vars with PIP <= 0.15 make 38.62% of all SuSiE PIP contributions and 35.95% of all FINEMAP PIP contributions
+Among vars with p-val <= 5e-8, STRs make 5.61% of all SuSiE PIP contributions and 8.82% of all FINEMAP PIP contributions
+SuSiE identifies 13784 credible sets across all trait-regions, averaging to 1.04 per region
+Among vars with p-val <= 5e-8, STRs make 8.58% of all SuSiE variants with PIP >= 0.8 (out of 3870) and 11.01% of all FINEMAP variants with PIP >= 0.8 (out of 5460)
+Among vars with p-val <= 5e-8, STRs make 6.60% of all variants with both SuSiE and FINEMAP PIP >= 0.8 (out of 3411)
+Of note, vars with p-val <= 5e-8 make 71.10% of all SuSiE PIP contributions and 68.06% of all FINEMAP PIP contributions

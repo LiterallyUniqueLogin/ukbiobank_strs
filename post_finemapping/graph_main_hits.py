@@ -19,6 +19,7 @@ def main():
     #cols chrom, start_pos, phenotype, association_p_value, multiallelicness, repeat_unit, pcausal,
     #relation_to_gene, other_ethnic_effect_directions
     parser.add_argument('hits_table')
+    parser.add_argument('multiallelicness_table')
     parser.add_argument('snpstr_correspondence_table') #cols chrom, pos, end_pos, snpstr_pos
     #parser.add_argument('per_pheno_summary_tables', help='json dict from pheno to summary table')
     #parser.add_argument('per_pheno_results', help='json dict from pheno to results file')
@@ -36,12 +37,24 @@ def main():
         sep='\t',
         dtype={'other_ethnic_association_ps': str}
     )
+    
     snpstr_correspondence = pl.scan_csv(
         args.snpstr_correspondence_table,
         sep='\t'
     )
     df = df.join(snpstr_correspondence, how='left', left_on=['chrom', 'start_pos'], right_on=['chrom', 'pos'])
     df = df.rename({'start_pos': 'pos', 'chrom': 'chr'})
+
+    multiallelicness = pl.scan_csv(
+        args.multiallelicness_table,
+        sep='\t',
+    ).select(['phenotype', 'chrom', 'start_pos', 'multiallelicness'])
+    df = df.join(
+        multiallelicness,
+        how='left',
+        left_on=['phenotype', 'chr', 'snpstr_pos'],
+        right_on=['phenotype', 'chrom', 'start_pos']
+    )
 
     df = df.with_columns([
         pl.when(pl.col('association_p_value') == 0)
@@ -81,13 +94,15 @@ def main():
         df[df['phenotype'] == phenotype, 'unit'] = args.units[phenotype]
     '''
 
+    x_bounds = 10_000_000
     results_plot = bokeh.plotting.figure(
         width=1200,
         height=400,
-        title='Putatively causal STRs by position',
+        title='Causal STR candidates',
         x_axis_label='Chromosome',
         y_axis_label='-log10(p-value)',
         y_range = (0, 320),
+        x_range = (-x_bounds, np.sum(region_plots.chr_lens) + x_bounds),
         tools='reset, save'
     )
 
@@ -117,8 +132,9 @@ def main():
         color='grey',
         #fill_color=None,
         source=bokeh.models.ColumnDataSource({col: multi_assocs[col] for col in multi_assocs.columns}),
-        legend_label = 'Same signal multiple phenos'
+        legend_label = 'same STR multiple associations'
     )
+    results_plot.legend.location = 'top_left'
 
     # x axis
     results_plot.line(
@@ -167,7 +183,7 @@ def main():
         color=df['color']
     )
     circles = []
-    for color, legend in (('blue', 'serum biomarker'), ('red', 'haematology phenotype')):
+    for color, legend in (('blue', 'blood biomarker phenotype'), ('red', 'blood cell count phenotype')):
         color_df = df.filter(pl.col('color') == color)
         circles.append(results_plot.circle(
             'plot_pos',

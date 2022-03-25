@@ -1,6 +1,8 @@
 import math
 from typing import Optional
 
+import bokeh.embed
+import bokeh.io
 import bokeh.models.plots
 import matplotlib.axes
 import matplotlib.pyplot as plt
@@ -79,6 +81,21 @@ def _BetterCDF(data: np.ndarray,
     ax.step(data, ys, where='post')
 
 # bokeh
+
+def export(bokeh_plot, outfname, ext, title=None):
+    if ext != 'html':
+        bokeh_plot.background_fill_color = None
+        bokeh_plot.border_fill_color = None
+        bokeh_plot.toolbar_location = None
+    if ext == 'png':
+        bokeh.io.export_png(bokeh_plot, filename=outfname)
+    elif ext == 'svg':
+        bokeh.io.export_svg(bokeh_plot, filename=outfname)
+    else:
+        assert ext == 'html'
+        html = bokeh.embed.file_html(bokeh_plot, bokeh.resources.CDN, title)
+        with open(outfname, 'w') as outfile:
+            outfile.write(html)
 
 def resize_font(obj, fontattr, ratio):
     font = obj.__getattribute__(fontattr)

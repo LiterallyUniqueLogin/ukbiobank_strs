@@ -175,8 +175,6 @@ def main():
     parser.add_argument('my_str_results')
     parser.add_argument('plink_snp_log_file')
     parser.add_argument('plink_snp_results')
-    parser.add_argument('peaks-spacing', type=int)
-    parser.add_argument('peaks-thresh', type=str)
     parser.add_argument('peaks_fname')
     parser.add_argument('--legendless', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})

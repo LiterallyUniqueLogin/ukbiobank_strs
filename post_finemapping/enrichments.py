@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import argparse
 import ast
 import os
 from typing import List
@@ -16,10 +15,14 @@ import pandas as pd
 import polars as pl
 import scipy.stats
 import scipy.stats.contingency
+import seaborn
 
 import annotation_utils
+import phenotypes
 
 ukb = os.environ['UKB']
+
+other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 '''
 ALL STRs
@@ -29,7 +32,7 @@ And with FINEMAP pcausal >= .9
 #def main():
 
 def binary_test(out, compare_STRs, in_category, category_string):
-    for subset_name in 'singly_finemapped', 'doubly_finemapped', 'consistently_finemapped_but_skeptical', 'consistently_finemapped_with_skeptical':
+    for subset_name in 'singly_finemapped', 'doubly_finemapped', 'concordantly_finemapped', 'strictly_concordantly_finemapped':
         subset = compare_STRs[subset_name].to_numpy()
         # marginals
         n_strs = compare_STRs.shape[0]
@@ -46,75 +49,6 @@ def binary_test(out, compare_STRs, in_category, category_string):
         else:
             p_val = scipy.stats.chi2_contingency(contingency_table)[1]
         out.write(f'{category_string}\t{n_strs}\t{n_cat}\t{n_cat/n_strs*100:.4f}%\t{subset_name}\t{n_subset}\t{n_subset_cat}\t{n_subset_cat/n_subset*100:.4f}%\t{p_val}\n')
-
-def graph_relative_rate_by_pcausal(compare_STRs, in_category, category_string):
-    xs = np.arange(0.00, 1.01, 0.01)
-    finemaped_counts = []
-    finemaped_subset_counts = []
-    comparison_count = compare_STRs.shape[0]
-    comparison_subset_count = np.sum(in_category)
-    rate_ratios = []
-    upper_cis = []
-    lower_cis = []
-
-    for x in xs:
-        finemaped_count = np.sum(compare_STRs['FINEMAP_pcausal'] >= x)
-        finemaped_counts.append(finemaped_count)
-        finemaped_subset_count = np.sum(in_category & (compare_STRs['FINEMAP_pcausal'] >= x))
-        finemaped_subset_counts.append(finemaped_subset_count)
-        result = scipy.stats.contingency.relative_risk(
-            finemaped_subset_count,
-            finemaped_count,
-            comparison_subset_count,
-            comparison_count
-        )
-        rate_ratios.append(result.relative_risk)
-        # +/-1 SD
-        lower, upper = result.confidence_interval(.68)
-        lower_cis.append(lower)
-        upper_cis.append(upper)
-    rate_ratios = np.array(rate_ratios)
-    finemaped_counts = np.array(finemaped_counts)
-    finemaped_subset_counts = np.array(finemaped_subset_counts)
-
-    fig = bokeh.plotting.figure(
-        title=f'Relative rate of {category_string} STRs by FINEMAP posterior causality',
-        y_axis_label = 'Relative rate',
-        x_axis_label = 'FINEMAP posterior causality at least this',
-        width=1200,
-        height=800
-    )
-    fig.background_fill_color = None
-    fig.border_fill_color = None
-    fig.grid.grid_line_color = None
-    fig.toolbar_location = None
-    fig.title.text_font_size = '30px'
-    fig.axis.axis_label_text_font_size = '26px'
-    fig.axis.major_label_text_font_size = '20px'
-    fig.varea(xs, lower_cis, upper_cis, legend_label='+/- 1 SD')
-    fig.line(xs, rate_ratios, color='black', legend_label='relative rate')
-    fig.legend.label_text_font_size = '22px'
-    fig.add_layout(bokeh.models.Title(
-        text=f'Relative rate is compared to the set of all non-MHC gwas-sig STRs: {comparison_subset_count}/{comparison_count} = {comparison_subset_count/comparison_count*100:.4f}%'
-    ), 'below')
-    fig.add_layout(bokeh.models.Title(
-        text=f'Relative rate is defined as (% {category_string} STRs among FINEMAP STRs with posterior causality >= x) / (% {category_string} STRs among all non-MHC gwas-sig STRs)'
-    ), 'below')
-    fig.add_layout(bokeh.models.Title(
-        text='gwas-sig STRs are those with association p <= 5e-8, not in the MHC. FINEMAP STRs must also be gwas-sig'
-    ), 'below')
-    label_idxs = np.array([0,20,40,60,80,100])
-    fig.circle(x=xs[label_idxs], y=rate_ratios[label_idxs], size=10, color='black')
-    fig.add_layout(bokeh.models.LabelSet(
-        x='x', y='y', text='text', x_offset=.03,  y_offset=.03, text_color='black', source=bokeh.models.ColumnDataSource(data=dict(
-            x=xs[label_idxs], y=rate_ratios[label_idxs], text=[
-                f'{subset}/{total}' for (subset, total) in zip(finemaped_subset_counts[label_idxs], finemaped_counts[label_idxs])
-            ]
-        ))
-    ))
-    fig.line([0,1], [1,1], line_dash='dashed', line_width=2, color='black')
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_{category_string}_relative_rate.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_{category_string}_relative_rate.svg')
 
 def _BetterCDF(data_list: List[float],
            ax: matplotlib.axes.Axes):
@@ -133,13 +67,6 @@ def _BetterCDF(data_list: List[float],
         [0]
     ))
     return ax.step(data, ys, where='post')
-
-'''
-parser = argparse.ArgumentParser()
-parser.add_argument('phenotypes', nargs='+')
-args = parser.parse_args()
-phenotypes = args.phenotypes
-'''
 
 # pos (start), snpstr_pos (hipstr)
 all_STRs = pl.read_csv(
@@ -372,8 +299,27 @@ all_STRs['intergenic'] = ~all_STRs['genic']
 for key in ('intronic', 'transcribed_non_protein'):
     print(f'n {key} STRS: {np.sum(all_STRs[key])}')
 
+causal_STR_candidates = pl.read_csv(
+    f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab',
+    sep='\t'
+).select([
+    'phenotype',
+    'chrom',
+    'pos',
+    pl.lit(True).alias('is_causal_STR_candidate')
+])
+
+compare_STRs = pl.DataFrame(all_STRs).join(
+    causal_STR_candidates.groupby(['chrom', 'pos']).agg(pl.col('is_causal_STR_candidate').any()),
+    how='left',
+    left_on=['chrom', 'SNPSTR_start_pos'],
+    right_on=['chrom', 'pos']
+)
+assert compare_STRs.groupby(['chrom', 'pos']).agg(pl.count()).select(pl.col('count').max().alias('out'))['out'].to_numpy()[0] == 1
+
+'''
 finemapping_results = pl.read_csv(
-    'post_finemapping/intermediate_results/finemapping_concordance.tab',
+    'post_finemapping/intermediate_results/finemapping_putatively_causal_concordance.tab',
     sep='\t'
 ).filter(
     ~pl.col('finemap_pip').is_null() &
@@ -403,13 +349,20 @@ both = finemapping_results.filter(
     (pl.col('finemap_pip') >= .8)
 ).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
 
-resilient_but_ratio = finemapping_results.filter(
-    (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col]) == 8)
+resilient_but_ratio_low = finemapping_results.filter(
+    (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
 ).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
+print(
+    'n STR-phenotype assocs',
+    finemapping_results.filter(
+        (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
+    ).shape
+)
 
 resilient = finemapping_results.filter(
-    (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 10)
+    (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
 ).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
+#print(either.shape[0], both.shape[0], resilient_but_ratio_low.shape[0], resilient.shape[0])
 
 # subset to STRs that were fine-mapped by both fine-mappers in a pheno with p-val <= 1e-10, then
 # mark which ones passed different fine-mapping thresholds
@@ -433,22 +386,21 @@ compare_STRs = pl.DataFrame(all_STRs).join(
 ).with_column(
     (~pl.col('indicator').is_null()).alias('doubly_finemapped')
 ).drop('indicator').join(
-    resilient_but_ratio,
+    resilient_but_ratio_low,
     how='left',
     left_on = ['chrom', 'SNPSTR_start_pos'],
     right_on = ['chrom', 'pos'],
 ).with_column(
-    (~pl.col('indicator').is_null()).alias('consistently_finemapped_but_skeptical')
+    (~pl.col('indicator').is_null()).alias('concordantly_finemapped')
 ).drop('indicator').join(
     resilient,
     how='left',
     left_on = ['chrom', 'SNPSTR_start_pos'],
     right_on = ['chrom', 'pos'],
 ).with_column(
-    (~pl.col('indicator').is_null()).alias('consistently_finemapped_with_skeptical')
+    (~pl.col('indicator').is_null()).alias('strictly_concordantly_finemapped')
 ).drop('indicator')
 
-'''
 finemap_STR_dfs = []
 for phenotype in phenotypes:
     print(f"Loading FINEMAPed STRs for pheno {phenotype} ... ", flush=True, end='')
@@ -522,6 +474,8 @@ bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/FINEMAP_prob_
 '''
 
 with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
+    
+
     '''
     out.write(
         f'From among phenotypes: {phenotypes}\n'
@@ -570,25 +524,95 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
     '''
 
     out.write('\n')
+
+    f, axs = plt.subplots(1,2, figsize=(9,5), sharey=True)
+    seaborn.boxplot(
+        y='mean_len',
+        data=compare_STRs.filter('concordantly_finemapped').select('mean_len').to_pandas(),
+        ax=axs[0],
+        fliersize=0,
+        boxprops={'facecolor': 'none'},
+        color=None
+    )
+    seaborn.swarmplot(
+        y='mean_len',
+        data=compare_STRs.filter('concordantly_finemapped').select('mean_len').to_pandas(),
+        ax=axs[0],
+        color='black'
+    ).set(title='concordantly finemapped STRs')
+    ax = seaborn.violinplot(
+        y='mean_len',
+        data=compare_STRs.select('mean_len').to_pandas(),
+        inner=None,
+        ax=axs[1]
+    )
+    ax.set(title='all STRs in finemapping regions with p-value <= 1e-10')
+    ax.collections[0].set_facecolor((0,0,0,0))
+    seaborn.boxplot(
+        y='mean_len',
+        data=compare_STRs.select('mean_len').to_pandas(),
+        ax=axs[1],
+        boxprops={'facecolor': 'none'},
+        fliersize=0
+    )
+    plt.savefig(f'{ukb}/post_finemapping/results/mean_len_comparison.png')
+    p_val = scipy.stats.mannwhitneyu(compare_STRs['mean_len'].to_numpy(), compare_STRs.filter('concordantly_finemapped')['mean_len'].to_numpy())[1]
+    out.write(f'Mann-Whitney p_val mean len concordantly fine-mapped vs all gwas sig in finemapping regions: {p_val}\n')
+
+    f, axs = plt.subplots(1,2, figsize=(9,5), sharey=True)
+    seaborn.boxplot(
+        y='upstream_gene_dist',
+        data=compare_STRs.filter(pl.col('concordantly_finemapped') & pl.col('intergenic') & (pl.col('upstream_gene_dist') <= 50_000)).select('upstream_gene_dist').to_pandas(),
+        ax=axs[0],
+        fliersize=0,
+        boxprops={'facecolor': 'none'},
+        color=None
+    )
+    seaborn.swarmplot(
+        y='upstream_gene_dist',
+        data=compare_STRs.filter(pl.col('concordantly_finemapped') & pl.col('intergenic') & (pl.col('upstream_gene_dist') <= 50_000)).select('upstream_gene_dist').to_pandas(),
+        ax=axs[0],
+        color='black'
+    ).set(title='concordantly finemapped STRs')
+    ax = seaborn.violinplot(
+        y='upstream_gene_dist',
+        data=compare_STRs.filter(pl.col('intergenic') & (pl.col('upstream_gene_dist') <= 50_000)).select('upstream_gene_dist').to_pandas(),
+        inner=None,
+        ax=axs[1]
+    )
+    ax.set(title='all STRs in finemapping regions with p-value <= 1e-10')
+    ax.collections[0].set_facecolor((0,0,0,0))
+    seaborn.boxplot(
+        y='upstream_gene_dist',
+        data=compare_STRs.filter(pl.col('intergenic') & (pl.col('upstream_gene_dist') <= 50_000)).select('upstream_gene_dist').to_pandas(),
+        ax=axs[1],
+        boxprops={'facecolor': 'none'},
+        fliersize=0
+    )
+    plt.savefig(f'{ukb}/post_finemapping/results/intergenic_upstream_gene_dist_comparison.png')
+    p_val = scipy.stats.mannwhitneyu(
+        compare_STRs.filter(pl.col('intergenic') & (pl.col('upstream_gene_dist') <= 50_000))['upstream_gene_dist'].to_numpy(),
+        compare_STRs.filter(pl.col('concordantly_finemapped') & pl.col('intergenic') & (pl.col('upstream_gene_dist') <= 50_000))['upstream_gene_dist'].to_numpy(),
+    )[1]
+    out.write(f'Mann-Whitney p_val dist to nearest upstream gene in intergenic STRs (capped at 50kbp), concordantly fine-mapped vs all gwas sig in finemapping regions: {p_val}\n')
+
+    '''
     fig, ax = plt.subplots()
     ax.set_xlim(0, np.max(compare_STRs['mean_len'].to_numpy()))
     ax.set_title('CDF of STR mean len')
     ax.set_ylabel('density')
     ax.set_xlabel('distance (bp)')
     _BetterCDF(compare_STRs['mean_len'].to_numpy(), ax)
-    '''
     p_val = scipy.stats.mannwhitneyu(compare_STRs['mean_len'], compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'])[1]
     out.write(f'Mann-Whitney p_val mean len FINEMAPed vs all gwas sig: {p_val}\n')
-    '''
-    _BetterCDF(compare_STRs.filter('consistently_finemapped_but_skeptical')['mean_len'].to_numpy(), ax)
+    _BetterCDF(compare_STRs.filter('concordantly_finemapped')['mean_len'].to_numpy(), ax)
     legends = ['gwas sig STRs', 'consisetnetly_finemapped_but_skeptical']
-    '''
     ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9. Both groups exclude MHC", ha="center", transform=ax.transAxes)
     ax.text(0.5, -1.1, f"Medians: {np.median(compare_STRs['mean_len'])} (gwas_sig) {np.median(compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'])} (FINEMAPed)", ha="center", transform=ax.transAxes)
-    '''
     plt.legend(legends)
     plt.savefig(f'{ukb}/post_finemapping/results/mean_len_cdf.png')
     plt.savefig(f'{ukb}/post_finemapping/results/mean_len_cdf.pdf')
+    '''
 
     '''
     out.write('\n')
@@ -608,8 +632,8 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
             p_val = scipy.stats.mannwhitneyu(subbed_data[col], subbed_data.loc[subbed_data['FINEMAPed'], col])[1]
             out.write(f'{category}\t{stream}\t{class_} STRs\t{p_val}\n')
             '''
-            _BetterCDF(subbed_data.filter(pl.col('consistently_finemapped_but_skeptical'))[col].to_numpy(), ax)
-            legends = ['gwas sig STRs', 'consistently_finemapped_but_skeptical']
+            _BetterCDF(subbed_data.filter(pl.col('concordantly_finemapped'))[col].to_numpy(), ax)
+            legends = ['gwas sig STRs', 'concordantly_finemapped']
             '''
             ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9", ha="center", transform=ax.transAxes)
             ax.text(0.5, -1.1, f"Medians: {np.median(subbed_data[col])} (gwas_sig) {np.median(subbed_data.loc[subbed_data['FINEMAPed'], col])} (FINEMAPed)", ha="center", transform=ax.transAxes)

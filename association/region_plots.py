@@ -23,6 +23,8 @@ import polars as pl
 
 import python_array_utils as utils
 
+from graphing_utils import export
+
 ukb = os.environ['UKB']
 
 chr_lens = np.genfromtxt(
@@ -527,21 +529,6 @@ def full_genome_polars_df(df):
             .alias('plot_pos')
         )
     return df
-
-def export(bokeh_plot, outfname, ext, title=None):
-    if ext != 'html':
-        bokeh_plot.background_fill_color = None
-        bokeh_plot.border_fill_color = None
-        bokeh_plot.toolbar_location = None
-    if ext == 'png':
-        bokeh.io.export_png(bokeh_plot, filename=outfname)
-    elif ext == 'svg':
-        bokeh.io.export_svg(bokeh_plot, filename=outfname)
-    else:
-        assert ext == 'html'
-        html = bokeh.embed.file_html(bokeh_plot, bokeh.resources.CDN, title)
-        with open(outfname, 'w') as outfile:
-            outfile.write(html)
 
 def add_x_navigate(bokeh_plot):
     wheel_zoom = bokeh.models.tools.WheelZoomTool(dimensions="width")

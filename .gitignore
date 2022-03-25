@@ -60,3 +60,5 @@ foo*
 *.h5
 polars_repro
 scratch
+for_melissa*
+*backup*
