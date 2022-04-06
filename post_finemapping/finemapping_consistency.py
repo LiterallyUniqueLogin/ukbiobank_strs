@@ -9,9 +9,11 @@ import pathlib
 import time
 
 import bokeh.models
+import bokeh.models.tickers
 import bokeh.io
 import bokeh.layouts
 import bokeh.plotting
+import bokeh.util.hex
 import matplotlib.cm
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,6 +26,7 @@ import graphing_utils
 import phenotypes
 
 ukb = os.environ['UKB']
+other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 corr_cutoff = .8
 p_val_thresh = 5e-8
@@ -52,13 +55,14 @@ def all_regions(phenotype):
         )
     )).to_dict(False).values()))
 
-def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None, phenotype=None, original=False, return_corrs = False):
+def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None, phenotype=None, original=False, return_corrs = False, only_L = None):
     assert (phenotype is not None) + (regions is not None) == 1
     assert (colnames_regions_dir is not None) + original <= 1
     dfs = []
     unconverged_regions = []
     underexplored_regions = []
     unfinished_regions = []
+    only_L_skips = []
     min_abs_corrs = []
 
     if regions is None:
@@ -103,6 +107,10 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
             sep='\t',
             has_header=False
         ).collect().to_numpy().T
+        if only_L is not None and only_L != alphas.shape[1]:
+            only_L_skips.append(region)
+            continue
+
         n_alphas = alphas.shape[1]
         susie_pips=1-np.prod(1-alphas, axis=1)
         if not susie_pips.shape[0] == len(susie_vars):
@@ -111,7 +119,7 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
         susie_idx = np.arange(len(susie_vars)) + 1
         susie_df = pl.DataFrame({
             'varname': susie_vars,
-            #'susie_pip': susie_pips,
+            'susie_pip': susie_pips,
             'susie_alpha': np.zeros(len(susie_vars)),
             'susie_cs': [-1]*len(susie_vars),
             'susie_idx': susie_idx,
@@ -160,6 +168,8 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
     print('unconverged_regions: ', unconverged_regions)
     print('underexplored_regions: ', underexplored_regions)
     print('unfinished_regions: ', unfinished_regions)
+    if only_L is not None:
+        print('only_L skips:', only_L_skips)
 
     dfs = [df.select(
         pl.col('*').exclude('^alpha.*$')
@@ -214,6 +224,431 @@ def load_finemap(results_regions_dir, regions = None, phenotype=None):
     print('underexplored_regions: ', underexplored_regions)
     return pl.concat(dfs)
 
+
+def mpv_comparison():
+    str_assocs = pl.scan_csv(
+        f'{ukb}/association/results/mean_platelet_volume/my_str/results.tab',
+        sep='\t',
+    ).select([
+        'chrom',
+        'pos',
+        ('STR_' + pl.col('pos').cast(str)).alias('varname'),
+        pl.lit(True).alias('is_STR'),
+        pl.col(f'p_mean_platelet_volume').alias('p_val'),
+    ])
+
+    '''
+    other_ethnicity_assocs = None
+    for ethnicity in other_ethnicities:
+        one_other_ethnicity = pl.scan_csv(
+            f'{ukb}/association/results_finemapped_only/{ethnicity}/mean_platelet_volume/my_str/results.tab',
+            sep='\t',
+        ).select([
+            'chrom',
+            'pos',
+            pl.lit(True).alias('is_STR'),
+            pl.col(f'p_mean_platelet_volume').alias(f'{ethnicity}_p_val'),
+        ])
+        if other_ethnicity_assocs is None:
+            other_ethnicity_assocs = one_other_ethnicity
+        else:
+            other_ethnicity_assocs = other_ethnicity_assocs.join(
+                one_other_ethnicity,
+                how='inner',
+                on=['chrom', 'pos', 'is_STR']
+            )
+    '''
+
+    snp_assocs = pl.scan_csv(
+        f'{ukb}/association/results/mean_platelet_volume/plink_snp/results.tab',
+        sep='\t',
+        null_values='NA',
+    ).select([
+        pl.col('#CHROM').alias('chrom'),
+        pl.col('POS').alias('pos'),
+        ('SNP_' + pl.col('POS').cast(str) + '_' + pl.col('REF') + '_' +  pl.col('ALT')).alias('varname'),
+        pl.lit(False).alias('is_STR'),
+        pl.col('P').alias('p_val'),
+    ])
+    assocs = pl.concat([snp_assocs, str_assocs])
+
+    print('original SuSiE')
+    original_susies = load_susie(
+        f'{ukb}/finemapping/susie_results/mean_platelet_volume',
+        phenotype='mean_platelet_volume',
+        original=True,
+        only_L=10
+    )
+    print('tol SuSiE')
+    tol_susies = load_susie(
+        f'{ukb}/finemapping/susie_results/mean_platelet_volume_tol_0.0001',
+        phenotype='mean_platelet_volume',
+        colnames_regions_dir=f'{ukb}/finemapping/susie_results/mean_platelet_volume'
+    )
+    print('res_var 0.8 SuSiE')
+    res_var_susies_8 = load_susie(
+        f'{ukb}/finemapping/susie_results/mean_platelet_volume_res_var_0.8',
+        phenotype='mean_platelet_volume',
+        colnames_regions_dir=f'{ukb}/finemapping/susie_results/mean_platelet_volume'
+    )
+    print('res_var 0.95 SuSiE')
+    res_var_susies_95 = load_susie(
+        f'{ukb}/finemapping/susie_results/mean_platelet_volume_res_var_0.95',
+        phenotype='mean_platelet_volume',
+        colnames_regions_dir=f'{ukb}/finemapping/susie_results/mean_platelet_volume'
+    )
+    print('prior_var 0.2 SuSiE')
+    prior_var_susies_02 = load_susie(
+        f'{ukb}/finemapping/susie_results/mean_platelet_volume_prior_var_0.2',
+        phenotype='mean_platelet_volume',
+        colnames_regions_dir=f'{ukb}/finemapping/susie_results/mean_platelet_volume'
+    )
+    print('prior_var 0.0005 SuSiE')
+    prior_var_susies_0005 = load_susie(
+        f'{ukb}/finemapping/susie_results/mean_platelet_volume_prior_var_0.0005',
+        phenotype='mean_platelet_volume',
+        colnames_regions_dir=f'{ukb}/finemapping/susie_results/mean_platelet_volume'
+    )
+    print('original FINEMAP')
+    original_finemaps = load_finemap(f'{ukb}/finemapping/finemap_results/mean_platelet_volume', phenotype='mean_platelet_volume')
+    '''
+    print('total prob FINEMAP')
+    total_prob_finemaps        = load_finemap(f'{ukb}/finemapping/finemap_results/mean_platelet_volume.total_prob_4', regions=regions)
+    print('prior std FINEMAP derived')
+    prior_std_derived_finemaps = load_finemap(f'{ukb}/finemapping/finemap_results/mean_platelet_volume.prior_std_0.0224', regions=regions)
+    print('prior std FINEMAP low')
+    prior_std_low_finemaps     = load_finemap(f'{ukb}/finemapping/finemap_results/mean_platelet_volume.prior_std_0.005', regions=regions)
+    print('conv tol FINEMAP')
+    conv_tol_finemaps          = load_finemap(f'{ukb}/finemapping/finemap_results/mean_platelet_volume.prob_conv_sss_tol_0.0001', regions=regions)
+    print('mac FINEMAP')
+    mac_finemaps               = load_finemap(f'{ukb}/finemapping/finemap_results_mac_100/mean_platelet_volume', regions=regions)
+    print('gt threshold FINEMAP')
+    gt_threshold_finemaps      = load_finemap(f'{ukb}/finemapping/finemap_results_threshold_0.0005/mean_platelet_volume', regions=regions)
+    '''
+
+    print('Collecting ... ', end='', flush=True)
+    start = time.time()
+    pheno_df = original_finemaps.join(
+        original_susies,
+        how='outer',
+        on=['chrom', 'varname'],
+        suffix='_extra'
+    ).drop('region_extra').join(
+        tol_susies,
+        how='outer',
+        on = ['chrom', 'varname'],
+        suffix='_tol'
+    ).drop('region_tol').join(
+        res_var_susies_8,
+        how='outer',
+        on = ['chrom', 'varname'],
+        suffix='_res_var_8'
+    ).drop('region_res_var_8').join(
+        res_var_susies_95,
+        how='outer',
+        on = ['chrom', 'varname'],
+        suffix='_res_var_95'
+    ).drop('region_res_var_95').join(
+        prior_var_susies_02,
+        how='outer',
+        on = ['chrom', 'varname'],
+        suffix='_prior_var_02'
+    ).drop('region_prior_var_02').join(
+        prior_var_susies_0005,
+        how='outer',
+        on = ['chrom', 'varname'],
+        suffix='_prior_var_0005'
+    ).drop('region_prior_var_0005').join(
+        assocs,
+        how='left',
+        on=['chrom', 'varname']
+    ).collect()
+    '''
+    .join(
+        other_ethnicity_assocs,
+        how='left',
+        on=['chrom', 'pos', 'is_STR']
+    ).collect()
+    '''
+    print(f'done. Time: {(time.time() - start)/60:.2f}m', flush=True)
+
+    total_df = pheno_df.select([
+        'chrom',
+        'region',
+        'pos',
+        'is_STR',
+        'varname',
+        'p_val',
+        'susie_cs',
+        'susie_alpha',
+        'susie_cs_tol',
+        'susie_alpha_tol',
+        'susie_cs_res_var_8',
+        'susie_alpha_res_var_8',
+        'susie_cs_res_var_95',
+        'susie_alpha_res_var_95',
+        'susie_cs_prior_var_02',
+        'susie_alpha_prior_var_02',
+        'susie_cs_prior_var_0005',
+        'susie_alpha_prior_var_0005',
+        'finemap_pip',
+        #*[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
+    ])
+    '''
+    assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
+    assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
+    assert np.all(~np.isnan(pheno_df['finemap_pip'].to_numpy()))
+    assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_hardcall'].to_numpy()))
+    assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_ratio'].to_numpy()))
+    assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
+    for ethnicity in other_ethnicities:
+        assert np.all(~np.isnan(pheno_df.filter('is_STR')[f'{ethnicity}_p_val'].to_numpy()))
+    '''
+
+    #TODO make pretty graphs
+
+    # concordance graphs
+    for mapper, suffix, y_label in [
+        ('SuSiE', '', 'L=10'),
+        ('SuSiE', '_tol', '10x stricter convergence tolerance'),
+        ('SuSiE', '_res_var_8', 'residual variance prior = 0.8'),
+        ('SuSiE', '_res_var_95', 'residual variance prior = 0.95'),
+        #('SuSiE', 'prior_var_02', 'scaled_prior_variance '),
+        ('SuSiE', '_prior_var_0005', 'prior_var_0005'),
+    ]:
+        if mapper == 'SuSiE':
+            pip_col = 'susie_alpha_prior_var_02'
+            other_label = 'FINEMAP PIP'
+            other_pip_col = 'finemap_pip'
+        else:
+            assert mapper == 'FINEMAP'
+            pip_col = 'finemap_pip'
+            other_label = 'SuSiE PIP'
+            other_pip_col = 'susie_alpha'
+        
+        fig = bokeh.plotting.figure(
+            width=1200,
+            height=1200,
+            y_axis_label = f'PIP under {y_label}',
+            x_axis_label = 'SuSiE PIP',
+            x_range=[0,1],
+            y_range=[0,1],
+        )
+        fig.title.text_font_size = '30px'
+        fig.axis.axis_label_text_font_size = '26px'
+        fig.axis.major_label_text_font_size = '20px'
+
+        graph_df = total_df.with_columns([
+            pl.when(
+                pl.col(f'susie_cs{suffix}') >= 0
+            ).then(
+                pl.col(f'susie_alpha{suffix}')
+            ).otherwise(
+                pl.lit(0)
+            ).alias(f'susie_alpha{suffix}'),
+            pl.when(
+                pl.col('susie_cs_prior_var_02') >= 0
+            ).then(
+                pl.col('susie_alpha_prior_var_02')
+            ).otherwise(
+                pl.lit(0)
+            ).alias('susie_alpha_prior_var_02'),
+        ]).filter(
+            (pl.col('p_val') <= 5e-8) &
+            ((pl.col('susie_alpha_prior_var_02') > 0) | (pl.col(f'susie_alpha{suffix}') > 0))
+        ).with_column(
+            pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
+        )
+
+        n_rects = 100
+        graph_df = graph_df.select([
+            (pl.col(f'susie_alpha{suffix}')*n_rects).floor()/n_rects,
+            (pl.col('susie_alpha_prior_var_02')*n_rects).floor()/n_rects
+        ]).groupby(['susie_alpha_prior_var_02', f'susie_alpha{suffix}']).agg(pl.count())
+
+        palette = [linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)]
+        cmap = bokeh.transform.log_cmap(
+            'count',
+            palette = palette,
+            low=1,
+            high=max(graph_df['count'].to_numpy()),
+            low_color=(255, 255, 255)
+        )
+        color_mapper = bokeh.models.LogColorMapper(
+            palette = palette,
+            low=1,
+            high=max(graph_df['count'].to_numpy())
+        )
+
+        cds = bokeh.models.ColumnDataSource(dict(
+            left=graph_df['susie_alpha_prior_var_02'].to_numpy(), right=graph_df['susie_alpha_prior_var_02'].to_numpy() + 1/n_rects,
+            bottom=graph_df[f'susie_alpha{suffix}'].to_numpy(), top=graph_df[f'susie_alpha{suffix}'].to_numpy() + 1/n_rects,
+            count=graph_df['count'].to_numpy()
+        ))
+        fig.quad(left='left', right='right', bottom='bottom', top='top', source=cds, fill_color=cmap, line_width=0)
+
+        thresh = .05
+        n_both = graph_df.filter(
+            (pl.col(f'susie_alpha{suffix}') >= 1-thresh) &
+            (pl.col('susie_alpha_prior_var_02') >= 1-thresh)
+        )['count'].sum()
+
+        n_only_finemap = graph_df.filter(
+            (pl.col(f'susie_alpha{suffix}') >= 1-thresh) &
+            (pl.col('susie_alpha_prior_var_02') <= thresh)
+        )['count'].sum()
+
+        n_only_susie = graph_df.filter(
+            (pl.col('susie_alpha_prior_var_02') >= 1-thresh) &
+            (pl.col(f'susie_alpha{suffix}') <= thresh)
+        )['count'].sum()
+
+        xs = np.arange(0, 1, 0.0001)
+        fig.line(xs, xs, line_width=6)
+
+        fig.line([1-thresh, 1-thresh], [1-thresh, 1], color='orange', width=5)
+        fig.line([1-thresh, 1], [1-thresh, 1-thresh], color='orange', width=5)
+        fig.add_layout(bokeh.models.Title(
+            text=f'# variants: {n_both}', align='right',
+            text_font_size='18px'
+        ), 'above')
+
+        fig.line([1-thresh, 1], [thresh, thresh], color='orange', width=5)
+        fig.line([1-thresh, 1-thresh], [0, thresh], color='orange', width=5)
+        fig.add_layout(bokeh.models.Title(
+            text=f'# variants: {n_only_susie}', align='right',
+            text_font_size='18px'
+        ), 'right')
+
+        fig.line([thresh, thresh], [1-thresh, 1], color='orange', width=5)
+        fig.line([0, thresh], [1-thresh, 1-thresh], color='orange', width=5)
+        fig.add_layout(bokeh.models.Title(
+            text=f'# variants: {n_only_finemap}', align='left',
+            text_font_size='18px'
+        ), 'above')
+
+        color_bar = bokeh.models.ColorBar(color_mapper = color_mapper, width=70, major_label_text_font_size = '20px')
+        fig.add_layout(color_bar, 'right')
+        graphing_utils.resize(fig, 5000/1200, legend=False)
+        fig.toolbar_location = None
+        fig.background_fill_color = None
+        fig.border_fill_color = None
+        fig.grid.grid_line_color=None
+        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_{mapper}_consistency{suffix}.png')
+        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_{mapper}_consistency{suffix}.svg')
+
+        '''
+                thresh = .05
+        both_df = cs_STRs.filter(
+            (pl.col(pip_col) >= 1-thresh) &
+            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
+        )
+        n_both = both_df.shape[0]
+        avg_both_other_pip = both_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
+
+        not_rep_df = cs_STRs.filter(
+            (pl.col(pip_col) >= 1-thresh) &
+            (pl.col(f'{pip_col}_{suffix}') <= thresh)
+        )
+        n_not_rep = not_rep_df.shape[0]
+        avg_not_rep_other_pip = not_rep_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
+
+        new_df = cs_STRs.filter(
+            (pl.col(pip_col) <= thresh) &
+            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
+        )
+        n_new = new_df.shape[0]
+        avg_new_other_pip = new_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
+
+        fig = bokeh.plotting.figure(
+            width=1200,
+            height=1200,
+            y_axis_label = f'PIP under {y_label}',
+            x_axis_label = 'original PIP',
+            x_range=[0,1],
+            y_range=[0,1],
+            title=f'{mapper} metaparameter comparison'
+        )
+        fig.title.text_font_size = '30px'
+        fig.axis.axis_label_text_font_size = '26px'
+        fig.axis.major_label_text_font_size = '20px'
+
+        palette = [
+            linear_int_interpolate((111,107,237), (219,46,40), i/254) for i in range(-1, 255)
+        ]
+        color_mapper = bokeh.models.LinearColorMapper(
+            palette = palette,
+            low=0,
+            high=1
+        )
+        fig.circle(
+            cs_STRs[pip_col].to_numpy(),
+            cs_STRs[f'{pip_col}_{suffix}'].to_numpy(),
+            size = -np.log10(cs_STRs['p_val'].to_numpy())/7.5,
+            alpha = 0.25,
+            color=[palette[int(step)] for step in cs_STRs[other_pip_col].to_numpy()*255]
+        )
+
+        xs = np.arange(0, 1, 0.0001)
+        fig.line(
+            xs,
+            xs,
+            line_dash='dashed'
+        )
+        fig.quad(
+            left=[1-thresh],
+            right=[1],
+            bottom=[1-thresh],
+            top=[1],
+            color='orange',
+            alpha=0.25
+        )
+        fig.add_layout(bokeh.models.Title(
+            text=f'# STRs: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
+            text_font_size='18px'
+        ), 'above')
+        fig.quad(
+            left=[1-thresh],
+            right=[1],
+            bottom=[0],
+            top=[thresh],
+            color='orange',
+            alpha=0.25
+        )
+        fig.add_layout(bokeh.models.Title(
+            text=f'# STRs: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
+            text_font_size='18px'
+        ), 'right')
+
+        fig.quad(
+            left=[0],
+            right=[thresh],
+            bottom=[1-thresh],
+            top=[1],
+            color='orange',
+            alpha=0.25
+        )
+        fig.add_layout(bokeh.models.Title(
+            text=f'# STRs: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
+            text_font_size='18px'
+        ), 'above')
+
+        color_bar = bokeh.models.ColorBar(
+            color_mapper = color_mapper,
+            width=70,
+            title_text_font_size = '26px',
+            title=other_label,
+            major_label_text_font_size = '20px'
+        )
+        fig.add_layout(color_bar, 'right')
+
+        fig.toolbar_location = None
+        fig.background_fill_color = None
+        fig.border_fill_color = None
+        fig.grid.grid_line_color=None
+        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_{mapper.lower()}_consistency_{suffix}.png')
+        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_{mapper.lower()}_consistency_{suffix}.svg')
+        '''
 
 def get_putatively_causal_regions(phenotype):
     causal_df = pl.scan_csv(
@@ -270,25 +705,6 @@ def get_putatively_causal_regions(phenotype):
     return list(zip(regions, chroms))
 
 def putatively_causal_hits_df(phenotype, should_assert):
-    '''
-    putatively_causal_regions = get_putatively_causal_regions()
-    phenos_to_regions = {}
-
-    for phenotype in phenotypes.phenotypes_in_use:
-        phenos_to_regions[phenotype] = []
-
-    for (phenotype, region, chrom) in putatively_causal_regions:
-        phenos_to_regions[phenotype].append((region, chrom))
-
-    pheno_dfs = []
-    #for count, (phenotype, regions) in [(0, ('aspartate_aminotransferase', phenos_to_regions['aspartate_aminotransferase'])), (1, ('total_bilirubin', phenos_to_regions['total_bilirubin']))]:
-    #for count, (phenotype, regions) in enumerate(phenos_to_regions.items()):
-    #for count, (phenotype, regions) in [(0, ('mean_platelet_volume', phenos_to_regions['mean_platelet_volume']))]:
-    #print(f"Loading phenotype #{count+1} ({phenotype})", flush=True)
-        if len(regions) == 0:
-            continue
-    '''
-
     regions = get_putatively_causal_regions(phenotype)
     if len(regions) == 0:
         pathlib.Path(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab').touch()
@@ -307,7 +723,6 @@ def putatively_causal_hits_df(phenotype, should_assert):
     ])
 
     other_ethnicity_assocs = None
-    other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
     for ethnicity in other_ethnicities:
         one_other_ethnicity = pl.scan_csv(
             f'{ukb}/association/results_finemapped_only/{ethnicity}/{phenotype}/my_str/results.tab',
@@ -366,7 +781,7 @@ def putatively_causal_hits_df(phenotype, should_assert):
     print('mac FINEMAP')
     mac_finemaps               = load_finemap(f'{ukb}/finemapping/finemap_results_mac_100/{phenotype}', regions=regions)
     print('gt threshold FINEMAP')
-    gt_threshold_finemaps      = load_finemap(f'{ukb}/finemapping/finemap_results_threshold_0.0005/{phenotype}', regions=regions)
+    p_threshold_finemaps      = load_finemap(f'{ukb}/finemapping/finemap_results_threshold_0.0005/{phenotype}', regions=regions)
 
     print('Collecting ... ', end='', flush=True)
     start = time.time()
@@ -401,11 +816,11 @@ def putatively_causal_hits_df(phenotype, should_assert):
         on=['chrom', 'varname'],
         suffix='_mac'
     ).drop('region_mac').join(
-        gt_threshold_finemaps,
+        p_threshold_finemaps,
         how='outer',
         on=['chrom', 'varname'],
-        suffix='_gt_thresh'
-    ).drop('region_gt_thresh').join(
+        suffix='_p_thresh'
+    ).drop('region_p_thresh').join(
         original_susies,
         how='outer',
         on=['chrom', 'varname'],
@@ -432,10 +847,8 @@ def putatively_causal_hits_df(phenotype, should_assert):
         pl.lit(phenotype).alias('phenotype')
     ).collect()
     print(f'done. Time: {(time.time() - start)/60:.2f}m', flush=True)
-    #pheno_dfs.append(pheno_df)
 
-    #total_df = pl.concat(pheno_dfs).select([ # choose col order
-    pheno_df.select([
+    pheno_df = pheno_df.select([
         'phenotype',
         'chrom',
         'region',
@@ -456,10 +869,10 @@ def putatively_causal_hits_df(phenotype, should_assert):
         'finemap_pip_prior_std_low',
         'finemap_pip_conv_tol',
         'finemap_pip_mac',
-        'finemap_pip_gt_thresh',
+        'finemap_pip_p_thresh',
         *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
     ])
-    pheno_df.to_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab', sep='\t')
+    pheno_df.write_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab', sep='\t')
     if should_assert:
         assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
         assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
@@ -469,7 +882,6 @@ def putatively_causal_hits_df(phenotype, should_assert):
         assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
         for ethnicity in other_ethnicities:
             assert np.all(~np.isnan(pheno_df.filter('is_STR')[f'{ethnicity}_p_val'].to_numpy()))
-    #return total_df
 
 def linear_int_interpolate(c1, c2, dist):
     c_new = []
@@ -555,7 +967,7 @@ def putatively_causal_hits_comparison():
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
         ) for phenotype in phenotypes.phenotypes_in_use
         if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
-    ])
+    ]).rename({'finemap_pip_gt_thresh': 'finemap_pip_p_thresh'})
     print(' done', flush=True)
 
     total_df = total_df.filter(~pl.col('finemap_pip').is_null() & ~pl.col('susie_alpha').is_null())
@@ -570,7 +982,7 @@ def putatively_causal_hits_comparison():
         (pl.col('p_val') <= 1e-10) &
         (pl.col('susie_alpha') >= .8) &
         (pl.col('finemap_pip') >= .8)
-    ).drop('is_STR').to_csv(f'{ukb}/post_finemapping/intermediate_results/original_causal_STR_candidates.tab', sep='\t')
+    ).drop('is_STR').write_csv(f'{ukb}/post_finemapping/intermediate_results/original_causal_STR_candidates.tab', sep='\t')
 
     susie_cols = total_df.select([
         pl.col('^susie_alpha.*$'),
@@ -583,15 +995,15 @@ def putatively_causal_hits_comparison():
         (pl.col('p_val') <= 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
     ).drop(['susie_cs', 'susie_cs_hardcall', 'susie_cs_ratio', 'is_STR', 'varname'])
-    pass_all_threshes.to_csv(f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab', sep='\t')
+    pass_all_threshes.write_csv(f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab', sep='\t')
     total_df.filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
-    ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).to_csv(f'{ukb}/post_finemapping/intermediate_results/strictly_concordant_causal_STR_candidates.tab', sep='\t')
+    ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{ukb}/post_finemapping/intermediate_results/strictly_concordant_causal_STR_candidates.tab', sep='\t')
 
     # plot replication numbers by finemapping category
-
+    '''
     xs = []
     ys = []
     for name, condition in [
@@ -642,6 +1054,7 @@ def putatively_causal_hits_comparison():
     figure.xaxis.major_label_orientation = 1
     figure.grid.grid_line_color=None
     bokeh.io.export_png(figure, filename=f'{ukb}/post_finemapping/results/finemapping_results_ethnic_replication.png')
+    '''
 
     '''
     # plot replication by p-value, broken down by finemapping category
@@ -657,7 +1070,7 @@ def putatively_causal_hits_comparison():
         *[
             (pl.col(f'{ethnicity}_p_val') <= 0.05).alias(f'{ethnicity}_replication') for ethnicity in ['black', 'south_asian', 'chinese', 'irish', 'white_other']
         ],
-    ]).filter('nearby_STR').to_csv(f'{ukb}/for_melissa.tab', sep='\t')
+    ]).filter('nearby_STR').write_csv(f'{ukb}/for_melissa.tab', sep='\t')
     exit()
     print(replication_data)
     print('plotting swarm plots ... ', end='', flush=True)
@@ -689,111 +1102,17 @@ def putatively_causal_hits_comparison():
     print('done', flush=True)
     '''
 
-    # plot fine-mapped SNPs, STRs broken down per pheno
-    conditions = {
-        'Variants fine-mapped by either the original SuSiE or FINEMAP runs':  ((
-            (pl.col('p_val') <= 1e-10) &
-            ((pl.col('susie_alpha') >= .8) | (pl.col('finemap_pip') >= .8))
-        ), 'either'),
-        'Variants fine-mapped by both the original SuSiE and FINEMAP runs': ((
-            (pl.col('p_val') <= 1e-10) &
-            (pl.col('susie_alpha') >= .8) &
-            (pl.col('finemap_pip') >= .8)
-        ), 'both'),
-        'Variants fine-mapped under all selected fine-mapping conditions' : ((
-            (pl.col('p_val') <= 1e-10) &
-            (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
-        ), 'concordant'),
-        'Variants fine-mapped under all fine-mapping conditions': ((
-            (pl.col('p_val') <= 1e-10) &
-            (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
-        ), 'strictly_concordant')
-    }
-
-    '''
-    pheno_pairs = [('biomarkers', pheno) if phenotypes.is_serum_biomarker(pheno) else ('blood cell counts', pheno) for pheno in phenotypes.phenotypes_in_use]
-    sort_order_df = total_df.filter(conditions['Variants fine-mapped by either the original SuSiE or FINEMAP runs'][0]).groupby('phenotype').agg(pl.count())
-    sort_key = lambda pheno_pair: (pheno_pair[0],
-        sort_order_df.filter(pl.col('phenotype') == pheno_pair[1])['count'].to_numpy()[0] if sort_order_df.filter(pl.col('phenotype') == pheno_pair[1]).shape[0] > 0 else 0
-    )
-    sorted_pheno_pairs = sorted(pheno_pairs, key = sort_key)
-    '''
-    for title, (condition, file_title) in conditions.items():
-        plot_df = total_df.filter(
-            condition
-        ).groupby([
-            'phenotype', 'is_STR'
-        ]).agg(pl.count())
-
-        pheno_pairs = [('biomarkers', pheno) if phenotypes.is_serum_biomarker(pheno) else ('blood cell counts', pheno) for pheno in phenotypes.phenotypes_in_use]
-        sort_order_df = total_df.filter(condition).groupby('phenotype').agg(pl.count())
-        sort_key = lambda pheno_pair: (pheno_pair[0],
-            sort_order_df.filter(pl.col('phenotype') == pheno_pair[1])['count'].to_numpy()[0] if sort_order_df.filter(pl.col('phenotype') == pheno_pair[1]).shape[0] > 0 else 0
-        )
-        sorted_pheno_pairs = sorted(pheno_pairs, key = sort_key)
-        snps = np.array([
-            plot_df.filter((pl.col('phenotype') == pheno) & ~pl.col('is_STR'))['count'].to_numpy()[0]
-            if plot_df.filter((pl.col('phenotype') == pheno) & ~pl.col('is_STR')).shape[0] > 0 else 0
-            for (_, pheno) in  sorted_pheno_pairs
-        ])
-        strs = np.array([
-            plot_df.filter((pl.col('phenotype') == pheno) & pl.col('is_STR'))['count'].to_numpy()[0]
-            if plot_df.filter((pl.col('phenotype') == pheno) & pl.col('is_STR')).shape[0] > 0 else 0
-            for (_, pheno) in  sorted_pheno_pairs
-        ])
-        fig = bokeh.plotting.figure(
-            x_range=bokeh.models.FactorRange(*sorted_pheno_pairs),
-            title=title,
-            tools='',
-            x_axis_label = 'phenotype',
-            y_axis_label = 'n fine-mapped variants',
-            width=math.floor(4.25/2*1200),
-            height=1200,
-        )
-        fig.toolbar_location = None
-        fig.xaxis.major_label_orientation = 1.2
-        fig.x_range.range_padding = 0.1
-
-        fig.vbar(
-            top=snps,
-            x=sorted_pheno_pairs,
-            legend_label='SNPs',
-            color='#00B8FF',
-            width=0.9
-        )
-        fig.vbar(
-            top=strs+snps,
-            bottom=snps,
-            x=sorted_pheno_pairs,
-            legend_label='STRs',
-            color='#FF520D',
-            width=0.9
-        )
-        fig.legend.location='top_left'
-        fig.background_fill_color = None
-        fig.border_fill_color = None
-        fig.grid.grid_line_color = None
-        fig.title.text_font_size = '30px'
-        fig.axis.axis_label_text_font_size = '26px'
-        fig.axis.major_label_text_font_size = '20px'
-        fig.xaxis.group_text_font_size = '26px'
-        fig.legend.label_text_font_size = '18px'
-
-        graphing_utils.resize(fig, 5000/1200)
-        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/finemapping_results_by_pheno_{file_title}.png')
-
-    #plot_upset_plots(total_df)
-    
-    # susie graphs
+    # concordance graphs
     for mapper, suffix, y_label in [
-        ('SuSiE', 'ratio', '4x prior on SNPs'),
+        ('SuSiE', 'ratio', '4x prior on SNPs/Indels'),
         ('SuSiE', 'hardcall', 'hardcall genotyping'),
-        ('FINEMAP', 'ratio', '4x prior on SNPs'),
+        ('FINEMAP', 'ratio', '4x prior on SNPs/Indels'),
         ('FINEMAP', 'conv_tol', '10x stricter convergence tolerance'),
         ('FINEMAP', 'total_prob', 'assumption of 4 causal variants per region, not one'),
-        ('FINEMAP', 'prior_std', '10x smaller assumption of effect size'),
+        ('FINEMAP', 'prior_std_low', 'Avg. 0.0025% total var explained per causal variant'),
+        ('FINEMAP', 'prior_std_derived', 'Avg. 0.05% total var explained per causal variant'),
         ('FINEMAP', 'mac', 'mac>=100 threshold'),
-        ('FINEMAP', 'gt_thresh', 'p_val >= 5e-4 threshold instead of 5e-2')
+        ('FINEMAP', 'p_thresh', 'p value >= 5e-4 threshold instead of 5e-2')
     ]:
         if mapper == 'SuSiE':
             pip_col = 'susie_alpha'
@@ -802,7 +1121,7 @@ def putatively_causal_hits_comparison():
         else:
             assert mapper == 'FINEMAP'
             pip_col = 'finemap_pip'
-            other_label = 'SuSiE alpha'
+            other_label = 'SuSiE PIP'
             other_pip_col = 'susie_alpha'
 
         cs_STRs = total_df.filter(
@@ -862,7 +1181,7 @@ def putatively_causal_hits_comparison():
             alpha = 0.25,
             color=[palette[int(step)] for step in cs_STRs[other_pip_col].to_numpy()*255]
         )
-        
+
         xs = np.arange(0, 1, 0.0001)
         fig.line(
             xs,
@@ -907,6 +1226,37 @@ def putatively_causal_hits_comparison():
                 text=f'# STRs: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
                 text_font_size='18px'
             ), 'above')
+        fig.toolbar_location = None
+        fig.background_fill_color = None
+        fig.border_fill_color = None
+        fig.grid.grid_line_color=None
+
+        size_scale_fig = bokeh.plotting.figure(
+            width=250,
+            height=400,
+            y_axis_label = '-log10 p-value',
+            y_axis_type='log',
+            x_axis_label='Size scale'
+        )
+        scales=np.array([10, 20, 40, 80, 160, 300])
+        size_scale_fig.yaxis.ticker = bokeh.models.tickers.FixedTicker(ticks=scales)
+        size_scale_fig.title.text_font_size = '30px'
+        size_scale_fig.axis.axis_label_text_font_size = '26px'
+        size_scale_fig.axis.major_label_text_font_size = '20px'
+        size_scale_fig.toolbar_location = None
+        size_scale_fig.background_fill_color = None
+        size_scale_fig.border_fill_color = None
+        size_scale_fig.grid.grid_line_color = None
+        size_scale_fig.xaxis.visible = False
+
+        size_scale_fig.circle(
+            np.zeros(scales.shape),
+            scales,
+            size = scales/7.5,
+            color='blue',
+            alpha=0.25
+        )
+        # fig.add_layout(size_scale_fig, 'right')
 
         color_bar = bokeh.models.ColorBar(
             color_mapper = color_mapper,
@@ -916,13 +1266,11 @@ def putatively_causal_hits_comparison():
             major_label_text_font_size = '20px'
         )
         fig.add_layout(color_bar, 'right')
-           
-        fig.toolbar_location = None
-        fig.background_fill_color = None
-        fig.border_fill_color = None
-        fig.grid.grid_line_color=None
-        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{suffix}.png')
-        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{suffix}.svg')
+        #size_scale_fig.add_layout(color_bar, 'right')
+
+        total_fig = bokeh.layouts.row([fig, bokeh.layouts.column([bokeh.layouts.Spacer(), size_scale_fig])])#, color_bar])
+        bokeh.io.export_png(total_fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{suffix}.png')
+        bokeh.io.export_svg(total_fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{suffix}.svg')
 
 def first_pass_df(phenotype, should_assert):
     #pheno_dfs = []
@@ -940,6 +1288,8 @@ def first_pass_df(phenotype, should_assert):
         ('STR_' + pl.col('pos').cast(str)).alias('varname'),
         pl.lit(True).alias('is_STR'),
         pl.col(f'p_{phenotype}').alias('p_val'),
+        pl.col(f'coeff_{phenotype}').alias('coeff'),
+        pl.col(f'se_{phenotype}').alias('se')
     ])
 
     snp_assocs = pl.scan_csv(
@@ -952,6 +1302,8 @@ def first_pass_df(phenotype, should_assert):
         ('SNP_' + pl.col('POS').cast(str) + '_' + pl.col('REF') + '_' +  pl.col('ALT')).alias('varname'),
         pl.lit(False).alias('is_STR'),
         pl.col('P').alias('p_val'),
+        pl.col('BETA').alias('coeff'),
+        pl.col('SE').alias('se'),
     ])
     assocs = pl.concat([snp_assocs, str_assocs])
 
@@ -966,6 +1318,8 @@ def first_pass_df(phenotype, should_assert):
             'pos',
             pl.lit(True).alias('is_STR'),
             pl.col(f'p_{phenotype}').alias(f'{ethnicity}_p_val'),
+            pl.col(f'coeff_{phenotype}').alias(f'{ethnicity}_coeff'),
+            pl.col(f'se_{phenotype}').alias(f'{ethnicity}_se'),
         ])
         if other_ethnicity_assocs is None:
             other_ethnicity_assocs = one_other_ethnicity
@@ -1001,10 +1355,9 @@ def first_pass_df(phenotype, should_assert):
         pl.lit(phenotype).alias('phenotype')
     ).collect()
     print(f'done. Time: {(time.time() - start)/60:.2f}m', flush=True)
-    #    pheno_dfs.append(pheno_df)
 
-    #total_df = pl.concat(pheno_dfs).select([ # choose col order
-    total_df = pheno_df.select([ # choose col order
+    # choose col order
+    total_df = pheno_df.select([
         'phenotype',
         'chrom',
         'region',
@@ -1012,15 +1365,18 @@ def first_pass_df(phenotype, should_assert):
         'is_STR',
         'varname',
         'p_val',
+        'coeff',
+        'se',
+        'susie_pip',
         'susie_cs',
         'susie_alpha',
         'finemap_pip',
         *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
+        *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
+        *[f'{ethnicity}_se' for ethnicity in other_ethnicities],
     ])
-    total_df.to_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab', sep='\t')
-    #total_df.to_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance.tab', sep='\t')
+    total_df.write_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab', sep='\t')
     np.save(f'{ukb}/post_finemapping/intermediate_results/susie_all_min_abs_corrs_{phenotype}.npy', np.array(min_abs_corrs))
-    #np.save(f'{ukb}/post_finemapping/intermediate_results/susie_all_min_abs_corrs.npy', np.array(min_abs_corrs))
     if should_assert:
         assert total_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
         assert np.all(~np.isnan(total_df['p_val'].to_numpy()))
@@ -1032,6 +1388,11 @@ def first_pass_comparison():
         pl.read_csv(
             f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
             sep='\t',
+            dtypes={
+                **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
+                **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
+                **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
+            }
         ) for phenotype in phenotypes.phenotypes_in_use
     ])
     min_abs_corrs = np.concatenate([
@@ -1039,16 +1400,193 @@ def first_pass_comparison():
         for phenotype in phenotypes.phenotypes_in_use
     ])
 
+    # ----- Stats ----
+
     '''
+    print(
+        'Total SuSiE CSes',
+        # should be the same
+        total_df.filter(pl.col('susie_cs') >= 0).unique(subset = ['phenotype', 'region', 'susie_cs']).shape[0],
+        np.sum(min_abs_corrs >= corr_cutoff)
+    )
+    strong_susie_vars = (pl.col('p_val') <= 5e-8) & (pl.col('susie_cs') >= 0) & (pl.col('susie_alpha') >= 0.8)
+    print(
+        'Total GWsig SuSiE vars PIP >= 0.8, fraction of those that are STRs, (min, max fraction over phenotypes)',
+        total_df.filter(strong_susie_vars).shape[0],
+        total_df.filter(strong_susie_vars & pl.col('is_STR')).shape[0]/total_df.filter(strong_susie_vars).shape[0],
+        total_df.filter(
+            strong_susie_vars
+        ).groupby([
+            'phenotype', 'is_STR'
+        ]).agg(pl.count()).with_column(
+            pl.col('count').sum().over('phenotype').alias('total')
+        ).filter('is_STR').select([
+            (pl.col('count')/pl.col('total')).min().alias('min'),
+            (pl.col('count')/pl.col('total')).max().alias('max')
+        ])
+    )
+    strong_finemap_vars = (pl.col('p_val') <= 5e-8) & (pl.col('finemap_pip') >= 0.8)
+    print(
+        'Total GWsig FINEMAP vars PIP >= 0.8, fraction of those that are STRs, (min, max fraction over phenotypes)',
+        total_df.filter(strong_finemap_vars).shape[0],
+        total_df.filter(strong_finemap_vars & pl.col('is_STR')).shape[0]/total_df.filter(strong_finemap_vars).shape[0],
+        total_df.filter(
+            strong_finemap_vars
+        ).groupby([
+            'phenotype', 'is_STR'
+        ]).agg(pl.count()).with_column(
+            pl.col('count').sum().over('phenotype').alias('total')
+        ).filter('is_STR').select([
+            (pl.col('count')/pl.col('total')).min().alias('min'),
+            (pl.col('count')/pl.col('total')).max().alias('max')
+        ])
+    )
+    strong_both_vars = strong_finemap_vars & strong_susie_vars
+    print(
+        'Total GWsig FINEMAP and SuSiE vars PIP >= 0.8, fraction of those that are STRs, (min, max fraction over phenotypes)',
+        total_df.filter(strong_both_vars).shape[0],
+        total_df.filter(strong_both_vars & pl.col('is_STR')).shape[0]/total_df.filter(strong_both_vars).shape[0],
+        total_df.filter(
+            strong_both_vars
+        ).groupby([
+            'phenotype', 'is_STR'
+        ]).agg(pl.count()).with_column(
+            pl.col('count').sum().over('phenotype').alias('total')
+        ).filter('is_STR').select([
+            (pl.col('count')/pl.col('total')).min().alias('min'),
+            (pl.col('count')/pl.col('total')).max().alias('max')
+        ])
+    )
+    
+    print(
+        'Total contribution of STRs in SuSiE (min, max fraction over phenotypes)',
+        total_df.filter(
+            pl.col('susie_cs') >= 0
+        ).groupby('is_STR').agg(
+            pl.col('susie_alpha').sum()
+        ).with_column(
+            pl.col('susie_alpha').sum().alias('total')
+        ).filter('is_STR').select(
+            (pl.col('susie_alpha')/pl.col('total'))
+        ),
+        total_df.filter(
+            pl.col('susie_cs') >= 0
+        ).groupby(['phenotype', 'is_STR']).agg(
+            pl.col('susie_alpha').sum()
+        ).with_column(
+            pl.col('susie_alpha').sum().over('phenotype').alias('total')
+        ).filter('is_STR').select([
+            (pl.col('susie_alpha')/pl.col('total')).min().alias('min'),
+            (pl.col('susie_alpha')/pl.col('total')).max().alias('max')
+        ])
+    )
+    print(
+        'Total contribution of STRs in FINEMAP (min, max fraction over phenotypes)',
+        total_df.filter(
+            ~pl.col('finemap_pip').is_null()
+        ).groupby('is_STR').agg(
+            pl.col('finemap_pip').sum()
+        ).with_column(
+            pl.col('finemap_pip').sum().alias('total')
+        ).filter('is_STR').select(
+            (pl.col('finemap_pip')/pl.col('total'))
+        ),
+        total_df.filter(
+            ~pl.col('finemap_pip').is_null()
+        ).groupby(['phenotype', 'is_STR']).agg(
+            pl.col('finemap_pip').sum()
+        ).with_column(
+            pl.col('finemap_pip').sum().over('phenotype').alias('total')
+        ).filter('is_STR').select([
+            (pl.col('finemap_pip')/pl.col('total')).min().alias('min'),
+            (pl.col('finemap_pip')/pl.col('total')).max().alias('max')
+        ])
+    )
+
+    print(
+        'Total contribution of STRs in FINEMAP (min, max fraction over phenotypes)',
+        total_df.filter(
+            ~pl.col('finemap_pip').is_null()
+        ).groupby('is_STR').agg(
+            pl.col('finemap_pip').sum()
+        ).with_column(
+            pl.col('finemap_pip').sum().alias('total')
+        ).filter('is_STR').select(
+            (pl.col('finemap_pip')/pl.col('total'))
+        ),
+        total_df.filter(
+            ~pl.col('finemap_pip').is_null()
+        ).groupby(['phenotype', 'is_STR']).agg(
+            pl.col('finemap_pip').sum()
+        ).with_column(
+            pl.col('finemap_pip').sum().over('phenotype').alias('total')
+        ).filter('is_STR').select([
+            (pl.col('finemap_pip')/pl.col('total')).min().alias('min'),
+            (pl.col('finemap_pip')/pl.col('total')).max().alias('max')
+        ])
+    )
+
+    print(
+        'Total SuSiE contribution of variants with PIP <= 0.1',
+        total_df.filter(
+            (pl.col('susie_cs') >= 0)
+        ).groupby(
+            (pl.col('susie_alpha') < 0.1).alias('low_alpha')
+        ).agg(pl.col('susie_alpha').sum()).with_column(
+            pl.col('susie_alpha').sum().alias('total')
+        ).filter('low_alpha').select(
+            pl.col('susie_alpha')/pl.col('total')
+        )
+    )
+
+    print(
+        'Total SuSiE contribution of variants with PIP <= 0.1',
+        total_df.filter(
+            ~pl.col('finemap_pip').is_null()
+        ).groupby(
+            (pl.col('finemap_pip') < 0.1).alias('low_alpha')
+        ).agg(pl.col('finemap_pip').sum()).with_column(
+            pl.col('finemap_pip').sum().alias('total')
+        ).filter('low_alpha').select(
+            pl.col('finemap_pip')/pl.col('total')
+        )
+    )
+    '''
+
+    print(
+        'Percentage of SuSiE CSes with FINEMAP PIP < 0.1',
+        total_df.filter(
+            (pl.col('susie_cs') >= 0) & ~pl.col('finemap_pip').is_null()
+        ).groupby([
+            'phenotype', 'region', 'susie_cs'
+        ]).agg(
+            pl.col('finemap_pip').sum()
+        ).with_column(
+            (pl.col('finemap_pip') < .1).alias('discordant')
+        ).groupby('discordant').agg(
+            pl.count()
+        ).with_column(
+            pl.col('count').sum().alias('total')
+        ).filter('discordant').select(
+            pl.col('count')/pl.col('total')
+        )
+    )
+
+    '''
+    # --- figures ----
+    print('Plotting figures', flush=True)
+
     # Min abs corr across all CSes
     fig = bokeh.plotting.figure(
         width=1200,
         height=1200,
-        title='SuSiE credible set min absolute correlations',
-        x_axis_label='min absolute correlation',
-        y_axis_label='# credible sets',
+        title='SuSiE credible set purities',
+        x_axis_label='Purity',
+        y_axis_label='Number of credible sets',
     )
     fig.axis.axis_label_text_font_size = '30px'
+    fig.title.text_font_size = '30px'
+    fig.axis.major_label_text_font_size = '20px'
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color = None
@@ -1062,78 +1600,128 @@ def first_pass_comparison():
     bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/cs_min_abs_corrs.png')
     bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/cs_min_abs_corrs.svg')
 
-    # STR fraction per CS
-    fraction_strs_df = total_df.filter(
-        pl.col('susie_cs') >= 0
-    ).groupby([
-        'phenotype',
-        'region',
-        'susie_cs',
-        'is_STR'
-    ]).agg(
-        pl.col('susie_alpha').sum()
-    ).with_column(
-        pl.col('susie_alpha').sum().over(['phenotype', 'region', 'susie_cs']).alias('total_alpha')
-    )
-    assert np.all(fraction_strs_df['total_alpha'].to_numpy() >= .9)
-    joined_fraction_df = fraction_strs_df.filter(~pl.col('is_STR')).join(
-        fraction_strs_df.filter(pl.col('is_STR')),
-        how='outer',
-        on=['phenotype', 'region', 'susie_cs'],
-        suffix='_str'
-    )
-        
-    assert np.all(joined_fraction_df.filter(
-        ~pl.col('total_alpha').is_null() & ~pl.col('total_alpha_str').is_null()
-    ).select(
-        (pl.col('total_alpha') == pl.col('total_alpha_str')).alias('out')
-    )['out'].to_numpy())
-
-    fraction_strs = joined_fraction_df.select(
-        pl.when(
-            ~pl.col('total_alpha_str').is_null()
-        ).then(
-            pl.col('susie_alpha_str')/pl.col('total_alpha_str')
-        ).otherwise(
-            0
-        ).alias('out')
-    )['out'].to_numpy()
-
-    pdf = scipy.stats.kde.gaussian_kde(fraction_strs)
-
     fig = bokeh.plotting.figure(
+        width=1200,
         height=1200,
-        width=900,
-        x_range = (0,1),
-        toolbar_location=None
+        title='SuSiE alpha vs PIP',
+        x_axis_label='Largest alpha',
+        y_axis_label='PIP',
     )
 
-    xs = np.arange(0, 1, 0.001)
-    ys = pdf(xs)
-    fig.varea(xs, np.zeros(xs.shape), ys, fill_color='orange')
-    for count, perc in enumerate((.8, .9, .95)):
-        q = np.quantile(fraction_strs, perc)
-        fig.line([q, q], [0, max(ys)], color='black')
-        fig.add_layout(bokeh.models.Label(
-            x=q, y=max(ys)-3-count, text=f'{perc*100}% quantile'
-        ))
-    perc = np.sum(fraction_strs >= .95)/fraction_strs.shape[0]
-    fig.line([.95, .95], [0, max(ys)], color='black')
-    fig.add_layout(bokeh.models.Label(
-        x=.95, y=max(ys)-3, text=f'{(1-perc)*100:.4f}% quantile'
-    ))
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.grid.grid_line_color = None
+    fig.toolbar_location = None
+    fig.title.text_font_size = '30px'
+    fig.axis.axis_label_text_font_size = '26px'
+    fig.axis.major_label_text_font_size = '20px'
+    bin_size = .02
 
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/STR_fraction_per_cs.png')
-    '''
-    exit()
+    alpha_pip_df = total_df.filter(pl.col('susie_cs') >= 1)
+
+    bins = bokeh.util.hex.hexbin(alpha_pip_df['susie_alpha'].to_numpy(), alpha_pip_df['susie_pip'].to_numpy(), size=bin_size)
+
+    palette = [linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)]
+    cmap = bokeh.transform.log_cmap(
+        'counts',
+        palette = palette,
+        low=1,
+        high=max(bins.counts),
+        low_color=(255, 255, 255)
+    )
+    color_mapper = bokeh.models.LogColorMapper(
+        palette = palette,
+        low=1,
+        high=max(bins.counts)
+    )
+
+    fig.hex_tile(q='q', r='r', size=bin_size, line_color=None, source=bins, fill_color=cmap)
+    color_bar = bokeh.models.ColorBar(
+        color_mapper = color_mapper,
+        width=70,
+        major_label_text_font_size = '20px'
+    )
+    fig.add_layout(color_bar, 'right')
+
+    graphing_utils.resize(fig, 5000/1200, legend=False)
+    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_v_pip.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_v_pip.svg')
 
     fig = bokeh.plotting.figure(
         width=1200,
         height=1200,
-        title=f'FINEMAP total PIPs for SuSiE CSes with min_abs_corr >= {corr_cutoff}',
-        x_axis_label='FINEMAP PIPs',
-        y_axis_label='# credible sets',
+        title='SuSiE total PIP contributions',
+        x_axis_label='PIP',
+        y_axis_label='Fraction of Total PIP Contributions',
     )
+
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.grid.grid_line_color = None
+    fig.toolbar_location = None
+    fig.title.text_font_size = '30px'
+    fig.axis.axis_label_text_font_size = '26px'
+    fig.axis.major_label_text_font_size = '20px'
+
+    step = 0.01
+    left_edges = np.arange(0, 1 + step, step)
+    total_susie_pip = total_df.filter(pl.col('susie_cs') >= 1)['susie_alpha'].sum()
+    ys = [
+        total_df.filter(
+            (pl.col('susie_cs') >= 1) &
+            (float(left_edge) <= pl.col('susie_alpha')) &
+            (pl.col('susie_alpha') < float(left_edge) + step)
+        )['susie_alpha'].sum()/total_susie_pip
+        for left_edge in left_edges
+    ]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
+
+    graphing_utils.resize(fig, 5000/1200, legend=False)
+    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_histogram.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_histogram.svg')
+
+    fig = bokeh.plotting.figure(
+        width=1200,
+        height=1200,
+        title='FINEMAP total PIP contributions',
+        x_axis_label='PIP',
+        y_axis_label='Fraction of Total PIP Contributions',
+    )
+
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.grid.grid_line_color = None
+    fig.toolbar_location = None
+    fig.title.text_font_size = '30px'
+    fig.axis.axis_label_text_font_size = '26px'
+    fig.axis.major_label_text_font_size = '20px'
+
+    step = 0.01
+    left_edges = np.arange(0, 1 + step, step)
+    total_finemap_pip = total_df['finemap_pip'].sum()
+    ys = [
+        total_df.filter(
+            (float(left_edge) <= pl.col('finemap_pip')) &
+            (pl.col('finemap_pip') < float(left_edge) + step)
+        )['finemap_pip'].sum()/total_finemap_pip
+        for left_edge in left_edges
+    ]
+    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
+
+    graphing_utils.resize(fig, 5000/1200, legend=False)
+    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/finemap_pip_histogram.png')
+    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/finemap_pip_histogram.svg')
+
+    fig = bokeh.plotting.figure(
+        width=1200,
+        height=1200,
+        title=f'FINEMAP total PIPs for SuSiE credible sets',
+        x_axis_label='FINEMAP total PIP',
+        y_axis_label='Credible set count',
+    )
+    fig.title.text_font_size = '30px'
+    fig.axis.axis_label_text_font_size = '26px'
+    fig.axis.major_label_text_font_size = '20px'
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.ygrid.grid_line_color = None
@@ -1141,7 +1729,7 @@ def first_pass_comparison():
     fig.toolbar.logo = None
     fig.toolbar_location = None
     finemap_cs_coverages = total_df.filter(
-        pl.col('susie_cs') >= 0
+        (pl.col('susie_cs') >= 0) & ~pl.col('finemap_pip').is_null()
     ).groupby([
         'phenotype', 'region', 'susie_cs'
     ]).agg(
@@ -1158,39 +1746,225 @@ def first_pass_comparison():
     bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_cs_finemap_total_pips.png')
     bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/susie_cs_finemap_total_pips.svg')
 
-    '''
-    # susie pip vs alpha
-    figure, ax = plt.subplots(1, 1, figsize=(12,12))
+    for var_type, filter_cond in [
+        ('STR', pl.col('is_STR')),
+        ('SNP/Indel', ~pl.col('is_STR'))
+    ]:
+        fig = bokeh.plotting.figure(
+            title=f'{var_type} PIPs FINEMAP v SuSiE',
+            width=1200,
+            height=1200,
+            y_axis_label = 'FINEMAP PIP',
+            x_axis_label = 'SuSiE PIP',
+            x_range=[0,1],
+            y_range=[0,1],
+        )
+        fig.title.text_font_size = '30px'
+        fig.axis.axis_label_text_font_size = '26px'
+        fig.axis.major_label_text_font_size = '20px'
 
-    if vartype == '':
-        title_inset = 'all'
-    else:
-        title_inset = vartype
-    if not all_:
-        title_inset += f' credible-set-var (min_abs_corr >= {corr_cutoff})'
-    ax.set_title(f'SuSiE alpha vs PIP {title_inset}')
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_xlabel('SuSiE alpha')
-    ax.set_ylabel('SuSiE PIPs')
-    idx = total_df['varname'].str.contains(f'^{vartype}')
-    idx = idx & (total_df['susie_cs'] | all_)
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list(name='meh', colors=['#e5f5f9', '#99d8c9', '#2ca25f'])
-    hexbin = ax.hexbin(total_df[idx, 'susie_alpha'].to_numpy().flatten(), total_df[idx, 'susie_pip'].to_numpy().flatten(), gridsize=100, cmap=cmap, bins='log')
-    cb = figure.colorbar(hexbin, ax=ax)
-    cb.set_label('counts')
+        graph_df = total_df.with_columns([
+            pl.when(
+                pl.col('susie_cs') > 0
+            ).then(
+                pl.col('susie_alpha')
+            ).otherwise(
+                pl.lit(0)
+            ).alias('susie_pip'),
+            pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
+        ]).filter(
+            (pl.col('p_val') <= 5e-8) &
+            filter_cond & (
+                (pl.col('finemap_pip') > 0.0) | (pl.col('susie_pip') > 0.0)
+            )
+        )
 
-    if vartype != '':
-        fname_suffix = '_' + vartype
-    else:
-        fname_suffix = ''
-    if not all_:
-        fname_suffix += '_credible_set_vars'
-    out_fname = f'{ukb}/export_scripts/results/susie_alpha_v_pip{fname_suffix}'
-    print(f'Exporting var plot {out_fname}.svg', flush=True)
-    plt.savefig(f'{out_fname}.svg')
-    print(f'Exporting var plot {out_fname}.png', flush=True)
-    plt.savefig(f'{out_fname}.png')
-    '''
+        """
+        bin_size = .01
+        bins = bokeh.util.hex.hexbin(graph_df['susie_pip'].to_numpy(), graph_df['finemap_pip'].to_numpy(), size=bin_size)
+
+        palette = [linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)]
+        cmap = bokeh.transform.log_cmap(
+            'counts',
+            palette = palette,
+            low=1,
+            high=max(bins.counts),
+            low_color=(255, 255, 255)
+        )
+        color_mapper = bokeh.models.LogColorMapper(
+            palette = palette,
+            low=1,
+            high=max(bins.counts)
+        )
+
+        fig.hex_tile(q='q', r='r', size=bin_size, line_color=None, source=bins, fill_color=cmap)
+        color_bar = bokeh.models.ColorBar(
+            color_mapper = color_mapper,
+            width=70,
+            major_label_text_font_size = '20px'
+        )
+        fig.add_layout(color_bar, 'right')
+        """
+
+        """
+        fig.circle(
+            graph_df['susie_pip'].to_numpy(),
+            graph_df['finemap_pip'].to_numpy(),
+            size = -np.log10(graph_df['p_val'].to_numpy())/7.5,
+            alpha = 0.25,
+        )
+        """
+
+        n_rects = 100
+        graph_df = graph_df.select([
+            (pl.col('finemap_pip')*n_rects).floor()/n_rects,
+            (pl.col('susie_pip')*n_rects).floor()/n_rects
+        ]).groupby(['finemap_pip', 'susie_pip']).agg(pl.count())
+
+        palette = [linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)]
+        cmap = bokeh.transform.log_cmap(
+            'count',
+            palette = palette,
+            low=1,
+            high=max(graph_df['count'].to_numpy()),
+            low_color=(255, 255, 255)
+        )
+        color_mapper = bokeh.models.LogColorMapper(
+            palette = palette,
+            low=1,
+            high=max(graph_df['count'].to_numpy())
+        )
+
+        cds = bokeh.models.ColumnDataSource(dict(
+            left=graph_df['susie_pip'].to_numpy(), right=graph_df['susie_pip'].to_numpy() + 1/n_rects,
+            bottom=graph_df['finemap_pip'].to_numpy(), top=graph_df['finemap_pip'].to_numpy() + 1/n_rects,
+            count=graph_df['count'].to_numpy()
+        ))
+        fig.quad(
+            left='left', right='right', bottom='bottom', top='top', source=cds, fill_color=cmap, line_width=0
+        )
+
+        thresh = .05
+        both_df = graph_df.filter(
+            (pl.col('finemap_pip') >= 1-thresh) &
+            (pl.col('susie_pip') >= 1-thresh)
+        )
+        n_both = both_df['count'].sum()
+
+        only_finemap_df = graph_df.filter(
+            (pl.col('finemap_pip') >= 1-thresh) &
+            (pl.col('susie_pip') <= thresh)
+        )
+        n_only_finemap = only_finemap_df['count'].sum()
+
+        only_susie_df = graph_df.filter(
+            (pl.col('susie_pip') >= 1-thresh) &
+            (pl.col('finemap_pip') <= thresh)
+        )
+        n_only_susie = only_susie_df['count'].sum()
+
+        xs = np.arange(0, 1, 0.0001)
+        fig.line(
+            xs,
+            xs,
+            line_width=6
+        )
+
+        fig.line(
+            [1-thresh, 1-thresh],
+            [1-thresh, 1],
+            color='orange',
+            width=5
+        )
+        fig.line(
+            [1-thresh, 1],
+            [1-thresh, 1-thresh],
+            color='orange',
+            width=5
+        )
+
+        """
+        fig.quad(
+            left=[1-thresh],
+            right=[1],
+            bottom=[1-thresh],
+            top=[1],
+            color='orange',
+            alpha=0.25
+        )
+        """
+        fig.add_layout(bokeh.models.Title(
+            text=f'# {var_type}s: {n_both}', align='right',
+            text_font_size='18px'
+        ), 'above')
+        """
+        fig.quad(
+            left=[1-thresh],
+            right=[1],
+            bottom=[0],
+            top=[thresh],
+            color='orange',
+            alpha=0.25
+        )
+        """
+        fig.line(
+            [1-thresh, 1],
+            [thresh, thresh],
+            color='orange',
+            width=5
+        )
+        fig.line(
+            [1-thresh, 1-thresh],
+            [0, thresh],
+            color='orange',
+            width=5
+        )
+        fig.add_layout(bokeh.models.Title(
+            text=f'# {var_type}s: {n_only_susie}', align='right',
+            text_font_size='18px'
+        ), 'right')
+
+        """
+        fig.quad(
+            left=[0],
+            right=[thresh],
+            bottom=[1-thresh],
+            top=[1],
+            color='orange',
+            alpha=0.25
+        )
+        """
+        fig.line(
+            [thresh, thresh],
+            [1-thresh, 1],
+            color='orange',
+            width=5
+        )
+        fig.line(
+            [0, thresh],
+            [1-thresh, 1-thresh],
+            color='orange',
+            width=5
+        )
+        fig.add_layout(bokeh.models.Title(
+            text=f'# {var_type}s: {n_only_finemap}', align='left',
+            text_font_size='18px'
+        ), 'above')
+
+        color_bar = bokeh.models.ColorBar(
+            color_mapper = color_mapper,
+            width=70,
+            major_label_text_font_size = '20px'
+        )
+        fig.add_layout(color_bar, 'right')
+        graphing_utils.resize(fig, 5000/1200, legend=False)
+        fig.toolbar_location = None
+        fig.background_fill_color = None
+        fig.border_fill_color = None
+        fig.grid.grid_line_color=None
+        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.png')
+        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.svg')
+        '''
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -1217,7 +1991,7 @@ if __name__ == '__main__':
             first_pass_comparison()
     else:
         assert args.putatively_causal_hits
-        if args.regenerate: 
+        if args.regenerate:
             putatively_causal_hits_df(args.phenotype, not args.no_assert)
         else:
             putatively_causal_hits_comparison()
