@@ -1108,128 +1108,134 @@ def putatively_causal_hits_comparison():
         ('SuSiE', 'hardcall', 'hardcall genotyping'),
         ('FINEMAP', 'ratio', '4x prior on SNPs/Indels'),
         ('FINEMAP', 'conv_tol', '10x stricter convergence tolerance'),
-        ('FINEMAP', 'total_prob', 'assumption of 4 causal variants per region, not one'),
+        ('FINEMAP', 'total_prob', 'assumption of 4 causal variants per region'),
         ('FINEMAP', 'prior_std_low', 'Avg. 0.0025% total var explained per causal variant'),
         ('FINEMAP', 'prior_std_derived', 'Avg. 0.05% total var explained per causal variant'),
-        ('FINEMAP', 'mac', 'mac>=100 threshold'),
-        ('FINEMAP', 'p_thresh', 'p value >= 5e-4 threshold instead of 5e-2')
+        ('FINEMAP', 'mac', 'non-major-allele dosage >=100 threshold'),
+        ('FINEMAP', 'p_thresh', 'p-value <= 5e-4 threshold')
     ]:
-        if mapper == 'SuSiE':
-            pip_col = 'susie_alpha'
-            other_label = 'FINEMAP PIP'
-            other_pip_col = 'finemap_pip'
-        else:
-            assert mapper == 'FINEMAP'
-            pip_col = 'finemap_pip'
-            other_label = 'SuSiE PIP'
-            other_pip_col = 'susie_alpha'
+        figs = []
+        for var_type, var_cond in (('STR', pl.col('is_STR')), ('SNP/indel', ~pl.col('is_STR'))):
+            if var_type != 'STR' and suffix == 'ratio':
+                continue
+            if mapper == 'SuSiE':
+                pip_col = 'susie_alpha'
+                other_label = 'FINEMAP PIP'
+                other_pip_col = 'finemap_pip'
+            else:
+                assert mapper == 'FINEMAP'
+                pip_col = 'finemap_pip'
+                other_label = 'SuSiE PIP'
+                other_pip_col = 'susie_alpha'
 
-        cs_STRs = total_df.filter(
-            pl.col('is_STR') &
-            (pl.col('p_val') <= 1e-10) &
-            ((pl.col(pip_col) > 0) | (pl.col(f'{pip_col}_{suffix}') > 0))
-        ).sort(pip_col).with_column(
-            pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
-        )
-        thresh = .025
-        both_df = cs_STRs.filter(
-            (pl.col(pip_col) >= 1-thresh) &
-            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
-        )
-        n_both = both_df.shape[0]
-        avg_both_other_pip = both_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
+            graph_df = total_df.filter(
+                var_cond &
+                (pl.col('p_val') <= 1e-10) &
+                ((pl.col(pip_col) > 0) | (pl.col(f'{pip_col}_{suffix}') > 0))
+            ).sort(pip_col).with_column(
+                pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
+            )
+            thresh = .025
+            both_df = graph_df.filter(
+                (pl.col(pip_col) >= 1-thresh) &
+                (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
+            )
+            n_both = both_df.shape[0]
+            avg_both_other_pip = both_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
-        not_rep_df = cs_STRs.filter(
-            (pl.col(pip_col) >= 1-thresh) &
-            (pl.col(f'{pip_col}_{suffix}') <= thresh)
-        )
-        n_not_rep = not_rep_df.shape[0]
-        avg_not_rep_other_pip = not_rep_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
+            not_rep_df = graph_df.filter(
+                (pl.col(pip_col) >= 1-thresh) &
+                (pl.col(f'{pip_col}_{suffix}') <= thresh)
+            )
+            n_not_rep = not_rep_df.shape[0]
+            avg_not_rep_other_pip = not_rep_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
-        new_df = cs_STRs.filter(
-            (pl.col(pip_col) <= thresh) &
-            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
-        )
-        n_new = new_df.shape[0]
-        avg_new_other_pip = new_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
+            new_df = graph_df.filter(
+                (pl.col(pip_col) <= thresh) &
+                (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
+            )
+            n_new = new_df.shape[0]
+            avg_new_other_pip = new_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
-        fig = bokeh.plotting.figure(
-            width=1200,
-            height=1200,
-            y_axis_label = f'PIP under {y_label}',
-            x_axis_label = 'original PIP',
-            x_range=[0,1],
-            y_range=[0,1],
-            title=f'{mapper} metaparameter comparison'
-        )
-        fig.title.text_font_size = '30px'
-        fig.axis.axis_label_text_font_size = '26px'
-        fig.axis.major_label_text_font_size = '20px'
+            fig = bokeh.plotting.figure(
+                width=1200,
+                height=1200,
+                y_axis_label = f'PIP under {y_label}',
+                x_axis_label = 'original PIP',
+                x_range=[0,1],
+                y_range=[0,1],
+                match_aspect=True
+                #title=f'{mapper} metaparameter comparison for {var_type}s'
+            )
+            fig.title.text_font_size = '30px'
+            fig.axis.axis_label_text_font_size = '26px'
+            fig.axis.major_label_text_font_size = '20px'
 
-        palette = [
-            linear_int_interpolate((111,107,237), (219,46,40), i/254) for i in range(-1, 255)
-        ]
-        color_mapper = bokeh.models.LinearColorMapper(
-            palette = palette,
-            low=0,
-            high=1
-        )
-        fig.circle(
-            cs_STRs[pip_col].to_numpy(),
-            cs_STRs[f'{pip_col}_{suffix}'].to_numpy(),
-            size = -np.log10(cs_STRs['p_val'].to_numpy())/7.5,
-            alpha = 0.25,
-            color=[palette[int(step)] for step in cs_STRs[other_pip_col].to_numpy()*255]
-        )
+            palette = [
+                linear_int_interpolate((111,107,237), (219,46,40), i/254) for i in range(-1, 255)
+            ]
+            color_mapper = bokeh.models.LinearColorMapper(
+                palette = palette,
+                low=0,
+                high=1
+            )
+            fig.circle(
+                graph_df[pip_col].to_numpy(),
+                graph_df[f'{pip_col}_{suffix}'].to_numpy(),
+                size = -np.log10(graph_df['p_val'].to_numpy())/7.5,
+                alpha = 0.25,
+                color=[palette[int(step)] for step in graph_df[other_pip_col].to_numpy()*255]
+            )
 
-        xs = np.arange(0, 1, 0.0001)
-        fig.line(
-            xs,
-            xs,
-            line_dash='dashed'
-        )
-        fig.quad(
-            left=[1-thresh],
-            right=[1],
-            bottom=[1-thresh],
-            top=[1],
-            color='orange',
-            alpha=0.25
-        )
-        fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
-            text_font_size='18px'
-        ), 'above')
-        fig.quad(
-            left=[1-thresh],
-            right=[1],
-            bottom=[0],
-            top=[thresh],
-            color='orange',
-            alpha=0.25
-        )
-        fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
-            text_font_size='18px'
-        ), 'right')
-
-        if n_new > 5:
+            xs = np.arange(0, 1, 0.0001)
+            fig.line(
+                xs,
+                xs,
+                line_dash='dashed'
+            )
             fig.quad(
-                left=[0],
-                right=[thresh],
+                left=[1-thresh],
+                right=[1],
                 bottom=[1-thresh],
                 top=[1],
                 color='orange',
                 alpha=0.25
             )
             fig.add_layout(bokeh.models.Title(
-                text=f'# STRs: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
+                text=f'# {var_type}s: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
                 text_font_size='18px'
             ), 'above')
-        fig.toolbar_location = None
-        fig.background_fill_color = None
-        fig.border_fill_color = None
-        fig.grid.grid_line_color=None
+            fig.quad(
+                left=[1-thresh],
+                right=[1],
+                bottom=[0],
+                top=[thresh],
+                color='orange',
+                alpha=0.25
+            )
+            fig.add_layout(bokeh.models.Title(
+                text=f'# {var_type}s: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
+                text_font_size='18px'
+            ), 'right')
+
+            if n_new > 5:
+                fig.quad(
+                    left=[0],
+                    right=[thresh],
+                    bottom=[1-thresh],
+                    top=[1],
+                    color='orange',
+                    alpha=0.25
+                )
+                fig.add_layout(bokeh.models.Title(
+                    text=f'# {var_type}s: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
+                    text_font_size='18px'
+                ), 'above')
+            fig.toolbar_location = None
+            fig.background_fill_color = None
+            fig.border_fill_color = None
+            fig.grid.grid_line_color=None
+            figs.append(fig)
 
         size_scale_fig = bokeh.plotting.figure(
             width=250,
@@ -1256,7 +1262,6 @@ def putatively_causal_hits_comparison():
             color='blue',
             alpha=0.25
         )
-        # fig.add_layout(size_scale_fig, 'right')
 
         color_bar = bokeh.models.ColorBar(
             color_mapper = color_mapper,
@@ -1265,10 +1270,9 @@ def putatively_causal_hits_comparison():
             title=other_label,
             major_label_text_font_size = '20px'
         )
-        fig.add_layout(color_bar, 'right')
-        #size_scale_fig.add_layout(color_bar, 'right')
+        figs[-1].add_layout(color_bar, 'right')
 
-        total_fig = bokeh.layouts.row([fig, bokeh.layouts.column([bokeh.layouts.Spacer(), size_scale_fig])])#, color_bar])
+        total_fig = bokeh.layouts.row([*figs, size_scale_fig])
         bokeh.io.export_png(total_fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{suffix}.png')
         bokeh.io.export_svg(total_fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{suffix}.svg')
 
