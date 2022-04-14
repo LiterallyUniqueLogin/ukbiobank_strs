@@ -40,6 +40,7 @@ associations_df = pl.concat([
     'phenotype',
     'chrom',
     'pos',
+    'region',
     'p_val',
     'coeff',
     'se',
@@ -63,6 +64,44 @@ named_conditions = [
     ('causal STR candidates', pl.col('is_causal_STR_candidate'))
 ]
 
+xs = []
+ys = []
+for ethnicity in other_ethnicities:
+    for name, condition in named_conditions:
+        xs.append((ethnicity, name))
+        ys.append(
+            df.filter(
+                condition & ~pl.col(f'{ethnicity}_coeff').is_nan()
+            ).select(
+                (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0).cast(int).mean().alias('out')
+            )['out'].to_numpy()[0]
+        )
+fig = bokeh.plotting.figure(
+    title='Shared effect direction by fine-mapping category',
+    width=1200,
+    height=900,
+    x_range=bokeh.models.FactorRange(*xs),
+    y_axis_label = 'Percent loci with shared effect direction',
+    y_range=[.5,1],
+    toolbar_location = None
+)
+fig.vbar(x=xs, top=ys, width=0.9)
+fig.x_range.range_padding=0.1
+fig.xaxis.major_label_orientation = 1
+fig.background_fill_color = None
+fig.border_fill_color = None
+fig.grid.grid_line_color = None
+fig.toolbar_location = None
+fig.title.text_font_size = '30px'
+fig.axis.axis_label_text_font_size = '26px'
+fig.axis.major_label_text_font_size = '20px'
+fig.xaxis.group_text_font_size = '20px'
+fig.xaxis.subgroup_text_font_size = '20px'
+bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/replication_shared_direction.png')
+bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/replication_shared_direction.svg')
+
+
+'''
 shifted_figs = []
 shared_x_axes = []
 first_row=True
@@ -169,7 +208,6 @@ for comparison_name, cond_wb, cond_rep in [
     bokeh.io.export_png(bokeh.layouts.layout(cols), filename=f'{ukb}/post_finemapping/results/continuous_replication_{comparison_name}.png')
     bokeh.io.export_svg(bokeh.layouts.layout(cols), filename=f'{ukb}/post_finemapping/results/continuous_replication_{comparison_name}.svg')
 
-'''
 for ethnicity in other_ethnicities:
     for name, condition in named_conditions
     n_neither = df.filter(pl.col('p_val') <= 5e-8).filter((pl.col(f'{ethnicity}_p_val') > 0.05) & ~pl.col('is_causal_STR_candidate')).shape[0]
@@ -193,7 +231,10 @@ for ethnicity in other_ethnicities:
             df.filter(
                 condition
             ).select(
-                (pl.col(f'{ethnicity}_p_val') <= 0.05).cast(int).mean().alias('out')
+                (
+                    (pl.col(f'{ethnicity}_p_val') <= 0.05) & 
+                    (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0)
+                ).cast(int).mean().alias('out')
             )['out'].to_numpy()[0]
         )
 
@@ -217,4 +258,47 @@ fig.axis.axis_label_text_font_size = '26px'
 fig.axis.major_label_text_font_size = '20px'
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/binary_replication.png')
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/binary_replication.svg')
+
+xs = []
+ys = []
+for ethnicity in other_ethnicities:
+    for (name, condition) in [
+        ('p<=1e-10', pl.col('p_val') <= 1e-10),
+        ('p<=1e-10 & (susie or finemap)', (pl.col('p_val') <= 1e-10) & (pl.col('finemapped_susie') | pl.col('finemapped_finemap'))),
+        ('p<=1e-10 & susie & finemap', (pl.col('p_val') <= 1e-10) & pl.col('finemapped_susie') & pl.col('finemapped_finemap')),
+        ('causal STR candidates', pl.col('is_causal_STR_candidate'))
+    ]:
+        xs.append((ethnicity, name))
+        ys.append(
+            df.filter(
+                ((pl.col('p_val') <= 1e-10) & pl.col('finemapped_susie') & pl.col('finemapped_finemap')).any().over('region')
+            ).filter(
+                condition
+            ).select(
+                (
+                    (pl.col(f'{ethnicity}_p_val') <= 0.05)
+                ).cast(int).mean().alias('out')
+            )['out'].to_numpy()[0]
+        )
+
+fig = bokeh.plotting.figure(
+    title='Replication rate by category and ethnicity',
+    x_range=bokeh.models.FactorRange(*xs),
+    y_axis_label = 'Replication rate',
+    width=1200,
+    height=800,
+)
+fig.vbar(x=xs, top=ys, width=0.9)
+fig.y_range.start=0
+fig.x_range.range_padding=0.1
+fig.xaxis.major_label_orientation = 1
+fig.background_fill_color = None
+fig.border_fill_color = None
+fig.grid.grid_line_color = None
+fig.toolbar_location = None
+fig.title.text_font_size = '30px'
+fig.axis.axis_label_text_font_size = '26px'
+fig.axis.major_label_text_font_size = '20px'
+bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/bad_binary_replication.png')
+bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/bad_binary_replication.svg')
 '''

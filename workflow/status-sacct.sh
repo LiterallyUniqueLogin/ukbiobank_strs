@@ -13,6 +13,13 @@ then
   exit 1
 fi
 
+## Dont run between 315 and 400 in morning
+currenttime=$(date +%H:%M)
+if [[ "$currenttime" > "03:15" ]] && [[ "$currenttime" < "04:00" ]]; then
+  while [[ $(date +%H:%M) < "04:00" ]]; do sleep 1; done
+fi
+## End changes
+
 output=`sacct -j "$jobid" --format State --noheader | head -n 1 | awk '{print $1}'`
 
 if [[ $output =~ ^(COMPLETED).* ]]

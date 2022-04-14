@@ -356,7 +356,7 @@ def concatenate_csvs(output_file, input_files):
                     outfile.write(line)
     shutil.move(output_file + '.temp', output_file)
 
-def regions(region_len):
+def association_regions(region_len):
     regions = []
     for chrom in range(1, 23):
         chr_len = chr_lens[chrom-1]
@@ -446,7 +446,7 @@ rule concatenate_and_move_my_imputed_snp_continuous_gwas_chr21:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_imputed_snp/batches/chr{region}.tab' for
-             region in regions(int(1e5)) if region[:3] == '21_']
+             region in association_regions(int(1e5)) if region[:3] == '21_']
     output:
         protected('association/plots/input/{phenotype}/my_imputed_snp_chr21_results.tab')
     resources:
@@ -546,7 +546,7 @@ rule concatenate_my_str_gwas:
     input:
         lambda wildcards:
             [f'association/results/{wildcards.phenotype}/my_str{wildcards.suffix}/batches/chr{region}.tab' for
-             region in regions(int(1e7))]
+             region in association_regions(int(1e7))]
     output:
         results = protected('association/results/{phenotype}/my_str{suffix,|_linear}/results.tab')
     resources:
@@ -1079,11 +1079,11 @@ checkpoint generate_regions:
 
 def generated_regions(phenotype):
     # TODO temp
-    #checkpoints.generate_regions.get(phenotype=phenotype)
+    # checkpoints.generate_regions.get(phenotype=phenotype)
     df = pl.scan_csv(
         expand(rules.generate_regions.output.table, phenotype=phenotype)[0],
         sep='\t'
-    ).filter('any_strs').collect()
+    ).collect()
     return [
         (chrom, start, end) for (chrom, start, end) in 
         zip(df['chrom'], df['start'], df['end'])
@@ -1488,7 +1488,7 @@ def all_finemap_outputs(phenotype):
 
 rule finemap_all_phenotypes:
     input:
-        itertools.chain.from_iterable(
+        lambda _: itertools.chain.from_iterable(
             all_finemap_outputs(phenotype) for phenotype in phenotypes.phenotypes_in_use
         )
 
@@ -1605,6 +1605,7 @@ rule susie_load_gts:
 
 rule susie_load_all_gts_mean_platelet_volume:
     input:
+        lambda _ :
         [
             f'finemapping/susie_results/mean_platelet_volume/{chrom}_{start}_{stop}/gt_residuals.h5'
             for chrom, start, stop in generated_regions('mean_platelet_volume')
@@ -1815,6 +1816,7 @@ def all_susie_outputs(phenotype):
 
 rule susie_all_phenotypes:
     input:
+        lambda _: 
         sum([
             all_susie_outputs(phenotype) for phenotype in phenotypes.phenotypes_in_use
         ], [])
@@ -1849,7 +1851,7 @@ rule susie_find_reruns:
 
 rule summarize_susie_output:
     input:
-        rules.susie_all_phenotypes.input
+        lambda _: rules.susie_all_phenotypes.input
     output:
         table='finemapping/susie_results/summary.tab'
     params:
@@ -2119,8 +2121,8 @@ rule finemap_signal_strengths:
 
 rule finemapping_concordance:
     input:
-        rules.susie_all_phenotypes.input,
-        rules.finemap_all_phenotypes.input
+        lambda _: rules.susie_all_phenotypes.input,
+        lambda _: rules.finemap_all_phenotypes.input
     output:
         cs_min_abs_corrs=expand('export_scripts/results/cs_min_abs_corrs.{ext}', ext={'svg', 'png'}),
         cses_per_region=expand('export_scripts/results/cses_per_region.{ext}', ext={'svg', 'png'}),

@@ -496,22 +496,22 @@ if args.calc:
         compare_categories(out, compare_STRs, pl.col('exonic') & (pl.col('period') != 3), 'exonic_not_trinucs')
         compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'A', 'polyA')
         compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'C', 'polyC')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AC', 'ACrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AT', 'ATrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AG', 'AGrep')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AC', 'polyAC')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AT', 'polyAT')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AG', 'polyAG')
         compare_categories(out, compare_STRs, ~pl.col('canonical_unit').is_in(['AC', 'AT', 'AG']) & (pl.col('period') == 2), 'other_dinucs')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'CCG', 'CCGrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAT', 'AAATrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAC', 'AAACrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AGAT', 'AGATrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAG', 'AAAGrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAGG', 'AAGGrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AATG', 'AATGrep')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'CCG', 'polyCCG')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAT', 'polyAAAT')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAC', 'polyAAAC')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AGAT', 'polyAGAT')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAG', 'polyAAAG')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAGG', 'polyAAGG')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AATG', 'polyAATG')
         compare_categories(out, compare_STRs, ~pl.col('canonical_unit').is_in(['AAAT', 'AAAC', 'AGAT',' AAAG', 'AAGG', 'AATG']) & (pl.col('period') == 4), 'other_tetranucs')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAAC', 'AAAACrep')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAAT', 'AAAATrep')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAAC', 'polyAAAAC')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAAT', 'polyAAAAT')
         compare_categories(out, compare_STRs, ~pl.col('canonical_unit').is_in(['AAAAC', 'AAAAT']) & (pl.col('period') == 5), 'other_pentanucs')
-        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAAAC', 'AAAACCrep')
+        compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'AAAAAC', 'polyAAAACC')
         compare_categories(out, compare_STRs, ~pl.col('canonical_unit').is_in(['AAAAAC']) & (pl.col('period') == 6), 'other_hexanucs')
         compare_categories(out, compare_STRs, pl.col('canonical_unit') == 'None', 'unclear_repeat_unit')
         compare_categories(out, compare_STRs, pl.col('coding'), 'coding')
@@ -542,22 +542,30 @@ def barplot_fig(cats, data):
     fig.xgrid.grid_line_color = None
     return fig
 
-upper_data = []
-upper_cats = []
-lower_data = []
-lower_cats = []
+datas = {}
+for fig_loc in 'main', 'supp':
+    datas[fig_loc] = {}
+    for bar_loc in 'left', 'right':
+        datas[fig_loc][bar_loc] = {}
+        datas[fig_loc][bar_loc]['data'] = []
+        datas[fig_loc][bar_loc]['cat'] = []
+
 with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
     next(stats) #skip header
     for line in stats:
         split = line.split()
         category = split[0]
         ori_perc = float(split[2][1:-2])
-        if ori_perc >= 10:
-            curr_data = upper_data
-            curr_cat = upper_cats
+        if 'other' in category or 'poly' in category or 'unknown' in category:
+            fig_loc = 'supp'
         else:
-            curr_data = lower_data
-            curr_cat = lower_cats
+            fig_loc = 'main'
+        if ori_perc >= 10:
+            bar_loc = 'left'
+        else:
+            bar_loc = 'right'
+        curr_data = datas[fig_loc][bar_loc]['data']
+        curr_cat = datas[fig_loc][bar_loc]['cat']
         curr_cat.extend([
             (category, f'all STRs\n{float(split[7]):.1g} vs GWS, {float(split[8]):.1g} vs CC'),
             (category, f'gwsig STRs\n{float(split[9]):.1g} vs CC'),
@@ -568,13 +576,20 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
         curr_data.append(float(split[4][1:-2]))
         curr_data.append(float(split[6][1:-2]))
 
-fig = bokeh.layouts.column([
-    barplot_fig(upper_cats, upper_data),
-    barplot_fig(lower_cats, lower_data)
+fig = bokeh.layouts.row([
+    barplot_fig(datas['main']['left']['cat'], datas['main']['left']['data']),
+    barplot_fig(datas['main']['right']['cat'], datas['main']['right']['data']),
 ])
 
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.svg')
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.png')
+
+fig = bokeh.layouts.column([
+    barplot_fig(datas['supp']['upper']['cat'], datas['supp']['upper']['data']),
+    barplot_fig(datas['supp']['lower']['cat'], datas['supp']['lower']['data']),
+])
+bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.svg')
+bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.png')
 exit()
 
 def _BetterCDF(data_list: List[float],

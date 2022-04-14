@@ -1,0 +1,8 @@
+yang_eSTRs.tab was named all_tissue_regression.csv in the email
+yang_spliceSTRs.tab was named spliceSTR_OV_casual_or_exon_jonathan.csv in the email
+filtered_STRs.tab was named Not_found_STR_filter.csv in the email
+old.tsv is the set of loci that Yang examined that I sent him a while back, different than our current list of blessed STRs.
+
+How to genenrate the blessed file:
+run ./table.py
+Then manually annotated the comparison_to_2019_eSTRs file. NA means those associations were in that file (5 of the 30 eSTR findings). distance means all the associations were > 100kb away and weren't looked for by the eSTR paper. This accounts for 13 of the STRs.
