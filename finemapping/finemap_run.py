@@ -13,14 +13,17 @@ import python_file_utils as file_utils
 ukb = os.environ['UKB']
 
 def run_finemap(outdir, *, prob_conv_sss_tol, prior_std, prior_snps):
+    with open(f'{outdir}/finemap_input.z') as input_vars:
+        n_vars = len(input_vars.readlines()) - 1
+    causal_snps_flag = min(40, n_vars)
+
     out = sp.run(
         f'{ukb}/utilities/finemap/finemap_v1.4_x86_64 --sss '
         f'--in-files {outdir}/finemap_input.master '
         '--log '
         '--n-configs-top 100 '
         '--n-threads 2 '
-        #'--n-causal-snps 20 '
-        '--n-causal-snps 40 ' # TODO undo this
+        f'--n-causal-snps {causal_snps_flag} '
         f'--prob-conv-sss-tol {prob_conv_sss_tol} '
         f'--prior-std {prior_std} ' +
         ('' if not prior_snps else '--prior-snps '),

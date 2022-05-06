@@ -118,7 +118,6 @@ def write_input_variants(workdir, outdir, gts_dir, readme, phenotype, chrom, sta
         ])
         strs = pl.concat([strs, pacsin2_strs])
 
-    assert strs.shape[0] > 0
     assert strs.distinct(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
 
     n_strs = strs.shape[0]

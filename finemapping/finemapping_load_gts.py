@@ -18,7 +18,7 @@ import sample_utils
 import load_PACSIN2
 
 ukb = os.environ['UKB']
-project_temp = os.environ['PROJECT_TEMP']
+project_temp = f'{ukb}/scratch'
 
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for

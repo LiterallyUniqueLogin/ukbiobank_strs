@@ -57,6 +57,61 @@ df = associations_df.join(
     on=['phenotype', 'chrom', 'pos']
 ).with_column((~pl.col('causal_STR_candidate_indicator').is_null()).alias('is_causal_STR_candidate'))
 
+def barplot_fig(cats, data, p_groups):
+    fig = bokeh.plotting.figure(
+        y_axis_label = 'Percent loci with shared effect direction',
+        x_range = bokeh.models.FactorRange(*cats),
+        width=len(data)//3*200,
+        height=800,
+        toolbar_location=None,
+        y_range=[.5,1.05],
+    )
+    fig.yaxis.bounds = [.5, 1]
+    arr_data = np.array(data)
+    arr_data[arr_data == 0] = np.nan
+    fig.vbar(x=cats, top=arr_data, width=0.9, line_color='grey')
+    fig.background_fill_color = None
+    fig.border_fill_color = None
+    fig.x_range.range_padding = 0.1
+    fig.xaxis.major_label_orientation = 1
+    fig.xgrid.grid_line_color = None
+    y_range = max(data) - 0.5 # since plots are relative to zero
+    for group in range(len(p_groups)):
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+1], data[group*4], data[group*4+1], data[group*4:group*4+2], p_groups[group][0], -1, -1, -1)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+2], data[group*4], data[group*4+2], data[group*4:group*4+3], p_groups[group][1], -2, -1, -2)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+3], data[group*4], data[group*4+3], data[group*4:group*4+4], p_groups[group][2], 0, 2, 3)
+        #compare_bars(fig, y_range, cats[group*4+1], cats[group*4+2], data[group*4+1], data[group*4+2], data[group*4+1:group*4+3], p_groups[group][3], 1, 0, 1)
+        compare_bars(fig, y_range, cats[group*4+1], cats[group*4+3], data[group*4+1], data[group*4+3], data[group*4+1:group*4+4], p_groups[group][3], 0, 1, 2)
+        compare_bars(fig, y_range, cats[group*4+2], cats[group*4+3], data[group*4+2], data[group*4+3], data[group*4+2:group*4+4], p_groups[group][4], 1, 0, 1)
+    return fig
+
+def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep):
+    x1 = [*x1, .15*x1step]
+    x2 = [*x2, .15*x2step]
+    y_step_size = 0.05*y_range
+    if ystep > 0:
+        top = max(ys) + ystep*y_step_size
+        text_y = top + 0.01*y_step_size
+    else: 
+        top = min(ys) + ystep*y_step_size
+        text_y = top - 0.75*y_step_size
+    fig.line(x=[x1, x1], y=[y1, top], color='black')
+    fig.line(x=[x2, x2], y=[y2, top], color='black')
+    fig.line(x=[x1, x2], y=[top, top], color='black')
+    text=f'(p={p_val:.1g})'
+    if p_val < 0.05/25:
+        text = '** ' + text
+    elif p_val < 0.05:
+        text = '* ' + text
+
+    cds = bokeh.models.ColumnDataSource(dict(
+        x=[x1[:2]],
+        y=[text_y],
+        #y=[top+0.01*y_step_size],
+        text=[text]
+    ))
+    fig.add_layout(bokeh.models.LabelSet(x='x', y='y', x_offset=.05, text='text', source=cds, text_font_size='12px', text_color='black'))
+
 named_conditions = [
     ('gwsig STRs', pl.col('p_val') <= 5e-8),
     ('SuSiE fine-mapped STRs', pl.col('finemapped_susie')),
@@ -66,7 +121,12 @@ named_conditions = [
 
 xs = []
 ys = []
+p_groups = []
 for ethnicity in other_ethnicities:
+    p_group = []
+    p_groups.append(p_group)
+    group_totals = []
+    subgroup_totals = []
     for name, condition in named_conditions:
         xs.append((ethnicity, name))
         ys.append(
@@ -76,6 +136,54 @@ for ethnicity in other_ethnicities:
                 (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0).cast(int).mean().alias('out')
             )['out'].to_numpy()[0]
         )
+        group_totals.append(
+            df.filter(
+                condition & ~pl.col(f'{ethnicity}_coeff').is_nan()
+            ).shape[0]
+        )
+        subgroup_totals.append(
+            df.filter(
+                condition & ~pl.col(f'{ethnicity}_coeff').is_nan()
+            ).filter(
+                pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0
+            ).shape[0]
+        )
+    p_group.append(scipy.stats.chi2_contingency(
+        [[group_totals[-4] - group_totals[-3] - subgroup_totals[-4] + subgroup_totals[-3],   subgroup_totals[-4] - subgroup_totals[-3]    ],
+         [group_totals[-3] - subgroup_totals[-3],                                            subgroup_totals[-3]                          ]],
+    correction=False)[1])
+    p_group.append(scipy.stats.chi2_contingency(
+        [[group_totals[-4] - group_totals[-2] - subgroup_totals[-4] + subgroup_totals[-2],   subgroup_totals[-4] - subgroup_totals[-2]    ],
+         [group_totals[-2] - subgroup_totals[-2],                                            subgroup_totals[-2]                          ]],
+    correction=False)[1])
+    p_group.append(scipy.stats.chi2_contingency(
+        [[group_totals[-4] - group_totals[-1] - subgroup_totals[-4] + subgroup_totals[-1],   subgroup_totals[-4] - subgroup_totals[-1]    ],
+         [group_totals[-1] - subgroup_totals[-1],                                            subgroup_totals[-1]                          ]],
+    correction=False)[1])
+
+    '''
+    This isn't correct
+    n_nsusie_nfinemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  ~pl.col('finemapped_susie') & ~pl.col('finemapped_finemap')).shape[0]
+    n_nsusie_finemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  ~pl.col('finemapped_susie') & pl.col('finemapped_finemap')).shape[0]
+    n_susie_nfinemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  pl.col('finemapped_susie') & ~pl.col('finemapped_finemap')).shape[0]
+    n_susie_finemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  pl.col('finemapped_susie') & pl.col('finemapped_finemap')).shape[0]
+    p_group.append(scipy.stats.chi2_contingency(
+        [[n_nsusie_nfinemap, n_nsusie_finemap],
+         [n_susie_nfinemap,  n_susie_finemap ]],
+    correction=False)[1])
+    '''
+    
+    p_group.append(scipy.stats.chi2_contingency(
+        [[group_totals[-3] - group_totals[-1] - subgroup_totals[-3] + subgroup_totals[-1],   subgroup_totals[-3] - subgroup_totals[-1]    ],
+         [group_totals[-1] - subgroup_totals[-1],                                            subgroup_totals[-1]                          ]],
+    correction=False)[1])
+    p_group.append(scipy.stats.chi2_contingency(
+        [[group_totals[-2] - group_totals[-1] - subgroup_totals[-2] + subgroup_totals[-1],   subgroup_totals[-2] - subgroup_totals[-1]    ],
+         [group_totals[-1] - subgroup_totals[-1],                                            subgroup_totals[-1]                          ]],
+    correction=False)[1])
+
+fig = barplot_fig(xs, ys, p_groups)
+'''
 fig = bokeh.plotting.figure(
     title='Shared effect direction by fine-mapping category',
     width=1200,
@@ -92,6 +200,7 @@ fig.background_fill_color = None
 fig.border_fill_color = None
 fig.grid.grid_line_color = None
 fig.toolbar_location = None
+'''
 fig.title.text_font_size = '30px'
 fig.axis.axis_label_text_font_size = '26px'
 fig.axis.major_label_text_font_size = '20px'

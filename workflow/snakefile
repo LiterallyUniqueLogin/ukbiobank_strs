@@ -2609,6 +2609,10 @@ rule finemapping_generate_concordant_causal_candidate_STRs:
         '--phenotype {wildcards.phenotype} '
         '--no-assert '
 
+rule causal_candidate_finemapping_concordance_all:
+    input:
+        expand(rules.finemapping_generate_concordant_causal_candidate_STRs.output.all_vars, phenotype=phenotypes.phenotypes_in_use)
+
 rule finemapping_summarize_concordant_causal_candidate_STRs:
     input:
         expand(rules.finemapping_generate_concordant_causal_candidate_STRs.output.all_vars, phenotype=phenotypes.phenotypes_in_use)

@@ -71,8 +71,6 @@ def choose_vars(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_po
     if mac:
         strs_to_include = strs_to_include[~np.isin(strs_to_include, strs_exclude_mac)]
 
-    assert len(strs_to_include) != 0
-
     snps_to_filter = set()
     snps_to_filter = pl.scan_csv(
         filter_set_fname,
@@ -114,6 +112,7 @@ def choose_vars(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_po
 
     snp_sort_tuples = set((pos, 'SNP', ref, alt) for (pos, ref, alt) in snps_to_include)
     str_sort_tuples = set((pos, 'STR') for pos in strs_to_include)
+
     vars_ = snp_sort_tuples.union(str_sort_tuples)
     if use_PACSIN2:
         vars_.remove((43385872, 'STR'))
@@ -142,8 +141,8 @@ if __name__ == '__main__':
     parser.add_argument('outcols')
     parser.add_argument('phenotype')
     parser.add_argument('chrom')
-    parser.add_argument('start')
-    parser.add_argument('end')
+    parser.add_argument('start', type=int)
+    parser.add_argument('end', type=int)
     parser.add_argument('--threshold', default=5e-4, type=float)
     parser.add_argument('--mac', nargs=3, default=None)
     parser.add_argument('--three-PACSIN2-STRs', action='store_true', default=False)

@@ -35,8 +35,6 @@ def all_regions(phenotype):
     return zip(*list(pl.read_csv(
         f'{ukb}/signals/regions/{phenotype}.tab',
         sep='\t'
-    ).filter(
-        pl.col('any_strs')
     ).select([
         (pl.col('chrom').cast(str) + '_' + pl.col('start').cast(str) + '_' + pl.col('end')).alias('region'),
         pl.col('chrom')
@@ -129,6 +127,7 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
         df = susie_df.with_columns([
             pl.lit(region).alias('region'),
             pl.lit(chrom).alias('chrom').cast(int),
+            pl.col('susie_pip').cast(float).alias('susie_pip')
         ]).sort('susie_idx')
 
         real_cs_count = 0
@@ -967,7 +966,7 @@ def putatively_causal_hits_comparison():
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
         ) for phenotype in phenotypes.phenotypes_in_use
         if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
-    ]).rename({'finemap_pip_gt_thresh': 'finemap_pip_p_thresh'})
+    ])
     print(' done', flush=True)
 
     total_df = total_df.filter(~pl.col('finemap_pip').is_null() & ~pl.col('susie_alpha').is_null())
@@ -1406,7 +1405,6 @@ def first_pass_comparison():
 
     # ----- Stats ----
 
-    '''
     print(
         'Total SuSiE CSes',
         # should be the same
@@ -1555,7 +1553,6 @@ def first_pass_comparison():
             pl.col('finemap_pip')/pl.col('total')
         )
     )
-    '''
 
     print(
         'Percentage of SuSiE CSes with FINEMAP PIP < 0.1',
@@ -1576,7 +1573,6 @@ def first_pass_comparison():
         )
     )
 
-    '''
     # --- figures ----
     print('Plotting figures', flush=True)
 
@@ -1968,7 +1964,6 @@ def first_pass_comparison():
         fig.grid.grid_line_color=None
         bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.png')
         bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.svg')
-        '''
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

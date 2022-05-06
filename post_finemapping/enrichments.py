@@ -410,6 +410,8 @@ if args.calc:
         f'{ukb}/post_finemapping/intermediate_results/enrichments_df.tab',
         sep='\t',
         dtypes={'is_causal_STR_candidate': bool}
+    ).with_column(
+        (~pl.col('is_causal_STR_candidate').is_null()).alias('is_causal_STR_candidate')
     ).collect()
 
     # assert only nulls are MHC
@@ -434,7 +436,7 @@ if args.calc:
             if np.any(np.array(table) < 5):
                 p_vals.append(scipy.stats.fisher_exact(table)[1])
             else:
-                p_vals.append(scipy.stats.chi2_contingency(table)[1])
+                p_vals.append(scipy.stats.chi2_contingency(table, correction=False)[1])
 
         out.write(
             f'{category_string}\t'
@@ -526,21 +528,49 @@ if args.calc:
 
     exit()
 
-def barplot_fig(cats, data):
+def barplot_fig(cats, data, ps):
     fig = bokeh.plotting.figure(
-        y_axis_label = 'Prevalence',
+        y_axis_label = 'Prevalence (%)',
         x_range = bokeh.models.FactorRange(*cats),
         width=len(data)//3*200,
         height=800,
         toolbar_location=None
     )
-    fig.vbar(x=cats, top=data, width=0.9)
+    arr_data = np.array(data)
+    arr_data[arr_data == 0] = np.nan
+    fig.vbar(x=cats, top=arr_data, width=0.9)
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.x_range.range_padding = 0.1
     fig.xaxis.major_label_orientation = 1
     fig.xgrid.grid_line_color = None
+    y_range = max(data) # since plots are relative to zero
+    for group in range(len(cats)//3):
+        compare_bars(fig, y_range, cats[group*3], cats[group*3+1], data[group*3], data[group*3+1], data[group*3:group*3+2], ps[group*3], 0, -1, 1)
+        compare_bars(fig, y_range, cats[group*3+1], cats[group*3+2], data[group*3+1], data[group*3+2], data[group*3+1:group*3+3], ps[group*3+2], 1, 0, 1)
+        compare_bars(fig, y_range, cats[group*3], cats[group*3+2], data[group*3], data[group*3+2], data[group*3:group*3+3], ps[group*3+1], -1, 1, 2)
     return fig
+
+def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep):
+    x1 = [*x1, .15*x1step]
+    x2 = [*x2, .15*x2step]
+    y_step_size = 0.05*y_range
+    top = max(ys) + ystep*y_step_size
+    fig.line(x=[x1, x1], y=[y1, top])
+    fig.line(x=[x2, x2], y=[y2, top])
+    fig.line(x=[x1, x2], y=[top, top])
+    text=f'(p={p_val:.1g})'
+    if p_val < 0.05/50:
+        text = '** ' + text
+    elif p_val < 0.05:
+        text = '* ' + text
+
+    cds = bokeh.models.ColumnDataSource(dict(
+        x=[x1[:2]],
+        y=[top+0.01*y_step_size],
+        text=[text]
+    ))
+    fig.add_layout(bokeh.models.LabelSet(x='x', y='y', x_offset=.05, text='text', source=cds, text_font_size='12px'))
 
 datas = {}
 for fig_loc in 'main', 'supp':
@@ -549,49 +579,55 @@ for fig_loc in 'main', 'supp':
         datas[fig_loc][bar_loc] = {}
         datas[fig_loc][bar_loc]['data'] = []
         datas[fig_loc][bar_loc]['cat'] = []
+        datas[fig_loc][bar_loc]['ps'] = []
 
 with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
     next(stats) #skip header
     for line in stats:
+        if 'CCG' in line:
+            continue
         split = line.split()
         category = split[0]
         ori_perc = float(split[2][1:-2])
-        if 'other' in category or 'poly' in category or 'unknown' in category:
+        if 'other' in category or 'poly' in category or 'unclear' in category:
             fig_loc = 'supp'
         else:
             fig_loc = 'main'
         if ori_perc >= 10:
-            bar_loc = 'left'
-        else:
             bar_loc = 'right'
+        else:
+            bar_loc = 'left'
         curr_data = datas[fig_loc][bar_loc]['data']
         curr_cat = datas[fig_loc][bar_loc]['cat']
+        curr_ps = datas[fig_loc][bar_loc]['ps']
         curr_cat.extend([
-            (category, f'all STRs\n{float(split[7]):.1g} vs GWS, {float(split[8]):.1g} vs CC'),
-            (category, f'gwsig STRs\n{float(split[9]):.1g} vs CC'),
-            (category, 'candidate causal STRs')
+            (category, f'all STRs'),
+            (category, f'gwsig STRs'),
+            (category, 'high-confidence STRs')
         ])
+        curr_ps.extend([float(split[idx]) for idx in range(7, 10)])
 
         curr_data.append(ori_perc)
         curr_data.append(float(split[4][1:-2]))
         curr_data.append(float(split[6][1:-2]))
 
 fig = bokeh.layouts.row([
-    barplot_fig(datas['main']['left']['cat'], datas['main']['left']['data']),
-    barplot_fig(datas['main']['right']['cat'], datas['main']['right']['data']),
+    barplot_fig(datas['main']['left']['cat'], datas['main']['left']['data'], datas['main']['left']['ps']),
+    barplot_fig(datas['main']['right']['cat'], datas['main']['right']['data'], datas['main']['right']['ps']),
 ])
 
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.svg')
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.png')
 
-fig = bokeh.layouts.column([
-    barplot_fig(datas['supp']['upper']['cat'], datas['supp']['upper']['data']),
-    barplot_fig(datas['supp']['lower']['cat'], datas['supp']['lower']['data']),
+fig = bokeh.layouts.row([
+    barplot_fig(datas['supp']['left']['cat'], datas['supp']['left']['data'], datas['supp']['left']['ps']),
+    barplot_fig(datas['supp']['right']['cat'], datas['supp']['right']['data'], datas['supp']['right']['ps']),
 ])
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.svg')
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.png')
 exit()
 
+# old code for continuous comparisons
 def _BetterCDF(data_list: List[float],
            ax: matplotlib.axes.Axes):
     # assumes that axes are already set to (min, max)
@@ -610,59 +646,7 @@ def _BetterCDF(data_list: List[float],
     ))
     return ax.step(data, ys, where='post')
 
-
-
 with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
-    
-    '''
-    out.write(
-        f'From among phenotypes: {phenotypes}\n'
-        'All categories are among protein coding genes, except where specified\n'
-        'Transcript support level >= 2 required\n'
-        'UTR5 and UTR3 must be explicitly labeled as such, not just UTR\n'
-        'intronic is not exonic, UTR3, UTR5, but also not coding or UTR (which remove a few more)\n'
-        'intergenic is not in a protein coding gene\n'
-        'transcribed_non_protein is transcribed and not in a protein coding gene\n'
-        'gwas sig is p<=5e-8\n'
-        'pcausal cutoff for FINEMAPed is >= 0.9, also required to be gwas sig\n'
-    )
-    '''
-    out.write(
-        'category\tall_gwas_sig_STRs_count\t#_in_cat\t%_in_cat\tsubset_name\tsubset_count\t#_subset_in_cat\t%_subset_in_cat\tp_val\n'
-    )
-    binary_test(out, compare_STRs, compare_STRs.select((pl.col('exonic') & (pl.col('period') == 3)).alias('out'))['out'].to_numpy(), 'exonic_trinucs')
-    binary_test(out, compare_STRs, compare_STRs.select((pl.col('canonical_unit') == 'AC').alias('out'))['out'].to_numpy(), 'AC_repeats')
-    binary_test(out, compare_STRs, compare_STRs.select((pl.col('canonical_unit') == 'A').alias('out'))['out'].to_numpy(), 'A_repeats')
-    binary_test(out, compare_STRs, compare_STRs['transcribed_non_protein'].to_numpy(), 'transcribed_non_protein')
-    binary_test(out, compare_STRs, compare_STRs['intergenic'].to_numpy(), 'intergenic')
-    '''
-    for category in 'exonic', 'UTR5', 'UTR3', 'intronic', 'intergenic', 'transcribed_non_protein':#, 'eSTR', 'FM_eSTR':
-        binary_test(out, compare_STRs, compare_STRs[category].to_numpy(), category)
-        #graph_relative_rate_by_pcausal(compare_STRs, compare_STRs[category], category)
-    for period in range(1,7):
-        binary_test(out, compare_STRs, compare_STRs['period'] == period, f'period_is_{period}')
-        graph_relative_rate_by_pcausal(compare_STRs, compare_STRs['period'] == period, f'period_is_{period}')
-    for structure in 'HAIRP', 'QUAD', 'IMOT':
-        binary_test(out, compare_STRs, compare_STRs['structure'] == structure, f'structure_is_{structure}')
-        graph_relative_rate_by_pcausal(compare_STRs, compare_STRs['structure'] == structure, f'structure_is_{structure}')
-    binary_test(out, compare_STRs, (compare_STRs['structure'] != 'UNF') & ~compare_STRs['structure'].isnull(), 'any_stalling_struture')
-    graph_relative_rate_by_pcausal(compare_STRs, (compare_STRs['structure'] != 'UNF') & ~compare_STRs['structure'].isnull(), 'any_stalling_struture')
-
-    graph_relative_rate_by_pcausal(compare_STRs, compare_STRs['promoter'], 'promoter')
-    repeat_units = sorted(
-        set(compare_STRs['canonical_unit']),
-        key = lambda seq : (len(seq), seq)
-    )
-    repeat_units.remove('None')
-    for repeat_unit in repeat_units:
-        binary_test(out, compare_STRs, compare_STRs['canonical_unit'] == repeat_unit, f'canonical_repeat_unit_is_{repeat_unit}')
-    # every STR with more than 1k appearances in all STRs
-    for repeat_unit in ('A', 'C', 'AC', 'AT', 'AG', 'AAT', 'AAC', 'AAAT', 'AAAC', 'AGAT', 'AAAG', 'AAGG', 'AATG'):
-        graph_relative_rate_by_pcausal(compare_STRs, compare_STRs['canonical_unit'] == repeat_unit, f'unit_is_{repeat_unit}')
-    '''
-
-    out.write('\n')
-
     f, axs = plt.subplots(1,2, figsize=(9,5), sharey=True)
     seaborn.boxplot(
         y='mean_len',
@@ -734,30 +718,11 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
     )[1]
     out.write(f'Mann-Whitney p_val dist to nearest upstream gene in intergenic STRs (capped at 50kbp), concordantly fine-mapped vs all gwas sig in finemapping regions: {p_val}\n')
 
-    '''
-    fig, ax = plt.subplots()
-    ax.set_xlim(0, np.max(compare_STRs['mean_len'].to_numpy()))
-    ax.set_title('CDF of STR mean len')
-    ax.set_ylabel('density')
-    ax.set_xlabel('distance (bp)')
-    _BetterCDF(compare_STRs['mean_len'].to_numpy(), ax)
-    p_val = scipy.stats.mannwhitneyu(compare_STRs['mean_len'], compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'])[1]
-    out.write(f'Mann-Whitney p_val mean len FINEMAPed vs all gwas sig: {p_val}\n')
-    _BetterCDF(compare_STRs.filter('concordantly_finemapped')['mean_len'].to_numpy(), ax)
-    legends = ['gwas sig STRs', 'consisetnetly_finemapped_but_skeptical']
-    ax.text(0.5, -0.1, "Comparing FINEMAPed to gwas_sig. gwas_sig is association p<=5e-8. FINEMAPed is that and also FINEMAP posterior causal >= 0.9. Both groups exclude MHC", ha="center", transform=ax.transAxes)
-    ax.text(0.5, -1.1, f"Medians: {np.median(compare_STRs['mean_len'])} (gwas_sig) {np.median(compare_STRs.loc[compare_STRs['FINEMAPed'], 'mean_len'])} (FINEMAPed)", ha="center", transform=ax.transAxes)
-    plt.legend(legends)
-    plt.savefig(f'{ukb}/post_finemapping/results/mean_len_cdf.png')
-    plt.savefig(f'{ukb}/post_finemapping/results/mean_len_cdf.pdf')
-    '''
 
-    '''
     out.write('\n')
     out.write('dist to nearest\tstream\tfrom among\tMann-Whitney p_val FINEMAPed vs all gwas sig\n')
-    '''
-    for category, class_ in [('gene', 'intergenic')]:#, ('exon', 'intronic'):
-        for stream in ['upstream']:#, 'downstream':
+    for category, class_ in [('gene', 'intergenic'), ('exon', 'intronic')]:
+        for stream in ['upstream', 'downstream']:
             col = f'{stream}_{category}_dist'
             subbed_data = compare_STRs.filter(pl.col(class_))
             fig, ax = plt.subplots()
@@ -787,7 +752,3 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab', 'w') as out:
             '''
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf_50kbp.png')
             plt.savefig(f'{ukb}/post_finemapping/results/{col}_cdf_50kbp.pdf')
-'''
-if __name__ == '__main__':
-    main()
-'''
