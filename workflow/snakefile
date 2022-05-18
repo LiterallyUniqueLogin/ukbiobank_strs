@@ -2946,6 +2946,16 @@ rule all_supplemental_figures:
     input:
         rules.supplemental_figure_all_susie_finemap_venn.input
 
+rule supplemental_table2:
+    input:
+        expand(rules.generate_regions.output.table, phenotype=phenotypes.phenotypes_in_use),
+    output:
+        'export_scripts/results/supp_table_2_finemapping_regions.tab'
+    resources:
+        time='00:05:00'
+    shell:
+        'signals/regions_supp_table.py'
+
 rule supplemental_table4:
     input:
         # the README for this table was manually written
@@ -2953,6 +2963,7 @@ rule supplemental_table4:
 
 rule all_supplemental_tables:
     input:
+        rules.supplemental_table2.output,
         rules.supplemental_table4.input
 
 '''

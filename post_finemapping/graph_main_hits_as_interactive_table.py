@@ -33,14 +33,13 @@ def main():
         'platelet_distribution_width',
         'urate',
         'creatinine',
-        'total_protein',
-        'alkaline_phosphatase',
-        'aspartate_aminotransferase',
-        'c_reactive_protein',
+        'ifg_1',
         'shbg',
+        'apolipoprotein_a',
+        'triglycerides',
     ]
     pheno_order = [
-        ### block
+        ### red blood cell block
         'haematocrit',
         'haemoglobin_concentration',
         'red_blood_cell_count',
@@ -49,41 +48,37 @@ def main():
         'mean_sphered_cell_volume',
         'red_blood_cell_distribution_width',
         'glycated_haemoglobin',
-        ### block
+        ### platelet block
         'platelet_count',
         'platelet_crit',
         'mean_platelet_volume',
         'platelet_distribution_width',
-        ### block
+        ### white blood cell block
         'eosinophil_count',
         'eosinophil_percent',
         'lymphocyte_count',
         'lymphocyte_percent',
         'neutrophil_count',
         'white_blood_cell_count',
-        ### block
-        #'cystatin_c',
+        ### renal profile block
         'urate',
-        #'urea',
         'creatinine',
-        ### block
-        'apolipoprotein_a',
-        #'apolipoprotein_b',
-        #'ldl_cholesterol',
-        #'hdl_cholesterol',
-        ### block
-        #'albumin',
-        'total_protein',
-        ### unknown
+        ### liver profile block
         'gamma_glutamyltransferase',
         'alkaline_phosphatase',
-        'triglycerides',
         'aspartate_aminotransferase',
-        'calcium',
-        'c_reactive_protein',
+        'total_bilirubin',
+        ### encodcrine profile block
         'igf_1',
         'shbg',
-        'total_bilirubin',
+        ### unknown
+        'calcium',
+        'c_reactive_protein',
+        ### lipid profile block
+        'apolipoprotein_a',
+        'triglycerides',
+        ### block
+        'total_protein',
     ]
 
     pheno_indices = np.where(df['phenotype'].to_numpy()[:, None] == np.array(pheno_order)[None, :])[1]
@@ -127,7 +122,7 @@ def main():
         x_coords[x_coords == 1000000] = pair[1]
 
     strs = df[
-        pl.when(
+        pl.col('chrom').cast(str) + ':' + pl.col('start_pos').cast(str) + '_' + pl.when(
             pl.col('relation_to_gene').str.contains('protein_coding.*protein_coding')
         ).then(
             pl.col('relation_to_gene').str.extract("([^:]*):protein_coding.*:([^:]*):protein_coding", 1) + ' & ' +
@@ -152,6 +147,12 @@ def main():
 
     _, idxs = np.unique(strs, return_index=True)
     unique_stable_strs = strs[np.sort(idxs)].flatten()
+    unique_stable_strs = list(np.char.partition(np.array(unique_stable_strs, dtype=str), '_')[:, 2])
+    # two genes each containing two unique hits
+    unique_stable_strs[unique_stable_strs.index('CCDC26')] += ' (1)'
+    unique_stable_strs[unique_stable_strs.index('CCDC26')] += ' (2)'
+    unique_stable_strs[unique_stable_strs.index('TFDP2')] += ' (1)'
+    unique_stable_strs[unique_stable_strs.index('TFDP2')] += ' (2)'
     results_plot = bokeh.plotting.figure(
         width=2500,
         height=600,
@@ -172,13 +173,6 @@ def main():
     multi_pheno_strs = strs[counts > 1]
     results_plot.xgrid.ticker = multi_pheno_strs + 0.5
     results_plot.xgrid.grid_line_color = 'grey'
-    n_copies = df.with_column(pl.lit(1).alias('foo')).select(pl.col('foo').sum().over(['chrom', 'start_pos'])).to_numpy().flatten()
-    '''
-    results_plot.circle(
-        x_coords + 0.5,
-        df['phenotype'].to_numpy(),
-    )
-    '''
     str_colors = []
     with open(args.e_splice_STRs_table) as table:
         e_splice_lines = table.readlines()
@@ -201,23 +195,17 @@ def main():
         str_colors.append(color)
     str_colors = np.array(str_colors)
 
-    results_plot.circle(
-        (x_coords + 0.5)[n_copies == 1],
-        df['phenotype'].to_numpy()[n_copies == 1],
-        size=np.sqrt(df['p_val'].to_numpy())[n_copies == 1]*2,
-        color=str_colors[n_copies==1]
-    )
     results_plot.triangle(
-        (x_coords + 0.5)[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '+')],
-        df['phenotype'].to_numpy()[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '+')],
-        size=np.sqrt(df['p_val'].to_numpy())[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '+')]*2,
-        color=str_colors[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '+')]
+        (x_coords + 0.5)[df['direction_of_association'].to_numpy() == '+'],
+        df['phenotype'].to_numpy()[df['direction_of_association'].to_numpy() == '+'],
+        size=np.sqrt(df['p_val'].to_numpy())[df['direction_of_association'].to_numpy() == '+']*2,
+        color=str_colors[df['direction_of_association'].to_numpy() == '+']
     )
     results_plot.inverted_triangle(
-        (x_coords + 0.5)[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '-')],
-        df['phenotype'].to_numpy()[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '-')],
-        size=np.sqrt(df['p_val'].to_numpy())[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '-')]*2,
-        color=str_colors[(n_copies > 1) & (df['direction_of_association'].to_numpy() == '-')]
+        (x_coords + 0.5)[df['direction_of_association'].to_numpy() == '-'],
+        df['phenotype'].to_numpy()[df['direction_of_association'].to_numpy() == '-'],
+        size=np.sqrt(df['p_val'].to_numpy())[df['direction_of_association'].to_numpy() == '-']*2,
+        color=str_colors[df['direction_of_association'].to_numpy() == '-']
     )
 
     bokeh.io.export_png(results_plot, filename=args.outfile)

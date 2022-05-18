@@ -18,6 +18,7 @@ other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 #phenotypes.phenotypes_in_use = ['platelet_distribution_width', 'platelet_count']
 #phenotypes.phenotypes_in_use = ['albumin', 'calcium']#platelet_distribution_width', 'platelet_count']
 #phenotypes.phenotypes_in_use = ['igf_1']
+phenotypes.phenotypes_in_use = ['platelet_distribution_width']
 
 def dosages_to_frequencies(dosage_dict_str):
     dosages = ast.literal_eval(dosage_dict_str)
@@ -28,15 +29,24 @@ def dosages_to_frequencies(dosage_dict_str):
 
 finemapping_dfs = []
 for phenotype in phenotypes.phenotypes_in_use:
-    df = pl.scan_csv(
+    df = pd.read_csv(
         f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
         sep='\t',
-        dtypes={
+        dtype={
+            **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
+            **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
+            **{f'{ethnicity}_se': float for ethnicity in other_ethnicities},
+        }
+    )
+    df = pl.DataFrame(pd.read_csv(
+        f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
+        sep='\t',
+        dtype={
             **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
             **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
             **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
         }
-    ).filter('is_STR')
+    )).filter('is_STR')
     fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
     with open(fname) as tsv:
         header = tsv.readline().strip()
@@ -51,7 +61,7 @@ for phenotype in phenotypes.phenotypes_in_use:
         'pos',
         pl.col('subset_total_per_allele_dosages').alias('white_brit_allele_dosages')
     ])
-    df = df.join(
+    df = df.lazy().join(
         assoc_df,
         how='left',
         on=['chrom', 'pos']
@@ -143,16 +153,11 @@ finemapping_results = finemapping_results.join(
 
 # move to pandas for some code that's easier to write imperatively
 finemapping_results = finemapping_results.to_pandas()
-#print(finemapping_results.info(verbose=True))
 
 # handle gene & transcript annotations
 print("Loading gene and transcript annotations ...", flush=True)
-#nearby_exon_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/nearby_exon_d_1000')
-#closest_gene_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/closest_gene', distance=True)
-#nearby_gene_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/nearby_gene_d_100000')
 
 print("Loading high level intersections...", flush=True)
-#transcript_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_transcript', bp_overlap=True)
 gene_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_gene', bp_overlap=True)
 exon_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_exon', bp_overlap=True)
 
@@ -166,72 +171,13 @@ sub_exon_types = pd.concat([CDS_intersect_merge, five_prime_UTR_intersect_merge,
 
 nrows = finemapping_results.shape[0]
 
-#nearby_exons = ['none']*nrows
-#closest_gene = [None]*nrows
-#nearby_genes = ['none']*nrows
 relation_to_gene = ['']*nrows
-#transcribed = ['untranscribed']*nrows
 
 print("Handling gene and transcript annotations ...", flush=True)
 for idx in range(nrows):
     chrom = finemapping_results['chrom'][idx]
     start_pos = finemapping_results['start_pos'][idx]
     end_pos = finemapping_results['end_pos'][idx]
-
-    '''
-    print(sub_exon_types[['start_pos', 'STR_pos', 'STR_ID', 'annotation_feature_type', 'annotation_pos', 'annotation_end_pos']])
-    print(sub_exon_types[['start_pos', 'STR_pos', 'STR_ID', 'annotation_feature_type', 'annotation_pos', 'annotation_end_pos']].dtypes)
-    print(exon_intersect_merge[['start_pos', 'STR_pos', 'STR_ID', 'annotation_feature_type', 'annotation_pos', 'annotation_end_pos']])
-    print(exon_intersect_merge[['start_pos', 'STR_pos', 'STR_ID', 'annotation_feature_type', 'annotation_pos', 'annotation_end_pos']].dtypes)
-    for line in nearby_exon_merge[
-        (nearby_exon_merge['chrom'] == chrom) & (nearby_exon_merge['STR_pos'] == start_pos)
-    ].itertuples():
-        if nearby_exons[idx] == 'none':
-            nearby_exons[idx] = ''
-        else:
-            nearby_exons[idx] += ','
-        nearby_exons[idx] += annotation_utils.distance(
-            start_pos, end_pos, line.annotation_pos, line.annotation_end_pos
-        ) + ":"
-        nearby_exons[idx] += annotation_utils.get_relation(
-            start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-        ) + ":"
-        nearby_exons[idx] += str(line.annotation_pos) + ":"
-        nearby_exons[idx] += str(line.annotation_end_pos) + ":"
-        nearby_exons[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
-        nearby_exons[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
-
-    for line in closest_gene_merge[
-        (closest_gene_merge['chrom'] == chrom) & (closest_gene_merge['STR_pos'] == start_pos)
-    ].itertuples():
-        if closest_gene[idx] is not None:
-            closest_gene[idx] += ','
-        else:
-            closest_gene[idx] = ''
-        closest_gene[idx] += str(line.annotation_distance) + ":"
-        closest_gene[idx] += annotation_utils.get_relation(
-            start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-        ) + ":"
-
-        closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
-        closest_gene[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
-
-    for line in nearby_gene_merge[
-        (nearby_gene_merge['chrom'] == chrom) & (nearby_gene_merge['STR_pos'] == start_pos)
-    ].itertuples():
-        if nearby_genes[idx] == 'none':
-            nearby_genes[idx] = ''
-        else:
-            nearby_genes[idx] += ','
-        nearby_genes[idx] += annotation_utils.distance(
-            start_pos, end_pos, line.annotation_pos, line.annotation_end_pos
-        ) + ":"
-        nearby_genes[idx] += annotation_utils.get_relation(
-            start_pos, end_pos, line.annotation_pos, line.annotation_end_pos, line.annotation_strand
-        ) + ":"
-        nearby_genes[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_name') + ":"
-        nearby_genes[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'gene_type')
-    '''
 
     # dict from gene to types of intersections
     gene_intersections = {}
@@ -254,18 +200,9 @@ for idx in range(nrows):
         for p in gene_intersections[gene_name][1]:
             if line.annotation_pos <= p <= line.annotation_end_pos:
                 gene_intersections[gene_name][1][p] = True
-            '''
-            else:
-                partial_overlap = True
-            '''
 
     if len(gene_intersections) == 0:
         relation_to_gene[idx] = 'intergenic'
-
-    '''
-    if partial_overlap:
-        relation_to_gene[idx] = 'intergenic;'
-    '''
 
     if len(gene_intersections) > 1:
         relation_to_gene[idx] += 'multigene;'
@@ -296,7 +233,6 @@ for idx in range(nrows):
                 gene_intersections[gene_name][4][p] = True
 
     first = True
-    #print(gene_intersections)
     for gene_name, gene_data in gene_intersections.items():
         if not first:
             relation_to_gene[idx] += ';'
@@ -313,26 +249,7 @@ for idx in range(nrows):
         relation_to_gene[idx] += ','.join(types) + ":"
         relation_to_gene[idx] += gene_name + ":" + gene_data[0]
 
-    '''
-    for line in transcript_intersect_merge[
-        (transcript_intersect_merge['chrom'] == chrom) & (transcript_intersect_merge['STR_pos'] == start_pos)
-    ].itertuples():
-        if transcribed[idx] == 'untranscribed':
-            transcribed[idx] = 'transcribed;'
-        else:
-            transcribed[idx] += ','
-        transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_name') + ":"
-        transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_type') + ":"
-        transcribed[idx] += annotation_utils.get_gff_kvp(line.annotation_info, 'transcript_support_level')
-    '''
-
-'''
-finemapping_results['nearby_exons'] = nearby_exons
-finemapping_results['closest_gene'] = closest_gene
-finemapping_results['nearby_genes'] = nearby_genes
-'''
 finemapping_results['relation_to_gene'] = relation_to_gene
-#finemapping_results['transcribed'] = transcribed
 
 # done with gene annotations, move back to polars
 finemapping_results = pl.DataFrame(finemapping_results)
@@ -393,12 +310,13 @@ finemapping_results = finemapping_results.select([
     *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_allele_frequencies') for ethnicity in other_ethnicities],
 ])
 
-finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
-finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
+#finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
+#finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
 
 confident_results = finemapping_results.filter(
     (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos']) &
     (pl.col('association_p_value') <= 1e-10)
-)
+).write_csv(f'{ukb}/temp.tab', sep='\t')
+exit()
 confident_results.write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_for_paper.tab', sep='\t')
-confident_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_sorted.tab', sep='\t')
+#confident_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_sorted.tab', sep='\t')

@@ -37,7 +37,5 @@ pl.concat(dfs).collect().with_column(
         )
     ).alias('filtered_due_to_computation_burden')
 ).select(
-    ['phenotype', 'chrom', 'start', 'end', 'any_strs', 'filtered_due_to_computation_burden']
-).rename({
-    'any_strs': 'any_strs_with_p<=5e-4'
-}).to_csv(f'{ukb}/export_scripts/results/supp_table_2_finemapping_regions.tab', sep='\t')
+    ['phenotype', 'chrom', 'start', 'end', 'filtered_due_to_computation_burden']
+).to_csv(f'{ukb}/export_scripts/results/supp_table_2_finemapping_regions.tab', sep='\t')

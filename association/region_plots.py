@@ -36,15 +36,11 @@ chr_lens = np.genfromtxt(
 
 max_p_val = 300 # in -log10
 
-def fix_cols(cols):
-    col_sightings = {}
-    for col in cols:
-        if col not in col_sightings:
-            col_sightings[col] = 2
-            yield col
-        else:
-            yield col + '__' + str(col_sightings[col])
-            col_sightings[col] += 1
+def replace_last(text, sub, rep):
+    return rep.join(text.rsplit(sub, 1))
+
+def fix_cols(header):
+    return replace_last(replace_last(header, '0.05_significance_CI', 'foo'), '5e-8_significance_CI', 'bar').split('\t')
 
 def get_conditioned_strs(condition):
     splits = condition.split('_')
@@ -124,10 +120,14 @@ my_str_results_rename = {
 def load_my_str_results(phenotype, binary, unconditional_results_fname, conditional_results_fname = None):
     print(f"Loading my STR results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
+    with open(unconditional_results_fname) as tsv:
+        header = tsv.readline().strip()
     unconditional_results = pl.scan_csv(
         unconditional_results_fname,
         sep='\t',
-        with_column_names=lambda cols: list(fix_cols(cols)),
+        skip_rows=1,
+        has_header=False,
+        with_column_names = lambda _: fix_cols(header),
         dtypes={'alleles': str, 'locus_filtered': str}
     ).filter(pl.col(f'p_{phenotype}') <  5e-5).collect().to_pandas()
 

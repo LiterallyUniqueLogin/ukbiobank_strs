@@ -9,6 +9,7 @@ import bokeh.plotting
 import numpy as np
 import polars as pl
 import scipy.stats
+from statsmodels.stats.proportion import proportions_ztest
 
 import phenotypes
 
@@ -66,10 +67,29 @@ def barplot_fig(cats, data, p_groups):
         toolbar_location=None,
         y_range=[.5,1.05],
     )
+    fig.xaxis.major_label_text_color = None
+    fig.xaxis.major_tick_line_color = None
     fig.yaxis.bounds = [.5, 1]
     arr_data = np.array(data)
     arr_data[arr_data == 0] = np.nan
-    fig.vbar(x=cats, top=arr_data, width=0.9, line_color='grey')
+    condition_names = np.unique(list(cat[1] for cat in cats))
+    cds = bokeh.models.ColumnDataSource(dict(
+        x=cats,
+        top=arr_data,
+        subcats=[cat[1] for cat in cats]
+    ))
+    fig.vbar(
+        x='x',
+        top='top',
+        source=cds,
+        width=0.9,
+        line_color='grey',
+        fill_color = bokeh.transform.factor_cmap('x', palette=bokeh.palettes.Colorblind[4], factors=condition_names, start=1, end=2),
+        legend_group = 'subcats'
+    )
+    fig.legend.location = 'top_left'
+    fig.legend[0].items.insert(0, fig.legend[0].items[3])
+    del fig.legend[0].items[4]
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.x_range.range_padding = 0.1
@@ -77,15 +97,16 @@ def barplot_fig(cats, data, p_groups):
     fig.xgrid.grid_line_color = None
     y_range = max(data) - 0.5 # since plots are relative to zero
     for group in range(len(p_groups)):
-        compare_bars(fig, y_range, cats[group*4], cats[group*4+1], data[group*4], data[group*4+1], data[group*4:group*4+2], p_groups[group][0], -1, -1, -1)
-        compare_bars(fig, y_range, cats[group*4], cats[group*4+2], data[group*4], data[group*4+2], data[group*4:group*4+3], p_groups[group][1], -2, -1, -2)
-        compare_bars(fig, y_range, cats[group*4], cats[group*4+3], data[group*4], data[group*4+3], data[group*4:group*4+4], p_groups[group][2], 0, 2, 3)
-        #compare_bars(fig, y_range, cats[group*4+1], cats[group*4+2], data[group*4+1], data[group*4+2], data[group*4+1:group*4+3], p_groups[group][3], 1, 0, 1)
-        compare_bars(fig, y_range, cats[group*4+1], cats[group*4+3], data[group*4+1], data[group*4+3], data[group*4+1:group*4+4], p_groups[group][3], 0, 1, 2)
-        compare_bars(fig, y_range, cats[group*4+2], cats[group*4+3], data[group*4+2], data[group*4+3], data[group*4+2:group*4+4], p_groups[group][4], 1, 0, 1)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+1], data[group*4], data[group*4+1], data[group*4:group*4+2], p_groups[group][0], 1, -1, -1)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+2], data[group*4], data[group*4+2], data[group*4:group*4+3], p_groups[group][1], -1, -1, -2 if p_groups[group][0] <= 0.05 else -1)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+3], data[group*4], data[group*4+3], data[group*4:group*4+4], p_groups[group][2], 0, 1, sum(p_groups[group][i] <= 0.05 for i in (2,3,4)))
+        compare_bars(fig, y_range, cats[group*4+1], cats[group*4+3], data[group*4+1], data[group*4+3], data[group*4+1:group*4+4], p_groups[group][3], 0, 0, sum(p_groups[group][i] <= 0.05 for i in (3,4)))
+        compare_bars(fig, y_range, cats[group*4+2], cats[group*4+3], data[group*4+2], data[group*4+3], data[group*4+2:group*4+4], p_groups[group][4], 0, -1, 1)
     return fig
 
 def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep):
+    if p_val > 0.05:
+        return
     x1 = [*x1, .15*x1step]
     x2 = [*x2, .15*x2step]
     y_step_size = 0.05*y_range
@@ -113,10 +134,10 @@ def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep)
     fig.add_layout(bokeh.models.LabelSet(x='x', y='y', x_offset=.05, text='text', source=cds, text_font_size='12px', text_color='black'))
 
 named_conditions = [
-    ('gwsig STRs', pl.col('p_val') <= 5e-8),
-    ('SuSiE fine-mapped STRs', pl.col('finemapped_susie')),
-    ('FINEMAP fine-mapped STRs', pl.col('finemapped_finemap')),
-    ('causal STR candidates', pl.col('is_causal_STR_candidate'))
+    ('genome-wide significant STRs', pl.col('p_val') <= 5e-8),
+    ('FINEMAP STRs with PIP >= 0.8', pl.col('finemapped_finemap')),
+    ('SuSiE STRs with max alpha >= 0.8', pl.col('finemapped_susie')),
+    ('confidently fine-mapped STRs', pl.col('is_causal_STR_candidate'))
 ]
 
 xs = []
@@ -148,39 +169,27 @@ for ethnicity in other_ethnicities:
                 pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0
             ).shape[0]
         )
-    p_group.append(scipy.stats.chi2_contingency(
-        [[group_totals[-4] - group_totals[-3] - subgroup_totals[-4] + subgroup_totals[-3],   subgroup_totals[-4] - subgroup_totals[-3]    ],
-         [group_totals[-3] - subgroup_totals[-3],                                            subgroup_totals[-3]                          ]],
-    correction=False)[1])
-    p_group.append(scipy.stats.chi2_contingency(
-        [[group_totals[-4] - group_totals[-2] - subgroup_totals[-4] + subgroup_totals[-2],   subgroup_totals[-4] - subgroup_totals[-2]    ],
-         [group_totals[-2] - subgroup_totals[-2],                                            subgroup_totals[-2]                          ]],
-    correction=False)[1])
-    p_group.append(scipy.stats.chi2_contingency(
-        [[group_totals[-4] - group_totals[-1] - subgroup_totals[-4] + subgroup_totals[-1],   subgroup_totals[-4] - subgroup_totals[-1]    ],
-         [group_totals[-1] - subgroup_totals[-1],                                            subgroup_totals[-1]                          ]],
-    correction=False)[1])
+    p_group.append(proportions_ztest(
+        [subgroup_totals[-4] - subgroup_totals[-3], subgroup_totals[-3] ],
+        [group_totals[-4] - group_totals[-3],       group_totals[-3]    ],
+    alternative='smaller')[1])
+    p_group.append(proportions_ztest(
+        [subgroup_totals[-4] - subgroup_totals[-2], subgroup_totals[-2] ],
+        [group_totals[-4] - group_totals[-2],       group_totals[-2]    ],
+    alternative='smaller')[1])
+    p_group.append(proportions_ztest(
+        [subgroup_totals[-4] - subgroup_totals[-1], subgroup_totals[-1] ],
+        [group_totals[-4] - group_totals[-1],       group_totals[-1]    ],
+    alternative='smaller')[1])
 
-    '''
-    This isn't correct
-    n_nsusie_nfinemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  ~pl.col('finemapped_susie') & ~pl.col('finemapped_finemap')).shape[0]
-    n_nsusie_finemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  ~pl.col('finemapped_susie') & pl.col('finemapped_finemap')).shape[0]
-    n_susie_nfinemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  pl.col('finemapped_susie') & ~pl.col('finemapped_finemap')).shape[0]
-    n_susie_finemap = df.filter((pl.col('p_val') <= 5e-8) & ~pl.col(f'{ethnicity}_coeff').is_nan() &  pl.col('finemapped_susie') & pl.col('finemapped_finemap')).shape[0]
-    p_group.append(scipy.stats.chi2_contingency(
-        [[n_nsusie_nfinemap, n_nsusie_finemap],
-         [n_susie_nfinemap,  n_susie_finemap ]],
-    correction=False)[1])
-    '''
-    
-    p_group.append(scipy.stats.chi2_contingency(
-        [[group_totals[-3] - group_totals[-1] - subgroup_totals[-3] + subgroup_totals[-1],   subgroup_totals[-3] - subgroup_totals[-1]    ],
-         [group_totals[-1] - subgroup_totals[-1],                                            subgroup_totals[-1]                          ]],
-    correction=False)[1])
-    p_group.append(scipy.stats.chi2_contingency(
-        [[group_totals[-2] - group_totals[-1] - subgroup_totals[-2] + subgroup_totals[-1],   subgroup_totals[-2] - subgroup_totals[-1]    ],
-         [group_totals[-1] - subgroup_totals[-1],                                            subgroup_totals[-1]                          ]],
-    correction=False)[1])
+    p_group.append(proportions_ztest(
+        [subgroup_totals[-3] - subgroup_totals[-1], subgroup_totals[-1] ],
+        [group_totals[-3] - group_totals[-1],       group_totals[-1]    ],
+    alternative='smaller')[1])
+    p_group.append(proportions_ztest(
+        [subgroup_totals[-2] - subgroup_totals[-1], subgroup_totals[-1] ],
+        [group_totals[-2] - group_totals[-1],       group_totals[-1]    ],
+    alternative='smaller')[1])
 
 fig = barplot_fig(xs, ys, p_groups)
 '''
@@ -328,7 +337,7 @@ for ethnicity in other_ethnicities:
     if np.any(np.array(contingency_table) < 20):
         p_val = scipy.stats.fisher_exact(contingency_table)[1]
     else:
-        p_val = scipy.stats.chi2_contingency(contingency_table)[1]
+        p_val = proportions_ztest(contingency_table)[1]
     print(ethnicity, p_val)
 
 xs = []

@@ -178,7 +178,7 @@ if args.load:
     assert not np.any(np.isnan(genes['TSS'].to_numpy()))
 
     all_STRs = all_STRs.to_pandas()
-    all_STRs['promoter'] = False
+    all_STRs['upstream_promoter'] = False
     for row in range(genes.shape[0]):
         if not 'gene_type=protein_coding' in genes[row, 'kvps']:
             continue
@@ -187,9 +187,10 @@ if args.load:
         tss = genes[row, 'TSS']
         all_STRs.loc[
             (all_STRs['chrom'] == int(genes[row, 'chrom'])) & (
-                (np.abs(all_STRs['pos']-tss) <= 3000) | (np.abs(all_STRs['end_pos']-tss) <= 3000)
+                ((tss - all_STRs['end_pos'] <= 3000) & (tss - all_STRs['end_pos'] >= 0) & (genes[row, 'strand'] == '+')) |
+                ((all_STRs['pos'] - tss <= 3000) & (all_STRs['pos'] - tss >= 0) & (genes[row, 'strand'] == '-'))
             ),
-            'promoter'
+            'upstream_promoter'
         ] = True
     print('done', flush=True)
 
@@ -370,9 +371,15 @@ if args.load:
     #for phenotype in ['albumin', 'cystatin_c']: #phenotypes.phenotypes_in_use:
     for phenotype in phenotypes.phenotypes_in_use:
         print(phenotype, flush=True)
+        fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
+        with open(fname) as tsv:
+            header = tsv.readline().strip()
         gwsig_df = pl.scan_csv(
-            f'{ukb}/association/results/{phenotype}/my_str/results.tab',
+            fname,
             sep = '\t',
+            skip_rows=1,
+            has_header=False,
+            with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
         ).filter(pl.col(f'p_{phenotype}') < 5e-8).select(['chrom', 'pos']).collect()
         gwsig_loci = gwsig_loci.union(zip(gwsig_df['chrom'].to_numpy(), gwsig_df['pos'].to_numpy()))
     gwsig_loci = [f'{chrom}_{pos}' for (chrom, pos) in gwsig_loci]
@@ -522,13 +529,13 @@ if args.calc:
         compare_categories(out, compare_STRs, pl.col('intronic'), 'intronic')
         compare_categories(out, compare_STRs, pl.col('genic'), 'genic')
         compare_categories(out, compare_STRs, pl.col('transcribed') & ~pl.col('genic'), 'transcribed_non_protein')
-        compare_categories(out, compare_STRs, pl.col('promoter') & ~pl.col('genic'), 'upstream_promoter')
+        compare_categories(out, compare_STRs, pl.col('upstream_promoter'), 'upstream_promoter')
         compare_categories(out, compare_STRs, pl.col('eSTR'), 'eSTR')
         compare_categories(out, compare_STRs, pl.col('FM_eSTR'), 'FM_eSTR')
 
     exit()
 
-def barplot_fig(cats, data, ps):
+def barplot_fig(cats, data, ps, legend):
     fig = bokeh.plotting.figure(
         y_axis_label = 'Prevalence (%)',
         x_range = bokeh.models.FactorRange(*cats),
@@ -536,9 +543,32 @@ def barplot_fig(cats, data, ps):
         height=800,
         toolbar_location=None
     )
+    fig.xaxis.major_label_text_color = None
+    fig.xaxis.major_tick_line_color = None
     arr_data = np.array(data)
     arr_data[arr_data == 0] = np.nan
-    fig.vbar(x=cats, top=arr_data, width=0.9)
+    condition_names = np.unique(list(cat[1] for cat in cats))
+    cds = bokeh.models.ColumnDataSource(dict(
+        x=cats,
+        top=arr_data,
+        subcats=[cat[1] for cat in cats]
+    ))
+    kwargs = dict(
+        x='x',
+        top='top',
+        source=cds,
+        width=0.9,
+        fill_color = bokeh.transform.factor_cmap('x', palette=bokeh.palettes.Colorblind[3], factors=condition_names, start=1, end=2),
+    )
+    if legend:
+        kwargs['legend_group'] = 'subcats'
+    fig.vbar(
+        **kwargs
+    )
+    if legend:
+        fig.legend.location = 'top_left'
+        fig.legend[0].items.insert(1, fig.legend[0].items[2])
+        del fig.legend[0].items[3]
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.x_range.range_padding = 0.1
@@ -552,6 +582,8 @@ def barplot_fig(cats, data, ps):
     return fig
 
 def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep):
+    if p_val > 0.05:
+        return
     x1 = [*x1, .15*x1step]
     x2 = [*x2, .15*x2step]
     y_step_size = 0.05*y_range
@@ -602,8 +634,8 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
         curr_ps = datas[fig_loc][bar_loc]['ps']
         curr_cat.extend([
             (category, f'all STRs'),
-            (category, f'gwsig STRs'),
-            (category, 'high-confidence STRs')
+            (category, f'genome-wide significant STRs'),
+            (category, 'confidently fine-mapped STRs')
         ])
         curr_ps.extend([float(split[idx]) for idx in range(7, 10)])
 
@@ -612,16 +644,16 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
         curr_data.append(float(split[6][1:-2]))
 
 fig = bokeh.layouts.row([
-    barplot_fig(datas['main']['left']['cat'], datas['main']['left']['data'], datas['main']['left']['ps']),
-    barplot_fig(datas['main']['right']['cat'], datas['main']['right']['data'], datas['main']['right']['ps']),
+    barplot_fig(datas['main']['left']['cat'], datas['main']['left']['data'], datas['main']['left']['ps'], True),
+    barplot_fig(datas['main']['right']['cat'], datas['main']['right']['data'], datas['main']['right']['ps'], False),
 ])
 
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.svg')
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.png')
 
 fig = bokeh.layouts.row([
-    barplot_fig(datas['supp']['left']['cat'], datas['supp']['left']['data'], datas['supp']['left']['ps']),
-    barplot_fig(datas['supp']['right']['cat'], datas['supp']['right']['data'], datas['supp']['right']['ps']),
+    barplot_fig(datas['supp']['left']['cat'], datas['supp']['left']['data'], datas['supp']['left']['ps'], True),
+    barplot_fig(datas['supp']['right']['cat'], datas['supp']['right']['data'], datas['supp']['right']['ps'], False),
 ])
 bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.svg')
 bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.png')
