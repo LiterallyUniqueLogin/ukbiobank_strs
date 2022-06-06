@@ -166,10 +166,11 @@ def perform_regional_gwas_helper(
                         dosages = dosage_gts[len1][:, 0]*dosage_gts[len1][:, 1]
                     if np.sum(dosages) <= 0:
                         continue
-                    if len1 + len2 not in single_dosages:
-                        single_dosages[len1 + len2] = dosages
+                    summed_len = round(len1 + len2, 2)
+                    if summed_len not in single_dosages:
+                        single_dosages[summed_len] = dosages
                     else:
-                        single_dosages[len1 + len2] += dosages
+                        single_dosages[summed_len] += dosages
                     minlen = min(len1, len2)
                     maxlen = max(len1, len2)
                     paired_dosages[(minlen, maxlen)] = dosages

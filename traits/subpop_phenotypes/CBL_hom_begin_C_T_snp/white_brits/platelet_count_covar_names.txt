@@ -1,0 +1,4 @@
+age
+platelet_count_device_id_is_AH49855
+platelet_count_device_id_is_AK26401
+platelet_count_device_id_is_AK30431

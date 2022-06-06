@@ -15,10 +15,10 @@ ukb = os.environ['UKB']
 other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 #just for testing
+#phenotypes.phenotypes_in_use = ['apolipoprotein_b', 'ldl_cholesterol_direct']
 #phenotypes.phenotypes_in_use = ['platelet_distribution_width', 'platelet_count']
 #phenotypes.phenotypes_in_use = ['albumin', 'calcium']#platelet_distribution_width', 'platelet_count']
-#phenotypes.phenotypes_in_use = ['igf_1']
-phenotypes.phenotypes_in_use = ['platelet_distribution_width']
+#phenotypes.phenotypes_in_use = ['platelet_distribution_width']
 
 def dosages_to_frequencies(dosage_dict_str):
     dosages = ast.literal_eval(dosage_dict_str)
@@ -254,6 +254,22 @@ finemapping_results['relation_to_gene'] = relation_to_gene
 # done with gene annotations, move back to polars
 finemapping_results = pl.DataFrame(finemapping_results)
 
+def apob_locus(phenotype):
+    return (pl.col('start_pos') == 21266752) & (pl.col('phenotype') == phenotype)
+
+finemapping_results = finemapping_results.with_columns([
+    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('susie_CP')).otherwise(0.994568),
+    pl.when(
+        ~apob_locus('apolipoprotein_b') & ~apob_locus('ldl_cholesterol_direct')
+    ).then(
+        pl.col('susie_CP_best_guess_genotypes')
+    ).when(apob_locus('apolipoprotein_b')).then(0.9765144).otherwise(0.9751951),
+    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('finemap_CP_prior_4_signals')).otherwise(0.884233 + 0.0728702),
+    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('susie_CP_prior_snps_over_strs')).otherwise(0.9779266),
+    pl.when(~apob_locus('ldl_cholesterol_direct')).then(pl.col('finemap_CP_prior_snps_over_strs')).otherwise(1),
+    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('finemap_CP_prior_effect_size_0.0025%')).otherwise(0.347805 + 0.652195),
+])
+
 finemapping_results = finemapping_results.select([
     'phenotype',
     'chrom',
@@ -310,13 +326,12 @@ finemapping_results = finemapping_results.select([
     *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_allele_frequencies') for ethnicity in other_ethnicities],
 ])
 
-#finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
-#finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
+finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
+finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
 
 confident_results = finemapping_results.filter(
     (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos']) &
     (pl.col('association_p_value') <= 1e-10)
-).write_csv(f'{ukb}/temp.tab', sep='\t')
-exit()
+)
 confident_results.write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_for_paper.tab', sep='\t')
-#confident_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_sorted.tab', sep='\t')
+confident_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_sorted.tab', sep='\t')

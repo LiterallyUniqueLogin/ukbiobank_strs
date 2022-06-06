@@ -1,0 +1,10 @@
+phenos	units	chrom	pos	name	alleles	in imputed set	filtered from imputed set
+apolipoprotein_b,ldl_cholesterol_direct,cholesterol	g/L,mmol/L,mmol/L	2	21266752	final G to A	1	True	False
+total_bilirubin,urate,gamma_glutamyltransferase	umol/L,umol/L,U/L	3	170727702	first T to G	3,5,7,8,11	True	Partial?
+total_bilirubin,urate,gamma_glutamyltransferase	umol/L,umol/L,U/L	3	170727702	last T to A	3,5,7,11	True	False
+platelet_count,platelet_crit	10^9 cells/L,%	11	119077000	second C to T	5,9,11,13,15,18,20,22,24,25,27,29,31,33,35,37,40	True	False
+platelet_count,platelet_crit	10^9 cells/L,%	11	119077000	last C to A	3	False	NA
+platelet_count,platelet_crit	10^9 cells/L,%	11	119077000	last G to A	8	True	False
+platelet_count,platelet_crit	10^9 cells/L,%	11	119077000	middle CGG to CAG	7	True 	False
+platelet_count,platelet_crit	10^9 cells/L,%	11	119077000	middle CGG to CCG	16	True	False
+haematocrit,haemoglobin_concentration,red_blood_cell_count	%,g/dL,10^12 cells/L	14	64714051	middle AAAC to GAAC	2	True	False

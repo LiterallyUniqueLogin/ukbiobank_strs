@@ -1,0 +1,5 @@
+age
+pheno_from_repeat_assessment_1
+total_bilirubin_aliquot_is_0
+total_bilirubin_aliquot_is_2
+total_bilirubin_aliquot_is_3
