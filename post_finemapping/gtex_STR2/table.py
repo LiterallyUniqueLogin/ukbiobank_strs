@@ -24,9 +24,14 @@ def fdr_cols(p_vals, info_cols):
         sort = np.sort(p_vals)
         m = len(p_vals)
         n_tests.append(m)
-        for count, p_val in enumerate(sort):
-            if p_val > (count + 1)/m*fdr_thresh:
+        success = False
+        for count, p_val in enumerate(sort[::-1]):
+            if p_val <= (m - count)/m*fdr_thresh:
+                success = True
+                thresh = m - count
                 break
+        if not success:
+            thresh = 0
         argsort = np.argsort(p_vals)
         findings = ''
         first = True
@@ -36,9 +41,9 @@ def fdr_cols(p_vals, info_cols):
                 findings += ':'
             else:
                 first = False
-            findings += info_arr[i][argsort][:count]
+            findings += info_arr[i][argsort][:thresh]
         findingss.append(', '.join(findings))
-        pss.append(', '.join(str(x) for x in sort[:count]))
+        pss.append(', '.join(f'{x:.3g}' for x in sort[:thresh]))
     return (pss, findingss, n_tests)
 
 coords = []
@@ -81,7 +86,7 @@ coords_df = coords_df.join(
     left_on='chrom_pos',
     right_on='chrom_pos'
 )
-print(coords_df.shape)
+#print(coords_df.shape)
 
 qtl_strs = []
 yang_dir = '/expanse/projects/gymreklab/yal084_storage/share_with_Jonathan'
@@ -101,14 +106,35 @@ for fname, col_name in ('eSTR', 'str-gene'), ('STR', 'str-exon'), ('eISOFORM', '
             f'chrom_pos_{offset2}_38' for offset2 in range(-10, 11) if offset2 != offset
         ])
         for offset in range(-10, 11)
-    ])
+    ]).with_column(
+        pl.when(
+            pl.col('slope') > 0
+        ).then(
+            pl.lit('+')
+        ).otherwise(
+            pl.lit('-')
+        ).alias('effect_direction')
+    )
+    print(qtl_str.shape)
+    exit()
 
     qtl_str = qtl_str.distinct().groupby(
         'chrom_pos'
-    ).agg([pl.col('phenotype').first(), pl.col('association_p_value').first(), pl.col('p_values').list(), pl.col('Tissue').list(), pl.col('gene_name').list(), pl.col(col_name).str.split_exact('-', 1).struct.field('field_1').list().alias('target')])
-    print(qtl_str.shape)
+    ).agg([pl.col('phenotype').first(), pl.col('association_p_value').first(), pl.col('p_values').list(), pl.col('effect_direction').list(), pl.col('Tissue').list(), pl.col('gene_name').list(), pl.col(col_name).str.split_exact('-', 1).struct.field('field_1').list().alias('target')])
+    #print(qtl_str.shape)
 
-    pss, findingss, n_tests = fdr_cols(qtl_str['p_values'], [qtl_str['Tissue'], qtl_str['gene_name'], qtl_str['target']])
+    pss, findingss, n_tests = fdr_cols(qtl_str['p_values'], [qtl_str['effect_direction'], qtl_str['Tissue'], qtl_str['gene_name'], qtl_str['target']])
+
+    print(f'----- {fname} ---------')
+    for str_, ps, findings in zip(qtl_str['chrom_pos'], pss, findingss):
+        assert len(ps.split(',')) == len(findings.split(','))
+        if len(ps) == 0:
+            continue
+        finding_list = [x.strip() for x in findings.split(',')]
+        if fname == 'eSTR':
+            finding_list = [x[:(len(x) - x[::-1].index(':') - 1)] for x in finding_list]
+        finding_list = [x[2:] + ':' + x[0] for x in finding_list]
+        print(str_, ', '.join(f'{finding} ({p})' for p, finding in zip((x.strip() for x in ps.split(',')), finding_list)))
 
     qtl_strs.append(pl.DataFrame({'chrom_pos': qtl_str['chrom_pos'],'phenotype':qtl_str['phenotype'], 'association_p_value':qtl_str['association_p_value'],
                                   'p_vals': pd.Series(pss), 'associations (tissue:target)': pd.Series(findingss), 'n_tests': n_tests}).sort('chrom_pos'))
@@ -125,54 +151,6 @@ total_qtl_str = qtl_strs[0].join(
     suffix='_isoform'
 ).rename({'p_vals': 'p_vals_expression', 'associations (tissue:target)' : 'associations (tissue:target)_expression', 'n_tests' : 'n_tests_expression'})
 
-'''
-total_qtl_str = pl.concat([
-    total_qtl_str.join(
-        coords_df,
-        left_on='hg38',
-        right_on=f'chrom_pos_{offset}_38'
-    ).drop([f'chrom_pos_{offset2}_38' for offset2 in range(-10, 11) if offset2 != offset])
-    for offset in range(-10, 11)
-]).drop('hg38').rename({'p_vals': 'p_vals_expression', 'associations (tissue:target)' : 'associations (tissue:target)_expression', 'n_tests' : 'n_tests_expression'})
-eSTR = pl.scan_csv(
-    f'{workdir}/yang_eSTRs.tab', sep='\t'
-).distinct().groupby(
-    'hg19_START'
-).agg([pl.col('p_values').list(), pl.col('Tissue').list(), pl.col('gene_name').list()]).collect()
-
-pss, findingss, n_tests = fdr_cols(eSTR['p_values'], [eSTR['Tissue'], eSTR['gene_name']])
-
-new_e = pl.DataFrame({'hg19_START': eSTR['hg19_START'], 'expression_p_vals': pss, 'expression_associations (tissue:gene)': findingss, 'expression_n_tests': n_tests})
-
-results = new_splice.join(new_e, how='outer', on='hg19_START')
-
-filtered = pl.read_csv(f'{workdir}/filtered_STRs.tab', sep='\t').filter(
-    pl.col('FILTER') != 'PASS'
-).with_column(
-    (pl.col('CHROM') + '_' + pl.col('POS').cast(str)).alias('chr_pos')
-)
-
-joined = pl.read_csv(
-    f'{ukb}/export_scripts/results/causal_STR_candidates_for_publication.tab', sep='\t'
-).select(('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).alias('chr_pos')).distinct().join(
-    results,
-    how='inner',
-    left_on='chr_pos',
-    right_on='hg19_START'
-).join(
-    filtered,
-    how='left',
-    on='chr_pos'
-).filter(
-    pl.col('FILTER').is_null()
-).drop(['START', 'FILTER', 'CHROM_START', 'CHROM', 'POS']).filter(
-'''
-'''
-total_qtl_str = total_qtl_str.join(
-    trait_assocs,
-    on='chrom_pos'
-)
-'''
 total_qtl_str = total_qtl_str.filter(
     (pl.col('p_vals_expression').str.lengths() > 0) | (pl.col('p_vals_splice').str.lengths() > 0) | (pl.col('p_vals_isoform').str.lengths() > 0)
 ).with_columns([
@@ -242,4 +220,3 @@ total_qtl_str = total_qtl_str.filter(
 ]).sort('chrom_pos').select(['chrom_pos', pl.all().exclude('^chrom_pos$')])
 
 total_qtl_str.to_pandas().to_csv('blessed_qtl_STRs.tab', sep='\t', index=False)
-

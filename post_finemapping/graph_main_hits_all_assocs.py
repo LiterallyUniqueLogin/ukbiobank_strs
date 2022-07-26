@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import re
 
 import bokeh.io
 import bokeh.models
@@ -199,15 +198,16 @@ def main():
     results_plot = bokeh.plotting.figure(
         width=plot_width,
         height=1400,
-        x_axis_label='hits (containing gene, or position and nearest gene if intergenic)',
+        x_axis_label='STRs (containing gene, or position and nearest gene if intergenic)',
         y_axis_label='phenotypes',
         #y_range=bokeh.models.FactorRange(*[(group, pheno) for group in pheno_blocks for pheno in pheno_blocks[group]][::-1]),
         y_range=[pheno.replace('_', ' ') for pheno in pheno_order[::-1]],
         x_range=unique_stable_strs,#(0,94),
         toolbar_location=None,
-        outline_line_color='black'
+        outline_line_color='black',
+        output_backend='svg'
     )
-    results_plot.axis.axis_label_text_font_size = '26px'
+    results_plot.axis.axis_label_text_font_size = '30px'
     results_plot.xaxis.major_label_orientation = 1.3
     cds = bokeh.models.ColumnDataSource(dict(
         x=[len(x_coords)/2]*len(shaded_phenos), y=[pheno.replace('_', ' ') for pheno in shaded_phenos], width=[len(x_coords)]*len(shaded_phenos), height=[1]*len(shaded_phenos), color=['grey']*len(shaded_phenos), alpha=['0.15']*len(shaded_phenos), line_color=[None]*len(shaded_phenos)
@@ -215,9 +215,15 @@ def main():
     results_plot.rect(
         x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
     )
-    half_xs=np.arange(1, np.max(x_coords) + 1, 2)
+    rect_steps = np.arange(1, np.max(x_coords) + 1, 2)
     cds = bokeh.models.ColumnDataSource(dict(
-        x=half_xs+0.5, y=[len(pheno_order)/2]*half_xs.shape[0], width=[1]*half_xs.shape[0], height=[len(pheno_order)+len(pheno_blocks)+20]*half_xs.shape[0], color=['grey']*half_xs.shape[0], alpha=['0.15']*half_xs.shape[0], line_color=[None]*half_xs.shape[0]
+        x=rect_steps+0.5,
+        y=[len(pheno_order)/2]*rect_steps.shape[0],
+        width=[1]*rect_steps.shape[0],
+        height=[len(pheno_order)+len(pheno_blocks)+20]*rect_steps.shape[0],
+        color=['grey']*rect_steps.shape[0],
+        alpha=['0.075']*rect_steps.shape[0],
+        line_color=[None]*rect_steps.shape[0]
     ))
     results_plot.rect(
         x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
@@ -252,75 +258,29 @@ def main():
         #return [(group, pheno) for pheno in phenos for group in pheno_blocks if pheno in pheno_blocks[group]]
 
     fill_colors = np.array(['           ']*len(x_coords))
-    fill_colors[:] = 'grey'
-    fill_colors[df['finemapping'].to_numpy() == 'confidently'] = 'black'
-    fill_colors[df['finemapping'].to_numpy() == 'not'] = 'white'
+    fill_colors[:] = '#A13D34' #'#C52F22' #'grey'
+    fill_colors[df['finemapping'].to_numpy() == 'confidently'] = '#401E1D' #'black'
+    fill_colors[df['finemapping'].to_numpy() == 'not'] = '#BF9E9A' #'white'
 
     up_triangle = df['direction_of_association'].to_numpy() == '+'
     results_plot.triangle(
         (x_coords + 0.5)[up_triangle],
         pheno_to_ycoords(df['phenotype'].to_numpy()[up_triangle]),
         size=np.sqrt(df['p_val'].to_numpy())[up_triangle]*2,
-        #fill_alpha=df.select(pl.when(pl.col('finemapping') == 'confidently').then(1).otherwise(0)).to_numpy().flatten()[undotted_triangle],
         color=fill_colors[up_triangle],
-        line_color='black'
+        line_color=None
     )
     results_plot.inverted_triangle(
         (x_coords + 0.5)[~up_triangle],
         pheno_to_ycoords(df['phenotype'].to_numpy()[~up_triangle]),
         size=np.sqrt(df['p_val'].to_numpy())[~up_triangle]*2,
-        #fill_alpha=df.select(pl.when(pl.col('finemapping') == 'confidently').then(1).otherwise(0)).to_numpy().flatten()[undotted_triangle],
         fill_color=fill_colors[~up_triangle],
-        line_color='black'
+        line_color=None
     )
-
-    '''
-    undotted_triangle = (df['direction_of_association'].to_numpy() == '+') & undotted_loci
-    results_plot.triangle(
-        (x_coords + 0.5)[undotted_triangle],
-        pheno_to_ycoords(df['phenotype'].to_numpy()[undotted_triangle]),
-        #[(group, pheno) for pheno in df['phenotype'].to_numpy()[undotted_triangle] for group in pheno_blocks if pheno in pheno_blocks[group]],
-        #df['phenotype'].to_numpy()[undotted_triangle],
-        size=np.sqrt(df['p_val'].to_numpy())[undotted_triangle]*2,
-        fill_alpha=df.select(pl.when(pl.col('finemapping') == 'confidently').then(1).otherwise(0)).to_numpy().flatten()[undotted_triangle],
-        color='black'#str_colors[undotted_triangle],
-    )
-    undotted_inverted_triangle = (df['direction_of_association'].to_numpy() == '-') & undotted_loci
-    results_plot.inverted_triangle(
-        (x_coords + 0.5)[undotted_inverted_triangle],
-        pheno_to_ycoords(df['phenotype'].to_numpy()[undotted_inverted_triangle]),
-        #[(group, pheno) for pheno in df['phenotype'].to_numpy()[undotted_inverted_triangle] for group in pheno_blocks if pheno in pheno_blocks[group]],
-        size=np.sqrt(df['p_val'].to_numpy())[undotted_inverted_triangle]*2,
-        fill_alpha=df.select(pl.when(pl.col('finemapping') == 'confidently').then(1).otherwise(0)).to_numpy().flatten()[undotted_inverted_triangle],
-        color='black'#str_colors[undotted_inverted_triangle],
-    )
-
-    dotted_triangle = (df['direction_of_association'].to_numpy() == '+') & ~undotted_loci
-    results_plot.triangle_dot(
-    #results_plot.triangle(
-        (x_coords + 0.5)[dotted_triangle],
-        pheno_to_ycoords(df['phenotype'].to_numpy()[dotted_triangle]),
-        #[(group, pheno) for pheno in df['phenotype'].to_numpy()[dotted_triangle] for group in pheno_blocks if pheno in pheno_blocks[group]],
-        #df['phenotype'].to_numpy()[dotted_triangle],
-        size=np.sqrt(df['p_val'].to_numpy())[dotted_triangle]*2,
-        fill_alpha=[0]*np.sum(dotted_triangle),
-        color='black',#str_colors[dotted_triangle],
-    )
-    dotted_inverted_triangle = (df['direction_of_association'].to_numpy() == '-') & ~undotted_loci
-    results_plot.triangle_dot(
-    #results_plot.triangle(
-        (x_coords + 0.5)[dotted_inverted_triangle],
-        pheno_to_ycoords(df['phenotype'].to_numpy()[dotted_inverted_triangle]),
-        #[(group, pheno) for pheno in df['phenotype'].to_numpy()[dotted_inverted_triangle] for group in pheno_blocks if pheno in pheno_blocks[group]],
-        size=np.sqrt(df['p_val'].to_numpy())[dotted_inverted_triangle]*2,
-        fill_alpha=[0]*np.sum(dotted_inverted_triangle),
-        color='black',#str_colors[dotted_inverted_triangle],
-        angle=np.pi
-    )
-    '''
 
     other_ethnicities = ['Black',  'South Asian', 'Chinese', 'Irish', 'White Other']
 
+    topper_circle_size = 8
     def get_topper(height, factors, color):
         topper = bokeh.plotting.figure(
             width=plot_width,
@@ -328,13 +288,20 @@ def main():
             y_range=bokeh.models.FactorRange(*factors),
             x_range=results_plot.x_range,
             toolbar_location=None,
-            outline_line_color='black'
+            outline_line_color='black',
+            output_backend='svg'
         )
         topper.xgrid.ticker = []
         topper.xaxis.ticker = []
         if color:
             cds = bokeh.models.ColumnDataSource(dict(
-                x=half_xs+0.5, y=[7.5/2]*half_xs.shape[0], width=[1]*half_xs.shape[0], height=[7.5]*half_xs.shape[0], color=['grey']*half_xs.shape[0], alpha=['0.15']*half_xs.shape[0], line_color=[None]*half_xs.shape[0]
+                x=rect_steps+0.5,
+                y=[7.5/2]*rect_steps.shape[0],
+                width=[1]*rect_steps.shape[0],
+                height=[7.5]*rect_steps.shape[0],
+                color=['grey']*rect_steps.shape[0],
+                alpha=['0.075']*rect_steps.shape[0],
+                line_color=[None]*rect_steps.shape[0]
             ))
             topper.rect(
                 x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
@@ -342,7 +309,7 @@ def main():
         return topper
     
     qtl_topper = get_topper(
-        60, ['expression QTL', 'splice or isoform QTL'], True
+        30, ['expression QTL'], True#, 'splice or isoform QTL'], True
     )
 
     qtl_STRs = pl.read_csv(args.qtl_STRs_table, sep='\t')
@@ -355,8 +322,10 @@ def main():
         (x_coords + 0.5)[eqtl_STRs],
         ['expression QTL']*np.sum(eqtl_STRs),
         color='black',
+        size=topper_circle_size
     )
 
+    '''
     splice_iso_STR_locs = qtl_STRs.filter(~pl.col('p_vals_splice').is_null() | ~pl.col('p_vals_isoform').is_null())['chrom_pos']
     splice_iso_STRs = df[
         ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(splice_iso_STR_locs)
@@ -365,7 +334,9 @@ def main():
         (x_coords + 0.5)[splice_iso_STRs],
         ['splice or isoform QTL']*np.sum(splice_iso_STRs),
         color='black',
+        size=topper_circle_size
     )
+    '''
 
 
     replication_topper = get_topper(
@@ -382,6 +353,7 @@ def main():
             (x_coords + 0.5)[replicates],
             [f'{ethnicity} replication'.replace('Other', 'other')]*np.sum(replicates),
             color='black',
+            size=topper_circle_size
         )
 
     repeat_unit_topper = get_topper(90, ['polyA', 'polyAC', 'polyCCG'], True)
@@ -391,6 +363,7 @@ def main():
             (x_coords + 0.5)[selection],
             [f'poly{repeat_unit}'] * np.sum(selection),
             color='black',
+            size=topper_circle_size
         )
 
 
@@ -423,11 +396,12 @@ def main():
         y_range=[0.5, max_common_alleles+0.5],
         y_axis_label='# common alleles',
         toolbar_location=None,
-        outline_line_color='black'
+        outline_line_color='black',
+        output_backend='svg'
     )
     multiallelic_scale.axis.axis_label_text_font_size = '26px'
     multiallelic_scale.xaxis.ticker = []
-    multiallelic_scale.ygrid.ticker = []
+    multiallelic_scale.xgrid.ticker = []
     multiallelic_scale.yaxis.ticker = np.arange(1, max_common_alleles + 1)
 
     cds = bokeh.models.ColumnDataSource(dict(
@@ -453,7 +427,8 @@ def main():
         y_range=bokeh.models.FactorRange(*str_scale_ps),
         y_axis_label='-log10 p-value',
         toolbar_location=None,
-        outline_line_color='black'
+        outline_line_color='black',
+        output_backend='svg'
     )
     p_val_scale.axis.axis_label_text_font_size = '26px'
     p_val_scale.xaxis.ticker = []
@@ -465,12 +440,19 @@ def main():
         color='black'
     )
 
-    bokeh.io.export_png(
-        bokeh.layouts.row(
-            bokeh.layouts.column(multiallelic_topper, repeat_unit_topper, replication_topper, qtl_topper, results_plot),
-            bokeh.layouts.column(multiallelic_scale, p_val_scale)
+    total_fig = bokeh.layouts.row(bokeh.layouts.column(
+            multiallelic_topper, repeat_unit_topper, replication_topper, qtl_topper, results_plot, 
         ),
+        bokeh.layouts.column(multiallelic_scale, p_val_scale)
+    )
+    bokeh.io.export_png(
+        total_fig,
         filename=args.outfile
+    )
+
+    bokeh.io.export_svg(
+        total_fig,
+        filename=args.outfile.replace('png', 'svg')
     )
 
 if __name__ == '__main__':
