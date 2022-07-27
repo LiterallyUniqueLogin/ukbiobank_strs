@@ -177,6 +177,8 @@ def load_strs(imputation_run_name: str,
                 for i in range(ap.shape[1]):
                     total_dosages[len_alleles[i+1]] += np.sum(ap[:, i])
 
+            # TODO this isn't right - these best guess calls are only best guess if there's only one
+            # allele per length, doesn't take into account prob splitting over imperfections
             total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts())
             total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts())
 

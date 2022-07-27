@@ -80,16 +80,26 @@ def perform_regional_gwas_helper(
     else:
         stat = 'fraction'
 
-    outfile.write(f'{stat}_{phenotype}_per_single_dosage\t'
-                  '0.05_significance_CI\t'
-                  '5e-8_significance_CI')
 
+    # TODO maybe only do these calculations if there's a flag on
     if runtype == 'strs':
+        # TODO summed gt and single dosage mean the same thing, rename single dosage to summed gt
+        # swap paired dosage to paired gt
         outfile.write(
-            '\ttotal_subset_dosage_per_summed_gt\t'
+            'total_subset_dosage_per_summed_gt\t'
+            f'{stat}_{phenotype}_per_single_dosage\t'
+            '0.05_significance_CI\t'
+            '5e-8_significance_CI\t'
+            f'{stat}_{phenotype}_residual_per_summed_gt\t'
+            'res_per_sum_0.05_significance_CI\t'
+            'res_per_sum_5e-8_significance_CI\t'
+            'total_subset_dosage_per_paired_gt\t'
             f'{stat}_{phenotype}_per_paired_dosage\t'
             '0.05_significance_CI\t'
-            '5e-8_significance_CI'
+            '5e-8_significance_CI\t'
+            f'{stat}_{phenotype}_residual_per_paired_gt\t'
+            'res_per_paired_0.05_significance_CI\t'
+            'res_per_paired_5e-8_significance_CI'
         )
     outfile.write('\n')
     outfile.flush()
@@ -116,8 +126,8 @@ def perform_regional_gwas_helper(
             outfile.write('False\t')
 
         if runtype == 'strs':
-            gts = np.sum([_len*np.sum(dosages, axis=1) for
-                          _len, dosages in dosage_gts.items()], axis=0)
+            gts = np.sum([len_*np.sum(dosages, axis=1) for
+                          len_, dosages in dosage_gts.items()], axis=0)
         else:
             gts = dosage_gts[:, 1] + 2*dosage_gts[:, 2]
         std = np.std(gts)
@@ -149,12 +159,12 @@ def perform_regional_gwas_helper(
             coef = reg_result.params[0]
             outfile.write(f'{pval:.2e}\t{coef/std}\tnan\tnan\t')
 
-        outfile.write('\t'.join(locus_details) + '\t')
+        outfile.write('\t'.join(locus_details))
 
         if runtype == 'strs':
-            single_dosages = {}
+            dosages_per_summed_gt = {}
 
-            paired_dosages = {}
+            dosages_per_paired_gt = {}
             for len1 in unique_alleles:
                 for len2 in unique_alleles:
                     if len1 > len2:
@@ -166,101 +176,99 @@ def perform_regional_gwas_helper(
                         dosages = dosage_gts[len1][:, 0]*dosage_gts[len1][:, 1]
                     if np.sum(dosages) <= 0:
                         continue
-                    summed_len = round(len1 + len2, 2)
-                    if summed_len not in single_dosages:
-                        single_dosages[summed_len] = dosages
+                    summedlen_ = round(len1 + len2, 2)
+                    if summedlen_ not in dosages_per_summed_gt:
+                        dosages_per_summed_gt[summedlen_] = dosages
                     else:
-                        single_dosages[summed_len] += dosages
+                        dosages_per_summed_gt[summedlen_] += dosages
                     minlen = min(len1, len2)
                     maxlen = max(len1, len2)
-                    paired_dosages[(minlen, maxlen)] = dosages
-            single_dosage_stat = {}
-            single_dosage_95_CI = {}
-            single_dosage_GWAS_CI= {}
-            paired_dosage_stat = {}
-            paired_dosage_95_CI = {}
-            paired_dosage_GWAS_CI= {}
-            if not binary:
-                for _len, dosages in single_dosages.items():
-                    if len(np.unique(ori_phenotypes[dosages != 0])) <= 1:
-                        continue
-                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                        ori_phenotypes,
-                        weights = dosages
-                    )
-                    single_dosage_stat[_len] = mean_stats.mean
-                    single_dosage_95_CI[_len] = mean_stats.tconfint_mean()
-                    single_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
-                for _len, dosages in paired_dosages.items():
-                    if len(np.unique(ori_phenotypes[dosages != 0])) <= 1:
-                        continue
-                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                        ori_phenotypes,
-                        weights = dosages
-                    )
-                    paired_dosage_stat[_len] = mean_stats.mean
-                    paired_dosage_95_CI[_len] = mean_stats.tconfint_mean()
-                    paired_dosage_GWAS_CI[_len] = mean_stats.tconfint_mean(5e-8)
-            else:
-                for _len, dosages in single_dosages.items():
-                    if not np.any(dosages != 0):
-                        continue
-                    p, lower, upper = weighted_binom_conf.weighted_binom_conf(
-                        dosages, ori_phenotypes, 0.05
-                    )
-                    single_dosage_stat[_len] = p
-                    single_dosage_95_CI[_len] = (lower, upper)
-                    _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
-                        dosages, ori_phenotypes, 5e-8
-                    )
-                    single_dosage_GWAS_CI[_len] = (lower_gwas, upper_gwas)
-                for _len, dosages in paired_dosages.items():
-                    if not np.any(dosages != 0):
-                        continue
-                    p, lower, upper = weighted_binom_conf.weighted_binom_conf(
-                        dosages, ori_phenotypes, 0.05
-                    )
-                    paired_dosage_stat[_len] = p
-                    paired_dosage_95_CI[_len] = (lower, upper)
-                    _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
-                        dosages, ori_phenotypes, 5e-8
-                    )
-                    paired_dosage_GWAS_CI[_len] = (lower_gwas, upper_gwas)
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_stat) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str({key: np.sum(arr) for key, arr in single_dosages.items()}) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_stat) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_95_CI) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(paired_dosage_GWAS_CI) + '\n')
-        else:
-            single_dosage_stat = {}
-            single_dosage_95_CI = {}
-            single_dosage_GWAS_CI= {}
-            if not binary:
-                for alt_count in range(3):
-                    mean_stats = statsmodels.stats.weightstats.DescrStatsW(
-                        ori_phenotypes,
-                        weights = dosage_gts[:, alt_count]
-                    )
-                    single_dosage_stat[alt_count] = mean_stats.mean
-                    single_dosage_95_CI[alt_count] = mean_stats.tconfint_mean()
-                    single_dosage_GWAS_CI[alt_count] = mean_stats.tconfint_mean(5e-8)
-            else:
-                for alt_count in range(3):
-                    p, lower, upper = weighted_binom_conf.weighted_binom_conf(
-                        dosage_gts[:, alt_count], ori_phenotypes, 0.05
-                    )
-                    single_dosage_stat[alt_count] = p
-                    single_dosage_95_CI[alt_count] = (lower, upper)
-                    _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
-                        dosage_gts[:, alt_count], ori_phenotypes, 5e-8
-                    )
-                    single_dosage_GWAS_CI[alt_count] = (lower_gwas, upper_gwas)
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_stat) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_95_CI) + '\t')
-            outfile.write(load_and_filter_genotypes.dict_str(single_dosage_GWAS_CI) + '\n')
+                    dosages_per_paired_gt[(minlen, maxlen)] = dosages
 
+            outfile.write('\t' + load_and_filter_genotypes.dict_str({key: np.sum(arr) for key, arr in dosages_per_summed_gt.items()}))
+            if not binary or binary == 'linear':
+                #do da regression
+                untrans_model = OLS(
+                    ori_phenotypes,
+                    covars[:, 1:],
+                    missing='drop',
+                )
+            else:
+                untrans_model = sm.GLM(
+                    ori_phenotypes,
+                    covars[:, 1:],
+                    missing='drop',
+                    family=sm.families.Binomial()
+                )
+            untrans_reg_result = untrans_model.fit()
+            residual_phenotypes = ori_phenotypes - untrans_reg_result.fittedvalues
+
+            for phenotypes in ori_phenotypes, residual_phenotypes:
+                summed_gt_stat = {}
+                summed_gt_95_CI = {}
+                summed_gt_GWAS_CI= {}
+                if not binary:
+                    for len_, dosages in dosages_per_summed_gt.items():
+                        if len(np.unique(phenotypes[dosages != 0])) <= 1:
+                            continue
+                        mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                            phenotypes,
+                            weights = dosages
+                        )
+                        summed_gt_stat[len_] = mean_stats.mean
+                        summed_gt_95_CI[len_] = mean_stats.tconfint_mean()
+                        summed_gt_GWAS_CI[len_] = mean_stats.tconfint_mean(5e-8)
+                else:
+                    for len_, dosages in dosages_per_summed_gt.items():
+                        if not np.any(dosages != 0):
+                            continue
+                        p, lower, upper = weighted_binom_conf.weighted_binom_conf(
+                            dosages, phenotypes, 0.05
+                        )
+                        summed_gt_stat[len_] = p
+                        summed_gt_95_CI[len_] = (lower, upper)
+                        _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
+                            dosages, phenotypes, 5e-8
+                        )
+                        summed_gt_GWAS_CI[len_] = (lower_gwas, upper_gwas)
+                outfile.write('\t' + load_and_filter_genotypes.dict_str(summed_gt_stat))
+                outfile.write('\t' + load_and_filter_genotypes.dict_str(summed_gt_95_CI))
+                outfile.write('\t' + load_and_filter_genotypes.dict_str(summed_gt_GWAS_CI))
+
+            outfile.write('\t' + load_and_filter_genotypes.dict_str({key: np.sum(arr) for key, arr in dosages_per_paired_gt.items()}))
+            for phenotypes in ori_phenotypes, residual_phenotypes:
+                paired_gt_stat = {}
+                paired_gt_95_CI = {}
+                paired_gt_GWAS_CI= {}
+                if not binary:
+                    for len_, dosages in dosages_per_paired_gt.items():
+                        if len(np.unique(phenotypes[dosages != 0])) <= 1:
+                            continue
+                        mean_stats = statsmodels.stats.weightstats.DescrStatsW(
+                            phenotypes,
+                            weights = dosages
+                        )
+                        paired_gt_stat[len_] = mean_stats.mean
+                        paired_gt_95_CI[len_] = mean_stats.tconfint_mean()
+                        paired_gt_GWAS_CI[len_] = mean_stats.tconfint_mean(5e-8)
+                else:
+                    for len_, dosages in dosages_per_paired_gt.items():
+                        if not np.any(dosages != 0):
+                            continue
+                        p, lower, upper = weighted_binom_conf.weighted_binom_conf(
+                            dosages, phenotypes, 0.05
+                        )
+                        paired_gt_stat[len_] = p
+                        paired_gt_95_CI[len_] = (lower, upper)
+                        _,  lower_gwas, upper_gwas = weighted_binom_conf.weighted_binom_conf(
+                            dosages, phenotypes, 5e-8
+                        )
+                        paired_gt_GWAS_CI[len_] = (lower_gwas, upper_gwas)
+                outfile.write('\t' + load_and_filter_genotypes.dict_str(paired_gt_stat))
+                outfile.write('\t' + load_and_filter_genotypes.dict_str(paired_gt_95_CI))
+                outfile.write('\t' + load_and_filter_genotypes.dict_str(paired_gt_GWAS_CI))
+
+        outfile.write('\n')
         outfile.flush()
 
         duration = time.time() - start_time

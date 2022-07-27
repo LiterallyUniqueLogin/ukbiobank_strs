@@ -63,6 +63,7 @@ def make_overview_manhattan(
         title=(phenotype.capitalize()),
         x_axis_label='Chromosomes',
         y_axis_label='-log10(p-value)',
+        output_backend='canvas' if outfname[-4:] == '.png' else 'svg'
     )
     manhattan_plot.title.text_font_size = '30px'
     manhattan_plot.axis.axis_label_text_font_size = '26px'

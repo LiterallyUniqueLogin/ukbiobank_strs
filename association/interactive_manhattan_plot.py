@@ -96,13 +96,10 @@ def make_manhattan_plots(
         binary,
         unit,
         my_str_data,
-        my_str_run_date,
         plink_snp_data,
-        plink_snp_run_date,
         gwas_catalog,
         gwas_catalog_ids,
         my_snp_data,
-        my_snp_run_date,
         chrom,
         start,
         end,
@@ -265,10 +262,15 @@ def make_manhattan_plots(
     if chrom is None:
         x_axis_label = 'Position (bp)'
     else:
-        x_axis_label = f'Position (bp chr{chrom})'
+        if publication:
+            x_axis_label = f'Mbp chr{chrom} (hg19)'
+        else:
+            x_axis_label = f'bp chr{chrom} (hg19)'
 
     if ext == 'html':
         output_backend = 'webgl'
+    elif ext == 'svg':
+        output_backend = 'svg'
     else:
         assert ext == 'png'
         output_backend = 'canvas'
@@ -289,18 +291,23 @@ def make_manhattan_plots(
                 start_height_cap = max(start_height_cap, np.max(included_strs))
 
     manhattan_plot = bokeh.plotting.figure(
-        width=1200,
-        height=900,
-        title=(phenotype.capitalize().replace('_', ' ')),
+        width=1600,
+        height=400,
+        title=(phenotype.capitalize().replace('_', ' ')) if not publication else None,
         x_axis_label=x_axis_label,
         y_axis_label='-log10(p-value)',
         tools='xzoom_in,xzoom_out,save',
         y_range=(-0.025*start_height_cap, start_height_cap*1.025),
         output_backend=output_backend
     )
-    manhattan_plot.title.text_font_size = '30px'
     manhattan_plot.axis.axis_label_text_font_size = '26px'
     manhattan_plot.axis.major_label_text_font_size = '20px'
+    if publication:
+        manhattan_plot.xaxis.formatter = bokeh.models.FuncTickFormatter(code='''
+            return Math.floor(tick/100000)/10
+        ''')
+    else:
+        manhattan_plot.title.text_font_size = '30px'
 
     if ext != 'html':
         manhattan_plot.grid.grid_line_color = None
@@ -309,8 +316,9 @@ def make_manhattan_plots(
         manhattan_plot.toolbar_location = None
 
     if start:
-        x_width = end - start
-        manhattan_plot.x_range = bokeh.models.Range1d(start-0.025*x_width, end+0.025*x_width)
+        #x_width = end - start
+        #manhattan_plot.x_range = bokeh.models.Range1d(start-0.025*x_width, end+0.025*x_width)
+        manhattan_plot.x_range = bokeh.models.Range1d(start, end)
 
     if ext == 'html':
         # add custom tools
@@ -362,7 +370,7 @@ def make_manhattan_plots(
         source=line_source,
         line_width=3,
         color='red',
-        legend_label='GWAS p-value threshold'
+        legend_label='genome-wide significance threshold'
     )
     manhattan_plot.legend.label_text_font_size = '22px'
 
@@ -384,7 +392,7 @@ def make_manhattan_plots(
             'pos',
             'display_p_val',
             source=plink_snp_source,
-            legend_label='SNPs Plink',
+            legend_label='SNPs Plink' if not publication else 'SNPs and indels',
             color=plink_snp_color,
             size='size',
             muted_alpha=0.1
@@ -402,7 +410,7 @@ def make_manhattan_plots(
             'pos',
             'display_p_val',
             source=my_str_source,
-            legend_label='STRs my code',
+            legend_label='STRs my code' if not publication else 'STRs',
             color=my_str_color,
             size='size',
             muted_alpha=0.1
@@ -431,19 +439,41 @@ def make_manhattan_plots(
     if conditioned_isnps:
         manhattan_plot.circle(
             [snp[0] for snp in conditioned_isnps],
-            [0]*len(conditioned_isnps),
+            [plink_snp_data[(plink_snp_data['pos'] == snp[0]) & (plink_snp_data['ref'] == snp[1]) & (plink_snp_data['alt'] == snp[2])][0]['p_val'] for snp in conditioned_isnps],
+            legend_label='Conditioned-on variants',
+            line_color='black',
+            fill_color=None,
+            size=20,
+            line_width=3
+        )
+        '''
+        manhattan_plot.circle(
+            [snp[0] for snp in conditioned_isnps],
+            [plink_snp_data[(plink_snp_data['pos'] == snp[0]) & (plink_snp_data['ref'] == snp[1]) & (plink_snp_data['alt'] == snp[2])][0]['p_val'] for snp in conditioned_isnps],
             legend_label='Conditioned-on SNPs',
             color=condition_color,
             size=20
         )
+        '''
     if conditioned_strs:
+        manhattan_plot.circle(
+            conditioned_strs,
+            [my_str_data[my_str_data['pos'] == str_][0]['p_val'] for str_ in conditioned_strs],
+            legend_label='Conditioned-on variants',
+            line_color='black',
+            fill_color=None,
+            size=20,
+            line_width=3
+        )
+        '''
         manhattan_plot.square_pin(
             conditioned_strs,
-            [0]*len(conditioned_strs),
+            [my_str_data[my_str_data['pos'] == str_][0]['p_val'] for str_ in conditioned_strs],
             legend_label='Conditioned-on STRs',
             color=condition_color,
             size=20
         )
+        '''
 
     if ext == 'html':
         # add hover tooltips for each manhattan plot
@@ -781,20 +811,15 @@ def make_manhattan_plots(
                 manhattan_plot
             ])
 
-    if not publication:
-        if my_str_run_date:
-            region_plots.display_my_str_run_date(manhattan_plot, my_str_run_date)
-        if my_snp_run_date:
-            manhattan_plot.add_layout(bokeh.models.Title(
-                text=f"My SNP code run date: {my_snp_run_date}",
-                align='right'
-            ), 'below')
-        if plink_snp_run_date:
-            region_plots.display_plink_snp_run_date(manhattan_plot, plink_snp_run_date)
-
     manhattan_plot.legend.click_policy="mute"
 
     manhattan_plot.legend.visible = legend
+    manhattan_plot.legend.location = 'top_left'
+    '''
+    if legend:
+        manhattan_plot.add_layout(manhattan_plot.legend[0], 'right')
+        del manhattan_plot.legend[0]
+    '''
     if return_figure:
         return manhattan_plot
 
@@ -802,18 +827,20 @@ def make_manhattan_plots(
         html = bokeh.embed.file_html(layout, bokeh.resources.CDN, f'Manhattan plot {phenotype}')
         with open(outfname, 'w') as outfile:
             outfile.write(html)
-    else:
-        assert ext == 'png'
+    elif ext == 'png':
         manhattan_plot.background_fill_color = None
         manhattan_plot.border_fill_color = None
         bokeh.io.export_png(manhattan_plot, filename=outfname)
+    else:
+        assert ext == 'svg'
+        bokeh.io.export_svg(manhattan_plot, filename=outfname)
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outfname')
     parser.add_argument('phenotype')
-    parser.add_argument('ext', help='file extension', choices=['png', 'html'])
+    parser.add_argument('ext', help='file extension', choices=['png', 'html', 'svg'])
     parser.add_argument("--my-plink-comparison", action='store_true', default=False)
     parser.add_argument("--only-plink", action='store_true', default=False)
     parser.add_argument("--only-mine", action='store_true', default=False)
@@ -878,13 +905,6 @@ def main():
         str_finemap_signals = None
         finemap_regions = None
 
-    if not args.my_plink_comparison and not condition:
-        my_str_run_date = region_plots.get_my_str_run_date(
-            f'{ukb}/association/results/{phenotype}/my_str{run_suffix.replace(".", "_")}/README.txt'
-        )
-    else:
-        my_str_run_date = None
-
     if binary:
         runtype_suffix = '_' + binary
     else:
@@ -904,7 +924,6 @@ def main():
         gwas_catalog, gwas_catalog_ids = region_plots.load_gwas_catalog(phenotype)
 
         my_snp_results = None
-        my_snp_run_date = None
         if condition:
             unconditioned_str_results = region_plots.load_my_str_results(
                 phenotype, binary, f'{ukb}/association/results/{phenotype}/my_str{runtype_suffix}/results.tab'
@@ -960,7 +979,6 @@ def main():
             snp_finemap_signals, str_finemap_signals, finemap_regions = region_plots.load_finemap_signals(out_files)
     else:
         gwas_catalog = gwas_catalog_ids = None
-        my_str_results = my_str_run_date = None
 
         if not binary:
             out_runtype = 'continuous'
@@ -984,17 +1002,6 @@ def main():
         else:
             plink_snp_results = None
 
-        with open(f'{ukb}/association/results/{phenotype}/my_imputed_snp{readme_suffix}/README.txt') as README:
-            date_line = next(README)
-            my_snp_run_date = date_line.split(' ')[2]
-
-    if not condition:
-        plink_snp_run_date = region_plots.get_plink_snp_run_date(
-            f'{ukb}/association/results/{phenotype}/plink_snp{runtype_suffix}/chrs/chr21/plink2.log'
-        )
-    else:
-        plink_snp_run_date = None
-
     if args.unit:
         unit = args.unit
     else:
@@ -1008,13 +1015,10 @@ def main():
             binary,
             unit,
             my_str_results,
-            my_str_run_date,
             plink_snp_results,
-            plink_snp_run_date,
             gwas_catalog,
             gwas_catalog_ids,
             my_snp_results,
-            my_snp_run_date,
             chrom = chrom,
             start = start,
             end = end,
@@ -1032,37 +1036,10 @@ def main():
             binary,
             unit,
             my_str_results,
-            my_str_run_date,
             plink_snp_results,
-            plink_snp_run_date,
             gwas_catalog,
             gwas_catalog_ids,
             my_snp_results,
-            my_snp_run_date,
-            chrom = chrom,
-            start = start,
-            end = end,
-            snp_finemap_signals = snp_finemap_signals,
-            str_finemap_signals = str_finemap_signals,
-            finemap_regions = finemap_regions,
-            conditioned_isnps = conditioned_isnps,
-            conditioned_strs = conditioned_strs,
-            return_figure = True,
-            publication=args.publication
-        )
-        unconditioned_man = make_manhattan_plots(
-            f'.{ext}',
-            phenotype,
-            binary,
-            unit,
-            unconditioned_str_results,
-            None,
-            unconditioned_snp_results,
-            None,
-            gwas_catalog,
-            gwas_catalog_ids,
-            my_snp_results,
-            my_snp_run_date,
             chrom = chrom,
             start = start,
             end = end,
@@ -1075,24 +1052,48 @@ def main():
             legend=False,
             publication=args.publication
         )
+        unconditioned_man = make_manhattan_plots(
+            f'.{ext}',
+            phenotype,
+            binary,
+            unit,
+            unconditioned_str_results,
+            unconditioned_snp_results,
+            gwas_catalog,
+            gwas_catalog_ids,
+            my_snp_results,
+            chrom = chrom,
+            start = start,
+            end = end,
+            snp_finemap_signals = snp_finemap_signals,
+            str_finemap_signals = str_finemap_signals,
+            finemap_regions = finemap_regions,
+            conditioned_isnps = conditioned_isnps,
+            conditioned_strs = conditioned_strs,
+            return_figure = True,
+            publication=args.publication
+        )
         layout = bokeh.layouts.grid([unconditioned_man, conditioned_man])
         conditioned_man.x_range = unconditioned_man.x_range
         conditioned_man.y_range = unconditioned_man.y_range
-        conditioned_man.title.text = 'Conditional ' + conditioned_man.title.text
+        if not args.publication:
+            conditioned_man.title.text = 'Conditional ' + conditioned_man.title.text
         for man in (unconditioned_man, conditioned_man):
             man.background_fill_color = None
             man.border_fill_color = None
 
-        if ext == 'png':
-            for man in unconditioned_man, conditioned_man:
-                man.toolbar_location = None
-            bokeh.io.export_png(layout, filename=args.outfname)
-        else:
-            assert ext == 'html'
+        if ext == 'html':
             html = bokeh.embed.file_html(layout, bokeh.resources.CDN, 'conditional manhattan')
             with open(args.outfname, 'w') as outfile:
                 outfile.write(html)
-
+        else:
+            for man in unconditioned_man, conditioned_man:
+                man.toolbar_location = None
+            if ext == 'png':
+                bokeh.io.export_png(layout, filename=args.outfname)
+            else:
+                assert ext == 'svg'
+                bokeh.io.export_svg(layout, filename=args.outfname)
 
 if __name__ == "__main__":
     main()

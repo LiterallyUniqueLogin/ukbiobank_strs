@@ -146,21 +146,21 @@ def main():
     for i in range(len(pheno_order)):
         if i not in np.floor(old_mapi):
             mapi[old_mapi > i] -= 1
-    x_coords = np.floor(mapi).astype(int)
+    y_coords = np.floor(mapi).astype(int)
     for i in np.unique(mapi):
         num_dups = np.unique(mapi[(mapi < i) & (np.floor(i) == np.floor(mapi))]).shape[0]
         if num_dups > 0:
-            x_coords[np.floor(mapi) > np.floor(i)] += 1
-            x_coords[mapi == i] += num_dups
-    for i in range(max(x_coords) + 1):
-        if i not in x_coords:
+            y_coords[np.floor(mapi) > np.floor(i)] += 1
+            y_coords[mapi == i] += num_dups
+    for i in range(max(y_coords) + 1):
+        if i not in y_coords:
             print(i)
             exit()
 
     for pair in [(21, 23), (23, 24), (25, 28), (26, 30), (27, 31), (25, 27), (35, 39), (36, 39), (37, 38), (40, 42), (40, 41), (43, 45), (56, 57), (59, 60), (48, 53), (49, 55), (50, 54), (49, 51), (68, 71), (84, 85),(85, 87), (87, 88)]:
-        x_coords[x_coords == pair[0]] = 1000000
-        x_coords[x_coords == pair[1]] = pair[0]
-        x_coords[x_coords == 1000000] = pair[1]
+        y_coords[y_coords == pair[0]] = 1000000
+        y_coords[y_coords == pair[1]] = pair[0]
+        y_coords[y_coords == 1000000] = pair[1]
 
     strs = df[
         pl.col('chrom').cast(str) + ':' + pl.col('start_pos').cast(str) + '_' + pl.when(
@@ -184,7 +184,7 @@ def main():
         ).otherwise(
             pl.col('relation_to_gene').str.extract(r"\w[^{:]*:([^:]*):", 1)
         )
-    ].to_numpy()[np.argsort(x_coords)]
+    ].to_numpy()[np.argsort(y_coords)]
     _, idxs = np.unique(strs, return_index=True)
     unique_stable_strs = strs[np.sort(idxs)].flatten()
     unique_stable_strs = list(np.char.partition(np.array(unique_stable_strs, dtype=str), '_')[:, 2])
@@ -194,15 +194,15 @@ def main():
     unique_stable_strs[unique_stable_strs.index('TFDP2')] += ' #1'
     unique_stable_strs[unique_stable_strs.index('TFDP2')] += ' #2'
 
-    plot_width = 2500
+    plot_height = 2500
     results_plot = bokeh.plotting.figure(
-        width=plot_width,
-        height=1400,
-        x_axis_label='STRs (containing gene, or position and nearest gene if intergenic)',
-        y_axis_label='phenotypes',
+        width=1400,
+        height=plot_height,
+        x_axis_label='phenotypes',
+        y_axis_label='STRs (containing gene, or position and nearest gene if intergenic)',
         #y_range=bokeh.models.FactorRange(*[(group, pheno) for group in pheno_blocks for pheno in pheno_blocks[group]][::-1]),
-        y_range=[pheno.replace('_', ' ') for pheno in pheno_order[::-1]],
-        x_range=unique_stable_strs,#(0,94),
+        x_range=[pheno.replace('_', ' ') for pheno in pheno_order[::-1]],
+        y_range=unique_stable_strs,#(0,94),
         toolbar_location=None,
         outline_line_color='black',
         output_backend='svg'
@@ -210,17 +210,17 @@ def main():
     results_plot.axis.axis_label_text_font_size = '30px'
     results_plot.xaxis.major_label_orientation = 1.3
     cds = bokeh.models.ColumnDataSource(dict(
-        x=[len(x_coords)/2]*len(shaded_phenos), y=[pheno.replace('_', ' ') for pheno in shaded_phenos], width=[len(x_coords)]*len(shaded_phenos), height=[1]*len(shaded_phenos), color=['grey']*len(shaded_phenos), alpha=['0.15']*len(shaded_phenos), line_color=[None]*len(shaded_phenos)
+        x=[pheno.replace('_', ' ') for pheno in shaded_phenos], y=[len(y_coords)/2]*len(shaded_phenos), width=[1]*len(shaded_phenos), height=[len(y_coords)]*len(shaded_phenos), color=['grey']*len(shaded_phenos), alpha=['0.15']*len(shaded_phenos), line_color=[None]*len(shaded_phenos)
     ))
     results_plot.rect(
         x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
     )
-    rect_steps = np.arange(1, np.max(x_coords) + 1, 2)
+    rect_steps = np.arange(1, np.max(y_coords) + 1, 2)
     cds = bokeh.models.ColumnDataSource(dict(
-        x=rect_steps+0.5,
-        y=[len(pheno_order)/2]*rect_steps.shape[0],
-        width=[1]*rect_steps.shape[0],
-        height=[len(pheno_order)+len(pheno_blocks)+20]*rect_steps.shape[0],
+        x=[len(pheno_order)/2]*rect_steps.shape[0],
+        y=rect_steps+0.5,
+        width=[len(pheno_order)+len(pheno_blocks)+20]*rect_steps.shape[0],
+        height=[1]*rect_steps.shape[0],
         color=['grey']*rect_steps.shape[0],
         alpha=['0.075']*rect_steps.shape[0],
         line_color=[None]*rect_steps.shape[0]
@@ -228,7 +228,7 @@ def main():
     results_plot.rect(
         x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
     )
-    results_plot.xgrid.ticker = []
+    results_plot.ygrid.ticker = []
 
     '''
     with open(args.e_splice_STRs_table) as table:
@@ -257,22 +257,26 @@ def main():
         return [pheno.replace('_', ' ') for pheno in phenos]
         #return [(group, pheno) for pheno in phenos for group in pheno_blocks if pheno in pheno_blocks[group]]
 
-    fill_colors = np.array(['           ']*len(x_coords))
-    fill_colors[:] = '#A13D34' #'#C52F22' #'grey'
-    fill_colors[df['finemapping'].to_numpy() == 'confidently'] = '#401E1D' #'black'
-    fill_colors[df['finemapping'].to_numpy() == 'not'] = '#BF9E9A' #'white'
+    fill_colors = np.array(['           ']*len(y_coords))
+
+    confidently_color = '#401E1D'
+    partially_color = '#A13D34' 
+    not_color = '#BF9E9A'
+    fill_colors[:] = '#A13D34' 
+    fill_colors[df['finemapping'].to_numpy() == 'confidently'] = confidently_color
+    fill_colors[df['finemapping'].to_numpy() == 'not'] = not_color
 
     up_triangle = df['direction_of_association'].to_numpy() == '+'
     results_plot.triangle(
-        (x_coords + 0.5)[up_triangle],
         pheno_to_ycoords(df['phenotype'].to_numpy()[up_triangle]),
+        (y_coords + 0.5)[up_triangle],
         size=np.sqrt(df['p_val'].to_numpy())[up_triangle]*2,
         color=fill_colors[up_triangle],
         line_color=None
     )
     results_plot.inverted_triangle(
-        (x_coords + 0.5)[~up_triangle],
         pheno_to_ycoords(df['phenotype'].to_numpy()[~up_triangle]),
+        (y_coords + 0.5)[~up_triangle],
         size=np.sqrt(df['p_val'].to_numpy())[~up_triangle]*2,
         fill_color=fill_colors[~up_triangle],
         line_color=None
@@ -281,24 +285,25 @@ def main():
     other_ethnicities = ['Black',  'South Asian', 'Chinese', 'Irish', 'White Other']
 
     topper_circle_size = 8
-    def get_topper(height, factors, color):
+    def get_topper(width, factors, color):
         topper = bokeh.plotting.figure(
-            width=plot_width,
-            height=height,
-            y_range=bokeh.models.FactorRange(*factors),
-            x_range=results_plot.x_range,
+            width=width,
+            height=plot_height,
+            x_range=bokeh.models.FactorRange(*factors),
+            y_range=results_plot.y_range,
             toolbar_location=None,
             outline_line_color='black',
             output_backend='svg'
         )
-        topper.xgrid.ticker = []
-        topper.xaxis.ticker = []
+        topper.xaxis.major_label_orientation = 1.3
+        topper.ygrid.ticker = []
+        topper.yaxis.ticker = []
         if color:
             cds = bokeh.models.ColumnDataSource(dict(
-                x=rect_steps+0.5,
-                y=[7.5/2]*rect_steps.shape[0],
-                width=[1]*rect_steps.shape[0],
-                height=[7.5]*rect_steps.shape[0],
+                x=[7.5/2]*rect_steps.shape[0],
+                y=rect_steps+0.5,
+                width=[7.5]*rect_steps.shape[0],
+                height=[1]*rect_steps.shape[0],
                 color=['grey']*rect_steps.shape[0],
                 alpha=['0.075']*rect_steps.shape[0],
                 line_color=[None]*rect_steps.shape[0]
@@ -319,8 +324,8 @@ def main():
         ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(eqtl_STR_locs)
     ].to_numpy().flatten()
     qtl_topper.circle(
-        (x_coords + 0.5)[eqtl_STRs],
         ['expression QTL']*np.sum(eqtl_STRs),
+        (y_coords + 0.5)[eqtl_STRs],
         color='black',
         size=topper_circle_size
     )
@@ -331,7 +336,7 @@ def main():
         ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(splice_iso_STR_locs)
     ].to_numpy().flatten()
     qtl_topper.circle(
-        (x_coords + 0.5)[splice_iso_STRs],
+        (y_coords + 0.5)[splice_iso_STRs],
         ['splice or isoform QTL']*np.sum(splice_iso_STRs),
         color='black',
         size=topper_circle_size
@@ -350,8 +355,8 @@ def main():
             (pl.col('other_ethnicity_association_p_values').str.split_exact(",", ethnicity_num+1).struct.field(f'field_{ethnicity_num}').str.strip().cast(float)*pl.col('n_confident_assocs') <= 0.05)
         ).alias('out'))['out'].to_numpy()
         replication_topper.circle(
-            (x_coords + 0.5)[replicates],
             [f'{ethnicity} replication'.replace('Other', 'other')]*np.sum(replicates),
+            (y_coords + 0.5)[replicates],
             color='black',
             size=topper_circle_size
         )
@@ -360,53 +365,53 @@ def main():
     for repeat_unit in 'A', 'AC', 'CCG':
         selection = df['repeat_unit'].to_numpy() == repeat_unit
         repeat_unit_topper.circle(
-            (x_coords + 0.5)[selection],
             [f'poly{repeat_unit}'] * np.sum(selection),
+            (y_coords + 0.5)[selection],
             color='black',
             size=topper_circle_size
         )
 
 
     indices = []
-    for index, coord in enumerate(x_coords):
-        if index == list(x_coords).index(coord):
+    for index, coord in enumerate(y_coords):
+        if index == list(y_coords).index(coord):
             indices.append(index)
-    assert len(indices) == max(x_coords) + 1
+    assert len(indices) == max(y_coords) + 1
     unique_stable_strs = list(np.char.partition(np.array(unique_stable_strs, dtype=str), '_')[:, 2])
 
     multiallelic_topper = get_topper(30, ['number of common alleles'], False)
 
     max_common_alleles = np.max(df['n_common_alleles'].to_numpy())
     cds = bokeh.models.ColumnDataSource(dict(
-        x=x_coords[indices]+0.5,
-        y=['number of common alleles']*(int(np.max(x_coords)) + 1),
-        width=[1]*(int(np.max(x_coords)) + 1),
-        height=[1]*(int(np.max(x_coords)) + 1),
-        color=['black']*(int(np.max(x_coords)) + 1),
+        x=['number of common alleles']*(int(np.max(y_coords)) + 1),
+        y=y_coords[indices]+0.5,
+        width=[1]*(int(np.max(y_coords)) + 1),
+        height=[1]*(int(np.max(y_coords)) + 1),
+        color=['black']*(int(np.max(y_coords)) + 1),
         alpha=df['n_common_alleles'].to_numpy()[indices]/max_common_alleles,
-        line_color=[None]*(int(np.max(x_coords)) + 1)
+        line_color=[None]*(int(np.max(y_coords)) + 1)
     ))
     multiallelic_topper.rect(
         x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
     )
 
     multiallelic_scale = bokeh.plotting.figure(
-        width=120,
-        height=40*max_common_alleles,
-        y_range=[0.5, max_common_alleles+0.5],
-        y_axis_label='# common alleles',
+        width=40*max_common_alleles,
+        height=120,
+        x_range=[0.5, max_common_alleles+0.5],
+        x_axis_label='# common alleles',
         toolbar_location=None,
         outline_line_color='black',
         output_backend='svg'
     )
     multiallelic_scale.axis.axis_label_text_font_size = '26px'
-    multiallelic_scale.xaxis.ticker = []
-    multiallelic_scale.xgrid.ticker = []
-    multiallelic_scale.yaxis.ticker = np.arange(1, max_common_alleles + 1)
+    multiallelic_scale.yaxis.ticker = []
+    multiallelic_scale.grid.ticker = []
+    multiallelic_scale.xaxis.ticker = np.arange(1, max_common_alleles + 1)
 
     cds = bokeh.models.ColumnDataSource(dict(
-        x=[0]*max_common_alleles,
-        y=np.arange(1, max_common_alleles+1),
+        x=np.arange(1, max_common_alleles+1),
+        y=[0]*max_common_alleles,
         width=[1]*max_common_alleles,
         height=[1]*max_common_alleles,
         color=['black']*max_common_alleles,
@@ -422,28 +427,78 @@ def main():
     scale_ps = [10, 20, 40, 80, 160, 300]
     str_scale_ps = [str(p) for p in scale_ps]
     p_val_scale = bokeh.plotting.figure(
-        width=120,
-        height=30*len(scale_ps) + 90,
-        y_range=bokeh.models.FactorRange(*str_scale_ps),
-        y_axis_label='-log10 p-value',
+        height=135,
+        width=30*len(scale_ps) + 90,
+        x_range=bokeh.models.FactorRange(*str_scale_ps),
+        x_axis_label='-log10 p-value',
         toolbar_location=None,
         outline_line_color='black',
         output_backend='svg'
     )
     p_val_scale.axis.axis_label_text_font_size = '26px'
-    p_val_scale.xaxis.ticker = []
+    p_val_scale.yaxis.ticker = []
     p_val_scale.grid.ticker = []
     p_val_scale.triangle(
-        [0]*len(scale_ps),
         str_scale_ps,
+        [0]*len(scale_ps),
         size=np.sqrt(scale_ps)*2,
         color='black'
     )
 
-    total_fig = bokeh.layouts.row(bokeh.layouts.column(
-            multiallelic_topper, repeat_unit_topper, replication_topper, qtl_topper, results_plot, 
+    color_names = ['not', 'partially', 'confidently']
+    color_scale = bokeh.plotting.figure(
+        height=30*3 + 90,
+        width=120,
+        y_range=bokeh.models.FactorRange(*color_names),
+        title='fine-mapping status',
+        toolbar_location=None,
+        outline_line_color='black',
+        output_backend='svg'
+    )
+    color_scale.xaxis.ticker = []
+    color_scale.grid.ticker = []
+    color_scale.triangle(
+        [0, 0, 0],
+        color_names,
+        size=np.sqrt(300)*2,
+        color=[not_color, partially_color, confidently_color]
+    )
+
+    assoc_dirs = ['negative', 'positive']
+    dir_scale = bokeh.plotting.figure(
+        height=30*2 + 70,
+        width=120,
+        y_range=bokeh.models.FactorRange(*assoc_dirs),
+        title='length-trait associations',
+        toolbar_location=None,
+        outline_line_color='black',
+        output_backend='svg'
+    )
+    dir_scale.xaxis.ticker = []
+    dir_scale.grid.ticker = []
+    dir_scale.triangle(
+        [0],
+        ['positive'],
+        size=np.sqrt(300)*2,
+        color=confidently_color
+    )
+    dir_scale.inverted_triangle(
+        [0],
+        ['negative'],
+        size=np.sqrt(300)*2,
+        color=confidently_color
+    )
+
+
+    total_fig = bokeh.layouts.column(
+        bokeh.layouts.row(
+            results_plot,
+            qtl_topper,
+            replication_topper,
+            repeat_unit_topper,
+            multiallelic_topper,
         ),
-        bokeh.layouts.column(multiallelic_scale, p_val_scale)
+        bokeh.layouts.row(multiallelic_scale, p_val_scale, color_scale, dir_scale)
     )
     bokeh.io.export_png(
         total_fig,

@@ -289,7 +289,8 @@ finemapping_results = finemapping_results.select([
         (pl.col('finemap_CP_mac_thresh_100') >= 0.8) &
         (pl.col('finemap_CP_prior_effect_size_0.05%') >= 0.8) &
         (pl.col('finemap_CP_prior_4_signals') >= 0.8) &
-        (pl.col('finemap_CP_stopping_thresh_1e-4') >= 0.8)
+        (pl.col('finemap_CP_stopping_thresh_1e-4') >= 0.8) &
+        (pl.col('p_val') <= 1e-10)
     ).then(
         'confidently'
     ).when(

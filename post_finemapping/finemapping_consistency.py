@@ -2,7 +2,6 @@
 
 import argparse
 import glob
-import math
 import os
 import os.path
 import pathlib
@@ -100,17 +99,20 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
         with open(colnames_fname) as var_file:
             susie_vars = [line.strip() for line in var_file if line.strip()]
 
-        alphas = pl.scan_csv(
+        alphas = np.genfromtxt(
             f'{results_regions_dir}/{region}/alpha.tab',
-            sep='\t',
-            has_header=False
-        ).collect().to_numpy().T
+            delimiter='\t',
+        ).T
         if only_L is not None and only_L != alphas.shape[1]:
             only_L_skips.append(region)
             continue
+        estimated_signal_vars = np.genfromtxt(
+            f'{results_regions_dir}/{region}/V.tab',
+            delimiter='\t'
+        )
 
         n_alphas = alphas.shape[1]
-        susie_pips=1-np.prod(1-alphas, axis=1)
+        susie_pips=1-np.prod(1-alphas[:, estimated_signal_vars >= 1e-9], axis=1)
         if not susie_pips.shape[0] == len(susie_vars):
             print(results_regions_dir, colnames_fname)
             assert False
@@ -152,6 +154,9 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
             )
             if min_abs_corr < corr_cutoff:
                 continue
+            if estimated_signal_vars[cs_id-1] <= 1e-9:
+                print(f'CS {cs_id} in region {region} has a pure CS with negligible signal, exiting')
+                assert False
             real_cs_count += 1
             if real_cs_count == 50:
                 underexplored_regions.append(region)
@@ -402,6 +407,8 @@ def mpv_comparison():
         'finemap_pip_p_thresh',
     ])
 
+    line_width=18
+    min_text_size='30px'
     # concordance graphs
     for suffix, y_label in [
         ('', 'L=10'),
@@ -411,17 +418,18 @@ def mpv_comparison():
         ('_prior_var_0005', 'prior_var_0005'),
     ]:
         for type_ in ('alpha', 'pip'):
+            fig_height = 1200
             fig = bokeh.plotting.figure(
-                width=1200,
-                height=1200,
+                width=fig_height,
+                height=fig_height,
                 y_axis_label = ('PIP' if type_ == 'pip' else 'CP') + f' under {y_label}',
                 x_axis_label = 'PIP' if type_ == 'pip' else 'CP',
                 x_range=[0,1],
                 y_range=[0,1],
             )
-            fig.title.text_font_size = '30px'
-            fig.axis.axis_label_text_font_size = '26px'
-            fig.axis.major_label_text_font_size = '20px'
+            fig.title.text_font_size = '36px'
+            fig.axis.axis_label_text_font_size = '36px'
+            fig.axis.major_label_text_font_size = min_text_size
 
             graph_df = total_df.filter(
                 ~pl.col(f'susie_cs{suffix}').is_null() &
@@ -500,30 +508,40 @@ def mpv_comparison():
             )['count'].sum()
 
             xs = np.arange(0, 1, 0.0001)
-            fig.line(xs, xs, line_width=6)
+            fig.line(xs, xs, line_width=18)
 
-            fig.line([1-thresh, 1-thresh], [1-thresh, 1], color='orange', width=5)
-            fig.line([1-thresh, 1], [1-thresh, 1-thresh], color='orange', width=5)
+            fig.line([1-thresh, 1-thresh], [1-thresh, 1], color='orange', width=line_width)
+            fig.line([1-thresh, 1], [1-thresh, 1-thresh], color='orange', width=line_width)
             fig.add_layout(bokeh.models.Title(
                 text=f'# variants: {n_both}', align='right',
-                text_font_size='18px'
+                text_font_size=min_text_size
             ), 'above')
 
-            fig.line([1-thresh, 1], [thresh, thresh], color='orange', width=5)
-            fig.line([1-thresh, 1-thresh], [0, thresh], color='orange', width=5)
+            fig.line([1-thresh, 1], [thresh, thresh], color='orange', width=line_width)
+            fig.line([1-thresh, 1-thresh], [0, thresh], color='orange', width=line_width)
             fig.add_layout(bokeh.models.Title(
                 text=f'# variants: {n_only_susie}', align='right',
-                text_font_size='18px'
+                text_font_size=min_text_size
             ), 'right')
 
-            fig.line([thresh, thresh], [1-thresh, 1], color='orange', width=5)
-            fig.line([0, thresh], [1-thresh, 1-thresh], color='orange', width=5)
+            fig.line([thresh, thresh], [1-thresh, 1], color='orange', width=line_width)
+            fig.line([0, thresh], [1-thresh, 1-thresh], color='orange', width=line_width)
             fig.add_layout(bokeh.models.Title(
                 text=f'# variants: {n_only_finemap}', align='left',
-                text_font_size='18px'
+                text_font_size=min_text_size
             ), 'above')
 
-            color_bar = bokeh.models.ColorBar(color_mapper = color_mapper, width=70, major_label_text_font_size = '20px')
+            color_bar = bokeh.models.ColorBar(
+                title='Number of loci',
+                color_mapper = color_mapper,
+                width=35,
+                height=fig_height//3,
+                title_text_font_size='30px',
+                ticker = bokeh.models.tickers.FixedTicker(ticks=[0, 10, 100, 1000, 10000, 100000]),
+                formatter = bokeh.models.formatters.NumeralTickFormatter(format = '0a'),
+                location='bottom_right',
+                major_label_text_font_size = min_text_size
+            )
             fig.add_layout(color_bar, 'right')
             graphing_utils.resize(fig, 5000/1200, legend=False)
             fig.toolbar_location = None
@@ -543,14 +561,15 @@ def mpv_comparison():
         fig = bokeh.plotting.figure(
             width=1200,
             height=1200,
-            y_axis_label = f'PIP under {y_label}',
-            x_axis_label = 'SuSiE PIP',
+            y_axis_label = f'CP under {y_label}',
+            x_axis_label = 'SuSiE CP',
             x_range=[0,1],
             y_range=[0,1],
+            output_backend='svg'
         )
         fig.title.text_font_size = '30px'
-        fig.axis.axis_label_text_font_size = '26px'
-        fig.axis.major_label_text_font_size = '20px'
+        fig.axis.axis_label_text_font_size = '30px'
+        fig.axis.major_label_text_font_size = min_text_size
 
         graph_df = total_df.filter(
             (pl.col('p_val') <= 5e-8) &
@@ -601,30 +620,30 @@ def mpv_comparison():
         )['count'].sum()
 
         xs = np.arange(0, 1, 0.0001)
-        fig.line(xs, xs, line_width=6)
+        fig.line(xs, xs, line_width=line_width)
 
-        fig.line([1-thresh, 1-thresh], [1-thresh, 1], color='orange', width=5)
-        fig.line([1-thresh, 1], [1-thresh, 1-thresh], color='orange', width=5)
+        fig.line([1-thresh, 1-thresh], [1-thresh, 1], color='orange', width=line_width)
+        fig.line([1-thresh, 1], [1-thresh, 1-thresh], color='orange', width=line_width)
         fig.add_layout(bokeh.models.Title(
             text=f'# variants: {n_both}', align='right',
-            text_font_size='18px'
+            text_font_size=min_text_size
         ), 'above')
 
-        fig.line([1-thresh, 1], [thresh, thresh], color='orange', width=5)
-        fig.line([1-thresh, 1-thresh], [0, thresh], color='orange', width=5)
+        fig.line([1-thresh, 1], [thresh, thresh], color='orange', width=line_width)
+        fig.line([1-thresh, 1-thresh], [0, thresh], color='orange', width=line_width)
         fig.add_layout(bokeh.models.Title(
             text=f'# variants: {n_only_susie}', align='right',
-            text_font_size='18px'
+            text_font_size=min_text_size
         ), 'right')
 
-        fig.line([thresh, thresh], [1-thresh, 1], color='orange', width=5)
-        fig.line([0, thresh], [1-thresh, 1-thresh], color='orange', width=5)
+        fig.line([thresh, thresh], [1-thresh, 1], color='orange', width=line_width)
+        fig.line([0, thresh], [1-thresh, 1-thresh], color='orange', width=line_width)
         fig.add_layout(bokeh.models.Title(
             text=f'# variants: {n_only_finemap}', align='left',
-            text_font_size='18px'
+            text_font_size=min_text_size
         ), 'above')
 
-        color_bar = bokeh.models.ColorBar(color_mapper = color_mapper, width=70, major_label_text_font_size = '20px')
+        color_bar = bokeh.models.ColorBar(color_mapper = color_mapper, width=70, major_label_text_font_size = min_text_size)
         fig.add_layout(color_bar, 'right')
         graphing_utils.resize(fig, 5000/1200, legend=False)
         fig.toolbar_location = None
@@ -869,8 +888,8 @@ def putatively_causal_hits_df(phenotype, should_assert):
 
     print('original SuSiE')
     original_susies = load_susie(f'{ukb}/finemapping/susie_results/{phenotype}', regions=regions)
-    print('hardcall SuSiE')
-    hardcall_susies = load_susie(f'{ukb}/finemapping/susie_hardcall_results/{phenotype}', regions=regions)
+    print('best guess SuSiE')
+    best_guess_susies = load_susie(f'{ukb}/finemapping/susie_hardcall_results/{phenotype}', regions=regions)
     print('ratio SuSiE')
     ratio_susies = load_susie(
         f'{ukb}/finemapping/susie_results/{phenotype}_snp_str_ratio_4',
@@ -938,11 +957,11 @@ def putatively_causal_hits_df(phenotype, should_assert):
         on=['chrom', 'varname'],
         suffix='_extra'
     ).drop('region_extra').join(
-        hardcall_susies,
+        best_guess_susies,
         how='outer',
         on = ['chrom', 'varname'],
-        suffix='_hardcall'
-    ).drop('region_hardcall').join(
+        suffix='_best_guess'
+    ).drop('region_best_guess').join(
         ratio_susies,
         how='outer',
         on = ['chrom', 'varname'],
@@ -971,9 +990,9 @@ def putatively_causal_hits_df(phenotype, should_assert):
         'susie_cs',
         'susie_alpha',
         'susie_pip',
-        'susie_cs_hardcall',
-        'susie_alpha_hardcall',
-        'susie_pip_hardcall',
+        'susie_cs_best_guess',
+        'susie_alpha_best_guess',
+        'susie_pip_best_guess',
         'susie_cs_ratio',
         'susie_alpha_ratio',
         'susie_pip_ratio',
@@ -992,7 +1011,7 @@ def putatively_causal_hits_df(phenotype, should_assert):
         assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
         assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
         assert np.all(~np.isnan(pheno_df['finemap_pip'].to_numpy()))
-        assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_hardcall'].to_numpy()))
+        assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_best_guess'].to_numpy()))
         assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_ratio'].to_numpy()))
         assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
         for ethnicity in other_ethnicities:
@@ -1082,7 +1101,7 @@ def putatively_causal_hits_comparison():
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
         ) for phenotype in phenotypes.phenotypes_in_use
         if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
-    ])
+    ]).rename({'susie_cs_hardcall' : 'susie_cs_best_guess', 'susie_alpha_hardcall': 'susie_alpha_best_guess', 'susie_pip_hardcall': 'susie_pip_best_guess'})
     print(' done', flush=True)
 
     total_df = total_df.filter(~pl.col('finemap_pip').is_null() & ~pl.col('susie_alpha').is_null())
@@ -1090,7 +1109,7 @@ def putatively_causal_hits_comparison():
     total_df = total_df.with_columns([
         pl.when(pl.col('susie_cs') > 0).then(pl.col('susie_alpha')).otherwise(0).alias('susie_alpha'),
         pl.when(pl.col('susie_cs_ratio') > 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_alpha_ratio'),
-        pl.when(pl.col('susie_cs_hardcall') > 0).then(pl.col('susie_alpha_hardcall')).otherwise(0).alias('susie_alpha_hardcall'),
+        pl.when(pl.col('susie_cs_best_guess') > 0).then(pl.col('susie_alpha_best_guess')).otherwise(0).alias('susie_alpha_best_guess'),
     ])
     total_df.filter(
         pl.col('is_STR') &
@@ -1109,7 +1128,7 @@ def putatively_causal_hits_comparison():
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
-    ).drop(['susie_cs', 'susie_cs_hardcall', 'susie_cs_ratio', 'is_STR', 'varname'])
+    ).drop(['susie_cs', 'susie_cs_best_guess', 'susie_cs_ratio', 'is_STR', 'varname'])
     pass_all_threshes.write_csv(f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab', sep='\t')
     total_df.filter(
         pl.col('is_STR') &
@@ -1117,112 +1136,12 @@ def putatively_causal_hits_comparison():
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
     ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{ukb}/post_finemapping/intermediate_results/strictly_concordant_causal_STR_candidates.tab', sep='\t')
 
-    # plot replication numbers by finemapping category
-    '''
-    xs = []
-    ys = []
-    for name, condition in [
-        ('either',
-            pl.col('is_STR') &
-            (pl.col('p_val') <= 1e-10) &
-            ((pl.col('susie_alpha') >= .8) | (pl.col('finemap_pip') >= .8))
-        ),
-        ('both',
-            pl.col('is_STR') &
-            (pl.col('p_val') <= 1e-10) &
-            ((pl.col('susie_alpha') >= .8) & (pl.col('finemap_pip') >= .8))
-        ),
-        ('candidate_STRs',
-            pl.col('is_STR') &
-            (pl.col('p_val') <= 1e-10) &
-            (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
-        ),
-        ('strict candidates',
-            pl.col('is_STR') &
-            (pl.col('p_val') <= 1e-10) &
-            (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
-        )
-    ]:
-        row = []
-        for ethnicity in ['black', 'south_asian', 'chinese', 'irish', 'white_other']:
-            xs.append((ethnicity, name))
-            series = total_df.filter(condition).select(pl.col(f'{ethnicity}_p_val') <= 0.05).to_numpy()
-            ys.append(np.sum(series)/series.shape[0])
-
-        layout = bokeh.layouts.layout([
-            bokeh.models.Title(title=f'correlations among {name} STRs'),
-            row
-        ])
-        bokeh.io.export_png(layout, filename=f'{ukb}/post_finemapping/results/finemapping_{name}_ethnic_correlation.png')
-    figure = bokeh.plotting.figure(
-        width=1200,
-        height=800,
-        y_axis_label = 'Replication rate',
-        x_range=bokeh.models.FactorRange(*xs),
-        title='Replication rate by ethnicity and filtering',
-        toolbar_location=None,
-        tools=''
-    )
-    figure.vbar(x=xs, top=ys, width=0.9)
-    figure.y_range.start=0
-    figure.x_range.range_padding=0.1
-    figure.xaxis.major_label_orientation = 1
-    figure.grid.grid_line_color=None
-    bokeh.io.export_png(figure, filename=f'{ukb}/post_finemapping/results/finemapping_results_ethnic_replication.png')
-    '''
-
-    '''
-    # plot replication by p-value, broken down by finemapping category
-    replication_data = total_df.select([
-        'phenotype',
-        'chrom',
-        'pos',
-        (-pl.max([pl.col('p_val'), 1e-300]).log10()).alias('-log10_p_val'),
-        (pl.col('is_STR') & (pl.col('p_val') <= 1e-10) & ((pl.col('susie_alpha') >= .8) | (pl.col('finemap_pip') >= .8))).alias('singly_finemapped_STR'),
-        (pl.col('is_STR') & (pl.col('p_val') <= 1e-10) & (pl.col('susie_alpha') >= .8) & (pl.col('finemap_pip') >= .8)).alias('doubly_finemapped_STR'),
-        (pl.col('is_STR') & (pl.col('p_val') <= 1e-10) & (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)).alias('candidate_STR'),
-        (pl.col('is_STR') & (pl.col('p_val') <= 1e-10) & (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)).alias('strict_candidate_STR'),
-        *[
-            (pl.col(f'{ethnicity}_p_val') <= 0.05).alias(f'{ethnicity}_replication') for ethnicity in ['black', 'south_asian', 'chinese', 'irish', 'white_other']
-        ],
-    ]).filter('nearby_STR').write_csv(f'{ukb}/for_melissa.tab', sep='\t')
-    exit()
-    print(replication_data)
-    print('plotting swarm plots ... ', end='', flush=True)
-    f, axs = plt.subplots(1,5, figsize=(9,5), sharey=True)
-    for count, col in enumerate(['nearby_STR', 'singly_finemapped_STR', 'doubly_finemapped_STR', 'candidate_STR', 'strict_candidate_STR']):
-        print(f'{count} ', end='', flush=True)
-        if count == 0: 
-            ax = seaborn.violinplot(
-                y='-log10_p_val',
-                x='irish_replication',
-                inner=None,
-                ax=axs[count],
-                data=replication_data.filter(col).to_pandas(),
-                cut=0
-            )
-            continue
-        #print(np.sum(replication_data[col].to_numpy()))
-        
-        ax = seaborn.swarmplot(
-            y='-log10_p_val',
-            x='irish_replication',
-            dodge=True,
-            ax=axs[count],
-            data=replication_data.filter(col).to_pandas(),
-            size=1
-        )
-        ax.set(title=col)
-    plt.savefig(f'{ukb}/post_finemapping/results/finemapping_ethnic_replication_by_p_value_irish.png')
-    print('done', flush=True)
-    '''
-
     # concordance graphs
     for mapper, meas, suffix, y_label in [
         ('SuSiE', 'alpha', 'ratio', '4x prior on SNPs/Indels'),
-        ('SuSiE', 'alpha', 'hardcall', 'hardcall genotyping'),
+        ('SuSiE', 'alpha', 'best_guess', 'best guess genotyping'),
         ('SuSiE', 'pip', 'ratio', '4x prior on SNPs/Indels'),
-        ('SuSiE', 'pip', 'hardcall', 'hardcall genotyping'),
+        ('SuSiE', 'pip', 'best_guess', 'best guess genotyping'),
         ('FINEMAP', 'pip', 'ratio', '4x prior on SNPs/Indels'),
         ('FINEMAP', 'pip', 'conv_tol', '10x stricter convergence tolerance'),
         ('FINEMAP', 'pip', 'total_prob', 'assumption of 4 causal variants per region'),
@@ -1237,12 +1156,12 @@ def putatively_causal_hits_comparison():
                 continue
             if mapper == 'SuSiE':
                 pip_col = f'susie_{meas}'
-                other_label = 'FINEMAP PIP'
+                other_label = 'FINEMAP CP'
                 other_pip_col = 'finemap_pip'
             else:
                 assert mapper == 'FINEMAP'
                 pip_col = 'finemap_pip'
-                other_label = 'SuSiE PIP'
+                other_label = 'SuSiE CP'
                 other_pip_col = 'susie_alpha'
 
             graph_df = total_df.filter(
@@ -1274,19 +1193,26 @@ def putatively_causal_hits_comparison():
             n_new = new_df.shape[0]
             avg_new_other_pip = new_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
 
-            fig = bokeh.plotting.figure(
-                width=1200,
-                height=1200,
-                y_axis_label = f'PIP under {y_label}',
-                x_axis_label = 'original PIP',
+            fig_height = 1200
+            fig_kws = dict(
+                width=fig_height,
+                height=fig_height,
+                x_axis_label = 'original CP',
                 x_range=[0,1],
                 y_range=[0,1],
-                match_aspect=True
+                match_aspect=True,
                 #title=f'{mapper} metaparameter comparison for {var_type}s'
+                output_backend='svg'
             )
-            fig.title.text_font_size = '30px'
-            fig.axis.axis_label_text_font_size = '26px'
-            fig.axis.major_label_text_font_size = '20px'
+            if var_type == 'STR':
+                fig_kws['y_axis_label'] = f'CP under {y_label}'
+            fig = bokeh.plotting.figure(
+                **fig_kws
+            )
+            fig.title.text_font_size = '36px'
+            fig.axis.axis_label_text_font_size = '36px'
+            min_text_size = '30px'
+            fig.axis.major_label_text_font_size = min_text_size
 
             palette = [
                 linear_int_interpolate((111,107,237), (219,46,40), i/254) for i in range(-1, 255)
@@ -1300,7 +1226,7 @@ def putatively_causal_hits_comparison():
                 graph_df[pip_col].to_numpy(),
                 graph_df[f'{pip_col}_{suffix}'].to_numpy(),
                 size = -np.log10(graph_df['p_val'].to_numpy())/7.5,
-                alpha = 0.25,
+                alpha = 0.4,
                 color=[palette[int(step)] for step in graph_df[other_pip_col].to_numpy()*255]
             )
 
@@ -1308,19 +1234,23 @@ def putatively_causal_hits_comparison():
             fig.line(
                 xs,
                 xs,
-                line_dash='dashed'
+                line_dash='dashed',
+                line_width=6,
+                color='black',
+                alpha=0.6
             )
+            box_alpha = 0.4
             fig.quad(
                 left=[1-thresh],
                 right=[1],
                 bottom=[1-thresh],
                 top=[1],
                 color='orange',
-                alpha=0.25
+                alpha=box_alpha
             )
             fig.add_layout(bokeh.models.Title(
                 text=f'# {var_type}s: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
-                text_font_size='18px'
+                text_font_size=min_text_size
             ), 'above')
             fig.quad(
                 left=[1-thresh],
@@ -1328,11 +1258,11 @@ def putatively_causal_hits_comparison():
                 bottom=[0],
                 top=[thresh],
                 color='orange',
-                alpha=0.25
+                alpha=box_alpha
             )
             fig.add_layout(bokeh.models.Title(
                 text=f'# {var_type}s: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
-                text_font_size='18px'
+                text_font_size=min_text_size
             ), 'right')
 
             if n_new > 5:
@@ -1342,11 +1272,11 @@ def putatively_causal_hits_comparison():
                     bottom=[1-thresh],
                     top=[1],
                     color='orange',
-                    alpha=0.25
+                    alpha=box_alpha
                 )
                 fig.add_layout(bokeh.models.Title(
                     text=f'# {var_type}s: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
-                    text_font_size='18px'
+                    text_font_size=min_text_size
                 ), 'above')
             fig.toolbar_location = None
             fig.background_fill_color = None
@@ -1355,17 +1285,17 @@ def putatively_causal_hits_comparison():
             figs.append(fig)
 
         size_scale_fig = bokeh.plotting.figure(
-            width=250,
-            height=400,
+            width=175,
+            height=600,
             y_axis_label = '-log10 p-value',
             y_axis_type='log',
-            x_axis_label='Size scale'
+            x_axis_label='Size scale',
+            output_backend='svg'
         )
         scales=np.array([10, 20, 40, 80, 160, 300])
         size_scale_fig.yaxis.ticker = bokeh.models.tickers.FixedTicker(ticks=scales)
-        size_scale_fig.title.text_font_size = '30px'
-        size_scale_fig.axis.axis_label_text_font_size = '26px'
-        size_scale_fig.axis.major_label_text_font_size = '20px'
+        size_scale_fig.axis.axis_label_text_font_size = '30px'
+        size_scale_fig.axis.major_label_text_font_size = '30px'
         size_scale_fig.toolbar_location = None
         size_scale_fig.background_fill_color = None
         size_scale_fig.border_fill_color = None
@@ -1377,15 +1307,17 @@ def putatively_causal_hits_comparison():
             scales,
             size = scales/7.5,
             color='blue',
-            alpha=0.25
+            alpha=0.4
         )
 
         color_bar = bokeh.models.ColorBar(
-            color_mapper = color_mapper,
-            width=70,
-            title_text_font_size = '26px',
             title=other_label,
-            major_label_text_font_size = '20px'
+            color_mapper = color_mapper,
+            width=35,
+            height=fig_height//3,
+            major_label_text_font_size = '30px',
+            title_text_font_size='30px',
+            location='bottom_right'
         )
         figs[-1].add_layout(color_bar, 'right')
 
@@ -1466,8 +1398,6 @@ def first_pass_df(phenotype, should_assert):
 
     print('original SuSiE')
     original_susies, pheno_min_abs_corrs = load_susie(f'{ukb}/finemapping/susie_results/{phenotype}', phenotype=phenotype, original=True, return_corrs=True)
-    print(original_susies.filter(pl.col('varname').str.contains('19902489')).collect().to_pandas())
-    exit()
     min_abs_corrs.extend(pheno_min_abs_corrs)
     print('original FINEMAP')
     original_finemaps = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}', phenotype=phenotype)
@@ -1596,7 +1526,8 @@ def first_pass_comparison():
     print(
         'Total contribution of STRs in SuSiE (min, max fraction over phenotypes)',
         total_df.filter(
-            pl.col('susie_cs') >= 0
+            (pl.col('p_val') <= 5e-8)
+            & (pl.col('susie_cs') >= 0)
         ).groupby('is_STR').agg(
             pl.col('susie_alpha').sum()
         ).with_column(
@@ -1605,7 +1536,8 @@ def first_pass_comparison():
             (pl.col('susie_alpha')/pl.col('total'))
         ),
         total_df.filter(
-            pl.col('susie_cs') >= 0
+            (pl.col('p_val') <= 5e-8)
+            & (pl.col('susie_cs') >= 0)
         ).groupby(['phenotype', 'is_STR']).agg(
             pl.col('susie_alpha').sum()
         ).with_column(
@@ -1618,7 +1550,8 @@ def first_pass_comparison():
     print(
         'Total contribution of STRs in FINEMAP (min, max fraction over phenotypes)',
         total_df.filter(
-            ~pl.col('finemap_pip').is_null()
+            (pl.col('p_val') <= 5e-8)
+            & ~pl.col('finemap_pip').is_null()
         ).groupby('is_STR').agg(
             pl.col('finemap_pip').sum()
         ).with_column(
@@ -1627,30 +1560,8 @@ def first_pass_comparison():
             (pl.col('finemap_pip')/pl.col('total'))
         ),
         total_df.filter(
-            ~pl.col('finemap_pip').is_null()
-        ).groupby(['phenotype', 'is_STR']).agg(
-            pl.col('finemap_pip').sum()
-        ).with_column(
-            pl.col('finemap_pip').sum().over('phenotype').alias('total')
-        ).filter('is_STR').select([
-            (pl.col('finemap_pip')/pl.col('total')).min().alias('min'),
-            (pl.col('finemap_pip')/pl.col('total')).max().alias('max')
-        ])
-    )
-
-    print(
-        'Total contribution of STRs in FINEMAP (min, max fraction over phenotypes)',
-        total_df.filter(
-            ~pl.col('finemap_pip').is_null()
-        ).groupby('is_STR').agg(
-            pl.col('finemap_pip').sum()
-        ).with_column(
-            pl.col('finemap_pip').sum().alias('total')
-        ).filter('is_STR').select(
-            (pl.col('finemap_pip')/pl.col('total'))
-        ),
-        total_df.filter(
-            ~pl.col('finemap_pip').is_null()
+            (pl.col('p_val') <= 5e-8)
+            & ~pl.col('finemap_pip').is_null()
         ).groupby(['phenotype', 'is_STR']).agg(
             pl.col('finemap_pip').sum()
         ).with_column(
@@ -1664,7 +1575,8 @@ def first_pass_comparison():
     print(
         'Total SuSiE contribution of variants with PIP <= 0.1',
         total_df.filter(
-            (pl.col('susie_cs') >= 0)
+            (pl.col('p_val') <= 5e-8)
+            & (pl.col('susie_cs') >= 0)
         ).groupby(
             (pl.col('susie_alpha') < 0.1).alias('low_alpha')
         ).agg(pl.col('susie_alpha').sum()).with_column(
@@ -1677,7 +1589,8 @@ def first_pass_comparison():
     print(
         'Total SuSiE contribution of variants with PIP <= 0.1',
         total_df.filter(
-            ~pl.col('finemap_pip').is_null()
+            (pl.col('p_val') <= 5e-8)
+            & ~pl.col('finemap_pip').is_null()
         ).groupby(
             (pl.col('finemap_pip') < 0.1).alias('low_alpha')
         ).agg(pl.col('finemap_pip').sum()).with_column(
@@ -1705,6 +1618,25 @@ def first_pass_comparison():
             pl.col('count')/pl.col('total')
         )
     )
+    
+    print(
+        'Percentage of SuSiE CSes with FINEMAP PIP < 0.8',
+        total_df.filter(
+            (pl.col('susie_cs') >= 0) & ~pl.col('finemap_pip').is_null()
+        ).groupby([
+            'phenotype', 'region', 'susie_cs'
+        ]).agg(
+            pl.col('finemap_pip').sum()
+        ).with_column(
+            (pl.col('finemap_pip') < .8).alias('discordant')
+        ).groupby('discordant').agg(
+            pl.count()
+        ).with_column(
+            pl.col('count').sum().alias('total')
+        ).filter('discordant').select(
+            pl.col('count')/pl.col('total')
+        )
+    )
 
     # --- figures ----
     print('Plotting figures', flush=True)
@@ -1712,14 +1644,15 @@ def first_pass_comparison():
     # Min abs corr across all CSes
     fig = bokeh.plotting.figure(
         width=1200,
-        height=1200,
-        title='SuSiE credible set purities',
+        height=900,
+        #title='SuSiE credible set purities',
         x_axis_label='Purity',
         y_axis_label='Number of credible sets',
+        output_backend='svg'
     )
-    fig.axis.axis_label_text_font_size = '30px'
-    fig.title.text_font_size = '30px'
-    fig.axis.major_label_text_font_size = '20px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.title.text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color = None
@@ -1727,30 +1660,35 @@ def first_pass_comparison():
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
     ys = [np.sum((left_edge <= min_abs_corrs) & (min_abs_corrs < left_edge + step)) for left_edge in left_edges]
+    ys[-2] += ys[-1]
+    ys = ys[:-1]
+    left_edges = left_edges[:-1]
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     print('Exporting min abs corr plots', flush=True)
     bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/cs_min_abs_corrs.png')
     bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/cs_min_abs_corrs.svg')
 
+    fig_height=1200
     fig = bokeh.plotting.figure(
-        width=1200,
-        height=1200,
-        title='SuSiE alpha vs PIP',
+        width=fig_height,
+        height=fig_height,
+        #title='SuSiE alpha vs PIP',
         x_axis_label='Largest alpha',
         y_axis_label='PIP',
+        output_backend='svg'
     )
 
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color = None
     fig.toolbar_location = None
-    fig.title.text_font_size = '30px'
-    fig.axis.axis_label_text_font_size = '26px'
-    fig.axis.major_label_text_font_size = '20px'
+    fig.title.text_font_size = '36px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
     bin_size = .02
 
-    alpha_pip_df = total_df.filter(pl.col('susie_cs') >= 1)
+    alpha_pip_df = total_df.filter(pl.col('susie_pip') >= 0.05)
 
     bins = bokeh.util.hex.hexbin(alpha_pip_df['susie_alpha'].to_numpy(), alpha_pip_df['susie_pip'].to_numpy(), size=bin_size)
 
@@ -1770,9 +1708,15 @@ def first_pass_comparison():
 
     fig.hex_tile(q='q', r='r', size=bin_size, line_color=None, source=bins, fill_color=cmap)
     color_bar = bokeh.models.ColorBar(
+        title='Number of loci',
         color_mapper = color_mapper,
-        width=70,
-        major_label_text_font_size = '20px'
+        width=35,
+        height=fig_height//3,
+        major_label_text_font_size = '30px',
+        title_text_font_size='30px',
+        ticker = bokeh.models.tickers.FixedTicker(ticks=[0, 10, 100, 1000, 10000, 100000]),
+        formatter = bokeh.models.formatters.NumeralTickFormatter(format = '0a'),
+        location='bottom_right'
     )
     fig.add_layout(color_bar, 'right')
 
@@ -1782,31 +1726,36 @@ def first_pass_comparison():
 
     fig = bokeh.plotting.figure(
         width=1200,
-        height=1200,
-        title='SuSiE total PIP contributions',
-        x_axis_label='PIP',
-        y_axis_label='Fraction of Total PIP Contributions',
+        height=900,
+        #title='SuSiE total CP contributions',
+        x_axis_label='CP',
+        y_axis_label='Fraction of total CP contributions',
+        output_backend='svg'
     )
 
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color = None
     fig.toolbar_location = None
-    fig.title.text_font_size = '30px'
-    fig.axis.axis_label_text_font_size = '26px'
-    fig.axis.major_label_text_font_size = '20px'
+    fig.title.text_font_size = '36px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
 
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
     total_susie_pip = total_df.filter(pl.col('susie_cs') >= 1)['susie_alpha'].sum()
     ys = [
         total_df.filter(
+            (pl.col('p_val') <= 5e-8) &
             (pl.col('susie_cs') >= 1) &
             (float(left_edge) <= pl.col('susie_alpha')) &
             (pl.col('susie_alpha') < float(left_edge) + step)
         )['susie_alpha'].sum()/total_susie_pip
         for left_edge in left_edges
     ]
+    ys[-2] += ys[-1]
+    ys = ys[:-1]
+    left_edges = left_edges[:-1]
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     graphing_utils.resize(fig, 5000/1200, legend=False)
@@ -1815,30 +1764,35 @@ def first_pass_comparison():
 
     fig = bokeh.plotting.figure(
         width=1200,
-        height=1200,
-        title='FINEMAP total PIP contributions',
-        x_axis_label='PIP',
-        y_axis_label='Fraction of Total PIP Contributions',
+        height=900,
+        #title='FINEMAP total CP contributions',
+        x_axis_label='CP',
+        y_axis_label='Fraction of total CP contributions',
+        output_backend='svg'
     )
 
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color = None
     fig.toolbar_location = None
-    fig.title.text_font_size = '30px'
-    fig.axis.axis_label_text_font_size = '26px'
-    fig.axis.major_label_text_font_size = '20px'
+    fig.title.text_font_size = '36px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
 
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
     total_finemap_pip = total_df['finemap_pip'].sum()
     ys = [
         total_df.filter(
+            (pl.col('p_val') <= 5e-8) &
             (float(left_edge) <= pl.col('finemap_pip')) &
             (pl.col('finemap_pip') < float(left_edge) + step)
         )['finemap_pip'].sum()/total_finemap_pip
         for left_edge in left_edges
     ]
+    ys[-2] += ys[-1]
+    ys = ys[:-1]
+    left_edges = left_edges[:-1]
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     graphing_utils.resize(fig, 5000/1200, legend=False)
@@ -1847,14 +1801,15 @@ def first_pass_comparison():
 
     fig = bokeh.plotting.figure(
         width=1200,
-        height=1200,
-        title=f'FINEMAP total PIPs for SuSiE credible sets',
-        x_axis_label='FINEMAP total PIP',
+        height=900,
+        #title='FINEMAP total CPs for SuSiE credible sets',
+        x_axis_label='FINEMAP total CP',
         y_axis_label='Credible set count',
+        output_backend='svg'
     )
-    fig.title.text_font_size = '30px'
-    fig.axis.axis_label_text_font_size = '26px'
-    fig.axis.major_label_text_font_size = '20px'
+    fig.title.text_font_size = '36px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.ygrid.grid_line_color = None
@@ -1868,11 +1823,16 @@ def first_pass_comparison():
     ]).agg(
         pl.col('finemap_pip').sum()
     )['finemap_pip'].to_numpy()
+    print(f'Omitting {np.sum(finemap_cs_coverages >= 1 + step)} cses from this graph for having too high summed CSes')
+    finemap_cs_coverages = finemap_cs_coverages[finemap_cs_coverages < 1 + step]
     max_coverage = np.max(finemap_cs_coverages)
 
     step = 0.01
     left_edges = np.arange(0, max_coverage + step, step)
     ys = [np.sum((left_edge <= finemap_cs_coverages) & (finemap_cs_coverages < left_edge + step)) for left_edge in left_edges]
+    assert ys[-1] == 0
+    ys = ys[:-1]
+    left_edges = left_edges[:-1]
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     print('Exporting FINEMAP CS PIP plots', flush=True)
@@ -1883,18 +1843,21 @@ def first_pass_comparison():
         ('STR', pl.col('is_STR')),
         ('SNP/Indel', ~pl.col('is_STR'))
     ]:
+        fig_height=1200
         fig = bokeh.plotting.figure(
-            title=f'{var_type} PIPs FINEMAP v SuSiE',
-            width=1200,
-            height=1200,
-            y_axis_label = 'FINEMAP PIP',
-            x_axis_label = 'SuSiE PIP',
+            title=f'{var_type} CPs FINEMAP v SuSiE',
+            width=fig_height,
+            height=fig_height,
+            y_axis_label = 'FINEMAP CP',
+            x_axis_label = 'SuSiE CP',
             x_range=[0,1],
             y_range=[0,1],
         )
-        fig.title.text_font_size = '30px'
-        fig.axis.axis_label_text_font_size = '26px'
-        fig.axis.major_label_text_font_size = '20px'
+        fig.title.text_font_size = '36px'
+        fig.axis.axis_label_text_font_size = '36px'
+        
+        min_text_size = '30px'
+        fig.axis.major_label_text_font_size = min_text_size
 
         graph_df = total_df.with_columns([
             pl.when(
@@ -1911,42 +1874,6 @@ def first_pass_comparison():
                 (pl.col('finemap_pip') > 0.0) | (pl.col('susie_pip') > 0.0)
             )
         )
-
-        """
-        bin_size = .01
-        bins = bokeh.util.hex.hexbin(graph_df['susie_pip'].to_numpy(), graph_df['finemap_pip'].to_numpy(), size=bin_size)
-
-        palette = [linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)]
-        cmap = bokeh.transform.log_cmap(
-            'counts',
-            palette = palette,
-            low=1,
-            high=max(bins.counts),
-            low_color=(255, 255, 255)
-        )
-        color_mapper = bokeh.models.LogColorMapper(
-            palette = palette,
-            low=1,
-            high=max(bins.counts)
-        )
-
-        fig.hex_tile(q='q', r='r', size=bin_size, line_color=None, source=bins, fill_color=cmap)
-        color_bar = bokeh.models.ColorBar(
-            color_mapper = color_mapper,
-            width=70,
-            major_label_text_font_size = '20px'
-        )
-        fig.add_layout(color_bar, 'right')
-        """
-
-        """
-        fig.circle(
-            graph_df['susie_pip'].to_numpy(),
-            graph_df['finemap_pip'].to_numpy(),
-            size = -np.log10(graph_df['p_val'].to_numpy())/7.5,
-            alpha = 0.25,
-        )
-        """
 
         n_rects = 100
         graph_df = graph_df.select([
@@ -1996,98 +1923,75 @@ def first_pass_comparison():
         )
         n_only_susie = only_susie_df['count'].sum()
 
+        line_width = 18
         xs = np.arange(0, 1, 0.0001)
         fig.line(
             xs,
             xs,
-            line_width=6
+            line_width=line_width
         )
 
         fig.line(
             [1-thresh, 1-thresh],
             [1-thresh, 1],
             color='orange',
-            width=5
+            width=line_width
         )
         fig.line(
             [1-thresh, 1],
             [1-thresh, 1-thresh],
             color='orange',
-            width=5
+            width=line_width
         )
 
-        """
-        fig.quad(
-            left=[1-thresh],
-            right=[1],
-            bottom=[1-thresh],
-            top=[1],
-            color='orange',
-            alpha=0.25
-        )
-        """
         fig.add_layout(bokeh.models.Title(
             text=f'# {var_type}s: {n_both}', align='right',
-            text_font_size='18px'
+            text_font_size=min_text_size
         ), 'above')
-        """
-        fig.quad(
-            left=[1-thresh],
-            right=[1],
-            bottom=[0],
-            top=[thresh],
-            color='orange',
-            alpha=0.25
-        )
-        """
         fig.line(
             [1-thresh, 1],
             [thresh, thresh],
             color='orange',
-            width=5
+            width=line_width
         )
         fig.line(
             [1-thresh, 1-thresh],
             [0, thresh],
             color='orange',
-            width=5
+            width=line_width
         )
         fig.add_layout(bokeh.models.Title(
             text=f'# {var_type}s: {n_only_susie}', align='right',
-            text_font_size='18px'
+            text_font_size=min_text_size
         ), 'right')
 
-        """
-        fig.quad(
-            left=[0],
-            right=[thresh],
-            bottom=[1-thresh],
-            top=[1],
-            color='orange',
-            alpha=0.25
-        )
-        """
         fig.line(
             [thresh, thresh],
             [1-thresh, 1],
             color='orange',
-            width=5
+            width=line_width
         )
         fig.line(
             [0, thresh],
             [1-thresh, 1-thresh],
             color='orange',
-            width=5
+            width=line_width
         )
         fig.add_layout(bokeh.models.Title(
             text=f'# {var_type}s: {n_only_finemap}', align='left',
-            text_font_size='18px'
+            text_font_size=min_text_size
         ), 'above')
 
         color_bar = bokeh.models.ColorBar(
+            title='Number of loci',
             color_mapper = color_mapper,
-            width=70,
-            major_label_text_font_size = '20px'
+            width=35,
+            height=fig_height//3,
+            major_label_text_font_size = min_text_size,
+            ticker = bokeh.models.tickers.FixedTicker(ticks=[0, 10, 100, 1000, 10000, 100000]),
+            formatter = bokeh.models.formatters.NumeralTickFormatter(format = '0a'),
+            title_text_font_size='30px',
+            location='bottom_right'
         )
         fig.add_layout(color_bar, 'right')
         graphing_utils.resize(fig, 5000/1200, legend=False)

@@ -541,10 +541,16 @@ def barplot_fig(cats, data, ps, legend):
         x_range = bokeh.models.FactorRange(*cats),
         width=len(data)//3*200,
         height=800,
-        toolbar_location=None
+        toolbar_location=None,
+        output_backend='svg'
     )
     fig.xaxis.major_label_text_color = None
     fig.xaxis.major_tick_line_color = None
+    fig.xaxis.group_text_font_size = '24px'
+    fig.xaxis.subgroup_text_font_size = '24px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
+    fig.title.text_font_size = '36px'
     arr_data = np.array(data)
     arr_data[arr_data == 0] = np.nan
     condition_names = np.unique(list(cat[1] for cat in cats))
@@ -566,13 +572,14 @@ def barplot_fig(cats, data, ps, legend):
         **kwargs
     )
     if legend:
+        fig.legend.label_text_font_size = '30px'
         fig.legend.location = 'top_left'
         fig.legend[0].items.insert(1, fig.legend[0].items[2])
         del fig.legend[0].items[3]
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.x_range.range_padding = 0.1
-    fig.xaxis.major_label_orientation = 1
+    #fig.xaxis.major_label_orientation = 1.3
     fig.xgrid.grid_line_color = None
     y_range = max(data) # since plots are relative to zero
     for group in range(len(cats)//3):
@@ -591,21 +598,24 @@ def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep)
     fig.line(x=[x1, x1], y=[y1, top])
     fig.line(x=[x2, x2], y=[y2, top])
     fig.line(x=[x1, x2], y=[top, top])
-    text=f'(p={p_val:.1g})'
+    if p_val >= 1e-300:
+        text=f'p={p_val:.1g}'
+    else:
+        text='p<1e-300'
     if p_val < 0.05/50:
-        text = '** ' + text
+        text = text + '**'
     elif p_val < 0.05:
-        text = '* ' + text
+        text = text + '*'
 
     cds = bokeh.models.ColumnDataSource(dict(
         x=[x1[:2]],
         y=[top+0.01*y_step_size],
         text=[text]
     ))
-    fig.add_layout(bokeh.models.LabelSet(x='x', y='y', x_offset=.05, text='text', source=cds, text_font_size='12px'))
+    fig.add_layout(bokeh.models.LabelSet(x='x', y='y', x_offset=-20, text='text', source=cds, text_font_size='20px'))
 
 datas = {}
-for fig_loc in 'main', 'supp':
+for fig_loc in 'regions', 'repeats':
     datas[fig_loc] = {}
     for bar_loc in 'left', 'right':
         datas[fig_loc][bar_loc] = {}
@@ -618,13 +628,14 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
     for line in stats:
         if 'CCG' in line:
             continue
-        split = line.split()
+        line = line.replace('\\n', '\n')
+        split = line.split('\t')
         category = split[0]
-        ori_perc = float(split[2][1:-2])
+        ori_perc = float(split[1].split()[1][1:-2])
         if 'other' in category or 'poly' in category or 'unclear' in category:
-            fig_loc = 'supp'
+            fig_loc = 'repeats'
         else:
-            fig_loc = 'main'
+            fig_loc = 'regions'
         if ori_perc >= 10:
             bar_loc = 'right'
         else:
@@ -637,26 +648,26 @@ with open(f'{ukb}/post_finemapping/results/enrichments.tab') as stats:
             (category, f'genome-wide significant STRs'),
             (category, 'confidently fine-mapped STRs')
         ])
-        curr_ps.extend([float(split[idx]) for idx in range(7, 10)])
+        curr_ps.extend([float(split[idx]) for idx in range(4, 7)])
 
         curr_data.append(ori_perc)
-        curr_data.append(float(split[4][1:-2]))
-        curr_data.append(float(split[6][1:-2]))
+        curr_data.append(float(split[2].split()[1][1:-2]))
+        curr_data.append(float(split[3].split()[1][1:-2]))
 
 fig = bokeh.layouts.row([
-    barplot_fig(datas['main']['left']['cat'], datas['main']['left']['data'], datas['main']['left']['ps'], True),
-    barplot_fig(datas['main']['right']['cat'], datas['main']['right']['data'], datas['main']['right']['ps'], False),
+    barplot_fig(datas['regions']['left']['cat'], datas['regions']['left']['data'], datas['regions']['left']['ps'], True),
+    barplot_fig(datas['regions']['right']['cat'], datas['regions']['right']['data'], datas['regions']['right']['ps'], False),
 ])
 
-bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.svg')
-bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots.png')
+bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_regions.svg')
+bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_regions.png')
 
 fig = bokeh.layouts.row([
-    barplot_fig(datas['supp']['left']['cat'], datas['supp']['left']['data'], datas['supp']['left']['ps'], True),
-    barplot_fig(datas['supp']['right']['cat'], datas['supp']['right']['data'], datas['supp']['right']['ps'], False),
+    barplot_fig(datas['repeats']['left']['cat'], datas['repeats']['left']['data'], datas['repeats']['left']['ps'], True),
+    barplot_fig(datas['repeats']['right']['cat'], datas['repeats']['right']['data'], datas['repeats']['right']['ps'], False),
 ])
-bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.svg')
-bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_supp.png')
+bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_repeats.svg')
+bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/enrichment_barplots_repeats.png')
 exit()
 
 # old code for continuous comparisons

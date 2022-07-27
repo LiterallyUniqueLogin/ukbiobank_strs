@@ -1,1 +1,0 @@
-tscc-13-12@     state = free@     np = 36@     properties = gymrek-node,cascade,noib,mem192,rack13,condo-node,glean-node@

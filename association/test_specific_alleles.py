@@ -11,6 +11,7 @@ from statsmodels.regression.linear_model import OLS
 
 import python_array_utils
 import sample_utils
+import str_utils
 
 ukb = os.environ['UKB']
 
@@ -18,30 +19,6 @@ sys.path.insert(0, f'{ukb}/../trtools/repo')
 
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
-
-def var_dosage_gts(var, samp_idx, alleles):
-    gts = np.zeros(np.sum(samp_idx))
-    for allele in alleles:
-        if allele > 0:
-            gts += (var.format('AP1') + var.format('AP2'))[samp_idx, allele-1]
-        else:
-            assert allele == 0
-            gts += (
-                np.maximum(0, 1 - np.sum(var.format('AP1'), axis=1)) +
-                np.maximum(0, 1 - np.sum(var.format('AP2'), axis=1))
-            )[samp_idx]
-    return gts
-
-def str_dosage_gts(var, samp_idx):
-    lens = [len(var.REF)] + [len(alt) for alt in var.ALT]
-    gts = np.zeros(np.sum(samp_idx))
-    gts += lens[0]*(
-        np.maximum(0, 1 - np.sum(var.format('AP1'), axis=1)) +
-        np.maximum(0, 1 - np.sum(var.format('AP2'), axis=1))
-    )[samp_idx]
-    for i in range(1, len(lens)):
-        gts += lens[i]*(var.format('AP1') + var.format('AP2'))[samp_idx, i-1]
-    return gts
 
 def standardize(gts):
     if np.std(gts) == 0:
@@ -51,11 +28,7 @@ def standardize(gts):
 def main():
     # do an association test of the combined dosage of the listed alleles vs the listed phenotypes in each ethnicity
     parser = argparse.ArgumentParser()
-    #parser.add_argument('chrom', type=int)
-    #parser.add_argument('pos', type=int)
     parser.add_argument('var_file')
-    #parser.add_argument('--phenotypes', nargs='+')
-    #parser.add_argument('--alleles', type=int, nargs='+') #allele indicies, i.e. ths SNP is present in alleles 0 (ref), 2 (2nd alt) and 5
     args = parser.parse_args()
 
     print('str\tvariant\tethnicity\tvar frequency\tstr var r2\tphenotype\tstr p-val\tvar p-val\tstr p-val conditioning on var')
@@ -90,8 +63,8 @@ def main():
                 covs = covs[:, 2:]
 
                 samp_idx = sample_utils.get_samples_idx_phenotype(ethnicity, phenotype)
-                var_gts = standardize(var_dosage_gts(var, samp_idx, alleles))
-                str_gts = standardize(str_dosage_gts(var, samp_idx))
+                var_gts = standardize(str_utils.imperfection_dosage_gts(var, samp_idx, alleles))
+                str_gts = standardize(str_utils.str_dosage_gts(var, samp_idx))
                 str_best_guess_gts = trh.HarmonizeRecord(
                     vcfrecord=var, vcftype='beagle-hipstr'
                 ).GetGenotypeIndicies()[samp_idx, :-1]

@@ -37,10 +37,11 @@ for var, condition in (('STR', pl.col('is_STR')), ('SNP', ~pl.col('is_STR'))):
     shared = temp_df.filter(pl.col('finemap_result') & pl.col('susie_result')).shape[0]
 
     plt.figure()
-    matplotlib_venn.venn2(
+    venn = matplotlib_venn.venn2(
         subsets = (s_total - shared, f_total - shared, shared),
         set_labels = ('SuSiE', 'FINEMAP')
     )
+    venn.get_patch_by_id('01').set_color('blue')
 
     plt.savefig(f'{args.outprefix}_{var}.png')
     plt.savefig(f'{args.outprefix}_{var}.svg')

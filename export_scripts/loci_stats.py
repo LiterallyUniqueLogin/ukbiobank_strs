@@ -3,6 +3,8 @@
 import os
 
 import bokeh.io
+import bokeh.models
+import bokeh.models.tickers
 import bokeh.plotting
 import numpy as np
 import pandas as pd
@@ -22,6 +24,7 @@ def main():
         ))
     df = pd.concat(dfs)
 
+    '''
     for col in 'entropy', 'heterozygosity', 'multiallelicness':
         print(f'plotting {col} ...', flush=True)
         max_val = np.max(df[col])
@@ -60,6 +63,7 @@ def main():
             
         bokeh.io.export_png(figure, filename=f'{ukb}/export_scripts/results/{col}_distribution.png')
         bokeh.io.export_svg(figure, filename=f'{ukb}/export_scripts/results/{col}_distribution.svg')
+    '''
 
     for thresh in (0.0004, 0.002, 0.01, 0.05):
         print(f'plotting allele count >= {thresh} ... ', flush=True)
@@ -83,11 +87,13 @@ def main():
         ys = np.array(ys)
 
         figure = bokeh.plotting.figure(
-            title='Histogram of STR loci by number of non-rare alleles',
-            x_axis_label=f'Number alleles with frequency >= {thresh*100}%',
+            #title='Histogram of STR loci by number of non-rare alleles',
+            #x_axis_label=f'Number alleles with frequency >= {thresh*100}%',
+            x_axis_label='Number of common alleles',
             y_axis_label='Number of STR loci',
             width=600,
-            height=600
+            height=600,
+            output_backend='svg'
         )
         figure.title.text_font_size = '18px'
         figure.axis.axis_label_text_font_size = '18px'
@@ -96,39 +102,27 @@ def main():
         figure.background_fill_color = None
         figure.border_fill_color = None
         figure.grid.grid_line_color = None
+        figure.yaxis.formatter = bokeh.models.FuncTickFormatter(code="""
+            return tick/1000 + "k"
+        """)
+        figure.xaxis.ticker = bokeh.models.tickers.FixedTicker(
+            ticks = [2] + [x for x in range(3, max(xs) + 1) if x % 5 == 0],
+            minor_ticks = [x for x in range(3, max(xs) + 1) if x % 5 != 0]
+        )
         if 1 in xs:
             idx = xs == 1
-            figure.quad(
-                top=ys[idx],
-                bottom=0,
-                left=0.5,
-                right=1.5,
-                color='#888888',
-                legend_label='monoallelic'
-            )
+            print('N monoallelic STRs: ', ys[idx])
+            # don't plot monoallelic STRs
             xs = xs[~idx]
             ys = ys[~idx]
-        if 2 in xs:
-            idx = xs == 2
-            figure.quad(
-                top=ys[idx],
-                bottom=0,
-                left=1.5,
-                right=2.5,
-                color='#E0D448',
-                legend_label='biallelic'
-            )
-            xs = xs[~idx]
-            ys = ys[~idx]
+
         figure.quad(
             top=ys,
             bottom=0,
             left=xs-0.5,
             right=xs+0.5,
             color='#86CCC3',
-            legend_label='multiallelic'
         )
-        figure.legend.label_text_font_size = '16px'
         bokeh.io.export_png(figure, filename=f'{ukb}/export_scripts/results/allele_count_thresh_{thresh}.png')
         bokeh.io.export_svg(figure, filename=f'{ukb}/export_scripts/results/allele_count_thresh_{thresh}.svg')
 

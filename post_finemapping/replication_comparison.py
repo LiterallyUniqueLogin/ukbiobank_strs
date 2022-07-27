@@ -2,13 +2,18 @@
 
 import os
 
+import bokeh.embed
 import bokeh.io
 import bokeh.layouts
 import bokeh.models
 import bokeh.plotting
+import bokeh.resources
+import bokeh.transform
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import scipy.stats
+import statsmodels.formula.api
 from statsmodels.stats.proportion import proportions_ztest
 
 import phenotypes
@@ -16,6 +21,18 @@ import phenotypes
 ukb = os.environ['UKB']
 
 other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
+other_ethnicities_w_counts = ['black\nn=7,562', 'south_asian\nn=7,397', 'chinese\nn=1,525', 'irish\nn=11,978', 'white_other\nn=15,838']
+
+# from https://stackoverflow.com/a/45846841
+def human_format(num):
+    num = float('{:.2g}'.format(num))
+    magnitude = 0
+    while abs(num) >= 1000:
+        magnitude += 1
+        num /= 1000.0
+    return '{}{}'.format('{:f}'.format(num).rstrip('0').rstrip('.'), ['', 'k', 'm', 'b', 't'][magnitude])
+
+print('loading data and running calculations', flush=True)
 
 causal_STR_candidates = pl.read_csv(
     f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab',
@@ -66,6 +83,7 @@ def barplot_fig(cats, data, p_groups):
         height=800,
         toolbar_location=None,
         y_range=[.5,1.05],
+        output_backend='svg'
     )
     fig.xaxis.major_label_text_color = None
     fig.xaxis.major_tick_line_color = None
@@ -85,7 +103,7 @@ def barplot_fig(cats, data, p_groups):
         width=0.9,
         line_color='grey',
         fill_color = bokeh.transform.factor_cmap('x', palette=bokeh.palettes.Colorblind[4], factors=condition_names, start=1, end=2),
-        legend_group = 'subcats'
+        legend_group = 'subcats',
     )
     fig.legend.location = 'top_left'
     fig.legend[0].items.insert(0, fig.legend[0].items[3])
@@ -96,16 +114,19 @@ def barplot_fig(cats, data, p_groups):
     fig.xaxis.major_label_orientation = 1
     fig.xgrid.grid_line_color = None
     y_range = max(data) - 0.5 # since plots are relative to zero
+    n_tests = len(p_groups)*5
+    '''
     for group in range(len(p_groups)):
-        compare_bars(fig, y_range, cats[group*4], cats[group*4+1], data[group*4], data[group*4+1], data[group*4:group*4+2], p_groups[group][0], 1, -1, -1)
-        compare_bars(fig, y_range, cats[group*4], cats[group*4+2], data[group*4], data[group*4+2], data[group*4:group*4+3], p_groups[group][1], -1, -1, -2 if p_groups[group][0] <= 0.05 else -1)
-        compare_bars(fig, y_range, cats[group*4], cats[group*4+3], data[group*4], data[group*4+3], data[group*4:group*4+4], p_groups[group][2], 0, 1, sum(p_groups[group][i] <= 0.05 for i in (2,3,4)))
-        compare_bars(fig, y_range, cats[group*4+1], cats[group*4+3], data[group*4+1], data[group*4+3], data[group*4+1:group*4+4], p_groups[group][3], 0, 0, sum(p_groups[group][i] <= 0.05 for i in (3,4)))
-        compare_bars(fig, y_range, cats[group*4+2], cats[group*4+3], data[group*4+2], data[group*4+3], data[group*4+2:group*4+4], p_groups[group][4], 0, -1, 1)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+1], data[group*4], data[group*4+1], data[group*4:group*4+2], p_groups[group][0], 1, -1, -1, n_tests)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+2], data[group*4], data[group*4+2], data[group*4:group*4+3], p_groups[group][1], -1, -1, -2 if p_groups[group][0] <= 0.05 else -1, n_tests)
+        compare_bars(fig, y_range, cats[group*4], cats[group*4+3], data[group*4], data[group*4+3], data[group*4:group*4+4], p_groups[group][2], 0, 1, sum(p_groups[group][i] <= 0.05 for i in (2,3,4)), n_tests)
+        compare_bars(fig, y_range, cats[group*4+1], cats[group*4+3], data[group*4+1], data[group*4+3], data[group*4+1:group*4+4], p_groups[group][3], 0, 0, sum(p_groups[group][i] <= 0.05 for i in (3,4)), n_tests)
+        compare_bars(fig, y_range, cats[group*4+2], cats[group*4+3], data[group*4+2], data[group*4+3], data[group*4+2:group*4+4], p_groups[group][4], 0, -1, 1, n_tests)
+    '''
     return fig
 
-def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep):
-    if p_val > 0.05:
+def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep, n_tests):
+    if p_val > 0.05 or np.isnan(p_val):
         return
     x1 = [*x1, .15*x1step]
     x2 = [*x2, .15*x2step]
@@ -113,16 +134,20 @@ def compare_bars(fig, y_range, x1, x2, y1, y2, ys, p_val, x1step, x2step, ystep)
     if ystep > 0:
         top = max(ys) + ystep*y_step_size
         text_y = top + 0.01*y_step_size
-    else: 
+    else:
         top = min(ys) + ystep*y_step_size
         text_y = top - 0.75*y_step_size
     fig.line(x=[x1, x1], y=[y1, top], color='black')
     fig.line(x=[x2, x2], y=[y2, top], color='black')
     fig.line(x=[x1, x2], y=[top, top], color='black')
     text=f'(p={p_val:.1g})'
-    if p_val < 0.05/25:
+    '''
+    if p_val < 0.05/n_tests:
         text = '** ' + text
     elif p_val < 0.05:
+        text = '* ' + text
+    '''
+    if p_val < 0.05:
         text = '* ' + text
 
     cds = bokeh.models.ColumnDataSource(dict(
@@ -139,284 +164,171 @@ named_conditions = [
     ('SuSiE STRs with max alpha >= 0.8', pl.col('finemapped_susie')),
     ('confidently fine-mapped STRs', pl.col('is_causal_STR_candidate'))
 ]
-
-xs = []
-ys = []
-p_groups = []
+'''
 for ethnicity in other_ethnicities:
-    p_group = []
-    p_groups.append(p_group)
-    group_totals = []
-    subgroup_totals = []
-    for name, condition in named_conditions:
-        xs.append((ethnicity, name))
-        ys.append(
-            df.filter(
-                condition & ~pl.col(f'{ethnicity}_coeff').is_nan()
-            ).select(
-                (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0).cast(int).mean().alias('out')
-            )['out'].to_numpy()[0]
-        )
-        group_totals.append(
-            df.filter(
-                condition & ~pl.col(f'{ethnicity}_coeff').is_nan()
+    for group_comp in ((0, 1), (0, 2), (0, 3), (1, 3), (2, 3)):
+        category_df = df.filter(
+            (pl.col('p_val') <= 1e-10) &
+            named_conditions[group_comp[0]][1] &
+            ~pl.col(f'{ethnicity}_coeff').is_nan()
+        ).with_column(
+            pl.when(pl.col('p_val') == 0).then(300).otherwise(-pl.col('p_val').log10()).alias('log_p_val')
+        ).select([
+            'log_p_val',
+            pl.col('log_p_val').pow(2).alias('log_p_val2'),
+            named_conditions[group_comp[1]][1].alias('subgroup'),
+            (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0).cast(int).alias('outcome')
+        ]).to_pandas()
+        mod = statsmodels.formula.api.logit(
+            'outcome ~ log_p_val + log_p_val2 + subgroup', category_df
+        ).fit(disp=0)
+        p_val = mod.pvalues['subgroup[T.True]']/2
+        param = mod.params['subgroup[T.True]']
+        if mod.params['subgroup[T.True]'] <= 0:
+            p_val += 0.5
+        print(f'{ethnicity}: P replication coeff({named_conditions[group_comp[1]][0]}) > 0 in '
+              f'{named_conditions[group_comp[0]][0]}: '
+              f'{p_val:.3} {"**" if p_val*25 < 0.05 else "*" if p_val < 0.05 else ""} '
+              f'param: {param:.3} '
+         )
+'''
+
+df = df.with_column((-pl.col('p_val').log10()).alias('log_p_val'))
+
+print('plotting supporting figs', flush=True)
+# plot replication across fine-mappers stratified by signal power
+figs = []
+#finemappers = ['only gwsig', 'finemap', 'susie', 'both', 'confident']
+#conditions = [pl.col('p_val') <= 5e-8, pl.col('finemapped_finemap'), pl.col('finemapped_susie'), pl.col('finemapped_finemap') & pl.col('finemapped_susie'), pl.col('is_causal_STR_candidate')]
+#finemappers = ['only gwsig', 'finemap', 'susie', 'confident']
+#conditions = [pl.col('p_val') <= 5e-8, pl.col('finemapped_finemap'), pl.col('finemapped_susie'), pl.col('is_causal_STR_candidate')]
+for ethnicity_num, ethnicity in enumerate(other_ethnicities):
+    '''
+    quantiles = df.filter(pl.col('log_p_val') >= 10).select([
+        pl.col('log_p_val').quantile(.25).alias('q1'),
+        pl.col('log_p_val').quantile(.5).alias('q2'),
+        pl.col('log_p_val').quantile(.75).alias('q3')
+    ])
+    print(quantiles)
+    bin_bounds = [-np.log10(5e-8), 10, quantiles['q1'][0], quantiles['q2'][0], quantiles['q3'][0], np.inf]
+    '''
+    bin_bounds = [-np.log10(5e-8), 10, 20, 40, 80, np.inf]
+    category_names = []
+    ys = []
+    counts = []
+    upper_whiskers = []
+    lower_whiskers = []
+    for lower_bound, upper_bound in zip(bin_bounds[:-1], bin_bounds[1:]):
+        for finemapper, condition in named_conditions:
+            name = '['
+            if isinstance(lower_bound, float):
+                name += f'{lower_bound:.3}'
+            else:
+                name += str(lower_bound)
+            name += ', '
+            if isinstance(upper_bound, float):
+                name += f'{upper_bound:.3}'
+            else:
+                name += str(upper_bound)
+            name += ')'
+            category_names.append((name, finemapper))
+
+            category_df = df.filter(
+                (pl.col('log_p_val') >= lower_bound) &
+                (pl.col('log_p_val') < upper_bound) &
+                condition &
+                ~pl.col(f'{ethnicity}_coeff').is_nan()
+            )
+            bin_size = category_df.shape[0]
+            successes = category_df.filter(
+                (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0)
             ).shape[0]
-        )
-        subgroup_totals.append(
-            df.filter(
-                condition & ~pl.col(f'{ethnicity}_coeff').is_nan()
-            ).filter(
-                pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0
-            ).shape[0]
-        )
-    p_group.append(proportions_ztest(
-        [subgroup_totals[-4] - subgroup_totals[-3], subgroup_totals[-3] ],
-        [group_totals[-4] - group_totals[-3],       group_totals[-3]    ],
-    alternative='smaller')[1])
-    p_group.append(proportions_ztest(
-        [subgroup_totals[-4] - subgroup_totals[-2], subgroup_totals[-2] ],
-        [group_totals[-4] - group_totals[-2],       group_totals[-2]    ],
-    alternative='smaller')[1])
-    p_group.append(proportions_ztest(
-        [subgroup_totals[-4] - subgroup_totals[-1], subgroup_totals[-1] ],
-        [group_totals[-4] - group_totals[-1],       group_totals[-1]    ],
-    alternative='smaller')[1])
-
-    p_group.append(proportions_ztest(
-        [subgroup_totals[-3] - subgroup_totals[-1], subgroup_totals[-1] ],
-        [group_totals[-3] - group_totals[-1],       group_totals[-1]    ],
-    alternative='smaller')[1])
-    p_group.append(proportions_ztest(
-        [subgroup_totals[-2] - subgroup_totals[-1], subgroup_totals[-1] ],
-        [group_totals[-2] - group_totals[-1],       group_totals[-1]    ],
-    alternative='smaller')[1])
-
-fig = barplot_fig(xs, ys, p_groups)
-'''
-fig = bokeh.plotting.figure(
-    title='Shared effect direction by fine-mapping category',
-    width=1200,
-    height=900,
-    x_range=bokeh.models.FactorRange(*xs),
-    y_axis_label = 'Percent loci with shared effect direction',
-    y_range=[.5,1],
-    toolbar_location = None
-)
-fig.vbar(x=xs, top=ys, width=0.9)
-fig.x_range.range_padding=0.1
-fig.xaxis.major_label_orientation = 1
-fig.background_fill_color = None
-fig.border_fill_color = None
-fig.grid.grid_line_color = None
-fig.toolbar_location = None
-'''
-fig.title.text_font_size = '30px'
-fig.axis.axis_label_text_font_size = '26px'
-fig.axis.major_label_text_font_size = '20px'
-fig.xaxis.group_text_font_size = '20px'
-fig.xaxis.subgroup_text_font_size = '20px'
-bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/replication_shared_direction.png')
-bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/replication_shared_direction.svg')
-
-
-'''
-shifted_figs = []
-shared_x_axes = []
-first_row=True
-for name, condition in named_conditions[1:]:
-    fig_row = []
-    shifted_figs.append(fig_row)
-    for eth_count, ethnicity in enumerate(other_ethnicities):
-        base_results = df.filter(pl.col('p_val') > 1e-300).filter(~pl.col(f'{ethnicity}_coeff').is_nan()).select([
-            (-pl.col('p_val').log10()).alias('x'),
-            (-pl.col(f'{ethnicity}_p_val').log10()*(pl.col(f'{ethnicity}_coeff')/pl.col(f'{ethnicity}_coeff').abs())*(pl.col('coeff')/pl.col('coeff').abs())).alias('y')
-        ])
-        base_r2 = np.corrcoef(base_results['x'].to_numpy(), base_results['y'].to_numpy())[0,1]**2
-        condition_results = df.filter(pl.col('p_val') > 1e-300).filter(~pl.col(f'{ethnicity}_coeff').is_nan()).filter(condition).select([
-            (-pl.col('p_val').log10()).alias('x'),
-            (-pl.col(f'{ethnicity}_p_val').log10()*(pl.col(f'{ethnicity}_coeff')/pl.col(f'{ethnicity}_coeff').abs())*(pl.col('coeff')/pl.col('coeff').abs())).alias('y')
-        ])
-        r2 = np.corrcoef(condition_results['x'].to_numpy(), condition_results['y'].to_numpy())[0,1]**2
-        #print(f'{condition} r^2 for ethnicity {ethnicity}: {r2:.3}')
-
-        shifted_r2s = []
-        for i in range(-100, 101): #range(-10, 11):
-            if i == 0:
+            if bin_size == 0:
+                ys.append(np.nan)
+                counts.append(0)
+                upper_whiskers.append(np.nan)
+                lower_whiskers.append(np.nan)
                 continue
-            shifted_results = df.filter(pl.col('p_val') > 1e-300).filter(~pl.col(f'{ethnicity}_coeff').is_nan()).filter(condition.shift(i)).select([
-                (-pl.col('p_val').log10()).alias('x'),
-                (-pl.col(f'{ethnicity}_p_val').log10()*(pl.col(f'{ethnicity}_coeff')/pl.col(f'{ethnicity}_coeff').abs())*(pl.col('coeff')/pl.col('coeff').abs())).alias('y')
-            ]).to_pandas()
-            shifted_r2s.append(np.corrcoef(shifted_results['x'].to_numpy(), shifted_results['y'].to_numpy())[0,1]**2)
-        fig_kws = dict(
-            title=ethnicity,
-            width=1000,
-            height=800,
-            x_axis_label = 'p-val r^2',
-            toolbar_location = None
-        )
-        if not first_row:
-            fig_kws['x_range'] = shared_x_axes[eth_count]
-        fig = bokeh.plotting.figure(
-            **fig_kws
-        )
-        if first_row:
-            shared_x_axes.append(fig.x_range)
-        base_quantile = np.sum(np.array(shifted_r2s) < base_r2)/len(shifted_r2s)
-        quantile = np.sum(np.array(shifted_r2s) < r2)/len(shifted_r2s)
-        fig.circle(shifted_r2s, np.zeros(len(shifted_r2s)))
-        fig.line([base_r2, base_r2], [-1, 1], color='blue', legend_label=f'{base_quantile} quantile')
-        fig.line([r2, r2], [-1, 1], color='red', legend_label=f'{quantile} quantile')
-        fig.yaxis.visible=False
-        fig_row.append(fig)
-    first_row=False
+            ys.append(successes/bin_size)
+            counts.append(bin_size)
+            lower, upper = scipy.stats.binomtest(successes, bin_size).proportion_ci(.5)
+            upper_whiskers.append(upper)
+            lower_whiskers.append(lower)
+    cds = bokeh.models.ColumnDataSource(dict(
+        category_names=category_names,
+        finemappers=[name_cond[0] for name_cond in named_conditions]*(len(upper_whiskers)//len(named_conditions)),
+        ys=ys,
+        counts=[str(count) for count in counts],
+    ))
+    fig = bokeh.plotting.figure(
+        #title=f'Effect direction sharing in the {ethnicity.replace("_", " ").capitalize()} population by p_val and finemapper',
+        title=ethnicity.replace("_", " ").title(),
+        y_axis_label = 'Percent loci with shared effect direction',
+        x_axis_label = 'Discovery p-value',
+        x_range = bokeh.models.FactorRange(*category_names),
+        #y_range = [0.5, 1],
+        width=1600,
+        height=800,
+        toolbar_location=None,
+        min_border_left=20,
+        min_border_right=20,
+        output_backend='svg',
+        outline_line_color=None,
+    )
+    fig.y_range.start=0.5
+    fig.y_range.end=1.05
+    fig.yaxis.bounds=(0.5, 1)
+    fig.yaxis.minor_tick_line_color=None
+    figs.append(fig)
+    fig.xaxis.major_tick_line_color=None
+    fig.xaxis.major_label_text_color=None
+    fig.xgrid.grid_line_color=None
+    fig.xaxis.group_text_font_size = '24px'
+    fig.xaxis.subgroup_text_font_size = '24px'
+    fig.axis.axis_label_text_font_size = '36px'
+    fig.axis.major_label_text_font_size = '30px'
+    fig.title.text_font_size = '36px'
+    kws = dict(
+        x='category_names',
+        top='ys',
+        width=0.9,
+        fill_color = bokeh.transform.factor_cmap('category_names', palette=('#cc6c28', '#e8a723', '#588197', '#a48387'), factors=[name_cond[0] for name_cond in named_conditions], start=1, end=2),
+        source=cds,
+        alpha=0.7
+    )
+    if ethnicity_num in (0,3):
+        kws['legend_group'] = 'finemappers'
 
-        #print(f'Shifted {condition} r^2s for ethnicity {ethnicity}: ', [f'{r2:.3f}' for r2 in sorted(shifted_r2s)])
-total_fig = bokeh.layouts.grid(shifted_figs)
-bokeh.io.export_png(total_fig, filename=f'{ukb}/post_finemapping/results/continuous_replication_shifts.png')
-bokeh.io.export_svg(total_fig, filename=f'{ukb}/post_finemapping/results/continuous_replication_shifts.svg')
-exit()
+    fig.vbar(
+        **kws
+    )
+    cds = bokeh.models.ColumnDataSource(dict(
+        x = category_names,
+        x_offset = [-15]*len(category_names),
+        y = np.array(ys) + 0.005,
+        text = [(f'{count:,.0f}' if count < 1000 else human_format(count)) for count in counts]
+    ))
+    fig.add_layout(bokeh.models.LabelSet(
+        x='x',
+        x_offset='x_offset',
+        y='y',
+        text='text',
+        source=cds,
+        text_font_size='20px',
+        text_color='black'
+    ))
+    if ethnicity_num in (0,3):
+        fig.legend.location = 'top_left'
+        fig.legend.label_text_font_size='24px'
+        fig.legend[0].items.insert(0, fig.legend[0].items[3])
+        del fig.legend[0].items[4]
 
-for comparison_name, cond_wb, cond_rep in [
-    ('p-val', -pl.col('p_val').log10(), lambda ethnicity: -pl.col(f'{ethnicity}_p_val').log10()),
-    ('squared_z_score', (pl.col('coeff')/pl.col('se')).pow(2), lambda ethnicity: (pl.col(f'{ethnicity}_coeff')/pl.col(f'{ethnicity}_se')).pow(2)),
-]:
-    cols = []
-    first = True
-    first_row = True
-    saved_y_ranges = []
-    for (condition_name, condition) in named_conditions:
-        row = []
-        cols.append(row)
-        for eth_count, ethnicity in enumerate(other_ethnicities):
-            results = df.filter(pl.col('p_val') > 1e-300).filter(~pl.col(f'{ethnicity}_coeff').is_nan()).filter(condition).select([
-                cond_wb.alias('x'),
-                (cond_rep(ethnicity)*(pl.col(f'{ethnicity}_coeff')/pl.col(f'{ethnicity}_coeff').abs())*(pl.col('coeff')/pl.col('coeff').abs())).alias('y')
-            ])
-            r2 = np.corrcoef(results['x'].to_numpy(), results['y'].to_numpy())[0,1]**2
-            fig_args = dict(
-                title=f'{condition_name}, {ethnicity}, r^2 {r2:.3f}',
-                y_axis_label=f'{ethnicity} {comparison_name}',
-                x_axis_label=f'white-brit {comparison_name}',
-                width=400,
-                height=400,
-            )
-            if not first:
-                fig_args['x_range'] = saved_x_range
-            if not first_row:
-                fig_args['y_range'] = saved_y_ranges[eth_count]
-            fig = bokeh.plotting.figure(
-                **fig_args
-            )
-            if first:
-                first = False
-                saved_x_range = fig.x_range
-            if first_row:
-                saved_y_ranges.append(fig.y_range)
-            fig.circle(results['x'].to_numpy(), results['y'].to_numpy())
-            fig.background_fill_color = None
-            fig.border_fill_color = None
-            fig.grid.grid_line_color = None
-            fig.toolbar_location = None
-            fig.title.text_font_size = '10px'
-            fig.axis.axis_label_text_font_size = '20px'
-            row.append(fig)
-        first_row = False
+for fig_n in 1,2,4:
+    figs[fig_n].yaxis.axis_label = None
+    figs[fig_n].yaxis.major_label_text_font_size = '0px'
 
-    bokeh.io.export_png(bokeh.layouts.layout(cols), filename=f'{ukb}/post_finemapping/results/continuous_replication_{comparison_name}.png')
-    bokeh.io.export_svg(bokeh.layouts.layout(cols), filename=f'{ukb}/post_finemapping/results/continuous_replication_{comparison_name}.svg')
 
-for ethnicity in other_ethnicities:
-    for name, condition in named_conditions
-    n_neither = df.filter(pl.col('p_val') <= 5e-8).filter((pl.col(f'{ethnicity}_p_val') > 0.05) & ~pl.col('is_causal_STR_candidate')).shape[0]
-    n_replicate_not_candidates = df.filter(pl.col('p_val') <= 5e-8).filter((pl.col(f'{ethnicity}_p_val') <= 0.05) & ~pl.col('is_causal_STR_candidate')).shape[0]
-    n_candidates_not_replicate = df.filter(pl.col('p_val') <= 5e-8).filter((pl.col(f'{ethnicity}_p_val') > 0.05) & pl.col('is_causal_STR_candidate')).shape[0]
-    n_both = df.filter(pl.col('p_val') <= 5e-8).filter((pl.col(f'{ethnicity}_p_val') <= 0.05) & pl.col('is_causal_STR_candidate')).shape[0]
-
-    contingency_table = [[n_neither, n_replicate_not_candidates], [n_candidates_not_replicate, n_both]]
-    if np.any(np.array(contingency_table) < 20):
-        p_val = scipy.stats.fisher_exact(contingency_table)[1]
-    else:
-        p_val = proportions_ztest(contingency_table)[1]
-    print(ethnicity, p_val)
-
-xs = []
-ys = []
-for ethnicity in other_ethnicities:
-    for (name, condition) in named_conditions:
-        xs.append((ethnicity, name))
-        ys.append(
-            df.filter(
-                condition
-            ).select(
-                (
-                    (pl.col(f'{ethnicity}_p_val') <= 0.05) & 
-                    (pl.col('coeff')*pl.col(f'{ethnicity}_coeff') > 0)
-                ).cast(int).mean().alias('out')
-            )['out'].to_numpy()[0]
-        )
-
-fig = bokeh.plotting.figure(
-    title='Replication rate by category and ethnicity',
-    x_range=bokeh.models.FactorRange(*xs),
-    y_axis_label = 'Replication rate',
-    width=1200,
-    height=800,
-)
-fig.vbar(x=xs, top=ys, width=0.9)
-fig.y_range.start=0
-fig.x_range.range_padding=0.1
-fig.xaxis.major_label_orientation = 1
-fig.background_fill_color = None
-fig.border_fill_color = None
-fig.grid.grid_line_color = None
-fig.toolbar_location = None
-fig.title.text_font_size = '30px'
-fig.axis.axis_label_text_font_size = '26px'
-fig.axis.major_label_text_font_size = '20px'
-bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/binary_replication.png')
-bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/binary_replication.svg')
-
-xs = []
-ys = []
-for ethnicity in other_ethnicities:
-    for (name, condition) in [
-        ('p<=1e-10', pl.col('p_val') <= 1e-10),
-        ('p<=1e-10 & (susie or finemap)', (pl.col('p_val') <= 1e-10) & (pl.col('finemapped_susie') | pl.col('finemapped_finemap'))),
-        ('p<=1e-10 & susie & finemap', (pl.col('p_val') <= 1e-10) & pl.col('finemapped_susie') & pl.col('finemapped_finemap')),
-        ('causal STR candidates', pl.col('is_causal_STR_candidate'))
-    ]:
-        xs.append((ethnicity, name))
-        ys.append(
-            df.filter(
-                ((pl.col('p_val') <= 1e-10) & pl.col('finemapped_susie') & pl.col('finemapped_finemap')).any().over('region')
-            ).filter(
-                condition
-            ).select(
-                (
-                    (pl.col(f'{ethnicity}_p_val') <= 0.05)
-                ).cast(int).mean().alias('out')
-            )['out'].to_numpy()[0]
-        )
-
-fig = bokeh.plotting.figure(
-    title='Replication rate by category and ethnicity',
-    x_range=bokeh.models.FactorRange(*xs),
-    y_axis_label = 'Replication rate',
-    width=1200,
-    height=800,
-)
-fig.vbar(x=xs, top=ys, width=0.9)
-fig.y_range.start=0
-fig.x_range.range_padding=0.1
-fig.xaxis.major_label_orientation = 1
-fig.background_fill_color = None
-fig.border_fill_color = None
-fig.grid.grid_line_color = None
-fig.toolbar_location = None
-fig.title.text_font_size = '30px'
-fig.axis.axis_label_text_font_size = '26px'
-fig.axis.major_label_text_font_size = '20px'
-bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/bad_binary_replication.png')
-bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/bad_binary_replication.svg')
-'''
+bokeh.io.export_png(bokeh.layouts.row(figs[:3]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_non_white.png')
+bokeh.io.export_svg(bokeh.layouts.row(figs[:3]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_non_white.svg')
+bokeh.io.export_png(bokeh.layouts.row(figs[3:]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_white.png')
+bokeh.io.export_svg(bokeh.layouts.row(figs[3:]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_white.svg')

@@ -25,6 +25,10 @@ chr_lens = np.genfromtxt(
 
 str_imputation_run_name = 'first_pass'
 
+# TODO
+# add rule for singly_, confidently_ finemapped results
+# repeat_units.tab
+
 wildcard_constraints:
     chrom='[0-9]+',
     pos='[0-9]+',
@@ -311,6 +315,20 @@ rule length_confusion:
     shell:
         'side_analyses/length_confusion/length_confusion.py {wildcards.chrom}'
 
+rule pre_imputation_allele_freqs:
+    input:
+        expand('pre_imputation_qc/allele_freqs/snpstr_eur/chr{chrom}.afreq', chrom=list(range(1, 23))),
+        expand('snpstr/vcf_1_sample/chr{chrom}.vcf', chrom=list(range(1, 23))),
+        expand('pre_imputation_qc/allele_freqs/hap_white_brit_high_quality_sane_kinship_unrelated/chr{chrom}.afreq', chrom=list(range(1, 23))),
+        expand('microarray/vcf_1_sample/chr{chrom}.vcf', chrom=list(range(1, 23))),
+    output:
+        contrast=expand('pre_imputation_qc/allele_freqs/contrast.{ext}', ext=['svg', 'png'])
+    resources:
+        mem_gb = 4,
+        time='00:10:00'
+    shell:
+        './pre_imputation_qc/allele_freqs/graph_allele_freqs.py '
+
 rule calc_macs:
     input:
         sample_file=expand(
@@ -333,6 +351,17 @@ rule calc_macs:
         '{wildcards.start} '
         '{wildcards.end} '
         '{input.sample_file} '
+
+rule cbl_allele_dist:
+    input:
+        f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr11.vcf.gz',
+        'association/specific_alleles.tab'
+    output:
+        expand('association/allele_plots/cbl.{ext}', ext=['svg', 'png'])
+    resources:
+        time='00:10:00'
+    shell:
+        'association/cbl_allele_histo.py '
 
 ##################### Running and Plotting Associations ###########################
 
@@ -815,26 +844,82 @@ def plot_white_brits_assoc_input(wildcards):
 rule plot_ethnic_str_locus:
     input:
         assoc_result=rules.run_str_spot_test.output.result,
-        pheno_data=rules.transform_phenotype_subset.output.phenotype
     output:
-        svg='association/{subpop_prefix}locus_plots/{subpop}{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold,[^_]+}{pub,|_pub}.svg',
-        png='association/{subpop_prefix}locus_plots/{subpop}{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold,[^_]+}{pub,|_pub}.png'
+        svg='association/{subpop_prefix}locus_plots/{subpop}{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold,[^_]+}{residual,|_residual}{pub,|_pub}.svg',
+        png='association/{subpop_prefix}locus_plots/{subpop}{ethnicity}/{phenotype}_{chrom}_{pos}_{dosage_fraction_threshold,[^_]+}{residual,|_residual}{pub,|_pub}.png'
     resources:
         time='00:30:00'
     params:
         unit = lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
         outloc= lambda wildcards, output: output.svg[:-4],
         pub_flag = lambda wildcards: '' if not wildcards.pub else '--publication',
+        residual_flag = lambda wildcards: '' if not wildcards.residual else '--residual-phenos',
         is_subpop = subpop_assert
         #binary_flag=lambda wildcards: '' if not phenotypes.is_binary(wildcards.phenotype) else '--binary'
     shell:
         'association/plot_locus.py '
         '{params.outloc} '
-        '{input.assoc_result} {input.pheno_data} '
         '{wildcards.chrom} {wildcards.pos} {wildcards.phenotype} '
-        '{wildcards.dosage_fraction_threshold} '
+        '--dosage-fraction-threshold {wildcards.dosage_fraction_threshold} '
+        '--assoc-results {input.assoc_result} '
         "--unit '{params.unit}' "
         '{params.pub_flag} '
+        '{params.residual_flag} '
+
+rule plot_stratified_cbl:
+    input:
+        assoc_results=expand(
+            rules.run_str_spot_test.output.result,
+            subpop_prefix='subpop_',
+            subpop=['CBL_hom_not_begin_C_T_snp/', 'CBL_hom_begin_C_T_snp/'],
+            ethnicity='white_brits',
+            phenotype='platelet_count',
+            chrom='11', 
+            pos='119077000'
+        )
+    output:
+        plot=expand('association/subpop_locus_plots/stratified_cbl/white_brits/platelet_count_11_119077000_200_pub.{ext}', ext=['png', 'svg'])
+    resources:
+        time='00:30:00'
+    params:
+        outloc= lambda wildcards, output: output.plot[0][:-4],
+    shell:
+        'association/plot_locus.py '
+        '{params.outloc} '
+        '11 119077000 platelet_count '
+        '--dosage-threshold 200 '
+        '--assoc-results {input.assoc_results} '
+        "--group-names 'homozygous (CGG)n' 'homozygous CGGTGG(CGG)m' "
+        "--unit '10^9 cells/L' "
+        '--publication '
+
+rule plot_stratified_bcl2l11:
+    input:
+        assoc_results=expand(
+            rules.run_str_spot_test.output.result,
+            subpop_prefix='subpop_',
+            subpop=[f'BCL2L11_len_{len_}/' for len_ in [14,17,18,19,20,21,24,25,26,27,28,29,30,31,32,35,36]], #[8] + list(range(11, 37))],
+            ethnicity='white_brits',
+            phenotype='eosinophil_percent',
+            chrom='2', 
+            pos='111878544'
+        )
+    output:
+        plot=expand('association/subpop_locus_plots/stratified_BCL2L11/white_brits/eosinophil_percent_2_111878544_200_whisks_pub.{ext}', ext=['png', 'svg'])
+    resources:
+        time='00:30:00'
+    params:
+        outloc= lambda wildcards, output: output.plot[0][:-4],
+    shell:
+        'association/plot_locus.py '
+        '{params.outloc} '
+        '2 111878544 eosinophil_percent '
+        '--dosage-threshold 200 '
+        '--assoc-results {input.assoc_results} '
+        "--group-names " + ' '.join(f'len_{len_}' for len_ in [14,17,18,19,20,21,24,25,26,27,28,29,30,31,32,35,36]) + ' ' + 
+        "--unit '%' "
+        '--publication '
+
 
 rule plot_str_all_ethnicities:
     input:
@@ -843,7 +928,7 @@ rule plot_str_all_ethnicities:
         ethnic_assoc_result=expand(rules.run_str_spot_test.output.result, ethnicity=other_ethnicities, phenotype='{phenotype}', chrom='{chrom}', pos='{pos}', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
         pheno_data=expand(rules.transform_phenotype_subset.output.phenotype, ethnicity=all_ethnicities, phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
-        svg='association/{subpop_prefix}locus_plots/{subpop}all/{phenotype}_{chrom}_{pos}_{dosage_cutoff,[0-9]+}{pub,|_pub}.svg',
+        svg='Gssociation/{subpop_prefix}locus_plots/{subpop}all/{phenotype}_{chrom}_{pos}_{dosage_cutoff,[0-9]+}{pub,|_pub}.svg',
         png='association/{subpop_prefix}locus_plots/{subpop}all/{phenotype}_{chrom}_{pos}_{dosage_cutoff,[0-9]+}{pub,|_pub}.png'
     resources:
         time='00:30:00'
@@ -852,10 +937,10 @@ rule plot_str_all_ethnicities:
         outloc = lambda wildcards, output: output.svg[:-4],
         assoc_results_d = (lambda wildcards, input: json.dumps({
             'white_brits': input.white_brits_assoc_results,
-            **{ethnicity: expand(rules.run_str_spot_test.output.result, ethnicity=ethnicity, phenotype=wildcards.phenotype, chrom=wildcards.chrom, pos=wildcards.pos)[0] for ethnicity in other_ethnicities}
+            **{ethnicity: expand(rules.run_str_spot_test.output.result, ethnicity=ethnicity, phenotype=wildcards.phenotype, chrom=wildcards.chrom, pos=wildcards.pos, subpop=wildcards.subpop, subpop_prefix=wildcards.subpop_prefix)[0] for ethnicity in other_ethnicities}
         })),
         pheno_data_d = (lambda wildcards, input: json.dumps({
-            **{ethnicity: expand(rules.transform_phenotype_subset.output.phenotype, ethnicity=ethnicity, phenotype=wildcards.phenotype)[0] for ethnicity in all_ethnicities}
+            **{ethnicity: expand(rules.transform_phenotype_subset.output.phenotype, ethnicity=ethnicity, phenotype=wildcards.phenotype, subpop=wildcards.subpop, subpop_prefix=wildcards.subpop_prefix)[0] for ethnicity in all_ethnicities}
         })),
         pub_flag = lambda wildcards: '' if not wildcards.pub else '--publication'
     shell:
@@ -1029,11 +1114,12 @@ rule manhattan_conditional:
         conditional_STR_results=rules.run_conditional_my_str_gwas.output.results,
         conditional_imputed_SNP_results=rules.run_continuous_conditional_plink_gwas.output.results,
     output:
-        manhattan='association/plots/{phenotype}.manhattan.chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.{ext,html|png|svg}'
+        manhattan='association/plots/{phenotype}.manhattan.chr{chrom}_{start}_{end}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}{pub,|.pub}.{ext,html|png|svg}'
     params:
         unit=lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].unit,
         conditioned_imputed_SNPs = lambda wildcards: imputed_SNPs_as_input(wildcards.imputed_SNPs),
-        conditioned_STRs = manhattan_conditional_conditioned_STRs_param
+        conditioned_STRs = manhattan_conditional_conditioned_STRs_param,
+        pub_flag = lambda wildcards: '' if wildcards.pub == '' else '--publication' if wildcards.pub == '.pub' else 1/0,
     resources:
         time='00:30:00',
         mem_gb=50
@@ -1049,6 +1135,7 @@ rule manhattan_conditional:
         '--chrom {wildcards.chrom} '
         '--start {wildcards.start} '
         '--end {wildcards.end} '
+        '{params.pub_flag} '
 
 ###################### Extracting Association Signals #######################
 
@@ -1695,16 +1782,27 @@ rule susie_run:
         '{params.L} '
         '{params.max_iter} '
 
-
-'''
-TODO deal with apply filter
-rule susie_run_mvp_light_hardcalls:
+rule susie_run_test_pip:
     input:
-        [
-        expand(rules.susie_run.output.alpha, chrom=chrom, start=start, end=end, hardcalls='hardcall_', phenotype='mean_platelet_volume')[0]
-        for chrom, start, end in susie_mpv_light_regions()
-        ]
-'''
+        pheno=rules.susie_load_gts.output.pheno,
+        gt=rules.susie_load_gts.output.gt,
+    output:
+        **susie_outputs('finemapping/susie_{hardcalls,|hardcall_}results_test_pip{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}')
+    resources:
+        time = '12:00:00',
+        mem_gb = 50,
+    params:
+        L=50,
+        outdir=lambda wildcards, output: '/'.join(output.alpha.split('/')[:-1])
+    conda:
+        'envs/ukb_r.env.yml'
+    shell:
+        'Rscript finemapping/susie_run_test_pip.r '
+        '{params.outdir} '
+        '{input.pheno} '
+        '{input.gt} '
+        '{params.L} '
+
 
 rule susie_run_change_tol:
     input:
@@ -1902,6 +2000,24 @@ rule first_pass_finemapping_concordance_all:
     input:
         expand(rules.first_pass_finemapping_concordance.output.table, phenotype=phenotypes.phenotypes_in_use)
 
+rule first_pass_finemapping_comparison:
+    input:
+        rules.first_pass_finemapping_concordance_all.input
+    output:
+        purity=expand('post_finemapping/results/cs_min_abs_corrs.{ext}', ext={'svg', 'png'}),
+        alpha_pip=expand('post_finemapping/results/susie_alpha_v_pip.{ext}', ext={'svg', 'png'}),
+        susie_alpha_hist=expand('post_finemapping/results/susie_alpha_histogram.{ext}', ext={'svg', 'png'}),
+        finemap_pip_hist=expand('post_finemapping/results/finemap_pip_histogram.{ext}', ext={'svg', 'png'}),
+        susie_cs_finemap_total_pips=expand('post_finemapping/results/susie_cs_finemap_total_pips.{ext}', ext={'svg', 'png'}),
+        comparison_str=expand('post_finemapping/results/consistency/finemap_v_susie_consistency_STR.{ext}', ext={'svg', 'png'}),
+        comparison_snp=expand('post_finemapping/results/consistency/finemap_v_susie_consistency_SNP.{ext}', ext={'svg', 'png'}),
+    resources:
+        time='00:30:00',
+        mem_gb=50
+    shell:
+        'post_finemapping/finemapping_consistency.py '
+        '--first-pass '
+
 rule finemapping_str_vs_snp_stats:
     input:
         expand(rules.first_pass_finemapping_concordance.output.table, phenotype=phenotypes.phenotypes_in_use)
@@ -1925,7 +2041,8 @@ rule all_susie_finemap_venn_diagram:
     input:
         tables = expand(rules.first_pass_finemapping_concordance.output.table, phenotype=phenotypes.phenotypes_in_use)
     output:
-        expand('export_scripts/results/all_susie_finemap_venn_{var}.{suffix}', var=['STR','SNP'], suffix=['png','svg']),
+        STR=expand('export_scripts/results/all_susie_finemap_venn_{var}.{suffix}', var=['STR'], suffix=['png','svg']),
+        SNP=expand('export_scripts/results/all_susie_finemap_venn_{var}.{suffix}', var=['SNP'], suffix=['png','svg']),
     resources:
         time='00:10:00'
     params:
@@ -2119,6 +2236,8 @@ rule finemap_signal_strengths:
     shell:
         'finemapping/plot_finemap_association_strengths.py {wildcards.phenotype}'
 
+'''
+#TODO out of date
 rule finemapping_concordance:
     input:
         lambda _: rules.susie_all_phenotypes.input,
@@ -2129,7 +2248,8 @@ rule finemapping_concordance:
         finemap_hits_per_region=expand('export_scripts/results/finemap_hits_per_region.{ext}', ext={'svg', 'png'}),
     shell:
         'export_scripts/finemapping_concordance.py {phenotypes.phenotypes_in_use}'
-        
+'''
+
 """
 TODO some undiagnosed syntax error in this section
 rule white_ld_heatmap:
@@ -2256,9 +2376,9 @@ rule summarize_loci:
     input:
         [f'export_scripts/intermediate_results/chr{chrom}_loci_summary.tab' for chrom in range(1, 23)]
     output:
-        expand('export_scripts/results/entropy_distribution.{ext}', ext={'svg', 'png'}),
-        expand('export_scripts/results/multiallelicness_distribution.{ext}', ext={'svg', 'png'}),
-        expand('export_scripts/results/heterozygosity_distribution.{ext}', ext={'svg', 'png'}),
+        #expand('export_scripts/results/entropy_distribution.{ext}', ext={'svg', 'png'}),
+        #expand('export_scripts/results/multiallelicness_distribution.{ext}', ext={'svg', 'png'}),
+        #expand('export_scripts/results/heterozygosity_distribution.{ext}', ext={'svg', 'png'}),
         main_thresh=expand(
             'export_scripts/results/allele_count_thresh_0.01.{ext}',
             ext={'svg', 'png'}
@@ -2430,9 +2550,9 @@ rule assoc_figures:
         'association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
         expand(rules.concatenate_linear_plink_gwas.output.results, phenotype=['eosinophil_count', 'total_bilirubin'], suffix=''),
     output:
-        'export_scripts/results/validate_our_code.png',
-        'export_scripts/results/panukbb_scatter.svg',
-        'export_scripts/results/panukbb_scatter.png'
+        #'export_scripts/results/validate_our_code.png',
+        'export_scripts/results/panukbb_scatter.png',
+        scatter_svg='export_scripts/results/panukbb_scatter.svg',
     resources:
         time='00:10:00',
         mem_gb=20
@@ -2585,6 +2705,28 @@ rule metaparameter_tests_putatively_causal_results:
             if (phenotype, chrom, end) not in {('total_bilirubin', 12, 22524428), ('alkaline_phosphatase', 1, 24309348), ('urate', 4, 11717761)}
         ], [])
 
+rule mpv_finemapping_comparison:
+    input:
+        #all_susie_outputs('mean_platelet_volume'),
+        #all_finemap_outputs('mean_platelet_volume')
+        #expand(rules.concatenate_linear_plink_gwas.output.results, phenotype='mean_platelet_volume', suffix=''),
+        #expand(rules.concatenate_my_str_gwas.output.results,       phenotype='mean_platelet_volume', suffix=''),
+        #rules.generate_regions.output.table,
+        # TODO some more
+    output:
+        l_10='post_finemapping/results/consistency/mpv_SuSiE_consistency_alpha.svg',
+        tol='post_finemapping/results/consistency/mpv_SuSiE_consistency_alpha_tol.svg',
+        res_var_8='post_finemapping/results/consistency/mpv_SuSiE_consistency_alpha_res_var_8.svg',
+        res_var_95='post_finemapping/results/consistency/mpv_SuSiE_consistency_alpha_res_var_95.svg',
+    resources:
+        time='01:00:00',
+        mem_gb=50
+    shell:
+        'post_finemapping/finemapping_consistency.py '
+        '--mpv'
+
+
+
 rule finemapping_generate_concordant_causal_candidate_STRs:
     '''
     input:
@@ -2620,6 +2762,15 @@ rule finemapping_summarize_concordant_causal_candidate_STRs:
         passes_originals='post_finemapping/intermediate_results/original_causal_STR_candidates.tab',
         concordant='post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab',
         passes_strict='post_finemapping/intermediate_results/strictly_concordant_causal_STR_candidates.tab',
+        susie_ratio='post_finemapping/results/consistency/susie_consistency_alpha_ratio.svg',
+        susie_best_guess='post_finemapping/results/consistency/susie_consistency_alpha_best_guess.svg',
+        finemap_ratio='post_finemapping/results/consistency/finemap_consistency_pip_ratio.svg',
+        finemap_conv_tol='post_finemapping/results/consistency/finemap_consistency_pip_conv_tol.svg',
+        finemap_total_prob='post_finemapping/results/consistency/finemap_consistency_pip_total_prob.svg',
+        finemap_prior_std_low='post_finemapping/results/consistency/finemap_consistency_pip_prior_std_low.svg',
+        finemap_prior_std_dervied='post_finemapping/results/consistency/finemap_consistency_pip_prior_std_dervied.svg',
+        finemap_mac='post_finemapping/results/consistency/finemap_consistency_pip_mac.svg',
+        finemap_p_thresh='post_finemapping/results/consistency/finemap_consistency_pip_p_thresh.svg',
     resources:
         time='01:00:00',
         mem_gb=50
@@ -2643,11 +2794,6 @@ rule causal_STR_candidates_table:
         '{input.concordant_table} '
         '{input.snpstr_mapping} '
 
-'''
-rule candidate_exonic_utr_table:
-    input:
-'''
-
 rule graph_main_hits:
     input:
         snpstr_mapping='snpstr/flank_trimmed_vcf/vars.tab',
@@ -2664,6 +2810,19 @@ rule graph_main_hits:
         '{input.hits} '
         '{intput.multiallelicness} '
         '{input.snpstr_mapping} '
+
+rule replication_comparison:
+    input:
+        rules.finemapping_summarize_concordant_causal_candidate_STRs.output.concordant,
+        rules.first_pass_finemapping_concordance_all.input,
+    output:
+        non_white=expand('post_finemapping/results/replication_by_pval_non_white.{ext}', ext=['png', 'svg']),
+        white=expand('post_finemapping/results/replication_by_pval_white.{ext}', ext=['png', 'svg'])
+    resources:
+        mem_gb = '20',
+        time='00:30:00'
+    shell:
+        './post_finemapping/replication_comparison.py '
 
 ######################### Export Files ########################
 
@@ -2918,17 +3077,31 @@ rule figure1:
         b=expand(rules.summarize_loci.output.main_thresh),
         c=expand(rules.linear_overview_manhattan.output.manhattan, phenotype='total_bilirubin', pub='.pub', legend='', ext=['svg', 'png']),
         d=expand(rules.linear_overview_manhattan.output.manhattan, phenotype='platelet_count', pub='.pub', legend='.legendless', ext=['svg', 'png']),
-        e=expand(rules.peak_figs.output.barplot),
-        f=expand(rules.peak_figs.output.heatmap),
+        e=rules.peak_figs.output.barplot,
+        f=rules.peak_figs.output.heatmap,
 
 rule figure2:
     input:
-        expand(rules.graph_main_hits.output, ext=['svg', 'png'])
+        expand(rules.graph_main_hits.output, ext=['svg', 'png']),
+
+rule figure3:
+    input:
+        rules.replication_comparison.output.non_white
+
+rule figure4:
+    input:
+        a=rules.cbl_allele_dist.output,
+        b=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='platelet_count', chrom='11', pos='119077000', dosage_fraction_threshold='0.001', residual='', pub='_pub'),
+        c_e=expand(rules.manhattan_conditional.output.manhattan, phenotype='platelet_crit', chrom='11', start='118447267', end='119339135', STRs='_19077000', imputed_SNPs='_119080037', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+        x_d=expand(rules.manhattan_conditional.output.manhattan, phenotype='platelet_crit', chrom='11', start='118447267', end='119339135', STRs='', imputed_SNPs='_119080037', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+        f=rules.plot_stratified_cbl.output,
 
 rule all_main_figures:
     input:
         rules.figure1.input,
-        rules.figure2.input
+        rules.figure2.input,
+        rules.figure3.input,
+        rules.figure4.input,
 
 rule table1:
     input:
@@ -2938,15 +3111,131 @@ rule all_tables:
     input:
         rules.table1.input
 
-rule supplemental_figure_all_susie_finemap_venn:
+rule supplementary_fig_1:
     input:
-        rules.all_susie_finemap_venn_diagram.output
+        rules.pre_imputation_allele_freqs.output.contrast
 
-rule all_supplemental_figures:
+rule supplementary_fig_2:
     input:
-        rules.supplemental_figure_all_susie_finemap_venn.input
+        rules.assoc_figures.output.scatter_svg
 
-rule supplemental_table2:
+rule supplementary_fig_3:
+    input:
+        rules.first_pass_finemapping_comparison.output.purity,
+
+rule supplementary_fig_4:
+    input:
+        rules.first_pass_finemapping_comparison.output.alpha_pip
+
+rule supplementary_fig_5:
+    input:
+        a=rules.first_pass_finemapping_comparison.output.susie_alpha_hist,
+        b=rules.first_pass_finemapping_comparison.output.finemap_pip_hist,
+
+rule supplementary_fig_6:
+    input:
+        rules.first_pass_finemapping_comparison.output.susie_cs_finemap_total_pips
+
+rule supplementary_fig_7:
+    input:
+        a=rules.first_pass_finemapping_comparison.output.comparison_str,
+        b=rules.first_pass_finemapping_comparison.output.comparison_snp,
+
+rule supplementary_fig_8:
+    input:
+        a=rules.all_susie_finemap_venn_diagram.output.STR,
+        b=rules.all_susie_finemap_venn_diagram.output.SNP,
+
+rule supplementary_fig_9:
+    input:
+        a=rules.mpv_finemapping_comparison.output.tol,
+        b=rules.mpv_finemapping_comparison.output.res_var_95,
+        c=rules.mpv_finemapping_comparison.output.res_var_8,
+        d=rules.mpv_finemapping_comparison.output.l_10,
+
+rule supplementary_fig_10:
+    input:
+        rules.finemapping_summarize_concordant_causal_candidate_STRs.output.susie_best_guess,
+
+rule supplementary_fig_11:
+    input:
+        a=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_p_thresh,
+        b=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_mac,
+        c=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_prior_std_dervied,
+        d=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_total_prob,
+        e=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_conv_tol,
+        f=rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_prior_std_low,
+
+rule supplementary_fig_12:
+    input:
+        rules.finemapping_summarize_concordant_causal_candidate_STRs.output.susie_ratio,
+        rules.finemapping_summarize_concordant_causal_candidate_STRs.output.finemap_ratio,
+
+rule supplementary_fig_13:
+    input:
+        rules.replication_comparison.output.white
+
+# TODO supp fig 14 
+
+rule supplementary_fig_16:
+    input:
+        a=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='platelet_crit', chrom='11', pos='119077000', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+        b=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='platelet_count', chrom='11', pos='119077000', dosage_fraction_threshold='0.001', pub='_pub', residual='_residual'),
+
+rule supplementary_fig_17:
+    input:
+        a=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='mean_sphered_cell_volume', chrom='11', pos='119077000', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+        b_x=expand(rules.manhattan_conditional.output.manhattan, phenotype='mean_sphered_cell_volume', chrom='11', start='118812684', end='119333561', STRs='_119077000', imputed_SNPs='', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+
+rule supplementary_fig_19:
+    input:
+        a=expand(rules.manhattan_conditional.output.manhattan, phenotype='eosinophil_percent', chrom='2', start='111588221', end='112546566', STRs='_111878544', imputed_SNPs='', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+        b=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='eosinophil_percent', chrom='2', pos='111878544', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+
+rule supplementary_fig_20:
+    input:
+        a=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='mean_platelet_volume', chrom='17', pos='27842010', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+        b=expand(rules.manhattan_conditional.output.manhattan, phenotype='mean_platelet_volume', chrom='17', start='25885931', end='29975306', STRs='_27842010', imputed_SNPs='', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+
+rule supplementary_fig_21:
+    input:
+        a=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='haematocrit', chrom='14', pos='64714051', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+        b=expand(rules.manhattan_conditional.output.manhattan, phenotype='haemoglobin_concentration', chrom='14', start='64489770', end='64922147', STRs='_64714051', imputed_SNPs='', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+        #c=TODO
+
+rule supplementary_fig_22:
+    input:
+        c=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='red_blood_cell_distribution_width', chrom='17', pos='30469467', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+
+rule supplementary_fig_23:
+    input:
+        a=expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='mean_platelet_volume', chrom='2', pos='106510441', dosage_fraction_threshold='0.001', pub='_pub', residual=''),
+        b=expand(rules.manhattan_conditional.output.manhattan, phenotype='mean_platelet_volume', chrom='2', start='106134024', end='106662741', STRs='_106510441', imputed_SNPs='', PACSIN2_STRs='', pub='.pub', ext=['svg', 'png']),
+
+rule all_supplementary_figures:
+    input:
+        rules.supplementary_fig_1.input,
+        rules.supplementary_fig_2.input,
+        rules.supplementary_fig_3.input,
+        rules.supplementary_fig_4.input,
+        rules.supplementary_fig_5.input,
+        rules.supplementary_fig_6.input,
+        rules.supplementary_fig_7.input,
+        rules.supplementary_fig_8.input,
+        rules.supplementary_fig_9.input,
+        rules.supplementary_fig_10.input,
+        rules.supplementary_fig_11.input,
+        rules.supplementary_fig_12.input,
+        rules.supplementary_fig_13.input,
+        rules.supplementary_fig_16.input,
+        rules.supplementary_fig_17.input,
+        rules.supplementary_fig_19.input,
+        rules.supplementary_fig_20.input,
+        rules.supplementary_fig_21.input,
+        rules.supplementary_fig_22.input,
+        rules.supplementary_fig_23.input,
+
+rule supplementary_table2:
     input:
         expand(rules.generate_regions.output.table, phenotype=phenotypes.phenotypes_in_use),
     output:
@@ -2956,15 +3245,15 @@ rule supplemental_table2:
     shell:
         'signals/regions_supp_table.py'
 
-rule supplemental_table4:
+rule supplementary_table4:
     input:
         # the README for this table was manually written
         rules.causal_STR_candidates_table.input
 
-rule all_supplemental_tables:
+rule all_supplementary_tables:
     input:
-        rules.supplemental_table2.output,
-        rules.supplemental_table4.input
+        rules.supplementary_table2.output,
+        rules.supplementary_table4.input
 
 '''
 # TODO this isn't completely reflective of the published table
@@ -2975,25 +3264,6 @@ rule all_for_publication:
     input:
         rules.all_main_figures.input,
         rules.all_tables.input,
-        rules.all_supplemental_figures.input,
-        rules.all_supplemental_tables.input,
+        rules.all_supplementary_figures.input,
+        rules.all_supplementary_tables.input,
 
-
-
-#----------------- testing -------------------
-
-rule test:
-    output:
-        'foo'
-    resources:
-        time='00:50:00',
-    run:
-        print(resources.time)
-        time.sleep(10)
-        assert False
-
-rule test2:
-    output:
-        bar='bar{asdf}'
-    params:
-        foo = lambda wildcards, output: print(output.bar)
