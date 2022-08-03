@@ -11,8 +11,11 @@
 # see snakemake --help for --cluster
 # this is then passed to slurm, which replaces %j with jobid
 # https://support.pawsey.org.au/documentation/display/US/Customize+the+SLURM+output+file+name
-# all the resourcem may be modified for different runs
+# all the resources may be modified for different runs
 # parsable needed for status-sacct
+
+# This config is specific to running these analyses on the Expanse cluster
+# managed by the San Diego Supercomputing Center
 cluster:
   mkdir -p logs/{rule} &&
   sbatch
@@ -22,7 +25,7 @@ cluster:
     --nodes 1
     --job-name={rule}-{wildcards}
     --output=logs/{rule}/{rule}-$(echo {wildcards} | sed -e 's_/_<slash>_g')-%j.out
-    $(if (({resources.attempt} != 1)) ; then echo '--mail-type FAIL --mail-user jbmargoliash@ucsd.edu' ; fi)
+    $(if (({resources.attempt} != 1)) ; then echo '--mail-type FAIL --mail-user jonathan.margoliash@gmail.com' ; fi)
     --ntasks-per-node={resources.threads}
     --mem={resources.mem_gb}G
     --time=$(if [ "$PARTITION" != debug ] ; then echo {resources.time} ; else echo "00:29:30" ; fi)
@@ -33,14 +36,11 @@ default-resources:
   - attempt=0 # this doesn't correspond to the retry attempt. That needs to be manually set in the snakefile
   # every job must specify time in the 'hh:mm:ss' format (quotes required)
 restart-times: 1
-max-jobs-per-second: 30 #too many?
+max-jobs-per-second: 30
 max-status-checks-per-second: 10
 latency-wait: 180
 resources: mem_gb=15000
 jobs: 500
-#resources: mem_gb=8192
-#jobs: 4096 #this is required, but we want snakemake to be memory bound, not job bound, so set it
-           #to the maximal amount
 keep-going: True
 rerun-incomplete: True # https://groups.google.com/g/snakemake/c/fbQbnD8yYkQ?pli=1
 printshellcmds: True

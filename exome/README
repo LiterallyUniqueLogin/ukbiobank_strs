@@ -1,45 +1,14 @@
-ukb...enc - the enc file from the UKB application which contains the permissions
-   to download the exome data.
-   See https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=AccessingData for details.
-k...key - the key used to authenticate the enc file
-ukb...enc_ukb - the unpacked enc file. Generated via
-   ../ukb_utilities/ukbunpack ukb...enc k...key
-ukb...html - a description of the bulk data we have access to through the enc file
+Old code for a side analysis that was never completed.
 
+fe_crams/ - used to contain ~30K CRAM files from the FE WES pipeline. Files have since been deleted
+to save space. CRAM files can now only be accessed through the UKB research access pipeline
+and so any new analysis of this data needs to be done there.
+fe_cram_str_calls/ - STR calls on ~30K CRAMs from WES from the FE pipeline.
 bed_files/ - descriptions of the regions of the genome that were used in the WES and/or had alt-contigs
-
-spb_vcfs/ contains:
-* the spb exome files (data fields 23176 and 23177) for 
-  the first ~50k participants.
-  These are named $ID.tbi and $ID.vcf.gz for each numeric ID
-  Each VCF includes all chromosomes
-* Byproducts f${ID}_23176_0_0.lis and f${ID}_23177_0_0.lis
-  for each of those downloads
-* output/ - output files for pbs and dask jobs
-
-fe_vcfs contains the same as spb_vcfs except:
-* the fields are 23161 and 23162 respectively
-* only 10ppts of data
-
-fe_plink contains the plink representation of the calls in the fe pipelines in the usual
-.bed, .bim and .fam file. The .bed file contains all the calls for all the samples across all chromosomes.
-
-fetch_bulk_gvcfs.py - python script using dask to invoke the ukb downloader one 
-   file at a time
-launch_fetch_bulk_spb_gvcfs.pbs - batch script to launch a job for the python dask script
-   for downloading all the spb vcf files
-launch_fetch_10_bulk_fe_gvcfs.pbs - batch script to launch a job for the python dask script
-   for downloading 10 fe vcf files
-confirm_spb_exome_download.pbs - make sure none of the downloads are truncated
-spb_gvcfs.bulk - one line for each file to download
-fe_gcvfs.10.bulk - same as spb_gvcfs.bulk, but for the fe pipeline and only 10 ppts
-fe_cram_fields.txt - contains the field names of the cram files we wish to download
-fe_cram.bulk - contains the data we want to download
-    ../ukb_utilities/ukbconv ukb...enc_ukb bulk -ife_cram_fields.txt
-    mv ukb...bulk fe_cram.bulk
-    rm ukb...log
 
 Notes:
 From the supplemental methods listed here: https://www.biorxiv.org/content/10.1101/572347v1.supplementary-material
 it seems that coverage was required to be at least 20x for 85% of target bp, which means
 that the minimum average total coverage would be 17x
+
+
