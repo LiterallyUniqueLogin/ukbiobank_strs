@@ -166,6 +166,18 @@ def get_p_val_heatmap(peaks):
             snp_ps.append(p2)
             str_ps.append(p1)
 
+    '''
+    for thresh in 50, 100:
+        print(sum((
+            ((np.array(str_ps) >= thresh*.8) & (np.array(snp_ps) >= thresh*.8))
+            [(np.array(str_ps) >= thresh) | (np.array(snp_ps) >= thresh)]
+        )))
+        print(sum(
+            (np.array(str_ps) >= thresh) | (np.array(snp_ps) >= thresh)
+        ))
+    exit()
+    '''
+
     snp_ps = np.array(snp_ps)
     str_ps = np.array(str_ps)
 

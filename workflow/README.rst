@@ -7,17 +7,18 @@ as a set of discrete tasks with named input and output files, infers the depende
 of those tasks on each other and provides a mechanism for executing those tasks
 on the cluster without reexecuting already completed worked.
 
-The snakefile proivdes a decent look at the organization of the project
+The snakefile proivdes a decent look at the organization of all the analyses in the project
 
 Configuring Snakemake
 ---------------------
 
-I am using 
-``$UKB/workflow/profile/config.yaml`` for setting the default argument values
-to the ``snakemake`` command. This uses the snakemake functionality described in
-`profile configuration <https://snakemake.readthedocs.io/en/stable/executing/cli.html#profiles>`_
+I am using the config.yaml for setting the default argument values
+to the ``snakemake`` command for running on the San Diego Supercomputer Center's Expanse cluster.
+See that file for more details. This uses the snakemake profile functionality described in
+`profile configuration <https://snakemake.readthedocs.io/en/stable/executing/cli.html#profiles>`_ That file
+also uses the status-sacct.sh script for monitoring SLURM jobs.
 
-To execute a Snakemake target with both of those configurations, use
+To execute a Snakemake target with that configuration, use
    
 .. code:: shell
 
@@ -62,4 +63,17 @@ input and output paths are also relative to the invocation directory and not
 the snakefile directory. Note: the target of a script: option is relative to
 the snakefile and not the current working directory of the snakemake command!
 For this reason, I'm using shell: and not script: .
+
+Phenotype Configuration
+-----------------------
+The phenotypes.py file is used to define relevant aspects of the phenotypes that
+were analyzed in this project or other side analyses. This is referred to directly
+by the snakefile
+
+Project Environment
+===================
+`envs/` contains yaml files describing the conda environments used in this project.
+software_versions_paper_submission.txt contains a manually curated list of all pieces
+of software used for the first paper submission. This was created in part with the
+the conda_pkg_versions.sh script
 

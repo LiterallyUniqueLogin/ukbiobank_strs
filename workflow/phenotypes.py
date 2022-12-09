@@ -1,3 +1,7 @@
+#This defines relevant aspects of the phenotypes that
+#were analyzed in this project or other side analyses.
+#This is referred to directly by the snakefile
+
 class PhenotypeDescription:
     def __init__(
             self,
@@ -10,7 +14,6 @@ class PhenotypeDescription:
             max_omit = None,
             categorical_covars = [],
             previous_STR_findings = [], # format ("chr:pos", 'url')
-            previous_SNP_findings = [], # unsure of format yet
             exciting_STR_hits= []) :# format "chr:pos"
         self.data_field_id = data_field_id
         self.unit = unit
@@ -20,7 +23,6 @@ class PhenotypeDescription:
         self.max_omit = max_omit
         self.categorical_covars = categorical_covars.copy()
         self.previous_STR_findings = previous_STR_findings.copy()
-        self.previous_SNP_findings = previous_SNP_findings.copy()
         self.exciting_STR_hits = exciting_STR_hits.copy()
 
 pheno_descs = {
@@ -527,6 +529,8 @@ serum_biomarkers['glycated_haemoglobin'] = PhenotypeDescription(
 
 pheno_descs.update(serum_biomarkers)
 
+# define the phenotypes_in_use variable and helper functions for access by importing scripts
+# importing scripts also may accesss pheno_descs directly
 def is_binary(phenotype):
     return 'binary' in pheno_descs[phenotype].unit
 
@@ -536,26 +540,8 @@ def is_haematological(phenotype):
 def is_serum_biomarker(phenotype):
     return phenotype in serum_biomarkers
 
-'''
-phenotypes_in_use = {
-    'eosinophil_count',
-    'eosinophil_percent',
-    'haematocrit',
-    'haemoglobin_concentration',
-    #'hdl_cholesterol',
-    'ldl_cholesterol_direct',
-    'lymphocyte_count',
-    'lymphocyte_percent',
-    'neutrophil_count',
-    'neutrophil_percent',
-    'platelet_count',
-    'platelet_crit',
-    'red_blood_cell_count',
-    'total_bilirubin',
-    'white_blood_cell_count',
-}
-'''
 phenotypes_in_use = set(
+    # reticulocytes were not analyzed in the main analysis
     key for key in haematological_phenotypes if 'reticulocyte' not in key
 )
 phenotypes_in_use = phenotypes_in_use.union(serum_biomarkers)

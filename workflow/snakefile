@@ -16,18 +16,16 @@ import polars as pl
 import python_array_utils as utils
 import phenotypes
 
-chr_lens = np.genfromtxt(
-    'misc_data/genome/chr_lens.txt',
-    usecols=[1],
-    skip_header=1,
-    dtype=int
-)
-
-str_imputation_run_name = 'first_pass'
 
 # TODO
 # add rule for singly_, confidently_ finemapped results
 # repeat_units.tab
+
+################## Snakefile config and helper functions ############################
+
+str_imputation_run_name = 'first_pass'
+other_ethnicities = ['black', 'white_other', 'irish', 'south_asian', 'chinese']
+all_ethnicities = other_ethnicities + ['white_brits']
 
 wildcard_constraints:
     chrom='[0-9]+',
@@ -72,7 +70,7 @@ def get_subpop_input(wildcards):
 
 rule decompress_field:
     input:
-        # TODO temp
+        # Remove ancient if these are regenerated
         ancient('main_dataset/raw_data/ukb46781.enc_ukb'),
         ancient('main_dataset/raw_data/ukb46782.enc_ukb')
     output:
@@ -82,9 +80,6 @@ rule decompress_field:
         time='05:00:00'
     shell:
         "main_dataset/decompress_trait.py {wildcards.field_name} {wildcards.field_id} "
-
-other_ethnicities=['black', 'white_other', 'irish', 'south_asian', 'chinese']
-all_ethnicities=other_ethnicities+['white_brits']
 
 rule ethnic_sample_lists:
     input:
@@ -217,35 +212,6 @@ rule load_phenotype:
         '{params.unit_param} '
         '{params.binary_flag} '
         '{params.categorical_flag} '
-
-# TODO update for ethnicity and subpop
-rule plot_phenotype_by_sex:
-    input:
-        "traits/shared_covars/shared_covars.npy",
-        "traits/phenotypes/{phenotype}.npy",
-        "traits/phenotypes/{phenotype}_unit.txt"
-    output:
-        "traits/phenotypes/{phenotype}_distribution_by_sex.png"
-    resources:
-        time='24:00:00',
-        threads=5,
-        mem_gb=10
-    shell:
-        'traits/plot_phenotype.py {wildcards.phenotype} sex'
-
-# TODO update for ethnicity and subpop
-rule plot_phenotype_by_age:
-    input:
-        "traits/phenotypes/{phenotype}.npy",
-        "traits/phenotypes/{phenotype}_unit.txt"
-    output:
-        "traits/phenotypes/{phenotype}_distribution_by_age.png"
-    resources:
-        time='24:00:00',
-        threads=15,
-        mem_gb=30
-    shell:
-        'traits/plot_phenotype.py {wildcards.phenotype} age'
 
 #subset to unrelated samples
 rule subset_samples_for_phenotype:
@@ -386,6 +352,13 @@ def concatenate_csvs(output_file, input_files):
     shutil.move(output_file + '.temp', output_file)
 
 def association_regions(region_len):
+    chr_lens = np.genfromtxt(
+        'misc_data/genome/chr_lens.txt',
+        usecols=[1],
+        skip_header=1,
+        dtype=int
+    )
+
     regions = []
     for chrom in range(1, 23):
         chr_len = chr_lens[chrom-1]
@@ -2164,6 +2137,7 @@ rule str_intersects_feature:
             '> {output[0]}'
          )
 
+# TODO don't rely on exciting STR hits
 checkpoint summary_table:
     input:
         'workflow/phenotypes.py',
@@ -2955,6 +2929,7 @@ rule export_phenotype_hit_highlights:
             link_file(file_, f'{out_dir}/{outfname}')
         shell(f'touch {output.complete}')
 
+# TODO don't rely on exciting STR hits
 def curated_hit_highlights(wildcards):
     files = []
     for phenotype in phenotypes.phenotypes_in_use:
@@ -3176,6 +3151,10 @@ rule supplementary_fig_13:
         rules.replication_comparison.output.white
 
 # TODO supp fig 14 
+
+rule supplementary_fig_15_addition:
+    input:
+        expand(rules.plot_ethnic_str_locus.output.svg, subpop_prefix='', subpop='', ethnicity='white_brits', phenotype='total_bilirubin', chrom='3', pos='170727702', dosage_fraction_threshold='0.001', pub='_pub', residual='')
 
 rule supplementary_fig_16:
     input:
