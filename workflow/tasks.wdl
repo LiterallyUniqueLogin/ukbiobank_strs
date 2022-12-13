@@ -23,6 +23,7 @@ task ethnic_sample_lists {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/ethnicity.py"
+    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File white_brits_sample_list # sample_qc/common_filters/ethnicity_white_brits.sample
     File data_showcase_ethnicity_self_report # 21000
