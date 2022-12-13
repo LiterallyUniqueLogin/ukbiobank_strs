@@ -1,4 +1,4 @@
-version 1.1
+version 1.0
 
 # files not generated:
 # anything prefixed with data_showcase
@@ -21,7 +21,8 @@ version 1.1
 
 task ethnic_sample_lists {
   input {
-    File script # sample_qc/scripts/ethnicity.py
+    String script_dir
+    File script = "~{script_dir}/sample_qc/scripts/ethnicity.py"
 
     File white_brits_sample_list # sample_qc/common_filters/ethnicity_white_brits.sample
     File data_showcase_ethnicity_self_report # 21000
@@ -58,18 +59,19 @@ task ethnic_sample_lists {
 
 task qced_sample_list {
   input {
-     File script #sample_qc/scripts/combine.py
+    String script_dir
+    File script = "~{script_dir}/sample_qc/scripts/combine.py"
 
-     File unqced_sample_list # sample_qc/common_filters/ethnicity/{ethnicity}.sample
+    File unqced_sample_list # sample_qc/common_filters/ethnicity/{ethnicity}.sample
 
-     # these may also be not-simple sample lists
-     # if so, ignore the extra columns
-     Array[File]+ ssample_lists_to_filter  # sample_qc/common_filters/remove/*sample
+    # these may also be not-simple sample lists
+    # if so, ignore the extra columns
+    Array[File]+ ssample_lists_to_filter  # sample_qc/common_filters/remove/*sample
 
-     File? subpop_ssample_list # sample_qc/subpops/{subpop}.txt
+    File? subpop_ssample_list # sample_qc/subpops/{subpop}.txt
   }
 
-  outfname = 'qced.samples'
+  String outfname = 'qced.samples'
 
   output {
      File qced_sample_list = outfname # sample_qc/(subpop_)?runs/({subpop}/)?{ethnicity}/no_phenotype/combined.sample
@@ -80,8 +82,8 @@ task qced_sample_list {
        ~{outfname}
        discard
        ~{unqced_sample_list}
-       ~{sep(' ', ssample_lists_to_filter)}
-       ~{"--subpop " + lsubpop_ssample_list}
+       ~{sep=' ' ssample_lists_to_filter}
+       ~{"--subpop " + subpop_ssample_list}
   >>>  
 
   runtime {
@@ -91,17 +93,23 @@ task qced_sample_list {
 }
 
 task load_shared_covars {
-  # TODO this task needs to not load files from hardcoded locations
   input {
-    File script # traits/load_shared_covars.py
+    String script_dir
+    File script = "~{script_dir}/traits/load_shared_covars.py"
+
+    File fam_file
+    File sample_qc_file # TODO replace this with PCs data field 22009
+    File assessment_ages_file
   }
 
   output {
-
+    File shared_covars = "shared_covars.npy"
+    File covar_names = "covar_names.txt"
+    File assessment_ages = "assessment_ages.npy"
   }
 
   command <<<
-    ~{script}
+    ~{script} . ~{fam_file} ~{sample_qc_file} ~{assessment_ages_file}
   >>>
 
   runtime {
@@ -110,3 +118,32 @@ task load_shared_covars {
     dx_timeout: "15m"
   }
 }
+
+#task load_phenotype {
+#  input {
+#    String script_dir
+#    # File script = "~{script_dir}/traits/"
+#
+#    File qced_sample_list
+#    String ethnicity #TODO is this needed if we're passing in files?
+#    String phenotype #TODO is this needed if we're passing in files?
+#    Int data_field_id
+#    # TODO ...
+#  }
+#
+#  output {
+#    File data = "phenotype.npy"
+#  }
+#
+#  command <<<
+#    ~{script}
+#      phenotype
+#      ~{qced_sample_list}
+#      ~{ethnicity}
+#      ~{phenotype}
+#  >>>
+#
+#  runtime {
+#
+#  }
+#}
