@@ -6,45 +6,67 @@ import os
 import subprocess as sp
 import sys
 
-ukb = os.environ['UKB']
-
 parser = argparse.ArgumentParser()
-parser.add_argument('field_name')
+parser.add_argument('outfname') # exclude suffix
 parser.add_argument('data_field_id')
+parser.add_argument('ukbconv')
+parser.add_argument('encoding')
+parser.add_argument('--fields-files', nargs='+')
+parser.add_argument('--enc-files', nargs='+')
 
 args = parser.parse_args()
 
-field_name = args.field_name
+assert len(args.fields_files) == len(args.enc_files)
+assert len(args.fields_files) > 0
+
+outfname = args.outfname
 data_field_id = args.data_field_id
 
-def enc_filename(data_request_id):
-    return f'{ukb}/main_dataset/raw_data/fields{data_request_id}.ukb'
+# ukbconv doesn't allow long file names (stupidly) so
+# change them from absolute to relative path names,
+# by stripping shared prefixes, making them shorter
+cwd = os.getcwd()
+updir = cwd.rsplit('/', 1)[0]
+for file in args.enc_files + [args.encoding]:
+    print(updir)
+    print(file)
+    assert file[:len(updir)] == updir
 
-data_request_id = None
-for data_request_id_attempt in {46781, 46782}:
-    with open(enc_filename(data_request_id_attempt)) as fields_file:
-        fields = ' '.join(fields_file.readlines()).replace('\n', ' ')
-        if f' {data_field_id} ' in fields:
-            data_request_id = data_request_id_attempt
+encoding = '../' + args.encoding[len(updir):]
+enc_files = ['../' + file[len(updir):] for file in args.enc_files]
+
+success = False
+for fields_file, enc_file  in zip(args.fields_files, enc_files):
+    with open(fields_file) as fields:
+        text = ' '.join(fields.readlines()).replace('\n', ' ')
+        if f' {data_field_id} ' in text:
+            success = True
             break
-if data_request_id is None:
+
+if not success:
     raise ValueError(f"Couldn't find a data basket with data field id {data_field_id}")
 
-with open(f'{ukb}/main_dataset/extracted_data/{field_name}_{data_field_id}_README.txt', 'w') as readme:
+with open(f'{outfname}_README.txt', 'w') as readme:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
     readme.write(
         f"Run date: {today}\n"
         f'Loading data field ID {data_field_id} from data request '
-        f'{data_request_id} located at {ukb}/main_dataset/raw_data/ukb{data_request_id}.enc_ukb .'
-        f"\nNaming this data field '{field_name}'. "
+        f'located at {enc_file}.'
+        f"\nWriting this out to '{outfname}'. "
     )
 
+if '/' not in outfname:
+    dir_ = '.'
+    fname = outfname
+else:
+    dir_, fname = outfname.rsplit('/', 1)
+
 out = sp.run(
-    f'cd {ukb}/main_dataset/extracted_data || {{ echo "Can\'t cd to {ukb}/main_dataset/extracted_data" ; exit 1 ; }} ; '
-    f'../../ukb_utilities/ukbconv ../raw_data/ukb{data_request_id}.enc_ukb txt '
-    '-e../../ukb_utilities/encoding.ukb '
+    f'{args.ukbconv} {enc_file} txt '
+    f'-e{encoding} '
     f'-s{data_field_id} '
-    f'-o{field_name}_{data_field_id}',
+    f'-o{fname} && '
+    f'mv {fname}.txt {dir_}',
     shell=True,
     capture_output=True
 )

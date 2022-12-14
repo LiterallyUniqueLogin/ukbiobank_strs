@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import datetime
 import os
 import os.path
@@ -8,9 +9,14 @@ import numpy as np
 
 import python_array_utils as utils
 
-ukb = os.environ['UKB']
-
 def load_covars():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('outdir')
+    parser.add_argument('fam_file')
+    parser.add_argument('sample_qc_file')
+    parser.add_argument('assessment_ages_file')
+    args = parser.parse_args()
+
     """
     Load the sex and population PC covariates. Loads ages at various
     assessments into a separate array
@@ -22,12 +28,12 @@ def load_covars():
     If interested in the source of this data, read the READMEs in the
     directories of the loaded files.
     """
-    with open(f'{ukb}/traits/shared_covars/README.txt', 'w') as readme, \
-            open(f'{ukb}/traits/shared_covars/covar_names.txt', 'w') as covar_names:
+    with open(f'{args.outdir}/README.txt', 'w') as readme, \
+            open(f'{args.outdir}/covar_names.txt', 'w') as covar_names:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
 
-        floc = f'{ukb}/microarray/ukb46122_cal_chr1_v2_s488282.fam'
+        floc = args.fam_file
         cols = (0, 4)
         readme.write(
             f"Loading participant ID index and sex covariate. File: {floc}, cols: {cols}\n"
@@ -42,7 +48,7 @@ def load_covars():
         readme.write(f"{ids_and_sex.shape[0]} total participants\n")
         covar_names.write('sex\n')
 
-        floc = f'{ukb}/misc_data/EGA/ukb_sqc_v2.txt'
+        floc = args.sample_qc_file
         cols = list(range(25, 65))
 
         [covar_names.write(f"pc{col}\n") for col in range(1, 41)]
@@ -73,7 +79,7 @@ def load_covars():
         covars = (covars - covars.mean(axis=0))/covars.std(axis=0)
         data[:, 1:] = covars
 
-        np.save(f'{ukb}/traits/shared_covars/shared_covars.npy', data)
+        np.save(f'{args.outdir}/shared_covars.npy', data)
 
         # Age will be included as a covariate for all dependent variables
         # to prevent confounding.
@@ -85,7 +91,7 @@ def load_covars():
         # As such, each measured dependent variable needs to specify which assessments
         # the age should be drawn from for each participant.
         # because of that, ages are saved as a separate file
-        age_file_name = f'{ukb}/main_dataset/extracted_data/assessment_ages_21003.txt'
+        age_file_name = args.assessment_ages_files
         readme.write(
             f"Loading ages at assessments into assessment_ages.npy from file: {age_file_name}\n"
         )
@@ -97,7 +103,7 @@ def load_covars():
                 delimiter='\t'
             )[:, 1:-1]
 
-        np.save(f'{ukb}/traits/shared_covars/assessment_ages.npy', assessment_age)
+        np.save(f'{args.outdir}/assessment_ages.npy', assessment_age)
 
 
 if __name__ == "__main__":

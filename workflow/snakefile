@@ -79,7 +79,13 @@ rule decompress_field:
     resources:
         time='05:00:00'
     shell:
-        "main_dataset/decompress_trait.py {wildcards.field_name} {wildcards.field_id} "
+        'main_dataset/decompress_trait.py '
+        'main_dataset/extracted_data/{field_name}_{data_field_id} '
+        '{wildcards.field_id} '
+        'ukb_utilities/ukbconv '
+        'ukb_utilities/encoding.ukb '
+        '--fields-files main_dataset/raw_data/fields46781.ukb main_dataset/raw_data/fields46782.ukb '
+        '--enc-files main_dataset/raw_data/ukb46781.enc_ukb main_dataset/raw_data/ukb46782.enc_ukb '
 
 rule ethnic_sample_lists:
     input:
