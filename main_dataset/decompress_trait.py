@@ -61,12 +61,17 @@ if '/' not in outfname:
 else:
     dir_, fname = outfname.rsplit('/', 1)
 
-out = sp.run(
+command = (
     f'{args.ukbconv} {enc_file} txt '
     f'-e{encoding} '
     f'-s{data_field_id} '
-    f'-o{fname} && '
-    f'mv {fname}.txt {dir_}',
+    f'-o{fname} '
+)
+if dir_ != '.':
+    command += f'&& mv {fname}.txt {dir_}'
+
+out = sp.run(
+    command,
     shell=True,
     capture_output=True
 )

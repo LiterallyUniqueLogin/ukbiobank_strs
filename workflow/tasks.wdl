@@ -82,7 +82,7 @@ task qced_sample_list {
     File? subpop_ssample_list # TODO move this to expanse workflow sample_qc/subpops/{subpop}.txt
   }
 
-  String outfname = 'qced.samples'
+  String outfname = "qced.samples"
 
   output {
      File qced_sample_list = outfname # sample_qc/(subpop_)?runs/({subpop}/)?{ethnicity}/no_phenotype/combined.sample
@@ -140,6 +140,8 @@ task load_shared_covars {
 #    String ethnicity #TODO is this needed if we're passing in files?
 #    String phenotype #TODO is this needed if we're passing in files?
 #    Int data_field_id
+#
+#    Boolean binary = false
 #    # TODO ...
 #  }
 #
