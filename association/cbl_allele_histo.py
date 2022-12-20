@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os
+import argparse
 
 import bokeh.io
 import bokeh.models
@@ -13,16 +13,21 @@ from statsmodels.stats.weightstats import DescrStatsW
 
 import sample_utils
 
-ukb = os.environ['UKB']
+parser = argparse.ArgumentParser()
+parser.add_argument('outdir')
+parser.add_argument('str_vcf_chrom_11')
+parser.add_argument('specific_alleles_file')
+
+args = parser.parse_args()
 
 chrom = 11
 pos = 119077000
 repeat_len = 3
-var = next(cyvcf2.VCF(f'{ukb}/str_imputed/runs/first_pass/vcfs/annotated_strs/chr{chrom}.vcf.gz')(f'{chrom}:{pos}'))
+var = next(cyvcf2.VCF(args.str_vcf_chrom_11)(f'{chrom}:{pos}'))
 lens = sorted(np.unique([round(len(var.REF)/repeat_len)] + [round(len(allele)/repeat_len) for allele in var.ALT]))
 
 imperfect_alleles = pl.read_csv(
-    f'{ukb}/association/specific_alleles.tab',
+    args.specific_alleles_file,
     sep='\t'
 ).filter(
     (pl.col('pos') == pos) & (pl.col('chrom') == chrom) & (pl.col('name') == 'second C to T')
@@ -119,5 +124,5 @@ fig.vbar_stack(
 
 fig.legend.label_text_font_size = '30px'
 
-bokeh.io.export_png(fig, filename=f'{ukb}/association/allele_plots/cbl.png')
-bokeh.io.export_svg(fig, filename=f'{ukb}/association/allele_plots/cbl.svg')
+bokeh.io.export_png(fig, filename=f'{args.outdir}/cbl.png')
+bokeh.io.export_svg(fig, filename=f'{args.outdir}/cbl.svg')

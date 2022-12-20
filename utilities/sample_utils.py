@@ -15,6 +15,7 @@ def get_all_samples():
     with open(hardcall_snp_samples_fname) as hardcall_snp_samples_file:
         hardcall_snp_samples = np.array([line.split()[0] for line in hardcall_snp_samples_file][2:], dtype=int).reshape(-1, 1)
 
+    # TODO this seems wrong
     compare_idxs = (hardcall_snp_samples > 0) & (imp_snp_samples > 0)
     assert np.all(hardcall_snp_samples[compare_idxs] == imp_snp_samples[compare_idxs])
     return hardcall_snp_samples

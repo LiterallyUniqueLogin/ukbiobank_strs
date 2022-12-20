@@ -64,7 +64,7 @@ def clean_len_allele_pairs(d):
 def round_vals(d, precision):
     return {key: round(val, precision) for key, val in d.items()}
 
-def load_strs(imputation_run_name: str,
+def load_strs(vcf_fname: str,
               region: str,
               samples: np.ndarray,
               details: bool = True,
@@ -78,8 +78,7 @@ def load_strs(imputation_run_name: str,
 
     Parameters
     ----------
-    imputation_run_name:
-        which imputation run to load genotypes from?
+    vcf_fname:
     region:
         chr:start-end
     samples:
@@ -127,8 +126,6 @@ def load_strs(imputation_run_name: str,
 
     chrom, region_poses = region.split(':')
     region_start, _ = [int(pos) for pos in region_poses.split('-')]
-    vcf_fname = (f'{ukb}/str_imputed/runs/{imputation_run_name}/'
-                f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
     vcf = cyvcf2.VCF(vcf_fname)
 
     if details:
@@ -274,74 +271,9 @@ def load_strs(imputation_run_name: str,
             locus_details
         )
 
-def filtered_microarray_snps(region):
-    """
-    Iterate over a region returning genotypes at SNP loci.
-
-    Returns microarray measured SNPs that have been QCed and phased
-    (i.e. the ones in the bgen files) which does not include
-    all microarray measured SNPs
-
-    Yields tuples
-	(genotypes, chrom, pos, alleles, locus_filtered)
-    currently, locus_filtered is always None
-
-    genotypes are pairs of indicators:
-        0: 1st allele
-        1: 2nd allele
-    note that bgen files don't distinguish between reference and alt
-    alleles. 1st allele may or may not be the reference. (This
-    is different than imputed SNPs!)
-
-    Expecting all samples in the input file to have 0 or 1 probs
-    so not filtering any calls
-
-    No filtering for samples with rare genotypes
-    Loci with only single genotypes remaining are returned - it is up to
-    calling code to filter these out
-    """
-    chrom, posses = region.split(':')
-    start, end = posses.split('-')
-    start = int(start)
-    end = int(end)
-    bgen_fname = f'{ukb}/microarray/ukb_hap_chr{chrom}_v2.bgen'
-    bgen = bgen_reader.open_bgen(bgen_fname,
-                                 allow_complex=True,
-                                 verbose=False)
-
-    for variant_num, pos in enumerate(bgen.positions):
-        if pos < start:
-            continue
-        if pos > end:
-            break
-
-        probs, missing, ploidy = bgen.read(variant_num,
-                                           return_missings=True,
-                                           return_ploidies=True)
-
-        # make sure the record looks as expected
-        assert np.all(np.logical_or(probs == 0, probs == 1))
-        assert probs.shape[2] == 4
-        assert bgen.phased[variant_num]
-        assert np.all(ploidy == 2)
-        assert not np.any(missing)
-
-        # Since all alleles are bialleleic, the genotype can
-        # be written as the presence or absence of the second allele
-        # for each haplotype for each participant
-        reformatted_gts = probs[:, 0, [1,3]]
-
-        yield (
-            reformatted_gts,
-            chrom,
-            pos,
-            bgen.allele_ids[variant_num],
-            None,
-            None
-        )
-
-
-def load_imputed_snps(region: str,
+def load_imputed_snps(bgen_fname: str,
+                      mfi_fname: str,
+                      region: str,
                       samples: np.ndarray,
                       info_thresh: Optional[float] = None,
                       apply_filter: bool = True,
@@ -356,6 +288,8 @@ def load_imputed_snps(region: str,
 
     Parameters
     ----------
+    bgen_fname:
+    mfi_fname:
     region:
         chr:start-end
     samples:
@@ -414,8 +348,6 @@ def load_imputed_snps(region: str,
 
     chrom, posses = region.split(':')
     start, end = tuple(int(val) for val in posses.split('-'))
-    bgen_fname = f'{ukb}/array_imputed/ukb_imp_chr{chrom}_v3.bgen'
-    mfi_fname = f'{ukb}/array_imputed/ukb_mfi_chr{chrom}_v3.txt'
     bgen = bgen_reader.open_bgen(bgen_fname,
                                  verbose=False,
                                  allow_complex=True)

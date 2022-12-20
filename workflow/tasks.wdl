@@ -262,7 +262,7 @@ task unrelated_samples_for_phenotype {
     }
 
     command <<<
-      ~{script} out.samples ~{kinship} ~{pheno_data} ~{if is_binary then "--binary-pheno" else ""}
+      ~{script} out.samples ~{kinship} ~{pheno_data} ~{PRIMUS_executable} ~{if is_binary then "--binary-pheno" else ""}
     >>>
   
   runtime {
@@ -281,15 +281,118 @@ task transform_trait_values {
   }
 
   output {
-    File 
+    File README = "out_README.txt"
+    File data = "out.npy"
   }
 
   command <<<
-    ~{script} . ~{pheno_data} ~{unrelated_samples_for_phenotype} ~{if is_binary then "--binary" else ""}
+    ~{script} out ~{pheno_data} ~{unrelated_samples_for_phenotype} ~{if is_binary then "--binary" else ""}
   >>>
 
   runtime {
     shortTask: true
     dx_timeout: "5m"
+  }
+}
+
+######## STR calling and QC ###########
+
+# cbl allele dist
+task fig_4a {
+  input {
+    String script_dir = "association/cbl_allele_histo.py'"
+    File script = "~{script_dir}/association/cbl_allele_histo.py"
+    # TODO sample_utils
+
+    File str_vcf_chr_11
+    File specific_alleles
+  }
+
+  output {
+    File png = "cbl.png"
+    File svg = "cbl.svg"
+  }
+
+  command <<<
+    ~{script} . ~{str_vcf_chr_11} ~{specific_alleles}
+  >>>
+
+  runtime {
+    shortTask: true
+    dx_timeout: "10m"
+  }
+}
+
+########### Running and plotting associations #############
+
+task str_spot_test {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/my_regional_gwas.py"
+    File weighted_binom_conf = "~{script_dir}/association/weighted_bionm_conf.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
+    File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
+
+    File str_vcf
+    File shared_covars # from task
+    File untransformed_phenotype # from task
+    File transformed_phenotype # from task
+    Boolean is_binary
+    Int chrom
+    Int pos
+    String phenotype_name
+  }
+
+  output {
+    File README = "README.txt"
+    File data = "result.tab"
+  }
+
+  # TODO remove:
+  # project temp
+  # sample utils issues
+  # trtools
+  command <<<
+    ~{script} \
+      ~{output.README} \
+      strs \
+      ~{phenotype_name} \
+      --readme \
+      --vcf-file ~{str_vcf} \
+      ~{if is_binary then "--binary logistic" else ""}
+    ~{script} \
+      ~{output.data} \
+      strs \
+      ~{phenotype_name} \
+      --region ~{chrom}:~{pos}-~{pos} \
+      --pheno-and-covars ~{transformed_phenotype} \
+      --shared-covars ~{shared_covars} \
+      --untransformed-phenotypes ~{untransformed_phenotype} \
+      --vcf-file ~{str_vcf} \
+      ~{if is_binary then "--binary logistic" else ""}
+  >>>
+
+  runtime {
+    shortTask: true
+    dx_timeout: "20m"
+  }
+}
+
+task {
+  input {
+    String script_dir
+    File script = "~{script_dir}/"
+  }
+
+  output {
+
+  }
+
+  command <<<
+    ~{script}
+  >>>
+
+  runtime {
+    dx_timeout: ""
   }
 }

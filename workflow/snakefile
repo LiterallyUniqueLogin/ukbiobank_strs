@@ -4,6 +4,7 @@ import glob
 import itertools
 import json
 import pathlib
+import os
 import os.path
 import shutil
 import tempfile
@@ -240,6 +241,7 @@ rule subset_samples_for_phenotype:
         '{output.samples} '
         '{input.kinship_file} '
         '{input.pheno_file} '
+        f'{os.environ["SOURCE"]}/PRIMUS_v1.9.0/bin/run_PRIMUS.pl '
         '{params.binary_flag} '
 
 rule transform_phenotype_subset:
@@ -319,14 +321,17 @@ rule calc_macs:
 
 rule cbl_allele_dist:
     input:
-        f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr11.vcf.gz',
-        'association/specific_alleles.tab'
+        str_vcf = f'str_imputed/runs/{str_imputation_run_name}/vcfs/annotated_strs/chr11.vcf.gz',
+        specific_alleles='association/specific_alleles.tab',
     output:
         expand('association/allele_plots/cbl.{ext}', ext=['svg', 'png'])
     resources:
         time='00:10:00'
     shell:
         'association/cbl_allele_histo.py '
+        'association/allele_plots '
+        '{input.str_vcf} '
+        '{input.specific_alleles} '
 
 ##################### Running and Plotting Associations ###########################
 
@@ -380,11 +385,11 @@ rule write_my_gwas_readme:
         run_type = wildcards.run_type
         if run_type == 'str':
             command_run_type = 'strs'
-            imputation_flag = f'--imputation-run-name {str_imputation_run_name}'
+            gts_flag = '--vcf-file {input.vcf}'
         else:
             assert run_type == 'imputed_snp'
             command_run_type = 'imputed-snps'
-            imputation_flag = ''
+            gts_flag = ''
 
         binary = wildcards.binary
         if binary == '':
@@ -405,7 +410,7 @@ rule write_my_gwas_readme:
             f'{command_run_type} '
             '{wildcards.phenotype} '
             '--readme '
-            f'{imputation_flag} '
+            f'{gts_flag} '
             f'{binary_flag} '
         )
 
@@ -421,6 +426,7 @@ rule run_regional_my_imputed_snp_gwas:
         "traits/phenotypes/{phenotype}.npy",
         'association/results/{phenotype}/my_imputed_snp{suffix}/time.stamp',
         "traits/subset_transformed_phenotypes/{phenotype}.npy"
+        # TODO add snp bgen & mfi
     output:
         "association/results/{phenotype}/my_imputed_snp{suffix,.*}/batches/chr{chrom}_{start}_{end}.tab"
     resources:
@@ -430,6 +436,7 @@ rule run_regional_my_imputed_snp_gwas:
         cmd = (
             'association/my_regional_gwas.py imputed-snps {wildcards.phenotype} '
             '--region {wildcards.chrom}:{wildcards.start}-{wildcards.end} '
+            '--snp-bgen {input.snp_bgen} --snp-mfi {input.snp_mfi} '
         )
         if wildcards.suffix == '':
             assert not phenotypes.is_binary(wildcards.phenotype)
@@ -497,7 +504,7 @@ rule run_str_spot_test:
         'strs '
         '{wildcards.phenotype} '
         '--readme '
-        f'--imputation-run-name {str_imputation_run_name} '
+        '--vcf-file {input.vcf} '
         '{params.binary_flag} '
         ' ; '
         'association/my_regional_gwas.py '
@@ -508,7 +515,7 @@ rule run_str_spot_test:
         '--pheno-and-covars {input.transformed_phenotype} '
         '--shared-covars {input.shared_covars} '
         '--untransformed-phenotypes {input.untransformed_phenotype} '
-        f'--imputation-run-name {str_imputation_run_name} '
+        '--vcf-file {input.vcf} '
         '{params.binary_flag} '
 
 rule run_regional_my_str_gwas:
@@ -540,7 +547,7 @@ rule run_regional_my_str_gwas:
         '--pheno-and-covars {input.transformed_phenotype} '
         '--shared-covars {input.shared_covars} '
         '--untransformed-phenotypes {input.untransformed_phenotype} '
-        f'--imputation-run-name {str_imputation_run_name} '
+        '--vcf-file {input.vcf} '
         '{params.binary_flag} '
 
 rule concatenate_my_str_gwas:
@@ -945,7 +952,10 @@ def imputed_SNPs_as_input(imputed_SNPs):
 
 rule prep_conditional_input:
     input:
-        lambda wildcards: [] if not wildcards.PACSIN2_STRs else glob.glob('finemapping/PACSIN2/gts/*')
+        lambda wildcards: [] if not wildcards.PACSIN2_STRs else glob.glob('finemapping/PACSIN2/gts/*'),
+        str_vcf=f'str_imputed/runs/{imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz',
+        snp_bgen='array_imputed/ukb_imp_chr{chrom}_v3.bgen',
+        snp_mfi='array_imputed/ukb_mfi_chr{chrom}_v3.mfi',
     output:
         npy     ='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}.npy',
         varnames='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_varnames.txt',
@@ -954,12 +964,12 @@ rule prep_conditional_input:
         time='00:30:00'
     params:
         imputed_snps_flag = lambda wildcards: (
-            '--imputed-SNPs ' + imputed_SNPs_as_input(wildcards.imputed_SNPs)
+            '--snp-bgen {input.snp_bgen} --snp-mfi {input.snp_mfi} --imputed-SNPs ' + imputed_SNPs_as_input(wildcards.imputed_SNPs)
             if wildcards.imputed_SNPs
             else ''
         ),
         strs_flags =  lambda wildcards: (
-            f'--imputation-run-name {str_imputation_run_name} --STRs ' 
+            '--str-vcf {input.str_vcf} --STRs ' 
             + wildcards.STRs.replace('_', ' ')
             if wildcards.STRs
             else ''
@@ -1007,7 +1017,7 @@ rule run_conditional_my_str_gwas:
         '--shared-covars {input.shared_covars} '
         '--untransformed-phenotypes {input.untransformed_phenotype} '
         '--conditional-covars {input.conditional_covars} '
-        f'--imputation-run-name {str_imputation_run_name} '
+        '--vcf-file {input.vcf} '
         '{params.binary_flag} '
 
 rule prep_conditional_plink_input:
@@ -1227,7 +1237,7 @@ rule run_ethnic_finemapped_my_str_gwas:
         '--pheno-and-covars {input.transformed_phenotype} '
         '--shared-covars {input.shared_covars} '
         '--untransformed-phenotypes {input.untransformed_phenotype} '
-        f'--imputation-run-name {str_imputation_run_name} '
+        '--imputation-run-name {input.vcf} '
         '{params.binary_flag} '
 
 rule gwas_all_finemapped_strs_all_ethnicities:
@@ -1451,7 +1461,10 @@ rule finemap_load_gts:
     input:
         expand(rules.subset_samples_for_phenotype.output.samples, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
         zfile=expand(rules.finemap_write_input_variants.output.zfile, phenotype='{phenotype}', chrom='{chrom}', start='{start}', end='{end}', PACSIN2='{PACSIN2}',  metaparameter_test='', gt_test='{gt_test}'),
-        pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*')
+        pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*'),
+        str_vcf=f'str_imputed/runs/{imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz',
+        snp_bgen='array_imputed/ukb_imp_chr{chrom}_v3.bgen',
+        snp_mfi='array_imputed/ukb_mfi_chr{chrom}_v3.mfi',
     output:
         gts='finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/gts.h5',
         readme=protected('finemapping/finemap_results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
@@ -1462,7 +1475,9 @@ rule finemap_load_gts:
         'finemapping/finemapping_load_gts.py '
         '{output.readme} '
         '{output.gts} '
-        f'{str_imputation_run_name} '
+        '{input.str_vcf} '
+        '{input.snp_bgen} '
+        '{input.snp_mfi} '
         '{input.zfile} '
         '{wildcards.phenotype} '
         '{wildcards.chrom} '
@@ -1618,6 +1633,9 @@ rule susie_load_gts:
         imputed_snp_macs=lambda wildcards: [] if not wildcards.gt_test.startswith('_mac') else rules.calc_macs.output.imputed_snp_macs,
         str_macs=lambda wildcards: [] if not wildcards.gt_test.startswith('_mac') else rules.calc_macs.output.str_macs,
         pacsin2_gts=lambda wildcards: [] if not wildcards.PACSIN2 else glob.glob('finemapping/PACSIN2/gts/*'),
+        str_vcf=f'str_imputed/runs/{imputation_run_name}/vcfs/annotated_strs/chr{chrom}.vcf.gz',
+        snp_bgen='array_imputed/ukb_imp_chr{chrom}_v3.bgen',
+        snp_mfi='array_imputed/ukb_mfi_chr{chrom}_v3.mfi',
     output:
         choose_vars_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/choose_vars_README.txt'),
         load_gts_readme=protected('finemapping/susie_{hardcalls,|hardcall_}results{gt_test,|_threshold_[-0-9.e]+|_mac_[0-9]+}/{phenotype}/{chrom}_{start}_{end}{PACSIN2,|_three_PACSIN2_STRs}/load_gts_README.txt'),
@@ -1652,7 +1670,9 @@ rule susie_load_gts:
         'finemapping/finemapping_load_gts.py '
         '{output.load_gts_readme} '
         '{output.gt} '
-        f'{str_imputation_run_name} '
+        '{input.str_vcf} '
+        '{input.snp_bgen} '
+        '{input.snp_mfi} '
         '{output.outcols} '
         '{wildcards.phenotype} '
         '{wildcards.chrom} '

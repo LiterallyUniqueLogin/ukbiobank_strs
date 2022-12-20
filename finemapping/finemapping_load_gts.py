@@ -34,7 +34,7 @@ def store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals):
         for count, idx in enumerate(stored_indexes):
             gts_dset[:, idx] = gt_temp[:, count]
 
-def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenotype, chrom, start_pos, end_pos, varname_header, pheno_fname, take_residuals, hardcalls):
+def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, snp_mfi, varname_fname, phenotype, chrom, start_pos, end_pos, varname_header, pheno_fname, take_residuals, hardcalls):
     today = datetime.datetime.now().strftime("%Y_%M_%D")
     with open(readme_fname, 'w') as readme:
         readme.write(f'Run date: {today}\nLoading STR and SNP gts from {varname_fname}.\n')
@@ -157,7 +157,7 @@ def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenot
 
         start = time.time()
         str_itr = lfg.load_strs(
-            imputation_run_name,
+            str_vcf,
             region,
             sample_idx,
             details=False,
@@ -206,6 +206,8 @@ def load_gts(readme_fname, gts_fname, imputation_run_name, varname_fname, phenot
             print('loading and regressing SNPs... ', flush=True)
 
         snp_itr = lfg.load_imputed_snps(
+            snp_bgen,
+            snp_mfi,
             region,
             sample_idx,
             apply_filter=False,
@@ -258,7 +260,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('readme')
     parser.add_argument('gts_file')
-    parser.add_argument('imputation_run_name')
+    parser.add_argument('str_vcf')
+    parser.add_argument('snp_bgen')
+    parser.add_argument('snp_mfi')
     parser.add_argument('varname_file', help='varnames should be first entry of each row when split on spaces')
     parser.add_argument('phenotype')
     parser.add_argument('chrom')
@@ -283,7 +287,9 @@ if __name__ == '__main__':
         load_gts(
             readme,
             gts_file,
-            args.imputation_run_name,
+            args.str_vcf,
+            args.snp_bgen,
+            args.snp_mfi,
             args.varname_file,
             args.phenotype,
             args.chrom,

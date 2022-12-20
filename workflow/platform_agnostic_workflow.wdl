@@ -8,6 +8,10 @@ workflow main {
 
   input {
     String script_dir
+    String PRIMUS_executable
+
+    Array[File]+ str_vcfs
+    File specific_alleles # could replace this with a different way of providing this info
 
     String phenotype_name
     Array[String] categorical_covariate_names
@@ -117,9 +121,23 @@ workflow main {
 
   call tasks.unrelated_samples_for_phenotype { input:
     script_dir = script_dir,
+    PRIMUS_executable = PRIMUS_executable
     pheno_data = pheno_data,
     kinship = kinship,
+    is_binary = is_binary,
+  }
+
+  call tasks.transform_trait_values {
+    script_dir = script_dir,
+    pheno_data = pheno_data,
+    unrelated_samples_for_phenotype = unrelated_samples_for_phenotype.data,
     is_binary = is_binary
+  }
+
+  call tasks.fig_4a {
+    script_dir = script_dir,
+    str_vcf_chr_11 = str_vcfs[11],
+    specific_alleles = specific_alleles
   }
 
   output {
@@ -131,5 +149,8 @@ workflow main {
     File covar_names_out = covar_names
     File pheno_readme_out = pheno_readme
     File unrelated_samples_for_phenotype_out = unrelated_samples_for_phenotype.data
+    File transform_trait_values_out = transform_trait_values.data
+    File fig_4a_svg_out = fig_4a.svg
+    File fig_4a_png_out = fig_4a.png
   }
 }

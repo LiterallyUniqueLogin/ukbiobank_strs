@@ -48,7 +48,9 @@ def main():
     parser.add_argument('outprefix')
     parser.add_argument('phenotype')
     parser.add_argument('chr')
-    parser.add_argument('--imputation-run-name')
+    parser.add_argument('--str-vcf')
+    parser.add_argument('--snp-bgen')
+    parser.add_argument('--snp-mfi')
     parser.add_argument('--STRs', nargs='+', default=[])
     parser.add_argument('--imputed-SNPs', nargs='+', default=[])
     parser.add_argument('--PACSIN2-STRs', nargs='+', default=[])
@@ -58,7 +60,11 @@ def main():
     assert len(args.STRs) + len(args.imputed_SNPs) + len(args.PACSIN2_STRs) > 0
 
     if len(args.STRs) > 0:
-        assert args.imputation_run_name
+        assert args.str_vcf
+
+    if len(args.imputed_SNPs) > 0:
+        assert args.snp_bgen
+        assert args.snp_mfi
 
     if len(args.PACSIN2_STRs) > 0:
         assert args.chr == '22'
@@ -71,7 +77,7 @@ def main():
     gts.append(samples_array)
 
     for STR in args.STRs:
-        itr = lfg.load_strs(args.imputation_run_name, f'{args.chr}:{STR}-{STR}', slice(None))
+        itr = lfg.load_strs(args.str_vcf, f'{args.chr}:{STR}-{STR}', slice(None))
         next(itr) # ignore names of locus_details
         this_gts, this_var_name = process_STR(itr, STR)
         variant_names.append(this_var_name)
@@ -85,7 +91,7 @@ def main():
 
     for iSNP in args.imputed_SNPs:
         pos, ref, alt = iSNP.split('_')
-        itr = lfg.load_imputed_snps(f'{args.chr}:{pos}-{pos}', slice(None))
+        itr = lfg.load_imputed_snps(args.snp_bgen, args.snp_mfi, f'{args.chr}:{pos}-{pos}', slice(None))
         next(itr) # ignore names of locus_details
         try:
             unique_alleles = []

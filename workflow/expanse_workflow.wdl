@@ -124,6 +124,10 @@ workflow main {
 
   call platform_agnostic_workflow.main { input:
     script_dir = script_dir,
+    PRIMUS_executable = "run_PRIMUS.pl"
+
+    # TODO str_vcfs
+    # TODO specific_alleles
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
@@ -150,7 +154,7 @@ workflow main {
     sc_phenotype = phenotype.data
   }
 
-	output {
-		Array[File] out_sample_lists = main.out_sample_lists
-	}
+  output {
+    Array[File] out_sample_lists = main.out_sample_lists
+  }
 }

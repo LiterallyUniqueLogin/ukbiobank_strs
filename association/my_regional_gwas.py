@@ -291,7 +291,7 @@ def perform_regional_gwas_helper(
     else:
         print(f"No variants found in the region {region}\n", flush=True)
 
-def get_genotype_iter_vars_file(imputation_run_name, vars_fname, samples):
+def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
     with open(vars_fname) as vars_file:
         next(vars_file)
         try:
@@ -300,7 +300,7 @@ def get_genotype_iter_vars_file(imputation_run_name, vars_fname, samples):
             # this is a empty vars file
             # yield only the list of details fields and then exit without yielding variants
             itr = load_and_filter_genotypes.load_strs(
-                imputation_run_name, f'1:1-1', samples
+                str_vcf, f'1:1-1', samples
             )
             yield next(itr)
             return
@@ -310,7 +310,7 @@ def get_genotype_iter_vars_file(imputation_run_name, vars_fname, samples):
     first = True
     for (chrom, pos) in zip(chroms, poses):
         itr = load_and_filter_genotypes.load_strs(
-            imputation_run_name, f'{chrom}:{pos}-{pos}', samples
+            str_vcf, f'{chrom}:{pos}-{pos}', samples
         )
         # yield or skip the extra details line
         if first:
@@ -322,19 +322,19 @@ def get_genotype_iter_vars_file(imputation_run_name, vars_fname, samples):
         yield next(itr)
 
 
-def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, vars_file, runtype, imputation_run_name, conditional_covars_fname):
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname):
     if runtype == 'strs':
         if region is not None:
             get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
-                imputation_run_name, region, samples
+                str_vcf, region, samples
             )
         else:
             assert vars_file is not None
-            get_genotype_iter = lambda samples: get_genotype_iter_vars_file(imputation_run_name, vars_file, samples)
+            get_genotype_iter = lambda samples: get_genotype_iter_vars_file(str_vcf, vars_file, samples)
     elif runtype == 'imputed-snps':
         assert vars_file is None
         get_genotype_iter = lambda samples: load_and_filter_genotypes.load_imputed_snps(
-            region, samples
+            snp_bgen, snp_mfi, region, samples
         )
     else:
         raise ValueError("not implemented for this runtype")
@@ -352,12 +352,12 @@ def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, 
         )
         print("Done.")
 
-def write_str_readme(outfile, imputation_run_name, binary):
+def write_str_readme(outfile, str_vcf, binary):
     with open(outfile, 'w') as readme:
         today = datetime.datetime.now().strftime("%Y_%m_%d")
         readme.write(f"Run date: {today}\n")
 
-        readme.write(f"Working with strs from imputation run {imputation_run_name}\n")
+        readme.write(f"Working with strs from imputation run {str_vcf}\n")
         readme.write("Working with length dosages, no call level filters.\n")
         readme.write("Filtering loci with total non-major allele doesage less than 20.\n")
 
@@ -404,12 +404,15 @@ def main():
     parser.add_argument('--shared-covars')
     parser.add_argument('--conditional-covars')
     parser.add_argument('--untransformed-phenotypes')
-    parser.add_argument('--imputation-run-name')
+    parser.add_argument('--str-vcf')
+    parser.add_argument('--snp-bgen')
+    parser.add_argument('--snp-mfi')
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
 
     assert args.readme == (args.region is None and args.vars_file is None)
-    assert (args.imputation_run_name is not None) == (args.runtype == 'strs')
+    assert (args.str_vcf is not None) == (args.runtype == 'strs')
+    assert (not args.readme) or ((args.snp_bgen is not None) == (args.snp_mfi is not None) == (args.runtype == 'imputed-snps'))
 
     assert (args.region is not None) + (args.vars_file is not None) <= 1
 
@@ -428,7 +431,7 @@ def main():
 
     if args.readme:
         if args.runtype == 'strs':
-            write_str_readme(args.outfile, args.imputation_run_name, args.binary)
+            write_str_readme(args.outfile, args.str_vcf, args.binary)
         elif args.runtype == 'imputed-snps':
             write_imputed_snp_readme(args.outfile, args.binary)
         else:
@@ -445,7 +448,9 @@ def main():
             args.region,
             args.vars_file,
             args.runtype,
-            args.imputation_run_name,
+            args.str_vcf,
+            args.snp_bgen,
+            args.snp_mfi,
             args.conditional_covars
         )
 
