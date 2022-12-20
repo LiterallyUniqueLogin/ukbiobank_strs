@@ -9,20 +9,18 @@ import pandas as pd
 
 import python_array_utils as utils
 
-ukb = os.environ['UKB']
-
 parser = argparse.ArgumentParser()
+parser.add_argument('data_fname')
 parser.add_argument('outprefix')
 parser.add_argument('samples')
-parser.add_argument('ethnicity')
-parser.add_argument('phenotype_name')
-parser.add_argument('phenotype_field_id')
+parser.add_argument('year_of_birth_fname')
+parser.add_argument('month_of_birth_fname')
+parser.add_argument('date_of_death_fname')
+parser.add_argument('date_of_most_recent_first_occurrence_update')
 parser.add_argument('--zero-one-neg-nan', action='store_true')
 
 args = parser.parse_args()
 
-phenotype = args.phenotype_name
-ethnicity = args.ethnicity
 outprefix = args.outprefix
 
 def load_date_data_field(fname, extra_field = False):
@@ -73,22 +71,21 @@ with open(f'{outprefix}_covar_names.txt', 'w') as covar_names:
 
 with open(f'{outprefix}_README.txt', 'w') as readme:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
-    data_fname = f'{ukb}/main_dataset/extracted_data/{phenotype}_{args.phenotype_field_id}.txt'
     readme.write(f"Run date: {today}\n")
     readme.write(
-        f"Loading phenotype {phenotype} from txt file {data_fname} \n"
+        f"Loading from txt file {args.data_fname} \n"
         "Text file is assumed to contain date first reported for all case samples, "
         "missing values for all control samples.\n"
     )
 
     if not args.zero_one_neg_nan:
         # cols: id, date first reported
-        data = load_date_data_field(data_fname)
+        data = load_date_data_field(args.data_fname)
         # cols: id, is_case
         data[:, 1] = ~np.isnan(data[:, 1])
     else:
         # cols: id, is_case
-        data = load_0_1_neg_nan_field(data_fname)
+        data = load_0_1_neg_nan_field(args.data_fname)
 
     readme.write(f"Subsetting to samples at {args.samples}\n")
     # load samples that have passed qc
@@ -105,12 +102,12 @@ with open(f'{outprefix}_README.txt', 'w') as readme:
     )
 
     year_of_birth = np.genfromtxt(
-        f'{ukb}/main_dataset/extracted_data/year_of_birth_34.txt',
+        args.year_of_birth_fname,
         delimiter='\t',
         skip_header=1
     )[:, 1:-1]
     month_of_birth = np.genfromtxt(
-        f'{ukb}/main_dataset/extracted_data/month_of_birth_52.txt',
+        args.month_of_birth_fname,
         delimiter='\t',
         skip_header=1
     )[:, 1:-1]
@@ -134,18 +131,17 @@ with open(f'{outprefix}_README.txt', 'w') as readme:
     data = np.concatenate((data, birthdate_array.reshape(-1, 1)), axis=1)[:, [0, 1, 4]]
 
     date_of_death = load_date_data_field(
-        f'{ukb}/main_dataset/extracted_data/date_of_death_40000.txt',
+        args.date_of_death_fname,
         extra_field = True
     )
     # cols: id, is case, birth date in days since the epoch, date of death in days since the epoch
     data = utils.merge_arrays(data, date_of_death)
 
     # last day the first occurences were updated
-    now_str = '2021-04-01'
-    now = np.datetime64(now_str, 'D').astype(float)
+    now = np.datetime64(args.date_of_most_recent_first_occurrence_update, 'D').astype(float)
 
     readme.write(
-        f'Data last updated at {now_str}\n'
+        f'Data last updated at {args.date_of_most_recent_first_occurrence_update}\n'
     )
 
     # date is not NaT and is less than or equal to the last time data was reported

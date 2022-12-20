@@ -18,19 +18,19 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-white_brits = pl.read_csv(args.white_brits_sample_fname, sep=' ', new_columns = ['id'])
+white_brits = pl.read_csv(args.white_brits_sample_fname, sep=' ', new_columns = ['ID'])
 
 ethnicities = python_array_utils.load_extracted_data_as_pl(args.ethnicity_fname)
 #ethnicities = pl.read_csv(args.ethnicity_fname, sep='\t', dtype={'eid': int})
 n_instances = ethnicities.shape[1] - 1
 response_cols = [f'response{i}' for i in range(n_instances)]
-ethnicities = ethnicities.rename(dict(zip(ethnicities.columns, ['id'] + response_cols)))
+ethnicities = ethnicities.rename(dict(zip(ethnicities.columns, ['ID'] + response_cols)))
 
 print(ethnicities.shape)
 
 # remove people already listed as white brits
 white_brits['marker'] = [True]*white_brits.shape[0]
-ethnicities = ethnicities.join(white_brits, how='left', on=['id'])
+ethnicities = ethnicities.join(white_brits, how='left', on=['ID'])
 ethnicities = ethnicities[ethnicities['marker'].is_null()]
 
 print('post white brits')
@@ -71,10 +71,6 @@ for col in response_cols[1:]:
         .alias('val')
     )
 
-'''
-for val in ethnicities[ethnicities['val'].is_null()]['id']:
-    print(val)
-'''
 ethnicities = ethnicities[~ethnicities['val'].is_null()]
 
 print('post null removal')
@@ -88,10 +84,8 @@ coding_names = {
     'chinese': 5
 }
 
-ethnicities['ID_1'] = ethnicities['id']
-ethnicities['ID_2'] = ethnicities['id']
 for name, coding in coding_names.items():
-    ethnicities[ethnicities['val'] == coding, ['ID_1', 'ID_2', 'missing', 'sex']].to_csv(
+    ethnicities[ethnicities['val'] == coding, ['ID']].to_csv(
         f'{args.outdir}/{name}.sample', sep=' '
     )
 

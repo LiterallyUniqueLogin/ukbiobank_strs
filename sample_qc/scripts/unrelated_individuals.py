@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('outfile')
 parser.add_argument('kinship_file')
 parser.add_argument('pheno_file')
-parser.add_argument('--binary-pheno')
+parser.add_argument('--binary-pheno', action='store_true', default=False)
 args = parser.parse_args()
 
 with tempfile.TemporaryDirectory() as output_dir:
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory() as output_dir:
         # for case control data, prioritize cases over controls
         # and prioritize maximizing number of cases over maximizing
         # total number of cases and controls
-        data = np.load(args.binary_pheno)
+        data = np.load(args.pheno_file)
         # assert that cases are a low enough percentage of total samples
         # so that this type of prioritization makes sense
         assert np.sum(data[:, 1]) <= .2*data.shape[0]

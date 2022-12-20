@@ -41,7 +41,7 @@ if subpop:
 else:
     samples = None
 
-start_lines = {"ID_1 ID_2 missing sex", "ID", "ID_1"}
+start_lines = {"ID_1 ID_2 missing sex", "ID", "ID_1", 'id'}
 with open(args.start_samples_fname) as start_samples:
     header = True
     current_keep = {}
@@ -87,4 +87,5 @@ for remove_fname in remove_fnames:
 with open(args.outsamples, 'w') as out_file:
     out_file.write('ID\n')
     for sample in samples:
-        out_file.write(sample + "\n")
+        if sample[0] != '-' and sample != '0':
+            out_file.write(sample + "\n")

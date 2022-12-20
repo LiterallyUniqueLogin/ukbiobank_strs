@@ -2,14 +2,11 @@
 
 import argparse
 import datetime
-import os
 import sys
 
 import numpy as np
 
 import python_array_utils as utils
-
-ukb = os.environ['UKB']
 
 assessment_dict = {
     'init-assessment': 0,
@@ -22,36 +19,34 @@ for key, value in assessment_dict.items():
     reverse_assessment_dict[value] = key
 
 parser = argparse.ArgumentParser()
+parser.add_argument('data_fname')
 parser.add_argument('outprefix')
 parser.add_argument('samples')
-parser.add_argument('ethnicity')
-parser.add_argument('phenotype_name')
-parser.add_argument('phenotype_field_id')
-parser.add_argument('unit')
+parser.add_argument('assessment_ages_npy')
 parser.add_argument(
-    '--categorical-covars',
-    nargs='+',
+    '--categorical-covar-names',
+    nargs='*',
+    default=[]
+)
+parser.add_argument(
+    '--categorical-covar-files',
+    nargs='*',
     default=[]
 )
 
 args = parser.parse_args()
 
-assert 'binary' not in args.unit
-
-phenotype = args.phenotype_name
-ethnicity = args.ethnicity
 outprefix = args.outprefix
 
-with open(f'{outprefix}_unit.txt', 'w') as unit_file:
-    unit_file.write(f'{args.unit}\n')
+assert len(args.categorical_covar_names) == len(args.categorical_covar_files)
 
 with open(f'{outprefix}_README.txt', 'w') as readme, \
         open(f'{outprefix}_covar_names.txt', 'w') as covar_names:
     today = datetime.datetime.now().strftime("%Y_%m_%d")
-    data_fname = f'{ukb}/main_dataset/extracted_data/{phenotype}_{args.phenotype_field_id}.txt'
+    data_fname = args.data_fname
     readme.write(f"Run date: {today}\n")
     readme.write(
-        f"Loading phenotype {phenotype} from txt file "
+        f"Loading from txt file "
         f" {data_fname} \n"
     )
 
@@ -86,11 +81,9 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
 
     covar_datas = []
     reverse_covar_hashes = []
-    for covar in args.categorical_covars:
-        covar_name, covar_id = covar.split(',')
-        covar_fname = f'{ukb}/main_dataset/extracted_data/{covar_name}_{covar_id}.txt'
+    for covar_name, covar_fname in zip(args.categorical_covars_names, args.categorical_covar_files):
         readme.write(
-            f"Loading categorical covar with field id {covar_id} from txt file "
+            f"Loading categorical covar with name {covar_name} from txt file "
             f" {covar_fname}\n"
         )
         obj_covar_data = np.genfromtxt(
@@ -124,7 +117,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
         ))
         assert covar_datas[-1].shape == data.shape
 
-    ages = np.load(f'{ukb}/traits/shared_covars/assessment_ages.npy')
+    ages = np.load(args.assessment_ages_npy)
     ages = utils.merge_arrays(data[:, 0:1], ages)
     covar_names.write('age\n')
     readme.write(
@@ -133,7 +126,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
         "had this phenotype measured at multiple visits, only the phenotype value and age "
         "at the first visit are being used. The age "
         "is being loaded from the shared_covars file "
-        f"{ukb}/traits/shared_covars/asssessment_ages.npy . An additional "
+        f"{args.asssessment_ages_npy} . An additional "
         "dummy covariate indicating visit number is being added "
         "for each visit whose data is used beyond the first.\n"
     )
@@ -221,12 +214,11 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
     measured_samples = ~np.any(np.isnan(data), axis=1)
     data = data[measured_samples, :]
 
-    for covar, covar_data, reverse_covar_hash in \
-            zip(args.categorical_covars, visit_aligned_covars, reverse_covar_hashes):
+    for covar_name, covar_data, reverse_covar_hash in \
+            zip(args.categorical_covar_names, visit_aligned_covars, reverse_covar_hashes):
         unmeasured_covar_data = covar_data[~measured_samples, :]
         covar_data = covar_data[measured_samples, :]
         assert covar_data.shape[1] == 1
-        covar_name = covar.split(',')[0]
         categories, counts = np.unique(covar_data[~np.isnan(covar_data)], return_counts=True)
         cat_names = [reverse_covar_hash[cat] for cat in categories]
         max_cat_idx = np.argmax(counts)
@@ -237,13 +229,13 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
                 if not np.any(unmeasured_covar_data == category):
                     readme.write(
                         f"No qc'ed samples of this ethnicity had value {cat_name} "
-                        f'for categorical covariate {covar}.\n'
+                        f'for categorical covariate {covar_name}.\n'
                     )
                 else:
                     readme.write(
                         f"No qc'ed samples of this ethnicity for which this phenotype "
                         f'was measured had value {cat_name} '
-                        f'for categorical covariate {covar}.\n'
+                        f'for categorical covariate {covar_name}.\n'
                     )
                 continue
 
@@ -254,14 +246,14 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
             if cat_count <= cat_drop_num:
                 readme.write(
                     f"Dropping {cat_count} samples with value {cat_name} for categorical "
-                    f"covariate {covar} because that is less than "
+                    f"covariate {covar_name} because that is less than "
                     f"{cat_drop_num} total samples.\n"
                 )
                 continue
             elif cat_count <= num_samples*cat_drop_frac:
                 readme.write(
                     f"Dropping {cat_count} samples with value {cat_name} for categorical "
-                    f"covariate {covar} because that is less than the fraction "
+                    f"covariate {covar_name} because that is less than the fraction "
                     f"{cat_drop_frac} of the total samples for this phenotype "
                     f"which is {num_samples}.\n"
                 )

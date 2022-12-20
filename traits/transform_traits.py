@@ -30,8 +30,6 @@ def main():  # noqa: D103
     parser.add_argument('outprefix')
     parser.add_argument('pheno_data')
     parser.add_argument('samples')
-    parser.add_argument('phenotype')
-    parser.add_argument('ethnicity')
     parser.add_argument('--binary', default=False, action='store_true')
     args = parser.parse_args()
 

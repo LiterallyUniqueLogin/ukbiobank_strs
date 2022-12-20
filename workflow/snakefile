@@ -146,7 +146,6 @@ def input_fields_for_phenotype(wildcards):
     else:
         raise ValueError(f"Couldn't identify phenotype {phenotype}")
     fields = [
-        f"main_dataset/extracted_data/{wildcards.phenotype}_{args.data_field_id}.txt",
         *[f"main_dataset/extracted_data/{covar_field_name}_{covar_field_id}.txt" for
           covar_field_name, covar_field_id in args.categorical_covars]
     ]
@@ -184,7 +183,6 @@ rule load_phenotype:
     output:
         phenotype=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}.npy"),
         readme=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}_README.txt"),
-        unit=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}_unit.txt"),
         covar_names=protected("traits/{subpop_prefix}phenotypes/{subpop}{ethnicity}/{phenotype}_covar_names.txt")
     resources:
         time='00:05:00'
@@ -196,11 +194,6 @@ rule load_phenotype:
             'traits/load_binary_phenotype_from_main_dataset.py'
         ),
         data_field_id = lambda wildcards: phenotypes.pheno_descs[wildcards.phenotype].data_field_id,
-        unit_param = lambda wildcards: (
-            f"'{phenotypes.pheno_descs[wildcards.phenotype].unit}'"
-            if not phenotypes.is_binary(wildcards.phenotype) else
-            ''
-        ),
         binary_flag = lambda wildcards: load_phenotype_binary_flag(wildcards.phenotype),
         categorical_flag = lambda wildcards: (
             '' if not phenotypes.pheno_descs[wildcards.phenotype].categorical_covars else
@@ -215,10 +208,8 @@ rule load_phenotype:
         '{params.command} '
         '{params.outprefix} '
         '{input.samples} '
-        '{wildcards.ethnicity} '
         '{wildcards.phenotype} '
         '{params.data_field_id} '
-        '{params.unit_param} '
         '{params.binary_flag} '
         '{params.categorical_flag} '
 
@@ -235,6 +226,7 @@ rule subset_samples_for_phenotype:
     output:
         samples=protected("sample_qc/{subpop_prefix}runs/{subpop}{ethnicity}/{phenotype}/combined_unrelated.sample")
     params:
+        # TODO the binary flag should no longer work
         binary_flag = (
             lambda wildcards, input:
                 '' if wildcards.phenotype == 'no_phenotype' or not phenotypes.is_binary(wildcards.phenotype)
@@ -268,8 +260,6 @@ rule transform_phenotype_subset:
         '{params.outprefix} ' 
         '{input.pheno} '
         '{input.samples} '
-        '{wildcards.phenotype} '
-        '{wildcards.ethnicity} '
         '{params.binary_flag} '
 
 rule length_confusion:
