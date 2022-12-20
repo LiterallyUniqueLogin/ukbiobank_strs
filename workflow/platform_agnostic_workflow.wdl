@@ -4,11 +4,59 @@ version 1.0
 
 import "tasks.wdl"
 
+task association_regions {
+  input {
+    File chr_lens
+    Int region_len
+  }
+
+  output {
+    # TODO set these
+    Array[Int] chroms
+    Array[Int] start_poses
+    Array[Int] end_poses
+  } 
+
+  command <<<
+    python -c "
+      import numpy as np
+      chr_lens = np.genfromtxt(
+        ~{chr_lens},
+        usecols=[1],
+        skip_header=1,
+        dtype=int
+      )
+
+      chroms = []
+      starts = []
+      ends = []
+      for chrom in range(1, 23):
+        chr_len = chr_lens[chrom-1]
+        for start in range(1, chr_len, ~{region_len}):
+          if start + region_len - 1 > chr_len:
+            end = chr_len
+          else:
+            end = start + region_len - 1
+          chroms.append(chroms)
+          starts.append(start)
+          ends.append(end)
+       TODO
+    "
+  >>>
+
+  runtime {
+    shortTask: true
+    dx_timeout: "5m"
+  }
+}
+
 workflow main {
 
   input {
     String script_dir
     String PRIMUS_executable
+
+    File chr_lens
 
     Array[File]+ str_vcfs
     File specific_alleles # could replace this with a different way of providing this info
@@ -127,18 +175,45 @@ workflow main {
     is_binary = is_binary,
   }
 
-  call tasks.transform_trait_values {
+  call tasks.transform_trait_values { input :
     script_dir = script_dir,
     pheno_data = pheno_data,
     unrelated_samples_for_phenotype = unrelated_samples_for_phenotype.data,
     is_binary = is_binary
   }
 
-  call tasks.fig_4a {
+  call tasks.fig_4a { input :
     script_dir = script_dir,
     str_vcf_chr_11 = str_vcfs[11],
     specific_alleles = specific_alleles
   }
+
+  call association_regions as str_association_regions { input :
+    chr_lens = chr_lens,
+    region_len = 10000000
+  } 
+
+  scatter (region in zip(str_association_regions.chroms, zip(str_association_regions.starts, str_association_regions.ends))) {
+    call tasks.regional_my_str_gwas { input :
+      script_dir = script_dir,
+      str_vcf = str_vcfs[region.left],
+      shared_covars = load_shared_covars.shared_covars,
+      untransformed_phenotype = pheno_data,
+      transformed_phenotype = transform_trait_values.data
+      is_binary = is_binary,
+      binary_type = "linear", # won't be used if not binary
+      chrom = region.left,
+      start_pos = region.right.left,
+      end_pos = region.right.right
+      phenotype_name = phenotype_name
+    }
+  }
+
+  call tasks.concatenate_csvs as my_str_gwas { input :
+    tsvs = region_my_str_gwas.data
+  }
+
+  # TODO second round for binary
 
   output {
     Array[File] out_sample_lists = all_qced_sample_lists.data

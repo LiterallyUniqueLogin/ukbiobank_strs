@@ -126,6 +126,8 @@ workflow main {
     script_dir = script_dir,
     PRIMUS_executable = "run_PRIMUS.pl"
 
+    # TODO chr_lens
+
     # TODO str_vcfs
     # TODO specific_alleles
 

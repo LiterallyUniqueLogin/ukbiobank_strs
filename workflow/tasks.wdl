@@ -345,7 +345,7 @@ task str_spot_test {
 
   output {
     File README = "README.txt"
-    File data = "result.tab"
+    File data = "out.tab"
   }
 
   # TODO remove:
@@ -354,27 +354,99 @@ task str_spot_test {
   # trtools
   command <<<
     ~{script} \
-      ~{output.README} \
+      ~{README} \
       strs \
       ~{phenotype_name} \
       --readme \
-      --vcf-file ~{str_vcf} \
+      --str-vcf ~{str_vcf} \
       ~{if is_binary then "--binary logistic" else ""}
     ~{script} \
-      ~{output.data} \
+      ~{data} \
       strs \
       ~{phenotype_name} \
       --region ~{chrom}:~{pos}-~{pos} \
       --pheno-and-covars ~{transformed_phenotype} \
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
-      --vcf-file ~{str_vcf} \
+      --str-vcf ~{str_vcf} \
       ~{if is_binary then "--binary logistic" else ""}
   >>>
 
   runtime {
     shortTask: true
     dx_timeout: "20m"
+  }
+}
+
+task regional_my_str_gwas {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/my_regional_gwas.py"
+    File weighted_binom_conf = "~{script_dir}/association/weighted_bionm_conf.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
+    File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
+
+    File str_vcf
+    File shared_covars # from task
+    File untransformed_phenotype # from task
+    File transformed_phenotype # from task
+    Boolean is_binary
+    String binary_type # linear or logistic, only needs to be set if is_binary == true
+    Int chrom
+    Int start_pos
+    Int end_pos
+    String phenotype_name
+  }
+
+  output {
+    File data = "out.tab"
+  }
+  
+  # TODO remove:
+  # project temp
+  # sample utils issues
+  # trtools
+  command <<<
+    ~{script} \
+      ~{data} \
+      strs \
+      ~{phenotype_name} \
+      --region ~{chrom}:~{start_pos}-~{end_pos} \
+      --pheno-and-covars ~{transformed_phenotype} \
+      --shared-covars ~{shared_covars} \
+      --untransformed-phenotypes ~{untransformed_phenotype} \
+      --str-vcf ~{str_vcf} \
+      ~{if is_binary then "--binary " + ~{binary_type} else ""}
+  >>>
+
+  runtime {
+    dx_timeout: "12h"
+    memory: ~{if binary_type == "logistic" then "40g" else "4g"}
+  }
+}
+
+task concatenate_tsvs {
+  input {
+    Array[File]+ tsvs
+  }
+
+  output {
+    File tsv = "out.tab"
+  }
+
+  command <<<
+    for file in ~{sep=" " tsvs} ; do 
+      head -1 $file
+    done | uniq -c | wc -l | # TODO assert 1
+    
+    head -1 ~{tsvs[0]} > ~{tsv}
+    for file in ~{sep=" " tsvs} ; do
+      tail -n +2 $file >> ~{tsv}
+    done
+  >>>
+
+  runtime {
+    dx_timeout: "4h"
   }
 }
 
