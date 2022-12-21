@@ -564,16 +564,24 @@ rule concatenate_my_str_gwas:
 
 rule prep_continuous_plink_input:
     input:
-        'traits/shared_covars/shared_covars.npy',
-        'traits/shared_covars/covar_names.txt',
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
+        shared_covars='traits/shared_covars/shared_covars.npy',
+        shared_covar_names='traits/shared_covars/covar_names.txt',
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        pheno_covar_names=expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
-        'association/results/{phenotype}/plink_snp{suffix,|_linear}/input/transformed_phenotype_and_covars.tab'
+        outloc='association/results/{phenotype}/plink_snp{suffix,|_linear}/input/transformed_phenotype_and_covars.tab'
     resources:
         time='00:30:00'
     run:
-        cmd = 'association/prep_plink_input.py {wildcards.phenotype} '
+        cmd = (
+            'association/prep_plink_input.py '
+            '{input.outloc} '
+            '{wildcards.phenotype} '
+            '{input.transformed_phenotype} '
+            '{input.pheno_covar_names} '
+            '{input.shared_covars} '
+            '{input.shared_covar_names} '
+        )
         if phenotypes.is_binary(wildcards.phenotype):
             assert wildcards.suffix == '_linear'
             cmd += '--binary linear '
@@ -584,16 +592,23 @@ rule prep_continuous_plink_input:
 
 rule prep_binary_plink_input:
     input:
-        'traits/shared_covars/shared_covars.npy',
-        'traits/shared_covars/covar_names.txt',
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
+        shared_covars='traits/shared_covars/shared_covars.npy',
+        shared_covar_names='traits/shared_covars/covar_names.txt',
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='{subpop}', subpop_prefix='{subpop_prefix}'),
+        pheno_covar_names=expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='{subpop}', subpop_prefix='{subpop_prefix}')
     output:
-        'association/results/{phenotype}/plink_snp_logistic/input/transformed_phenotype_and_covars.tab'
+        outloc='association/results/{phenotype}/plink_snp_logistic/input/transformed_phenotype_and_covars.tab'
     resources:
         time='00:30:00'
     shell:
-        'association/prep_plink_input.py {wildcards.phenotype} --binary logistic '
+        'association/prep_plink_input.py '
+        '{input.outloc} '
+        '{wildcards.phenotype} '
+        '{input.transformed_phenotype} '
+        '{input.pheno_covar_names} '
+        '{input.shared_covars} '
+        '{input.shared_covar_names} '
+        '--binary logistic '
 
 rule timestamp_plink_run:
     output:
@@ -1022,22 +1037,27 @@ rule run_conditional_my_str_gwas:
 
 rule prep_conditional_plink_input:
     input:
-        rules.prep_conditional_input.output.npy,
-        rules.prep_conditional_input.output.varnames,
-        rules.load_shared_covars.output.shared_covars,
-        rules.load_shared_covars.output.covar_names,
-        expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
-        expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix='')
+        conditional_covars=rules.prep_conditional_input.output.npy,
+        conditional_covar_names=rules.prep_conditional_input.output.varnames,
+        shared_covars=rules.load_shared_covars.output.shared_covars,
+        shared_covar_names=rules.load_shared_covars.output.covar_names,
+        transformed_phenotype=expand(rules.transform_phenotype_subset.output.phenotype, phenotype='{phenotype}', ethnicity='white_brits', subpop='', subpop_prefix=''),
+        pheno_covar_names=expand(rules.load_phenotype.output.covar_names, ethnicity='white_brits', phenotype='{phenotype}', subpop='', subpop_prefix='')
     output:
         result='association/results/{phenotype}/conditional_inputs/chr{chrom}_STR{STRs,.*}__ISNP{imputed_SNPs,.*}__ASNP{PACSIN2_STRs,|__PACSIN2.+}_plink.tab'
-    params:
-        condition = lambda wildcards, output: output.result.split('/')[-1].split('_plink')[0]
     resources:
         time='00:30:00'
     run:
         cmd = (
-            'association/prep_plink_input.py {wildcards.phenotype} '
-            '--conditional {params.condition} '
+            'association/prep_plink_input.py '
+            '{input.outloc} '
+            '{wildcards.phenotype} '
+            '{input.transformed_phenotype} '
+            '{input.pheno_covar_names} '
+            '{input.shared_covars} '
+            '{input.shared_covar_names} '
+            '--conditional-genotypes {input.conditional_covars} '
+            '--conditional-covar_names {input.conditional_covar_names} '
         )
         if phenotypes.is_binary(wildcards.phenotype):
             cmd += '--binary '

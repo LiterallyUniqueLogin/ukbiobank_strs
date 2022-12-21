@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 
 import numpy as np
 
 import python_array_utils as utils
 
-ukb = os.environ['UKB']
-
 parser = argparse.ArgumentParser()
+parser.add_argument('outloc')
 parser.add_argument('phenotype')
-parser.add_argument('--conditional')
+parser.add_argument('transformed_phenotype_file')
+parser.add_argument('pheno_covar_names')
+parser.add_argument('shared_covar_file')
+parser.add_argument('shared_covar_names')
+parser.add_argument('--conditional-genotypes')
+parser.add_argument('--conditional-covar-names')
 parser.add_argument('--binary', default=False, choices={'logistic', 'linear'})
 args = parser.parse_args()
 
+assert bool(args.conditional_genotypes) == bool(args.conditional_covar_names)
+
 phenotype = args.phenotype
 
-shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
+shared_covars = np.load(args.shared_covar_file)
 
-subset_transformed_phenotype = np.load(f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{phenotype}.npy')
+subset_transformed_phenotype = np.load(args.transformed_phenotype_file)
 
 # shared covars here aren't necessarily going to have exactly mean 0 and std 1
 # because they were standardized before subsetting, but that's okay
@@ -46,14 +51,14 @@ else:
         # (b) plink doesn't have numeric instabilities
         data[:, 2] = (data[:, 2] - data[:,2].mean())/data[:, 2].std()
 
-with open(f'{ukb}/traits/phenotypes/white_brits/{phenotype}_covar_names.txt') as pheno_names_file:
+with open(args.pheno_covar_names) as pheno_names_file:
     for line in pheno_names_file:
         line = line.strip()
         if line == '':
             continue
         col_names.append(line)
 
-with open(f'{ukb}/traits/shared_covars/covar_names.txt') as covar_names_file:
+with open(args.shared_covar_names) as covar_names_file:
     for line in covar_names_file:
         line = line.strip()
         if line == '':
@@ -65,9 +70,9 @@ if not args.binary:
 else:
     suffix = '_' + args.binary
 
-if not args.conditional:
+if not args.conditional_genotypes:
     np.savetxt(
-        f'{ukb}/association/results/{phenotype}/plink_snp{suffix}/input/transformed_phenotype_and_covars.tab',
+        args.outloc,
         data,
         delimiter='\t',
         header='\t'.join(col_names),
@@ -75,11 +80,10 @@ if not args.conditional:
         fmt='%.16g'
     )
 else:
-    conditional_loc = f'{ukb}/association/results/{args.phenotype}/conditional_inputs/{args.conditional}'
-    genotypes = np.load(f'{conditional_loc}.npy')
+    genotypes = np.load(args.conditional_genotypes)
     data = utils.merge_arrays(data, genotypes)
 
-    with open(f'{conditional_loc}_varnames.txt') as conditional_names_file:
+    with open(args.conditional_covar_names) as conditional_names_file:
         line = next(conditional_names_file)
         first = True
         for word in line.split():
@@ -89,7 +93,7 @@ else:
             col_names.append(word)
 
     np.savetxt(
-        f'{conditional_loc}_plink{suffix}.tab',
+        args.outloc,
         data,
         delimiter='\t',
         header='\t'.join(col_names),

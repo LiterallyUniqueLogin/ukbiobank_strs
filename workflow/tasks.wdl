@@ -20,6 +20,33 @@ version 1.0
 
 # TODO: set container for each task
 
+####################### Helper tasks ###########################
+
+task concatenate_tsvs {
+  input {
+    Array[File]+ tsvs
+  }
+
+  output {
+    File tsv = "out.tab"
+  }
+
+  command <<<
+    for file in ~{sep=" " tsvs} ; do 
+      head -1 $file
+    done | uniq -c | wc -l | # TODO assert 1
+    
+    head -1 ~{tsvs[0]} > ~{tsv}
+    for file in ~{sep=" " tsvs} ; do
+      tail -n +2 $file >> ~{tsv}
+    done
+  >>>
+
+  runtime {
+    dx_timeout: "4h"
+  }
+}
+
 ####################### Loading samples and phenotypes ####################
 
 task write_sample_list {
@@ -378,6 +405,8 @@ task str_spot_test {
   }
 }
 
+# TODO my str gwas README?
+
 task regional_my_str_gwas {
   input {
     String script_dir
@@ -425,28 +454,65 @@ task regional_my_str_gwas {
   }
 }
 
-task concatenate_tsvs {
+task prep_continuous_plink_input {
   input {
-    Array[File]+ tsvs
+    String script_dir
+    File script = "~{script_dir}/prep_plink_input.py "
+
+    File shared_covars # from task
+    File shared_covar_names # from task
+    File transformed_phenotype # from task
+    File pheno_covar_names # from task
+    Boolean is_binary
+    String binary_type # linear or logistic, only needs to be set if is_binary == true
+    String phenotype_name
   }
 
   output {
-    File tsv = "out.tab"
+    File data = "out.tab"
   }
 
   command <<<
-    for file in ~{sep=" " tsvs} ; do 
-      head -1 $file
-    done | uniq -c | wc -l | # TODO assert 1
-    
-    head -1 ~{tsvs[0]} > ~{tsv}
-    for file in ~{sep=" " tsvs} ; do
-      tail -n +2 $file >> ~{tsv}
-    done
+    ~{script} \
+      out.tab \
+      ~{phenotype_name} \
+      ~{transformed_phenotype} \
+      ~{pheno_covar_names} \
+      ~{sared_covars} \
+      ~{shared_covar_names}
+      ~{if is_binary then "--binary " + ~{binary_type} else ""}
   >>>
 
   runtime {
-    dx_timeout: "4h"
+    dx_timeout: "30m"
+  }
+}
+
+# TODO
+task chromosomal_plink_snp_association {
+  input {
+    String script_dir
+    File script = "~{script_dir}/plink_association.sh"
+
+    Int chrom
+    String phenotype_name
+  }
+
+  output {
+    File data =
+    File log =
+  }
+
+  command <<<
+    PHENOTYPE=~{phenotype_name} \
+    CHROM=~{chrom} \
+    SUFFIX=~{suffix} \
+    ~{script}
+  >>>
+
+  runtime {
+    dx_timeout: ""
+    # TODO threads and mem and time
   }
 }
 
@@ -468,3 +534,4 @@ task {
     dx_timeout: ""
   }
 }
+
