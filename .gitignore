@@ -62,4 +62,5 @@ polars_repro
 scratch
 for_melissa*
 *backup*
-cromwell*
+cromwell-workflow-logs
+cromwell-executions
