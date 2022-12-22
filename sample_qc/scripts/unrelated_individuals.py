@@ -11,11 +11,11 @@ import tempfile
 
 import numpy as np
 
-def primus_command(infile, outdir, primus_executable):
+def primus_command(infile, outdir, primus_command_string):
     # FYI, The PRIMUS command produces an ungodly amount of auxiliary files when
     # running - enough so that rm'ing them all takes a while
     return (
-        f"{primus_executable}/bin/run_PRIMUS.pl "
+        f"{primus_command_string} "
         f"-i FILE={infile} FID1=1 IID1=1 FID2=2 IID2=2 PI_HAT=5 "
         f"--no_PR -t 0.04419417382 -o {outdir}"
     )
@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('outfile')
 parser.add_argument('kinship_file')
 parser.add_argument('pheno_file')
-parser.add_argument('primus_executable')
+parser.add_argument('primus_command_string')
 parser.add_argument('--binary-pheno', action='store_true', default=False)
 args = parser.parse_args()
 
@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory() as output_dir:
             old_cases_primus_out = f'{output_dir}/case_PRIMUS_OLD'
             if os.path.exists(old_cases_primus_out):
                 shutil.rmtree(old_cases_primus_out)
-            cases_command_string = primus_command(kinship_only_cases_fname, f'{output_dir}/case_PRIMUS', args.primus_executable)
+            cases_command_string = primus_command(kinship_only_cases_fname, f'{output_dir}/case_PRIMUS', args.primus_command_string)
 
             output = sp.run(cases_command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE,
                             check=True)
@@ -132,7 +132,7 @@ with tempfile.TemporaryDirectory() as output_dir:
     primus_out_old = f'{output_dir}/PRIMUS_OLD'
     if os.path.exists(primus_out_old):
         shutil.rmtree(primus_out_old)
-    command_string = primus_command(kinship_subset_fname, f'{output_dir}/PRIMUS', args.primus_executable)
+    command_string = primus_command(kinship_subset_fname, f'{output_dir}/PRIMUS', args.primus_command_string)
 
     print("PRIMUS command: " + command_string)
 

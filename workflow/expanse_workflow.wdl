@@ -124,7 +124,7 @@ workflow main {
 
   call platform_agnostic_workflow.main { input:
     script_dir = script_dir,
-    PRIMUS_executable = "run_PRIMUS.pl"
+    PRIMUS_command = "run_PRIMUS.pl"
 
     # TODO chr_lens
 

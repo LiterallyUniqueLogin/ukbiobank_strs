@@ -278,7 +278,7 @@ task unrelated_samples_for_phenotype {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/unrelated_individuals.py"
-    File PRIMUS_executable
+    String PRIMUS_command
 
     File pheno_data # load_xxx_phenotype.data
     File kinship
@@ -289,7 +289,7 @@ task unrelated_samples_for_phenotype {
     }
 
     command <<<
-      ~{script} out.samples ~{kinship} ~{pheno_data} ~{PRIMUS_executable} ~{if is_binary then "--binary-pheno" else ""}
+      ~{script} out.samples ~{kinship} ~{pheno_data} ~{PRIMUS_command} ~{if is_binary then "--binary-pheno" else ""}
     >>>
   
   runtime {
@@ -488,31 +488,41 @@ task prep_continuous_plink_input {
   }
 }
 
-# TODO
 task chromosomal_plink_snp_association {
   input {
     String script_dir
     File script = "~{script_dir}/plink_association.sh"
+    String plink_command
+
+    File imputed_snp_p_file # TODO could generate this with task
+    File pheno_data # from task
 
     Int chrom
     String phenotype_name
+    String binary_type # linear or linear_binary or logistic
   }
 
   output {
-    File data =
-    File log =
+    File data = "plink2.~{if binary_type == 'linear' then 'RIN_' else ''}~{phenotype_name}.glm.~{if binary_type == 'logistic' then 'logistic.hybrid' else 'linear'}.done"
+    File log = "plink2.log"
   }
 
   command <<<
     PHENOTYPE=~{phenotype_name} \
+    BINARY_TYPE=~{binary_type} \
     CHROM=~{chrom} \
-    SUFFIX=~{suffix} \
+    OUT_DIR=. \
+    PHENO_FILE=~{pheno_data} \
+    P_FILE=~{imputed_snp_p_file} \
+    PLINK_EXECUTABLE=~{plink_command} \
     ~{script}
   >>>
 
   runtime {
-    dx_timeout: ""
-    # TODO threads and mem and time
+    memory: "56g"
+    cpu: "28"
+
+    dx_timeout: "24h"
   }
 }
 

@@ -54,11 +54,13 @@ workflow main {
 
   input {
     String script_dir
-    String PRIMUS_executable
+    String PRIMUS_command
+    String plink_command = "plink2"
 
     File chr_lens
 
     Array[File]+ str_vcfs
+    Array[File]+ imputed_snp_p_files
     File specific_alleles # could replace this with a different way of providing this info
 
     String phenotype_name
@@ -86,6 +88,8 @@ workflow main {
     File sc_date_of_death
     File sc_phenotype
   }
+
+  Array[Int] chroms = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
   call tasks.write_sample_list as white_brits_sample_list { input:
     script_dir = script_dir,
@@ -169,7 +173,7 @@ workflow main {
 
   call tasks.unrelated_samples_for_phenotype { input:
     script_dir = script_dir,
-    PRIMUS_executable = PRIMUS_executable
+    PRIMUS_command = PRIMUS_command
     pheno_data = pheno_data,
     kinship = kinship,
     is_binary = is_binary,
@@ -213,6 +217,22 @@ workflow main {
     tsvs = region_my_str_gwas.data
   }
 
+  scatter (chrom in chroms) {
+    call tasks.chromosomal_plink_snp_gwas { input :
+      script_dir = script_dir,
+      plink_command = plink_command,
+      imputed_snp_p_file = imputed_snp_p_files[chrom],
+      pheno_data = transform_trait_values.data
+      chrom = chrom,
+      phenotype_name = phenotype_name,
+      binary_type = if !is_binary then "linear" else "linear_binary",
+    }
+  }
+
+  call tasks.concatenate_csvs as plink_snp_gwas { input :
+    tsvs = chromosomal_plink_snp_gwas.data
+  }
+
   # TODO second round for binary
 
   output {
@@ -227,5 +247,7 @@ workflow main {
     File transform_trait_values_out = transform_trait_values.data
     File fig_4a_svg_out = fig_4a.svg
     File fig_4a_png_out = fig_4a.png
+    File my_str_gwas_out = my_str_gwas.tsv
+    File plink_snp_gwas_out = plink_snp_gwas.tsv
   }
 }

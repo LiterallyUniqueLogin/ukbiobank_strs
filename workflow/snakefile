@@ -635,7 +635,12 @@ rule run_linear_plink_gwas_parent:
             assert wildcards.suffix == '_linear'
             assert phenotypes.is_binary(wildcards.phenotype)
 
-        shell('PHENOTYPE={wildcards.phenotype} CHROM={wildcards.chrom} SUFFIX={wildcards.suffix} association/plink_association.sh')
+        shell(
+            'PHENOTYPE={wildcards.phenotype} '
+            'BINARY_TYPE=linear '
+            'CHROM={wildcards.chrom} '
+            'OUT_DIR={wildcards}' #TODO fix
+            'association/plink_association.sh')
 
 use rule run_linear_plink_gwas_parent as run_linear_binary_plink_gwas with:
     output:
