@@ -43,6 +43,7 @@ task concatenate_tsvs {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     dx_timeout: "4h"
   }
 }
@@ -67,6 +68,7 @@ task write_sample_list {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -75,7 +77,7 @@ task write_sample_list {
 task ethnic_sample_lists {
   input {
     String script_dir
-    File script = "~{script_dir}/sample_qc/scripts/ethnicity.py"
+    File script_ = "~{script_dir}/sample_qc/scripts/ethnicity.py"
     File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File white_brits_sample_list # write_sample_list 22006
@@ -102,10 +104,11 @@ task ethnic_sample_lists {
   }
 
   command <<<
-    ~{script} . ~{white_brits_sample_list} ~{sc_ethnicity_self_report}
+    ~{script_} . ~{white_brits_sample_list} ~{sc_ethnicity_self_report}
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -129,6 +132,7 @@ task sex_mismatch_sample_list {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -167,6 +171,7 @@ task qced_sample_list {
   >>>  
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -194,6 +199,7 @@ task load_shared_covars {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     memory: "10g"
 
     dx_timeout: "15m"
@@ -230,6 +236,7 @@ task load_continuous_phenotype {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -269,6 +276,7 @@ task load_binary_phenotype {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -283,16 +291,18 @@ task unrelated_samples_for_phenotype {
     File pheno_data # load_xxx_phenotype.data
     File kinship
     Boolean is_binary
+  }
 
-    output {
-      File data = "out.samples"
-    }
+  output {
+    File data = "out.samples"
+  }
 
-    command <<<
-      ~{script} out.samples ~{kinship} ~{pheno_data} ~{PRIMUS_command} ~{if is_binary then "--binary-pheno" else ""}
-    >>>
+  command <<<
+    ~{script} out.samples ~{kinship} ~{pheno_data} ~{PRIMUS_command} ~{if is_binary then "--binary-pheno" else ""}
+  >>>
   
   runtime {
+    docker: "ukb_strs"
     dx_timeout: "24h"
   }
 }
@@ -317,6 +327,7 @@ task transform_trait_values {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -345,6 +356,7 @@ task fig_4a {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "10m"
   }
@@ -400,6 +412,7 @@ task str_spot_test {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     shortTask: true
     dx_timeout: "20m"
   }
@@ -445,12 +458,13 @@ task regional_my_str_gwas {
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
       --str-vcf ~{str_vcf} \
-      ~{if is_binary then "--binary " + ~{binary_type} else ""}
+      ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
   runtime {
+    docker: "ukb_strs"
     dx_timeout: "12h"
-    memory: ~{if binary_type == "logistic" then "40g" else "4g"}
+    memory: if binary_type == "logistic" then "40g" else "4g"
   }
 }
 
@@ -478,12 +492,13 @@ task prep_continuous_plink_input {
       ~{phenotype_name} \
       ~{transformed_phenotype} \
       ~{pheno_covar_names} \
-      ~{sared_covars} \
+      ~{shared_covars} \
       ~{shared_covar_names}
-      ~{if is_binary then "--binary " + ~{binary_type} else ""}
+      ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
   runtime {
+    docker: "ukb_strs"
     dx_timeout: "30m"
   }
 }
@@ -503,7 +518,7 @@ task chromosomal_plink_snp_association {
   }
 
   output {
-    File data = "plink2.~{if binary_type == 'linear' then 'RIN_' else ''}~{phenotype_name}.glm.~{if binary_type == 'logistic' then 'logistic.hybrid' else 'linear'}.done"
+    File data = "plink2." + (if binary_type == "linear" then "RIN_" else "") + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else "linear") + ".done"
     File log = "plink2.log"
   }
 
@@ -519,6 +534,7 @@ task chromosomal_plink_snp_association {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     memory: "56g"
     cpu: "28"
 
@@ -526,7 +542,7 @@ task chromosomal_plink_snp_association {
   }
 }
 
-task {
+task todo {
   input {
     String script_dir
     File script = "~{script_dir}/"
@@ -541,6 +557,7 @@ task {
   >>>
 
   runtime {
+    docker: "ukb_strs"
     dx_timeout: ""
   }
 }
