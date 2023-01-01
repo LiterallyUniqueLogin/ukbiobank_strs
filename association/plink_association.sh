@@ -9,8 +9,9 @@ if [ -z "$OUT_DIR" ] ; then echo "OUTDIR is unset" ; exit 1 ; fi
 if [ -z "$PHENO_FILE" ] ; then echo "PHENO_FILE is unset" ; exit 1 ; fi
 if [ -z "$PLINK_EXECUTABLE" ] ; then echo "PLINK_EXECUTABLE is unset" ; exit 1 ; fi
 if [ -z "$P_FILE" ] ; then echo "P_FILE is unset" ; exit 1 ; fi
-echo "PHENOTYPE $PHENOTYPE BINARY_TYPE $BINARY_TYPE CHROM $CHROM OUT_DIR $OUT_DIR PHENO_FILE $PHENO_FILE PLINK_EXECUTABLE $PLINK_EXECUTABLE P_FILE $P_FILE START $START END $END"
-echo "PHENOTYPE $PHENOTYPE BINARY_TYPE $BINARY_TYPE CHROM $CHROM OUT_DIR $OUT_DIR PHENO_FILE $PHENO_FILE PLINK_EXECUTABLE $PLINK_EXECUTABLE P_FILE $P_FILE START $START END $END" >&2
+if [ -z "$PROJECT_TEMP" ] ; then echo "PROJECT_TEMP is unset" ; exit 1 ; fi
+echo "PHENOTYPE $PHENOTYPE BINARY_TYPE $BINARY_TYPE CHROM $CHROM OUT_DIR $OUT_DIR PHENO_FILE $PHENO_FILE PLINK_EXECUTABLE $PLINK_EXECUTABLE P_FILE $P_FILE START $START END $END PROJECT_TEMP $PROJECT_TEMP"
+echo "PHENOTYPE $PHENOTYPE BINARY_TYPE $BINARY_TYPE CHROM $CHROM OUT_DIR $OUT_DIR PHENO_FILE $PHENO_FILE PLINK_EXECUTABLE $PLINK_EXECUTABLE P_FILE $P_FILE START $START END $END PROJECT_TEMP $PROJECT_TEMP" >&2
 
 if [[ ( -n "$START" && -z "$END" ) || ( -z "$START" && -n "$END" ) ]] ; then
 	echo "Start but not end or end but not start. Exiting."
@@ -19,11 +20,6 @@ fi
 
 if [[ ( $BINARY_TYPE != linear ) && ( $BINARY_TYPE != linear_binary ) && ( $BINARY_TYPE != logistic ) ]] ; then
 	echo "BINARY_TYPE not set correctly. Exiting."
-	exit 1
-fi
-
-if [[ -z "$PROJECT_TEMP" ]] ; then
-	echo "PROJECT_TEMP not defined. Exiting."
 	exit 1
 fi
 

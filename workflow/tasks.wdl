@@ -335,6 +335,8 @@ task transform_trait_values {
 
 ######## STR calling and QC ###########
 
+# TODO could do length confusion, pre imputation allele freqs, calc macs
+
 # cbl allele dist
 task fig_4a {
   input {
@@ -364,6 +366,53 @@ task fig_4a {
 
 ########### Running and plotting associations #############
 
+task association_regions {
+  input {
+    File chr_lens
+    Int region_len
+  }
+
+  output {
+    # TODO set these
+    Array[Int] chroms
+    Array[Int] start_poses
+    Array[Int] end_poses
+  }
+
+  command <<<
+    python -c "
+      import numpy as np
+      chr_lens = np.genfromtxt(
+        ~{chr_lens},
+        usecols=[1],
+        skip_header=1,
+        dtype=int
+      )
+
+      chroms = []
+      starts = []
+      ends = []
+      for chrom in range(1, 23):
+        chr_len = chr_lens[chrom-1]
+        for start in range(1, chr_len, ~{region_len}):
+          if start + region_len - 1 > chr_len:
+            end = chr_len
+          else:
+            end = start + region_len - 1
+          chroms.append(chroms)
+          starts.append(start)
+          ends.append(end)
+       TODO
+    "
+  >>>
+
+  runtime {
+    shortTask: true
+    dx_timeout: "5m"
+  }
+}
+
+
 task str_spot_test {
   input {
     String script_dir
@@ -388,7 +437,6 @@ task str_spot_test {
   }
 
   # TODO remove:
-  # project temp
   # sample utils issues
   # trtools
   command <<<
@@ -438,6 +486,7 @@ task regional_my_str_gwas {
     Int start_pos
     Int end_pos
     String phenotype_name
+    String temp_dir
   }
 
   output {
@@ -445,7 +494,6 @@ task regional_my_str_gwas {
   }
   
   # TODO remove:
-  # project temp
   # sample utils issues
   # trtools
   command <<<
@@ -458,6 +506,7 @@ task regional_my_str_gwas {
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
       --str-vcf ~{str_vcf} \
+      --temp-dir ~{temp_dir} \
       ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
@@ -468,7 +517,9 @@ task regional_my_str_gwas {
   }
 }
 
-task prep_continuous_plink_input {
+# TODO could do my GWAS for SNPs
+
+task prep_plink_input {
   input {
     String script_dir
     File script = "~{script_dir}/prep_plink_input.py "
@@ -511,6 +562,7 @@ task chromosomal_plink_snp_association {
 
     File imputed_snp_p_file # TODO could generate this with task
     File pheno_data # from task
+    String temp_dir
 
     Int chrom
     String phenotype_name
@@ -530,6 +582,7 @@ task chromosomal_plink_snp_association {
     PHENO_FILE=~{pheno_data} \
     P_FILE=~{imputed_snp_p_file} \
     PLINK_EXECUTABLE=~{plink_command} \
+    PROJECT_TEMP=~{temp_dir} \
     ~{script}
   >>>
 
@@ -539,6 +592,30 @@ task chromosomal_plink_snp_association {
     cpu: "28"
 
     dx_timeout: "24h"
+  }
+}
+
+## TODO append mfi to plink logistic run
+## TODO compare my to plink GWAS
+
+# TODO , also many variants
+task manhattan {
+  input {
+    String script_dir
+    File script = "~{script_dir}/"
+  }
+
+  output {
+
+  }
+
+  command <<<
+    ~{script}
+  >>>
+
+  runtime {
+    docker: "ukb_strs"
+    dx_timeout: ""
   }
 }
 

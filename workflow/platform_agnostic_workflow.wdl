@@ -4,58 +4,13 @@ version 1.0
 
 import "tasks.wdl"
 
-task association_regions {
-  input {
-    File chr_lens
-    Int region_len
-  }
-
-  output {
-    # TODO set these
-    Array[Int] chroms
-    Array[Int] start_poses
-    Array[Int] end_poses
-  } 
-
-  command <<<
-    python -c "
-      import numpy as np
-      chr_lens = np.genfromtxt(
-        ~{chr_lens},
-        usecols=[1],
-        skip_header=1,
-        dtype=int
-      )
-
-      chroms = []
-      starts = []
-      ends = []
-      for chrom in range(1, 23):
-        chr_len = chr_lens[chrom-1]
-        for start in range(1, chr_len, ~{region_len}):
-          if start + region_len - 1 > chr_len:
-            end = chr_len
-          else:
-            end = start + region_len - 1
-          chroms.append(chroms)
-          starts.append(start)
-          ends.append(end)
-       TODO
-    "
-  >>>
-
-  runtime {
-    shortTask: true
-    dx_timeout: "5m"
-  }
-}
-
 workflow main {
 
   input {
     String script_dir
     String PRIMUS_command
     String plink_command = "plink2"
+    String temp_dir
 
     File chr_lens
 
@@ -192,7 +147,7 @@ workflow main {
     specific_alleles = specific_alleles
   }
 
-  call association_regions as str_association_regions { input :
+  call tasks.association_regions as str_association_regions { input :
     chr_lens = chr_lens,
     region_len = 10000000
   } 
@@ -209,7 +164,8 @@ workflow main {
       chrom = region.left,
       start_pos = region.right.left,
       end_pos = region.right.right
-      phenotype_name = phenotype_name
+      phenotype_name = phenotype_name,
+      temp_dir = temp_dir
     }
   }
 
@@ -217,12 +173,23 @@ workflow main {
     tsvs = region_my_str_gwas.data
   }
 
+  call tasks.prep_plink_input { input :
+    script_dir = 'script_dir',
+    shared_covars = load_shared_covars.shared_covars,
+    shared_covar_names = load_shared_covars.covar_names,
+    transformed_phenotype = transform_trait_values.data,
+    pheno_covar_names = covar_names,
+    is_binary = is_binary,
+    binary_type = "linear", # only used if is_binary
+    phenotype_name = phenotype_name
+  }
+
   scatter (chrom in chroms) {
     call tasks.chromosomal_plink_snp_gwas { input :
       script_dir = script_dir,
       plink_command = plink_command,
       imputed_snp_p_file = imputed_snp_p_files[chrom],
-      pheno_data = transform_trait_values.data
+      pheno_data = prep_plink_input.data,
       chrom = chrom,
       phenotype_name = phenotype_name,
       binary_type = if !is_binary then "linear" else "linear_binary",

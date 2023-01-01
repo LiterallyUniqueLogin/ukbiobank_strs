@@ -7,7 +7,6 @@ and then return yield them
 """
 
 import os
-import os.path
 from typing import Optional, Set, Tuple
 import sys
 

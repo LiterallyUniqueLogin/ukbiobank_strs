@@ -2,7 +2,6 @@
 
 import argparse
 import datetime
-import os
 import shutil
 import tempfile
 import time
@@ -17,8 +16,6 @@ import load_and_filter_genotypes
 import python_array_utils as utils
 import sample_utils
 import weighted_binom_conf
-
-project_temp = os.environ['UKB'] + '/scratch'
 
 def perform_regional_gwas_helper(
     outfile,
@@ -322,7 +319,7 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
         yield next(itr)
 
 
-def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname):
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir):
     if runtype == 'strs':
         if region is not None:
             get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
@@ -339,7 +336,7 @@ def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, 
     else:
         raise ValueError("not implemented for this runtype")
 
-    with tempfile.NamedTemporaryFile(dir=project_temp, mode='w+') as temp_outfile:
+    with tempfile.NamedTemporaryFile(dir=temp_dir, mode='w+') as temp_outfile:
         print(f"Writing output to temp file {temp_outfile.name}", flush=True)
         perform_regional_gwas_helper(
             temp_outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, get_genotype_iter, phenotype, binary, region, runtype, conditional_covars_fname
@@ -398,6 +395,7 @@ def main():
     )
     parser.add_argument('phenotype')
     parser.add_argument('--readme', action='store_true', default=False)
+    parser.add_argument('--temp-dir')
     parser.add_argument('--region')
     parser.add_argument('--vars-file')
     parser.add_argument('--pheno-and-covars')
@@ -423,7 +421,8 @@ def main():
         args.readme ==
         (args.pheno_and_covars is None) ==
         (args.shared_covars is None) ==
-        (args.untransformed_phenotypes is None)
+        (args.untransformed_phenotypes is None) ==
+        (args.temp_dir is None)
     )
 
     if args.conditional_covars is not None:
@@ -451,7 +450,8 @@ def main():
             args.str_vcf,
             args.snp_bgen,
             args.snp_mfi,
-            args.conditional_covars
+            args.conditional_covars,
+            args.temp_dir
         )
 
 
