@@ -71,6 +71,7 @@ workflow main {
     String date_of_most_recent_first_occurrence_update
 
     File fam_file # task for generating this?
+    File all_samples_list
     File withdrawn_sample_list
     File kinship
 
@@ -137,6 +138,15 @@ workflow main {
     }
   }
 
+  scatter (sample_list in all_qced_sample_lists.data) {
+    call tasks.unrelated_samples as ethnicity_unrelated_samples { input:
+      script_dir = script_dir,
+      PRIMUS_command = PRIMUS_command
+      kinship = kinship,
+      sample_list = sample_list
+    }
+  }
+
   call tasks.load_shared_covars { input:
     script_dir = script_dir,
     fam_file = fam_file,
@@ -171,25 +181,35 @@ workflow main {
   File covar_names = select_first([load_continuous_phenotype.covar_names, load_binary_phenotype.covar_names])
   File pheno_readme = select_first([load_continuous_phenotype.README, load_binary_phenotype.covar_names])
 
-  call tasks.unrelated_samples_for_phenotype { input:
+  call tasks.write_sample_list_for_phenotype { input:
+    script_dir = script_dir,
+    pheno_data = pheno_data
+  }
+
+  call tasks.unrelated_samples as phenotype_unrelated_samples { input:
     script_dir = script_dir,
     PRIMUS_command = PRIMUS_command
-    pheno_data = pheno_data,
     kinship = kinship,
-    is_binary = is_binary,
+    sample_list = write_sample_list_for_phenotype.data,
+    binary_pheno_data = if is_binary then pheno_data else None
   }
 
   call tasks.transform_trait_values { input :
     script_dir = script_dir,
     pheno_data = pheno_data,
-    unrelated_samples_for_phenotype = unrelated_samples_for_phenotype.data,
+    unrelated_samples_for_phenotype = phenotype_unrelated_samples.data,
     is_binary = is_binary
   }
 
   call tasks.fig_4a { input :
     script_dir = script_dir,
+    all_samples_list = all_samples_list,
+    white_brits_sample_list = ethnicity_unrelated_samples.data[0],
+    black_sample_list = ethnicity_unrelated_samples.data[1],
+    south_asian_sample_list = ethnicity_unrelated_samples.data[2],
+    chinese_sample_list = ethnicity_unrelated_samples.data[3],
     str_vcf_chr_11 = str_vcfs[11],
-    specific_alleles = specific_alleles
+    specific_alleles = specific_alleles,
   }
 
   call association_regions as str_association_regions { input :
@@ -243,7 +263,7 @@ workflow main {
     File pheno_data_out = pheno_data
     File covar_names_out = covar_names
     File pheno_readme_out = pheno_readme
-    File unrelated_samples_for_phenotype_out = unrelated_samples_for_phenotype.data
+    File unrelated_samples_for_phenotype_out = phenotype_unrelated_samples.data
     File transform_trait_values_out = transform_trait_values.data
     File fig_4a_svg_out = fig_4a.svg
     File fig_4a_png_out = fig_4a.png
