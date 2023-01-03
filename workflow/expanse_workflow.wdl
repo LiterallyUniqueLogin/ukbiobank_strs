@@ -51,6 +51,7 @@ workflow main {
     String date_of_most_recent_first_occurrence_update = "2021-04-01"
 
     File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam"
+    File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
     File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
     File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat"
   }
@@ -140,6 +141,7 @@ workflow main {
     date_of_most_recent_first_occurrence_update = date_of_most_recent_first_occurrence_update,
 
     fam_file = fam_file, # Could instead create a task for downloading this with ukbgene
+    all_samples_list = all_samples_list,
     withdrawn_sample_list = withdrawn_sample_list,
     kinship = kinship, # could create a task for downloading this with ukbgene
 

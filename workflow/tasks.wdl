@@ -18,8 +18,6 @@ version 1.0
 # first line is 'ID' (case insensitive)
 # every successive line is a sample ID
 
-# TODO: set container for each task
-
 ####################### Helper tasks ###########################
 
 task concatenate_tsvs {
@@ -32,9 +30,12 @@ task concatenate_tsvs {
   }
 
   command <<<
-    for file in ~{sep=" " tsvs} ; do 
+    if (( $(for file in ~{sep=" " tsvs} ; do 
       head -1 $file
-    done | uniq -c | wc -l | # TODO assert 1
+    done | uniq -c | wc -l) != 1 )) ; then
+      echo "Different headers" 2>&1
+      exit 1
+    fi
     
     head -1 ~{tsvs[0]} > ~{tsv}
     for file in ~{sep=" " tsvs} ; do
@@ -282,15 +283,12 @@ task load_binary_phenotype {
   }
 }
 
-task unrelated_samples_for_phenotype {
+task write_sample_list_for_phenotype {
   input {
     String script_dir
-    File script = "~{script_dir}/sample_qc/scripts/unrelated_individuals.py"
-    String PRIMUS_command
+    File script = "~{script_dir}/traits/write_sample_list_from_pheno_array.py"
 
-    File pheno_data # load_xxx_phenotype.data
-    File kinship
-    Boolean is_binary
+    File pheno_data # from load_xxx_phenotype
   }
 
   output {
@@ -298,7 +296,34 @@ task unrelated_samples_for_phenotype {
   }
 
   command <<<
-    ~{script} out.samples ~{kinship} ~{pheno_data} ~{PRIMUS_command} ~{if is_binary then "--binary-pheno" else ""}
+    ~{script} ~{pheno_data} ~{data}
+  >>>
+
+  runtime {
+    docker: "ukb_strs"
+    shortTask: true
+    dx_timeout: "5m"
+  }
+}
+
+task unrelated_samples {
+  input {
+    String script_dir
+    File script = "~{script_dir}/sample_qc/scripts/unrelated_individuals.py"
+    File sample_utils = "~{script_dir}/sample_qc/scripts/sample_utils.py"
+    String PRIMUS_command
+
+    File kinship
+    File sample_list # from task qced_sample_list (for ethnicities) or write_sample_list_for_phenotype (for phenotypes)
+    File? binary_pheno_data # task load_binary_phenotype.data
+  }
+
+  output {
+    File data = "out.samples"
+  }
+
+  command <<<
+    ~{script} out.samples ~{kinship} ~{sample_list} ~{PRIMUS_command} ~{if is_binary then "--binary-pheno" else ""}
   >>>
   
   runtime {
@@ -340,9 +365,15 @@ task transform_trait_values {
 # cbl allele dist
 task fig_4a {
   input {
-    String script_dir = "association/cbl_allele_histo.py'"
+    String script_dir
     File script = "~{script_dir}/association/cbl_allele_histo.py"
-    # TODO sample_utils
+    File sample_utils = "~{script_dir}/association/sample_utils.py"
+
+    File all_samples_list
+    File white_brits_sample_list # 
+    File black_sample_list # task ethnic_samples_lists
+    File south_asian_sample_list # task ethnic_samples_lists
+    File chinese_sample_list # task ethnic_samples_lists
 
     File str_vcf_chr_11
     File specific_alleles
@@ -354,7 +385,8 @@ task fig_4a {
   }
 
   command <<<
-    ~{script} . ~{str_vcf_chr_11} ~{specific_alleles}
+    ~{script} . ~{str_vcf_chr_11} ~{specific_alleles} ~{all_samples_list} \
+      ~{white_brits_sample_list} ~{black_sample_list} ~{south_asian_sample_list} ~{chinese_sample_list}
   >>>
 
   runtime {

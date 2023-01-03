@@ -11,6 +11,8 @@ import tempfile
 
 import numpy as np
 
+import sample_utils
+
 def primus_command(infile, outdir, primus_command_string):
     # FYI, The PRIMUS command produces an ungodly amount of auxiliary files when
     # running - enough so that rm'ing them all takes a while
@@ -24,15 +26,15 @@ def primus_command(infile, outdir, primus_command_string):
 parser = argparse.ArgumentParser()
 parser.add_argument('outfile')
 parser.add_argument('kinship_file')
-parser.add_argument('pheno_file')
+parser.add_argument('qced_samples_fname')
 parser.add_argument('primus_command_string')
-parser.add_argument('--binary-pheno', action='store_true', default=False)
+parser.add_argument('--binary-pheno') # npy file if binary
 args = parser.parse_args()
 
 with tempfile.TemporaryDirectory() as output_dir:
     print('Temp dir name: ', output_dir)
 
-    all_samples = {str(int(id_)) for id_ in np.load(args.pheno_file)[:, 0]}
+    all_samples = sample_utils.get_samples(args.qced_samples_fname)
 
     print(f"Done reading original sample file. Total num samples: {len(all_samples)}")
 
@@ -42,7 +44,7 @@ with tempfile.TemporaryDirectory() as output_dir:
         # for case control data, prioritize cases over controls
         # and prioritize maximizing number of cases over maximizing
         # total number of cases and controls
-        data = np.load(args.pheno_file)
+        data = np.load(args.binary_pheno)
         # assert that cases are a low enough percentage of total samples
         # so that this type of prioritization makes sense
         assert np.sum(data[:, 1]) <= .2*data.shape[0]
