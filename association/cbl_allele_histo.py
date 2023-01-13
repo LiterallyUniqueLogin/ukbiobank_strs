@@ -17,6 +17,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('outdir')
 parser.add_argument('str_vcf_chrom_11')
 parser.add_argument('specific_alleles_file')
+parser.add_argument('all_samples_fname')
+# in the order white brits, black, south asian, chinese
+parser.add_argument('ethnic_samples_fnames', nargs=4)
 
 args = parser.parse_args()
 
@@ -38,8 +41,8 @@ ethnic_gts = {}
 for ethnicity in ethnicities:
     ethnic_gts[ethnicity] = {len_: [0,0] for len_ in np.arange(min(lens), max(lens) + 1)}
 
-for ethnicity in ethnicities:
-    samp_idx = sample_utils.get_samples_idx_ethnicity(ethnicity)
+for ethnicity, ethnic_samples_fname in zip(ethnicities, args.ethnic_samples_fnames):
+    samp_idx = sample_utils.get_samples_idx(args.all_samples_fname, ethnic_samples_fname)
 
     len_ = round(len(var.REF)/repeat_len)
     imperfect = 1 if 0 in imperfect_alleles else 0

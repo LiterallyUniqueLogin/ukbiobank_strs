@@ -81,7 +81,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
 
     covar_datas = []
     reverse_covar_hashes = []
-    for covar_name, covar_fname in zip(args.categorical_covars_names, args.categorical_covar_files):
+    for covar_name, covar_fname in zip(args.categorical_covar_names, args.categorical_covar_files):
         readme.write(
             f"Loading categorical covar with name {covar_name} from txt file "
             f" {covar_fname}\n"
@@ -126,7 +126,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
         "had this phenotype measured at multiple visits, only the phenotype value and age "
         "at the first visit are being used. The age "
         "is being loaded from the shared_covars file "
-        f"{args.asssessment_ages_npy} . An additional "
+        f"{args.assessment_ages_npy} . An additional "
         "dummy covariate indicating visit number is being added "
         "for each visit whose data is used beyond the first.\n"
     )

@@ -19,7 +19,7 @@ task extract_field {
   }
 
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       ~{id} \
       ~{id} \
       ~{ukbconv} \
@@ -29,6 +29,7 @@ task extract_field {
   >>>
 
   runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
     dx_timeout: "5h"
   }
 }
@@ -123,15 +124,28 @@ workflow main {
     }
   }
 
+  scatter (chrom in range(22)) {
+    VCF str_vcfs = {
+      "vcf": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz",
+      "index": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz.tbi"
+    }
+    PFiles imputed_snp_p_files = {
+      "pgen": "array_imputed/pfile_converted/chr{chrom+1}.pgen",
+      "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
+      "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
+    }
+  }
+
   call platform_agnostic_workflow.main { input:
     script_dir = script_dir,
-    PRIMUS_command = "run_PRIMUS.pl"
-    temp_dir = 'scratch'
+    PRIMUS_command = "run_PRIMUS.pl",
+    temp_dir = 'scratch',
 
-    # TODO chr_lens
+    chr_lens = "misc_data/genome/chr_lens.txt",
 
-    # TODO str_vcfs
-    # TODO specific_alleles
+    str_vcfs = str_vcfs,
+    imputed_snp_p_files = imputed_snp_p_files,
+    specific_alleles = "association/specific_alleles.tab",
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,

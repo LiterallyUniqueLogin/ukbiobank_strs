@@ -21,37 +21,34 @@ def load_covars():
     Only columns that may be nan are the assessment ages
     """
     with open(f'{args.outdir}/covar_names.txt', 'w') as covar_names:
-        floc = args.fam_file
         cols = (0, 4)
         # Sex is encoded as 1 (male) or 2 (female)
         ids_and_sex = np.genfromtxt(
-            floc,
+            args.fam_file,
             usecols=cols,
             delimiter=" "
         )
         covar_names.write('sex\n')
+        # remove redacted samples which are denoted by negative id s
+        ids_and_sex = ids_and_sex[ids_and_sex[:, 0] > 0, :]
+        assert not np.any(np.isnan(ids_and_sex))
 
-        floc = args.pcs_fname
         pcs = np.genfromtxt(
-            floc,
+            args.pcs_fname,
             delimiter="\t",
             skip_header = 1,
         )[:, 1:-1]
-        print(pcs.shape)
-        print('IDs without PCs (that are being skipped)')
-        print(list(pcs[np.any(np.isnan(pcs), axis=1), 0]))
-        pcs = pcs[~np.any(np.isnan(pcs), axis=1), :]
-        print(pcs.shape)
         [covar_names.write(f"pc{col}\n") for col in range(1, 41)]
 
-        # these arrays are in the same row order, so just concatenate
         data = python_array_utils.merge_arrays(
             ids_and_sex, pcs
         )
-        assert not np.any(np.isnan(data))
+        print(data.shape)
+        print('IDs without PCs (that are being skipped)')
+        print(list(data[np.any(np.isnan(data), axis=1), 0]))
+        data = data[~np.any(np.isnan(data), axis=1), :]
+        print(data.shape)
 
-        # remove redacted samples which are denoted by negative id s
-        data = data[data[:, 0] > 0, :]
         # assert sex is either 1 (male) or 2 (female)
         assert np.all((data[:, 1] == 1) | (data[:, 1] == 2))
 
@@ -73,7 +70,7 @@ def load_covars():
         # As such, each measured dependent variable needs to specify which assessments
         # the age should be drawn from for each participant.
         # because of that, ages are saved as a separate file
-        age_file_name = args.assessment_ages_files
+        age_file_name = args.assessment_ages_file
         with open(age_file_name) as age_file:
             assessment_age = np.genfromtxt(
                 age_file,

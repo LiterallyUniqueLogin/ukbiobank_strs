@@ -22,6 +22,7 @@ def perform_regional_gwas_helper(
     pheno_and_covars_fname,
     shared_covars_fname,
     untransformed_phenotypes_fname,
+    all_samples_fname,
     get_genotype_iter,
     phenotype,
     binary,
@@ -52,7 +53,7 @@ def perform_regional_gwas_helper(
         covars = utils.merge_arrays(covars, gt_covars)
 
     # order samples according to order in genetics files
-    bgen_samples = sample_utils.get_all_samples()
+    bgen_samples = sample_utils.get_all_samples(all_samples_fname)
     assert len(bgen_samples) == 487409
     samples_array = np.array(bgen_samples, dtype=float).reshape(-1, 1)
     merge = utils.merge_arrays(samples_array, covars)
@@ -319,7 +320,7 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
         yield next(itr)
 
 
-def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir):
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir):
     if runtype == 'strs':
         if region is not None:
             get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
@@ -339,7 +340,7 @@ def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, 
     with tempfile.NamedTemporaryFile(dir=temp_dir, mode='w+') as temp_outfile:
         print(f"Writing output to temp file {temp_outfile.name}", flush=True)
         perform_regional_gwas_helper(
-            temp_outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, get_genotype_iter, phenotype, binary, region, runtype, conditional_covars_fname
+            temp_outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, get_genotype_iter, phenotype, binary, region, runtype, conditional_covars_fname
         )
 
         print(f"Copying {temp_outfile.name} to {outfile}")
@@ -402,6 +403,7 @@ def main():
     parser.add_argument('--shared-covars')
     parser.add_argument('--conditional-covars')
     parser.add_argument('--untransformed-phenotypes')
+    parser.add_argument('--all-samples-fname')
     parser.add_argument('--str-vcf')
     parser.add_argument('--snp-bgen')
     parser.add_argument('--snp-mfi')
@@ -422,6 +424,7 @@ def main():
         (args.pheno_and_covars is None) ==
         (args.shared_covars is None) ==
         (args.untransformed_phenotypes is None) ==
+        (args.all_samples_fname is None) ==
         (args.temp_dir is None)
     )
 
@@ -442,6 +445,7 @@ def main():
             args.pheno_and_covars,
             args.shared_covars,
             args.untransformed_phenotypes,
+            args.all_samples_fname,
             args.phenotype,
             args.binary,
             args.region,

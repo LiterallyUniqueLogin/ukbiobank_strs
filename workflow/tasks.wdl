@@ -18,6 +18,19 @@ version 1.0
 # first line is 'ID' (case insensitive)
 # every successive line is a sample ID
 
+####################### Common structs #########################
+
+struct VCF {
+  File vcf
+  File index
+}
+
+struct PFiles {
+  File pgen
+  File psam
+  File pvar
+}
+
 ####################### Helper tasks ###########################
 
 task concatenate_tsvs {
@@ -30,21 +43,23 @@ task concatenate_tsvs {
   }
 
   command <<<
-    if (( $(for file in ~{sep=" " tsvs} ; do 
-      head -1 $file
-    done | uniq -c | wc -l) != 1 )) ; then
-      echo "Different headers" 2>&1
-      exit 1
-    fi
-    
-    head -1 ~{tsvs[0]} > ~{tsv}
-    for file in ~{sep=" " tsvs} ; do
-      tail -n +2 $file >> ~{tsv}
-    done
+    envsetup bash -c '
+      if (( $(for file in ~{sep=" " tsvs} ; do 
+        head -1 $file
+      done | uniq -c | wc -l) != 1 )) ; then
+        echo "Different headers" 2>&1
+        exit 1
+      fi
+      
+      head -1 ~{tsvs[0]} > ~{tsv}
+      for file in ~{sep=" " tsvs} ; do
+        tail -n +2 $file >> ~{tsv}
+      done
+    '
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
     dx_timeout: "4h"
   }
 }
@@ -55,6 +70,7 @@ task write_sample_list {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/write_sample_list.py"
+    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File sc
     Int? value
@@ -65,11 +81,11 @@ task write_sample_list {
   }
 
   command <<<
-    ~{script} ~{sc} data.out ~{"--value " +  value}
+    envsetup ~{script} ~{sc} data.out ~{"--value " +  value}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -105,11 +121,11 @@ task ethnic_sample_lists {
   }
 
   command <<<
-    ~{script_} . ~{white_brits_sample_list} ~{sc_ethnicity_self_report}
+    envsetup ~{script_} . ~{white_brits_sample_list} ~{sc_ethnicity_self_report}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -119,6 +135,7 @@ task sex_mismatch_sample_list {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/find_sex_mismatch_list.py"
+    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File sc_genetic_sex #22001
     File sc_reported_sex #31
@@ -129,11 +146,11 @@ task sex_mismatch_sample_list {
   }
 
   command <<<
-    ~{script} ~{sc_genetic_sex} ~{sc_reported_sex} out.sample
+    envsetup ~{script} ~{sc_genetic_sex} ~{sc_reported_sex} out.sample
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -160,7 +177,7 @@ task qced_sample_list {
   }
 
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       ~{outfname} \
       discard \
       ~{unqced_sample_list} \
@@ -172,7 +189,7 @@ task qced_sample_list {
   >>>  
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -182,6 +199,7 @@ task load_shared_covars {
   input {
     String script_dir
     File script = "~{script_dir}/traits/load_shared_covars.py"
+    File python_array_utils = "~{script_dir}/traits/python_array_utils.py"
 
     File fam_file
     File sc_pcs # 22009
@@ -196,12 +214,12 @@ task load_shared_covars {
   }
 
   command <<<
-    ~{script} . ~{fam_file} ~{sc_pcs} ~{sc_assessment_ages}
+    envsetup ~{script} . ~{fam_file} ~{sc_pcs} ~{sc_assessment_ages}
   >>>
 
   runtime {
-    docker: "ukb_strs"
-    memory: "10g"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    mem: "10g"
 
     dx_timeout: "15m"
   }
@@ -211,6 +229,7 @@ task load_continuous_phenotype {
   input {
     String script_dir
     File script = "~{script_dir}/traits/load_continuous_phenotype_from_main_dataset.py"
+    File python_array_utils = "~{script_dir}/traits/python_array_utils.py"
 
     File sc
     File qced_sample_list # from qced_sample_list
@@ -227,17 +246,17 @@ task load_continuous_phenotype {
   }
 
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       ~{sc} \
-      '.' \
+      'pheno' \
       ~{qced_sample_list} \
       ~{assessment_ages_npy} \
-      --categorical-covariate-names ~{sep=" " categorical_covariate_names} \
-      --categorical-covariate-files ~{sep=" " categorical_covariate_scs}
+      --categorical-covar-names ~{sep=" " categorical_covariate_names} \
+      --categorical-covar-files ~{sep=" " categorical_covariate_scs}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -265,7 +284,7 @@ task load_binary_phenotype {
   }
 
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       ~{sc} \
       '.' \
       ~{qced_sample_list} \
@@ -277,7 +296,7 @@ task load_binary_phenotype {
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -296,11 +315,11 @@ task write_sample_list_for_phenotype {
   }
 
   command <<<
-    ~{script} ~{pheno_data} ~{data}
+    envsetup ~{script} ~{pheno_data} out.samples
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -311,6 +330,7 @@ task unrelated_samples {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/unrelated_individuals.py"
     File sample_utils = "~{script_dir}/sample_qc/scripts/sample_utils.py"
+    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
     String PRIMUS_command
 
     File kinship
@@ -323,11 +343,11 @@ task unrelated_samples {
   }
 
   command <<<
-    ~{script} out.samples ~{kinship} ~{sample_list} ~{PRIMUS_command} ~{if is_binary then "--binary-pheno" else ""}
+    envsetup ~{script} out.samples ~{kinship} ~{sample_list} ~{PRIMUS_command} ~{"--binary-pheno " + binary_pheno_data}
   >>>
   
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     dx_timeout: "24h"
   }
 }
@@ -336,6 +356,7 @@ task transform_trait_values {
   input {
     String script_dir
     File script = "~{script_dir}/traits/transform_traits.py"
+    File python_array_utils = "~{script_dir}/traits/python_array_utils.py"
 
     File pheno_data # from task
     File unrelated_samples_for_phenotype  # from task
@@ -348,11 +369,11 @@ task transform_trait_values {
   }
 
   command <<<
-    ~{script} out ~{pheno_data} ~{unrelated_samples_for_phenotype} ~{if is_binary then "--binary" else ""}
+    envsetup ~{script} out ~{pheno_data} ~{unrelated_samples_for_phenotype} ~{if is_binary then "--binary" else ""}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -368,6 +389,7 @@ task fig_4a {
     String script_dir
     File script = "~{script_dir}/association/cbl_allele_histo.py"
     File sample_utils = "~{script_dir}/association/sample_utils.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
 
     File all_samples_list
     File white_brits_sample_list # 
@@ -375,7 +397,7 @@ task fig_4a {
     File south_asian_sample_list # task ethnic_samples_lists
     File chinese_sample_list # task ethnic_samples_lists
 
-    File str_vcf_chr_11
+    VCF str_vcf_chr_11
     File specific_alleles
   }
 
@@ -385,12 +407,12 @@ task fig_4a {
   }
 
   command <<<
-    ~{script} . ~{str_vcf_chr_11} ~{specific_alleles} ~{all_samples_list} \
+    envsetup ~{script} . ~{str_vcf_chr_11.vcf} ~{specific_alleles} ~{all_samples_list} \
       ~{white_brits_sample_list} ~{black_sample_list} ~{south_asian_sample_list} ~{chinese_sample_list}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "10m"
   }
@@ -405,45 +427,43 @@ task association_regions {
   }
 
   output {
-    # TODO set these
-    Array[Int] chroms
-    Array[Int] start_poses
-    Array[Int] end_poses
+    Array[Array[String]] out_tsv = read_tsv(stdout())
   }
 
   command <<<
-    python -c "
-      import numpy as np
-      chr_lens = np.genfromtxt(
-        ~{chr_lens},
-        usecols=[1],
-        skip_header=1,
-        dtype=int
-      )
+    envsetup python -c "
+    import numpy as np
+    chr_lens = np.genfromtxt(
+      '~{chr_lens}',
+      usecols=[1],
+      skip_header=1,
+      dtype=int
+    )
 
-      chroms = []
-      starts = []
-      ends = []
-      for chrom in range(1, 23):
-        chr_len = chr_lens[chrom-1]
-        for start in range(1, chr_len, ~{region_len}):
-          if start + region_len - 1 > chr_len:
-            end = chr_len
-          else:
-            end = start + region_len - 1
-          chroms.append(chroms)
-          starts.append(start)
-          ends.append(end)
-       TODO
+    chroms = []
+    starts = []
+    ends = []
+    for chrom in range(1, 23):
+      chr_len = chr_lens[chrom-1]
+      for start in range(1, chr_len, ~{region_len}):
+        if start + ~{region_len} - 1 > chr_len:
+          end = chr_len
+        else:
+          end = start + ~{region_len} - 1
+        chroms.append(chroms)
+        starts.append(start)
+        ends.append(end)
+    for chrom, start, end in zip(chroms, starts, ends):
+      print(f'{chrom}\t{start}\t{end}')
     "
   >>>
 
   runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "5m"
   }
 }
-
 
 task str_spot_test {
   input {
@@ -453,14 +473,16 @@ task str_spot_test {
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
     File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
 
-    File str_vcf
+    VCF str_vcf
     File shared_covars # from task
     File untransformed_phenotype # from task
     File transformed_phenotype # from task
+    File all_samples_list
     Boolean is_binary
     Int chrom
     Int pos
     String phenotype_name
+    String temp_dir
   }
 
   output {
@@ -469,15 +491,14 @@ task str_spot_test {
   }
 
   # TODO remove:
-  # sample utils issues
   # trtools
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       ~{README} \
       strs \
       ~{phenotype_name} \
       --readme \
-      --str-vcf ~{str_vcf} \
+      --str-vcf ~{str_vcf.vcf} \
       ~{if is_binary then "--binary logistic" else ""}
     ~{script} \
       ~{data} \
@@ -487,12 +508,14 @@ task str_spot_test {
       --pheno-and-covars ~{transformed_phenotype} \
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
-      --str-vcf ~{str_vcf} \
+      --all-samples-fname ~{all_samples_list} \
+      --str-vcf ~{str_vcf.vcf} \
+      --temp-dir ~{temp_dir} \
       ~{if is_binary then "--binary logistic" else ""}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     shortTask: true
     dx_timeout: "20m"
   }
@@ -508,10 +531,11 @@ task regional_my_str_gwas {
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
     File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
 
-    File str_vcf
+    VCF str_vcf
     File shared_covars # from task
     File untransformed_phenotype # from task
     File transformed_phenotype # from task
+    File all_samples_list
     Boolean is_binary
     String binary_type # linear or logistic, only needs to be set if is_binary == true
     Int chrom
@@ -526,10 +550,9 @@ task regional_my_str_gwas {
   }
   
   # TODO remove:
-  # sample utils issues
   # trtools
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       ~{data} \
       strs \
       ~{phenotype_name} \
@@ -537,15 +560,16 @@ task regional_my_str_gwas {
       --pheno-and-covars ~{transformed_phenotype} \
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
-      --str-vcf ~{str_vcf} \
+      --all-samples-fname ~{all_samples_list} \
+      --str-vcf ~{str_vcf.vcf} \
       --temp-dir ~{temp_dir} \
       ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     dx_timeout: "12h"
-    memory: if binary_type == "logistic" then "40g" else "4g"
+    mem: if binary_type == "logistic" then "40g" else "4g"
   }
 }
 
@@ -570,7 +594,7 @@ task prep_plink_input {
   }
 
   command <<<
-    ~{script} \
+    envsetup ~{script} \
       out.tab \
       ~{phenotype_name} \
       ~{transformed_phenotype} \
@@ -581,7 +605,7 @@ task prep_plink_input {
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     dx_timeout: "30m"
   }
 }
@@ -592,7 +616,7 @@ task chromosomal_plink_snp_association {
     File script = "~{script_dir}/plink_association.sh"
     String plink_command
 
-    File imputed_snp_p_file # TODO could generate this with task
+    PFiles imputed_snp_p_file # TODO could generate this with task
     File pheno_data # from task
     String temp_dir
 
@@ -612,16 +636,16 @@ task chromosomal_plink_snp_association {
     CHROM=~{chrom} \
     OUT_DIR=. \
     PHENO_FILE=~{pheno_data} \
-    P_FILE=~{imputed_snp_p_file} \
+    P_FILE=~{sub(imputed_snp_p_file.pgen, ".pgen$", "")} \
     PLINK_EXECUTABLE=~{plink_command} \
     PROJECT_TEMP=~{temp_dir} \
-    ~{script}
+    envsetup ~{script}
   >>>
 
   runtime {
-    docker: "ukb_strs"
-    memory: "56g"
-    cpu: "28"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    mem: "56g"
+    cpus: "28"
 
     dx_timeout: "24h"
   }
@@ -642,11 +666,11 @@ task manhattan {
   }
 
   command <<<
-    ~{script}
+    envsetup ~{script}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     dx_timeout: ""
   }
 }
@@ -662,11 +686,11 @@ task todo {
   }
 
   command <<<
-    ~{script}
+    envsetup ~{script}
   >>>
 
   runtime {
-    docker: "ukb_strs"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
     dx_timeout: ""
   }
 }

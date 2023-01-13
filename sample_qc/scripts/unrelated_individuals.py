@@ -34,7 +34,7 @@ args = parser.parse_args()
 with tempfile.TemporaryDirectory() as output_dir:
     print('Temp dir name: ', output_dir)
 
-    all_samples = sample_utils.get_samples(args.qced_samples_fname)
+    all_samples = set(sample_utils.get_samples(args.qced_samples_fname).flatten())
 
     print(f"Done reading original sample file. Total num samples: {len(all_samples)}")
 
@@ -79,13 +79,17 @@ with tempfile.TemporaryDirectory() as output_dir:
             old_cases_primus_out = f'{output_dir}/case_PRIMUS_OLD'
             if os.path.exists(old_cases_primus_out):
                 shutil.rmtree(old_cases_primus_out)
-            cases_command_string = primus_command(kinship_only_cases_fname, f'{output_dir}/case_PRIMUS', args.primus_command_string)
+            cases_command_string = primus_command(
+                kinship_only_cases_fname,
+                f'{output_dir}/case_PRIMUS',
+                args.primus_command_string
+            )
 
-            output = sp.run(cases_command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE,
-                            check=True)
+            output = sp.run(cases_command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
             print("Done running case PRIMUS")
             print("Case PRIMUS output: " + output.stdout.decode())
             print("Case PRIMUS error (if any): " + output.stderr.decode())
+            output.check_returncode()
 
             unrelated_cases = set()
             unrelated_case_fname = \
@@ -138,18 +142,18 @@ with tempfile.TemporaryDirectory() as output_dir:
 
     print("PRIMUS command: " + command_string)
 
-    output = sp.run(command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE,
-                    check=True)
+    output = sp.run(command_string, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
     print("Done running PRIMUS")
     print("PRIMUS output: " + output.stdout.decode())
     print("PRIMUS error (if any): " + output.stderr.decode())
+    output.check_returncode()
 
     with open(args.outfile, 'w') as output_file:
         output_file.write("ID\n")
         # write out all the samples that aren't related to anyone
         for sample in all_samples:
             if sample not in related_samples:
-                output_file.write(sample + '\n')
+                output_file.write(str(sample) + '\n')
 
         # write out all the samples that were selected among the related ones
         unrelated_fname = \

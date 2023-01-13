@@ -34,6 +34,6 @@ df.with_column(
     {'eid': 'ID'}
 ).sort(
     'ID'
-).to_csv(
+).write_csv(
     args.outfname
 )

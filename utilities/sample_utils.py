@@ -1,10 +1,6 @@
-import os
-
 import numpy as np
 
 import python_array_utils as utils
-
-ukb = os.environ['UKB']
 
 def get_samples(samples_fname):
     with open(samples_fname) as samples_file:

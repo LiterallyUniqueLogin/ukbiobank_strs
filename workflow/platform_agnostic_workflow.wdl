@@ -14,8 +14,8 @@ workflow main {
 
     File chr_lens
 
-    Array[File]+ str_vcfs
-    Array[File]+ imputed_snp_p_files
+    Array[VCF]+ str_vcfs
+    Array[PFiles]+ imputed_snp_p_files
     File specific_alleles # could replace this with a different way of providing this info
 
     String phenotype_name
@@ -96,7 +96,7 @@ workflow main {
   scatter (sample_list in all_qced_sample_lists.data) {
     call tasks.unrelated_samples as ethnicity_unrelated_samples { input:
       script_dir = script_dir,
-      PRIMUS_command = PRIMUS_command
+      PRIMUS_command = PRIMUS_command,
       kinship = kinship,
       sample_list = sample_list
     }
@@ -141,18 +141,29 @@ workflow main {
     pheno_data = pheno_data
   }
 
-  call tasks.unrelated_samples as phenotype_unrelated_samples { input:
-    script_dir = script_dir,
-    PRIMUS_command = PRIMUS_command
-    kinship = kinship,
-    sample_list = write_sample_list_for_phenotype.data,
-    binary_pheno_data = if is_binary then pheno_data else None
+  if (!is_binary) {
+    call tasks.unrelated_samples as not_binary_phenotype_unrelated_samples { input:
+      script_dir = script_dir,
+      PRIMUS_command = PRIMUS_command,
+      kinship = kinship,
+      sample_list = write_sample_list_for_phenotype.data,
+    }
   }
+  if (is_binary) {
+    call tasks.unrelated_samples as binary_phenotype_unrelated_samples { input:
+      script_dir = script_dir,
+      PRIMUS_command = PRIMUS_command,
+      kinship = kinship,
+      sample_list = write_sample_list_for_phenotype.data,
+      binary_pheno_data = pheno_data
+    }
+  }
+  File phenotype_unrelated_samples = select_first([not_binary_phenotype_unrelated_samples.data, binary_phenotype_unrelated_samples.data])
 
   call tasks.transform_trait_values { input :
     script_dir = script_dir,
     pheno_data = pheno_data,
-    unrelated_samples_for_phenotype = phenotype_unrelated_samples.data,
+    unrelated_samples_for_phenotype = phenotype_unrelated_samples,
     is_binary = is_binary
   }
 
@@ -163,7 +174,7 @@ workflow main {
     black_sample_list = ethnicity_unrelated_samples.data[1],
     south_asian_sample_list = ethnicity_unrelated_samples.data[2],
     chinese_sample_list = ethnicity_unrelated_samples.data[3],
-    str_vcf_chr_11 = str_vcfs[11],
+    str_vcf_chr_11 = str_vcfs[10],
     specific_alleles = specific_alleles,
   }
 
@@ -172,26 +183,27 @@ workflow main {
     region_len = 10000000
   } 
 
-  scatter (region in zip(str_association_regions.chroms, zip(str_association_regions.starts, str_association_regions.ends))) {
-    call tasks.regional_my_str_gwas { input :
-      script_dir = script_dir,
-      str_vcf = str_vcfs[region.left],
-      shared_covars = load_shared_covars.shared_covars,
-      untransformed_phenotype = pheno_data,
-      transformed_phenotype = transform_trait_values.data
-      is_binary = is_binary,
-      binary_type = "linear", # won't be used if not binary
-      chrom = region.left,
-      start_pos = region.right.left,
-      end_pos = region.right.right
-      phenotype_name = phenotype_name,
-      temp_dir = temp_dir
-    }
-  }
-
-  call tasks.concatenate_csvs as my_str_gwas { input :
-    tsvs = region_my_str_gwas.data
-  }
+#  scatter (region in str_association_regions.out_tsv) {
+#    call tasks.regional_my_str_gwas { input :
+#      script_dir = script_dir,
+#      str_vcf = str_vcfs[read_int(region[0])],
+#      shared_covars = load_shared_covars.shared_covars,
+#      untransformed_phenotype = pheno_data,
+#      transformed_phenotype = transform_trait_values.data,
+#      all_samples_list = all_samples_list,
+#      is_binary = is_binary,
+#      binary_type = "linear", # won't be used if not binary
+#      chrom = read_int(region[0]),
+#      start_pos = read_int(region[1]),
+#      end_pos = read_int(region[2]),
+#      phenotype_name = phenotype_name,
+#      temp_dir = temp_dir
+#    }
+#  }
+#
+#  call tasks.concatenate_tsvs as my_str_gwas { input :
+#    tsvs = regional_my_str_gwas.data
+#  }
 
   call tasks.prep_plink_input { input :
     script_dir = 'script_dir',
@@ -204,21 +216,23 @@ workflow main {
     phenotype_name = phenotype_name
   }
 
-  scatter (chrom in chroms) {
-    call tasks.chromosomal_plink_snp_gwas { input :
-      script_dir = script_dir,
-      plink_command = plink_command,
-      imputed_snp_p_file = imputed_snp_p_files[chrom],
-      pheno_data = prep_plink_input.data,
-      chrom = chrom,
-      phenotype_name = phenotype_name,
-      binary_type = if !is_binary then "linear" else "linear_binary",
-    }
-  }
-
-  call tasks.concatenate_csvs as plink_snp_gwas { input :
-    tsvs = chromosomal_plink_snp_gwas.data
-  }
+#  scatter (chrom in chroms) {
+#    Int chrom_minus_one = chrom - 1
+#    call tasks.chromosomal_plink_snp_association { input :
+#      script_dir = script_dir,
+#      temp_dir = temp_dir,
+#      plink_command = plink_command,
+#      imputed_snp_p_file = imputed_snp_p_files[chrom_minus_one],
+#      pheno_data = prep_plink_input.data,
+#      chrom = chrom,
+#      phenotype_name = phenotype_name,
+#      binary_type = if !is_binary then "linear" else "linear_binary",
+#    }
+#  }
+#
+#  call tasks.concatenate_tsvs as plink_snp_association { input :
+#    tsvs = chromosomal_plink_snp_association.data
+#  }
 
   # TODO second round for binary
 
@@ -230,11 +244,11 @@ workflow main {
     File pheno_data_out = pheno_data
     File covar_names_out = covar_names
     File pheno_readme_out = pheno_readme
-    File unrelated_samples_for_phenotype_out = phenotype_unrelated_samples.data
+    File unrelated_samples_for_phenotype_out = phenotype_unrelated_samples
     File transform_trait_values_out = transform_trait_values.data
     File fig_4a_svg_out = fig_4a.svg
     File fig_4a_png_out = fig_4a.png
-    File my_str_gwas_out = my_str_gwas.tsv
-    File plink_snp_gwas_out = plink_snp_gwas.tsv
+    #File my_str_gwas_out = my_str_gwas.tsv
+    #File plink_snp_gwas_out = plink_snp_association.tsv
   }
 }
