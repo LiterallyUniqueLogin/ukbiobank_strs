@@ -65,3 +65,5 @@ for_melissa*
 cromwell-workflow-logs
 cromwell-executions
 .singularity
+ukb_utilities
+*sif
