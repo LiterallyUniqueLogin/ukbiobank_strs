@@ -469,9 +469,10 @@ task str_spot_test {
   input {
     String script_dir
     File script = "~{script_dir}/association/my_regional_gwas.py"
-    File weighted_binom_conf = "~{script_dir}/association/weighted_bionm_conf.py"
+    File weighted_binom_conf = "~{script_dir}/association/weighted_binom_conf.py"
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
     File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
+    File sample_utils = "~{script_dir}/association/sample_utils.py"
 
     VCF str_vcf
     File shared_covars # from task
@@ -494,14 +495,14 @@ task str_spot_test {
   # trtools
   command <<<
     envsetup ~{script} \
-      ~{README} \
+      README.txt \
       strs \
       ~{phenotype_name} \
       --readme \
       --str-vcf ~{str_vcf.vcf} \
-      ~{if is_binary then "--binary logistic" else ""}
-    ~{script} \
-      ~{data} \
+      ~{if is_binary then "--binary logistic" else ""} && \
+    envsetup ~{script} \
+      out.tab \
       strs \
       ~{phenotype_name} \
       --region ~{chrom}:~{pos}-~{pos} \
@@ -527,9 +528,10 @@ task regional_my_str_gwas {
   input {
     String script_dir
     File script = "~{script_dir}/association/my_regional_gwas.py"
-    File weighted_binom_conf = "~{script_dir}/association/weighted_bionm_conf.py"
+    File weighted_binom_conf = "~{script_dir}/association/weighted_binom_conf.py"
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
     File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
+    File sample_utils = "~{script_dir}/association/sample_utils.py"
 
     VCF str_vcf
     File shared_covars # from task
@@ -553,7 +555,7 @@ task regional_my_str_gwas {
   # trtools
   command <<<
     envsetup ~{script} \
-      ~{data} \
+      out.tab \
       strs \
       ~{phenotype_name} \
       --region ~{chrom}:~{start_pos}-~{end_pos} \
@@ -578,7 +580,8 @@ task regional_my_str_gwas {
 task prep_plink_input {
   input {
     String script_dir
-    File script = "~{script_dir}/prep_plink_input.py "
+    File script = "~{script_dir}/association/prep_plink_input.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
 
     File shared_covars # from task
     File shared_covar_names # from task

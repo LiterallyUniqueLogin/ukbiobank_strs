@@ -53,11 +53,11 @@ def perform_regional_gwas_helper(
         covars = utils.merge_arrays(covars, gt_covars)
 
     # order samples according to order in genetics files
-    bgen_samples = sample_utils.get_all_samples(all_samples_fname)
+    bgen_samples = sample_utils.get_samples(all_samples_fname)
     assert len(bgen_samples) == 487409
     samples_array = np.array(bgen_samples, dtype=float).reshape(-1, 1)
     merge = utils.merge_arrays(samples_array, covars)
-    unfiltered_samples = ~np.isnan(merge[:, 1])
+    unfiltered_samples = ~np.any(np.isnan(merge), axis=1)
 
     outcome = merge[unfiltered_samples, 1].copy()
     covars = merge[unfiltered_samples, :]
@@ -78,23 +78,20 @@ def perform_regional_gwas_helper(
     else:
         stat = 'fraction'
 
-
     # TODO maybe only do these calculations if there's a flag on
     if runtype == 'strs':
-        # TODO summed gt and single dosage mean the same thing, rename single dosage to summed gt
-        # swap paired dosage to paired gt
         outfile.write(
             'total_subset_dosage_per_summed_gt\t'
-            f'{stat}_{phenotype}_per_single_dosage\t'
-            '0.05_significance_CI\t'
-            '5e-8_significance_CI\t'
+            f'{stat}_{phenotype}_per_summed_gt\t'
+            'summed_0.05_significance_CI\t'
+            'summed_5e-8_significance_CI\t'
             f'{stat}_{phenotype}_residual_per_summed_gt\t'
             'res_per_sum_0.05_significance_CI\t'
             'res_per_sum_5e-8_significance_CI\t'
             'total_subset_dosage_per_paired_gt\t'
-            f'{stat}_{phenotype}_per_paired_dosage\t'
-            '0.05_significance_CI\t'
-            '5e-8_significance_CI\t'
+            f'{stat}_{phenotype}_per_paired_gt\t'
+            'paired_0.05_significance_CI\t'
+            'paired_5e-8_significance_CI\t'
             f'{stat}_{phenotype}_residual_per_paired_gt\t'
             'res_per_paired_0.05_significance_CI\t'
             'res_per_paired_5e-8_significance_CI'

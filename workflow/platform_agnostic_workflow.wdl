@@ -10,7 +10,6 @@ workflow main {
     String script_dir
     String PRIMUS_command
     String plink_command = "plink2"
-    String temp_dir
 
     File chr_lens
 
@@ -197,7 +196,7 @@ workflow main {
 #      start_pos = read_int(region[1]),
 #      end_pos = read_int(region[2]),
 #      phenotype_name = phenotype_name,
-#      temp_dir = temp_dir
+#      temp_dir = "."
 #    }
 #  }
 #
@@ -205,8 +204,37 @@ workflow main {
 #    tsvs = regional_my_str_gwas.data
 #  }
 
+  call tasks.str_spot_test as spot_test_1 { input:
+    script_dir = script_dir,
+    str_vcf = str_vcfs[0],
+    shared_covars = load_shared_covars.shared_covars,
+    untransformed_phenotype = pheno_data,
+    transformed_phenotype = transform_trait_values.data,
+    all_samples_list = all_samples_list,
+    is_binary = is_binary,
+    temp_dir = ".",
+    chrom = 1,
+    pos = 204527033,
+    phenotype_name = "platelet_count"
+  }
+
+  call tasks.str_spot_test as spot_test_2 { input:
+    script_dir = script_dir,
+    str_vcf = str_vcfs[0],
+    shared_covars = load_shared_covars.shared_covars,
+    untransformed_phenotype = pheno_data,
+    transformed_phenotype = transform_trait_values.data,
+    all_samples_list = all_samples_list,
+    is_binary = is_binary,
+    temp_dir = ".",
+    chrom = 1,
+    pos = 205255038,
+    phenotype_name = "platelet_count"
+  }
+
+
   call tasks.prep_plink_input { input :
-    script_dir = 'script_dir',
+    script_dir = script_dir,
     shared_covars = load_shared_covars.shared_covars,
     shared_covar_names = load_shared_covars.covar_names,
     transformed_phenotype = transform_trait_values.data,
@@ -220,7 +248,7 @@ workflow main {
 #    Int chrom_minus_one = chrom - 1
 #    call tasks.chromosomal_plink_snp_association { input :
 #      script_dir = script_dir,
-#      temp_dir = temp_dir,
+#      temp_dir = temp_dir, #TODO
 #      plink_command = plink_command,
 #      imputed_snp_p_file = imputed_snp_p_files[chrom_minus_one],
 #      pheno_data = prep_plink_input.data,
@@ -248,6 +276,8 @@ workflow main {
     File transform_trait_values_out = transform_trait_values.data
     File fig_4a_svg_out = fig_4a.svg
     File fig_4a_png_out = fig_4a.png
+    File sp1 = spot_test_1.data
+    File sp2 = spot_test_2.data
     #File my_str_gwas_out = my_str_gwas.tsv
     #File plink_snp_gwas_out = plink_snp_association.tsv
   }

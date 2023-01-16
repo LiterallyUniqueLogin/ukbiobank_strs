@@ -67,3 +67,6 @@ cromwell-executions
 .singularity
 ukb_utilities
 *sif
+out1.tab
+out2.tab
+

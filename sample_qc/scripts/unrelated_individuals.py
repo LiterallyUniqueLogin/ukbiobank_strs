@@ -31,6 +31,8 @@ parser.add_argument('primus_command_string')
 parser.add_argument('--binary-pheno') # npy file if binary
 args = parser.parse_args()
 
+# use integers, not strings, for sample IDs in this file
+
 with tempfile.TemporaryDirectory() as output_dir:
     print('Temp dir name: ', output_dir)
 
@@ -48,7 +50,7 @@ with tempfile.TemporaryDirectory() as output_dir:
         # assert that cases are a low enough percentage of total samples
         # so that this type of prioritization makes sense
         assert np.sum(data[:, 1]) <= .2*data.shape[0]
-        cases = set(str(int(ID)) for ID in data[data[:, 1] == 1, 0])
+        cases = set(int(ID) for ID in data[data[:, 1] == 1, 0])
         print(f'N_cases: {len(cases)}')
 
         kinship_only_cases_fname = f'{output_dir}/cases_kinship_subset.dat'
@@ -61,7 +63,7 @@ with tempfile.TemporaryDirectory() as output_dir:
             kinship_only_cases_file.write(next(original_kinship_file))
 
             for line in original_kinship_file:
-                sample1, sample2 = line.split()[0:2]
+                sample1, sample2 = [int(sample) for sample in line.split()[0:2]]
                 if (
                     sample1 in all_samples and sample1 in cases and
                     sample2 in all_samples and sample2 in cases
@@ -97,7 +99,7 @@ with tempfile.TemporaryDirectory() as output_dir:
             with open(unrelated_case_fname) as unrelated_case_file:
                 next(unrelated_case_file) # skip header
                 for line in unrelated_case_file:
-                    unrelated_cases.add(line.strip())
+                    unrelated_cases.add(int(line.strip()))
             print(f'N_unrelated_cases: {len(unrelated_cases)}')
 
             # remove all the cases that aren't in the unrelated cases set
@@ -109,8 +111,8 @@ with tempfile.TemporaryDirectory() as output_dir:
             next(original_kinship_file) # skip header
 
             for line in original_kinship_file:
-                sample1, sample2 = line.split()[0:2]
-                if   sample1 in all_samples and sample1 in cases and sample2 in all_samples:
+                sample1, sample2 = [int(sample) for sample in line.split()[0:2]]
+                if sample1 in all_samples and sample1 in cases and sample2 in all_samples:
                     all_samples.remove(sample2)
                 elif sample2 in all_samples and sample2 in cases and sample1 in all_samples:
                     all_samples.remove(sample1)
@@ -126,7 +128,7 @@ with tempfile.TemporaryDirectory() as output_dir:
         kinship_subset_file.write(next(original_kinship_file)) # copy header
 
         for line in original_kinship_file:
-            sample1, sample2 = line.split()[0:2]
+            sample1, sample2 = [int(sample) for sample in line.split()[0:2]]
             if not (sample1 in all_samples and sample2 in all_samples):
                 continue
             related_samples.add(sample1)

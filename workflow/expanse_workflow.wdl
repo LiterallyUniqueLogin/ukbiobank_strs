@@ -34,6 +34,17 @@ task extract_field {
   }
 }
 
+#workflow extract_height {
+#  call extract_field as height { input:
+#    script_dir = ".",
+#    id = 50
+#  }
+#
+#  output {
+#    File out = height.data
+#  }
+#}
+
 workflow main {
 
   input {
@@ -139,7 +150,6 @@ workflow main {
   call platform_agnostic_workflow.main { input:
     script_dir = script_dir,
     PRIMUS_command = "run_PRIMUS.pl",
-    temp_dir = 'scratch',
 
     chr_lens = "misc_data/genome/chr_lens.txt",
 

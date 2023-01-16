@@ -15,9 +15,8 @@ import cyvcf2
 import numpy as np
 import scipy
 
-ukb = os.environ['UKB']
-
-sys.path.insert(0, f'{ukb}/../trtools/repo')
+#if 'UKB' in os.environ:
+#    sys.path.insert(0, f'{os.environ["UKB"]}/../trtools/repo')
 
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
@@ -156,7 +155,7 @@ def load_strs(vcf_fname: str,
         if var_subset is not None and record.POS not in var_subset:
             continue
 
-        trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
+        trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='hipstr')
 
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
         len_alleles = [round(allele_len, allele_len_precision) for allele_len in len_alleles]
