@@ -3,14 +3,6 @@ import io
 import numpy as np
 import polars as pl
 
-def load_extracted_data_as_pl(fname):
-    with open(fname) as data_file:
-        contents = 'drop\t' + data_file.read()
-    return pl.read_csv(
-        io.StringIO(contents), sep='\t', dtype={'eid': int}
-    ).drop('drop')
-
-
 def merge_arrays(a, b):
     '''
     Return a left outer join b.

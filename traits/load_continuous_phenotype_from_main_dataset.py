@@ -54,7 +54,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
         data_fname,
         skip_header = 1,
         delimiter='\t'
-    )[:, 1:-1]
+    )
     # drop first and last rows which because of the way data is extracted
     # and then read by numpy are always nans
 

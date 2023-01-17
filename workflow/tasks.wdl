@@ -59,7 +59,7 @@ task concatenate_tsvs {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "4h"
   }
 }
@@ -70,7 +70,6 @@ task write_sample_list {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/write_sample_list.py"
-    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File sc
     Int? value
@@ -85,7 +84,7 @@ task write_sample_list {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -95,7 +94,6 @@ task ethnic_sample_lists {
   input {
     String script_dir
     File script_ = "~{script_dir}/sample_qc/scripts/ethnicity.py"
-    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File white_brits_sample_list # write_sample_list 22006
     File sc_ethnicity_self_report # 21000
@@ -125,7 +123,7 @@ task ethnic_sample_lists {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -135,7 +133,6 @@ task sex_mismatch_sample_list {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/find_sex_mismatch_list.py"
-    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
 
     File sc_genetic_sex #22001
     File sc_reported_sex #31
@@ -150,7 +147,7 @@ task sex_mismatch_sample_list {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -189,7 +186,7 @@ task qced_sample_list {
   >>>  
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -218,7 +215,7 @@ task load_shared_covars {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     mem: "10g"
 
     dx_timeout: "15m"
@@ -256,7 +253,7 @@ task load_continuous_phenotype {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -286,7 +283,7 @@ task load_binary_phenotype {
   command <<<
     envsetup ~{script} \
       ~{sc} \
-      '.' \
+      'pheno' \
       ~{qced_sample_list} \
       ~{sc_year_of_birth} \
       ~{sc_month_of_birth} \
@@ -296,7 +293,7 @@ task load_binary_phenotype {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -319,7 +316,7 @@ task write_sample_list_for_phenotype {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -347,7 +344,7 @@ task unrelated_samples {
   >>>
   
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "24h"
   }
 }
@@ -373,7 +370,7 @@ task transform_trait_values {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -412,7 +409,7 @@ task fig_4a {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "10m"
   }
@@ -459,7 +456,7 @@ task association_regions {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
   }
@@ -516,7 +513,7 @@ task str_spot_test {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "20m"
   }
@@ -569,7 +566,7 @@ task regional_my_str_gwas {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "12h"
     mem: if binary_type == "logistic" then "40g" else "4g"
   }
@@ -608,7 +605,7 @@ task prep_plink_input {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
   }
 }
@@ -646,7 +643,7 @@ task chromosomal_plink_snp_association {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     mem: "56g"
     cpus: "28"
 
@@ -673,7 +670,7 @@ task manhattan {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: ""
   }
 }
@@ -693,7 +690,7 @@ task todo {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.2"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: ""
   }
 }

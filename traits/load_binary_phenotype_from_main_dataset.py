@@ -24,7 +24,7 @@ args = parser.parse_args()
 outprefix = args.outprefix
 
 def load_date_data_field(fname, extra_field = False):
-    names=['skip1', 'id', 'date', 'skip2']
+    names=['id', 'date']
     if extra_field:
         names.append('skip3')
     date_array = utils.df_to_recarray(pd.read_csv(
@@ -56,7 +56,7 @@ def load_0_1_neg_nan_field(fname):
         fname,
         skip_header = 1,
         delimiter='\t'
-    )[:, [1,2]]
+    )[:, [0,1]]
     # don't include participants who didn't respond
     data = data[~np.isnan(data[:, 1]), :]
     # don't include participants who responded "don't know" or "won't tell"
@@ -105,12 +105,12 @@ with open(f'{outprefix}_README.txt', 'w') as readme:
         args.year_of_birth_fname,
         delimiter='\t',
         skip_header=1
-    )[:, 1:-1]
+    )
     month_of_birth = np.genfromtxt(
         args.month_of_birth_fname,
         delimiter='\t',
         skip_header=1
-    )[:, 1:-1]
+    )
 
     # cols: id, is case, year of birth, month of birth
     data = utils.merge_arrays(utils.merge_arrays(data, year_of_birth), month_of_birth)

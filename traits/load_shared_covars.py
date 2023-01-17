@@ -37,7 +37,7 @@ def load_covars():
             args.pcs_fname,
             delimiter="\t",
             skip_header = 1,
-        )[:, 1:-1]
+        )
         [covar_names.write(f"pc{col}\n") for col in range(1, 41)]
 
         data = python_array_utils.merge_arrays(
@@ -76,7 +76,7 @@ def load_covars():
                 age_file,
                 skip_header=1,
                 delimiter='\t'
-            )[:, 1:-1]
+            )
 
         np.save(f'{args.outdir}/assessment_ages.npy', assessment_age)
 

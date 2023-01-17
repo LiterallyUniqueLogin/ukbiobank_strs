@@ -4,8 +4,6 @@ import argparse
 
 import polars as pl
 
-import python_array_utils
-
 parser = argparse.ArgumentParser()
 parser.add_argument('outdir')
 parser.add_argument(
@@ -20,7 +18,7 @@ args = parser.parse_args()
 
 white_brits = pl.read_csv(args.white_brits_sample_fname, sep=' ', new_columns = ['ID'])
 
-ethnicities = python_array_utils.load_extracted_data_as_pl(args.ethnicity_fname)
+ethnicities = pl.read_csv(args.ethnicity_fname, sep='\t')
 #ethnicities = pl.read_csv(args.ethnicity_fname, sep='\t', dtype={'eid': int})
 n_instances = ethnicities.shape[1] - 1
 response_cols = [f'response{i}' for i in range(n_instances)]

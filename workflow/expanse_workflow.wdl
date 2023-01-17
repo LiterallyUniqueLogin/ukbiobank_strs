@@ -15,7 +15,7 @@ task extract_field {
   }
 
   output {
-    File data = "~{id}.txt"
+    File data = "~{id}_cleaned.tab"
   }
 
   command <<<
@@ -25,11 +25,14 @@ task extract_field {
       ~{ukbconv} \
       ~{encoding} \
       --fields-files ~{sep=" " fields_files} \
-      --enc-files ~{sep=" " enc_files}
+      --enc-files ~{sep=" " enc_files} && \
+    sed -e 's/^\t//' -e 's/\t$//' ~{id}.txt > ~{id}_cleaned.tab
+    # ukb's extract skip pad every line but the first with an extra tab at the beginning and end
+    # seemingly for no reason. This messes up tsv column alignment, so remove them.
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.1"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "5h"
   }
 }
