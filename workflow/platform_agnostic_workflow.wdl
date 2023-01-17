@@ -14,7 +14,7 @@ workflow main {
     File chr_lens
 
     Array[VCF]+ str_vcfs
-    Array[PFiles]+ imputed_snp_p_files
+    #Array[PFiles]+ imputed_snp_p_files
     File specific_alleles # could replace this with a different way of providing this info
 
     String phenotype_name

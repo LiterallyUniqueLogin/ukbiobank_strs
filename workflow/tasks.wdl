@@ -51,9 +51,9 @@ task concatenate_tsvs {
         exit 1
       fi
       
-      head -1 ~{tsvs[0]} > ~{tsv}
+      head -1 ~{tsvs[0]} > out.tab
       for file in ~{sep=" " tsvs} ; do
-        tail -n +2 $file >> ~{tsv}
+        tail -n +2 $file >> out.tab
       done
     '
   >>>

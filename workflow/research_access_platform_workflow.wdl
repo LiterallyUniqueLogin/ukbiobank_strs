@@ -8,7 +8,7 @@ task extract_field {
   input {
 		String script_dir
 		File script = "~{script_dir}/main_dataset/dnanexus_write_trait_to_tsv.py"
-    File dataset = "dx://UKB-Test:app46122_20220823045256.dataset"
+    File dataset = "dx://UKB-Test:/app46122_20220823045256.dataset"
 
     Int id # data field id
   }
@@ -27,10 +27,10 @@ task extract_field {
   }
 }
 
-workflow main {
+workflow rap_main {
 
   input {
-    String script_dir  = "dx://UKB-Test:imputed_strs_paper"
+    String script_dir  = "dx://UKB-Test:/imputed_strs_paper"
     Int project_number = 22418
 
     String phenotype_name = "platelet_count"
@@ -45,10 +45,10 @@ workflow main {
     Boolean is_zero_one_neg_nan = false # different binary encoding
     String date_of_most_recent_first_occurrence_update = "2021-04-01"
 
-    File fam_file = "dx://UKB-Test:Bulk/Genotype\ Results/Genotype\ calls/ukb~{project_number}_c1_b0_v2.fam"
-    File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
-    File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
-    File kinship = "dx://UKB-Test:Bulk/Genotype\ Results/Genotype\ calls/ukb_rel.dat"
+    File fam_file = "dx://UKB-Test:/Bulk/Genotype\\ Results/Genotype\\ calls/ukb~{project_number}_c1_b0_v2.fam"
+    File all_samples_list = "dx://UKB-Test:/Bulk/Imputation/UKB\\ imputation\\ from\\ genotype/ukb~{project_number}_c1_b0_v3.sample "
+    File withdrawn_sample_list = "dx://UKB-Test:/imputed_strs_paper/sample_qc/withdrawn.sample"
+    File kinship = "dx://UKB-Test:/Bulk/Genotype\\ Results/Genotype\\ calls/ukb_rel.dat"
   }
 
   call extract_field as white_brits { input:
@@ -120,25 +120,25 @@ workflow main {
 
   scatter (chrom in range(22)) {
     VCF str_vcfs = {
-      "vcf": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz",
-      "index": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz.tbi"
+      "vcf": "dx://UKB-Test:/imputed_strs_paper/imputed_strs/chr~{chrom+1}.vcf.gz",
+      "index": "dx://UKB-Test:/imputed_strs_paper/imputed_strs/chr~{chrom+1}.vcf.gz.tbi",
     }
-    PFiles imputed_snp_p_files = {
-      "pgen": "array_imputed/pfile_converted/chr{chrom+1}.pgen",
-      "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
-      "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
-    }
+    #PFiles imputed_snp_p_files = {
+    #  "pgen": "array_imputed/pfile_converted/chr{chrom+1}.pgen",
+    #  "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
+    #  "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
+    #}
   }
 
   call platform_agnostic_workflow.main { input:
     script_dir = script_dir,
     PRIMUS_command = "run_PRIMUS.pl",
 
-    chr_lens = "misc_data/genome/chr_lens.txt",
+    chr_lens = "dx://UKB-Test:/imputed_strs_paper/misc_data/chr_lens.txt",
 
     str_vcfs = str_vcfs,
-    imputed_snp_p_files = imputed_snp_p_files,
-    specific_alleles = "association/specific_alleles.tab",
+    #imputed_snp_p_files = imputed_snp_p_files,
+    specific_alleles = "dx://UKB-Test:/imputed_strs_paper/association/specific_alleles.tab",
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
@@ -168,25 +168,5 @@ workflow main {
 
   output {
     Array[File] out_sample_lists = main.out_sample_lists
-  }
-}
-
-workflow main {
-  
-  input {
-    Int project_number
-  }
-
-  call extract_field as assessment_ages { input :
-    script_dir = script_dir,
-    id = 21003
-  }
-
-  call platform_agnostic_workflow.main { input:
-    script_dir = script_dir,
-    #TODO data_dir
-
-    # identical for any chromosome number, so c1 works
-    assessment_ages_file = assessment_ages.data
   }
 }
