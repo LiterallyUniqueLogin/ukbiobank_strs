@@ -346,6 +346,7 @@ task unrelated_samples {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "24h"
+    mem: "4g"
   }
 }
 
@@ -569,6 +570,44 @@ task regional_my_str_gwas {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "12h"
     mem: if binary_type == "logistic" then "40g" else "4g"
+  }
+}
+
+task locus_plot {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/plot_locus.py"
+
+    Int chrom
+    Int pos
+    String phenotype_name
+    Array[File] assoc_results
+    Array[String] group_names
+
+    Int? dosage_threshold
+    Float? dosage_fraction_threshold
+    String? unit # if not speciied, then binary
+    Boolean residual = false
+  }
+
+  output {
+    File svg = "out.svg"
+    File png =  "out.png"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      out \
+      ~{chrom} \
+      ~{pos} \
+      ~{phenotype} \
+      --unit ~{unit} \
+      --publication
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30:00"
   }
 }
 

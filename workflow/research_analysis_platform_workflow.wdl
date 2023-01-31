@@ -4,29 +4,6 @@ version 1.0
 
 import "platform_agnostic_workflow.wdl"
 
-task extract_field {
-  input {
-		String script_dir
-		File script = "~{script_dir}/main_dataset/dnanexus_write_trait_to_tsv.py"
-    File dataset = "dx://UKB_Test:/app46122_20220823045256.dataset"
-
-    Int id # data field id
-  }
-
-  output {
-    File data = "~{id}.txt"
-  }
-
-  command <<<
-    envsetup ~{script} ~{id} ~{dataset}
-  >>>
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "5h"
-  }
-}
-
 workflow rap_main {
 
   input {
@@ -49,69 +26,71 @@ workflow rap_main {
     File withdrawn_sample_list = "dx://UKB_Test:/imputed_strs_paper/sample_qc/withdrawn.sample"
     File kinship = "dx://UKB_Test:/Bulk/Genotype%20Results/Genotype%20calls/ukb_rel.dat"
   }
+  
+  String sc_data_dir = "dx://UKB_Test:/imputed_strs_paper/main_dataset/extracted_data/"
 
-  call extract_field as white_brits { input:
+  call extraction_common as white_brits { input:
     script_dir = script_dir,
     id = 22006
   }
 
-  call extract_field as ethnicity_self_report { input :
+  call extraction_common as ethnicity_self_report { input :
     script_dir = script_dir,
     id = 21000
   }
 
-  call extract_field as sex_aneuploidy { input:
+  call extraction_common as sex_aneuploidy { input:
     script_dir = script_dir,
     id = 22019
   }
 
-  call extract_field as genetic_sex { input:
+  call extraction_common as genetic_sex { input:
     script_dir = script_dir,
     id = 22001
   }
 
-  call extract_field as reported_sex { input:
+  call extraction_common as reported_sex { input:
     script_dir = script_dir,
     id = 31
   }
 
-  call extract_field as kinship_count { input:
+  call extraction_common as kinship_count { input:
     script_dir = script_dir,
     id = 22021
   }
 
-  call extract_field as assessment_ages { input :
+  call extraction_common as assessment_ages { input :
     script_dir = script_dir,
     id = 21003
   }
 
-  call extract_field as pcs { input :
+  call extraction_common as pcs { input :
     script_dir = script_dir,
     id = 22009
   }
 
-  call extract_field as year_of_birth { input :
+  call extraction_common as year_of_birth { input :
     script_dir = script_dir,
     id = 34
   }
 
-  call extract_field as month_of_birth { input :
+  call extraction_common as month_of_birth { input :
     script_dir = script_dir,
     id = 52
   }
 
-  call extract_field as date_of_death { input :
+  call extraction_common as date_of_death { input :
     script_dir = script_dir,
     id = 40000
   }
 
-  call extract_field as phenotype { input :
+  call extraction_common as phenotype { input :
     script_dir = script_dir,
     id = phenotype_id
   }
 
   scatter (categorical_covariate_id in categorical_covariate_ids) {
-    call extract_field as categorical_covariates { input :
+    call extraction_common as categorical_covariates { input :
       script_dir = script_dir,
       id = categorical_covariate_id
     }
@@ -151,18 +130,18 @@ workflow rap_main {
     withdrawn_sample_list = withdrawn_sample_list,
     kinship = kinship, # could create a task for downloading this with ukbgene
 
-    sc_white_brits = white_brits.data,
-    sc_ethnicity_self_report = ethnicity_self_report.data,
-    sc_sex_aneuploidy = sex_aneuploidy.data,
-    sc_genetic_sex = genetic_sex.data,
-    sc_reported_sex = reported_sex.data,
-    sc_kinship_count = kinship_count.data,
-    sc_assessment_ages = assessment_ages.data,
-    sc_pcs = pcs.data,
-    sc_year_of_birth = year_of_birth.data,
-    sc_month_of_birth = month_of_birth.data,
-    sc_date_of_death = date_of_death.data,
-    sc_phenotype = phenotype.data
+    sc_white_brits = "~{sd_data_dir}/22006.tsv",
+    sc_ethnicity_self_report = "~{sd_data_dir}/21000.tsv",
+    sc_sex_aneuploidy = "~{sd_data_dir}/22019.tsv",
+    sc_genetic_sex = "~{sd_data_dir}/22001.tsv",
+    sc_reported_sex = "~{sd_data_dir}/31.tsv",
+    sc_kinship_count = "~{sd_data_dir}/22021.tsv",
+    sc_assessment_ages = "~{sd_data_dir}/21003.tsv",
+    sc_pcs ="~{sd_data_dir}/22009.tsv",
+    sc_year_of_birth = "~{sd_data_dir}/34.tsv",
+    sc_month_of_birth = "~{sd_data_dir}/52.tsv",
+    sc_date_of_death = "~{sd_data_dir}/40000.tsv",
+    sc_phenotype = "~{sd_data_dir}/{phenotype_id}.tsv",
   }
 
   output {

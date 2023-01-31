@@ -91,7 +91,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
             skip_header = 1,
             delimiter='\t',
             dtype=object
-        )[:, 1:-1]
+        )
         assert len(obj_covar_data.shape) == len(data.shape)
 
         # do some work to hash the array so it's faster to merge

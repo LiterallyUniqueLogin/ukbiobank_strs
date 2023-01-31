@@ -63,7 +63,7 @@ workflow main {
     #Array[Int] categorical_covariate_ids = []
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
-    String date_of_most_recent_first_occurrence_update = "2021-04-01"
+    String date_of_most_recent_first_occurrence_update = "2021-04-01" # only needed for binary phenotypes
 
     File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam"
     File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
@@ -157,7 +157,7 @@ workflow main {
     chr_lens = "misc_data/genome/chr_lens.txt",
 
     str_vcfs = str_vcfs,
-    imputed_snp_p_files = imputed_snp_p_files,
+    #imputed_snp_p_files = imputed_snp_p_files,
     specific_alleles = "association/specific_alleles.tab",
 
     phenotype_name = phenotype_name,

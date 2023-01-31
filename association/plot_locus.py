@@ -2,8 +2,6 @@
 
 import argparse
 import ast
-import os
-import sys
 
 import bokeh.io
 import bokeh.models

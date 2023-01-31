@@ -4,6 +4,15 @@ version 1.0
 
 import "tasks.wdl"
 
+#struct Phenotype_Input {
+#  String name
+#  File sc
+#  Array[String] categorical_covariate_names
+#  Array[File] categorical_covariate_scs
+#  Boolean is_binary
+#  Boolean is_zero_one_neg_nan
+#}
+
 workflow main {
 
   input {
