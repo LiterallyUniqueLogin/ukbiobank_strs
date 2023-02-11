@@ -27,74 +27,11 @@ workflow rap_main {
     File kinship = "dx://UKB_Test:/Bulk/Genotype%20Results/Genotype%20calls/ukb_rel.dat"
   }
   
-  String sc_data_dir = "dx://UKB_Test:/imputed_strs_paper/main_dataset/extracted_data/"
+  String sc_data_dir = "dx://UKB_Test:/imputed_strs_paper/main_dataset/extracted_data"
 
-  call extraction_common as white_brits { input:
-    script_dir = script_dir,
-    id = 22006
-  }
-
-  call extraction_common as ethnicity_self_report { input :
-    script_dir = script_dir,
-    id = 21000
-  }
-
-  call extraction_common as sex_aneuploidy { input:
-    script_dir = script_dir,
-    id = 22019
-  }
-
-  call extraction_common as genetic_sex { input:
-    script_dir = script_dir,
-    id = 22001
-  }
-
-  call extraction_common as reported_sex { input:
-    script_dir = script_dir,
-    id = 31
-  }
-
-  call extraction_common as kinship_count { input:
-    script_dir = script_dir,
-    id = 22021
-  }
-
-  call extraction_common as assessment_ages { input :
-    script_dir = script_dir,
-    id = 21003
-  }
-
-  call extraction_common as pcs { input :
-    script_dir = script_dir,
-    id = 22009
-  }
-
-  call extraction_common as year_of_birth { input :
-    script_dir = script_dir,
-    id = 34
-  }
-
-  call extraction_common as month_of_birth { input :
-    script_dir = script_dir,
-    id = 52
-  }
-
-  call extraction_common as date_of_death { input :
-    script_dir = script_dir,
-    id = 40000
-  }
-
-  call extraction_common as phenotype { input :
-    script_dir = script_dir,
-    id = phenotype_id
-  }
-
-  scatter (categorical_covariate_id in categorical_covariate_ids) {
-    call extraction_common as categorical_covariates { input :
-      script_dir = script_dir,
-      id = categorical_covariate_id
-    }
-  }
+	scatter (categorical_covariate_id in categorical_covariate_ids) {
+		String categorical_covariates = "~{sc_data_dir}/~{categorical_covariate_id}.tsv"
+	}
 
   scatter (chrom in range(22)) {
     VCF str_vcfs = {
@@ -120,7 +57,7 @@ workflow rap_main {
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
-    categorical_covariate_scs = categorical_covariates.data,
+    categorical_covariate_scs = categorical_covariates,
     is_binary = is_binary,
     is_zero_one_neg_nan = is_zero_one_neg_nan,
     date_of_most_recent_first_occurrence_update = date_of_most_recent_first_occurrence_update,
@@ -130,18 +67,18 @@ workflow rap_main {
     withdrawn_sample_list = withdrawn_sample_list,
     kinship = kinship, # could create a task for downloading this with ukbgene
 
-    sc_white_brits = "~{sd_data_dir}/22006.tsv",
-    sc_ethnicity_self_report = "~{sd_data_dir}/21000.tsv",
-    sc_sex_aneuploidy = "~{sd_data_dir}/22019.tsv",
-    sc_genetic_sex = "~{sd_data_dir}/22001.tsv",
-    sc_reported_sex = "~{sd_data_dir}/31.tsv",
-    sc_kinship_count = "~{sd_data_dir}/22021.tsv",
-    sc_assessment_ages = "~{sd_data_dir}/21003.tsv",
-    sc_pcs ="~{sd_data_dir}/22009.tsv",
-    sc_year_of_birth = "~{sd_data_dir}/34.tsv",
-    sc_month_of_birth = "~{sd_data_dir}/52.tsv",
-    sc_date_of_death = "~{sd_data_dir}/40000.tsv",
-    sc_phenotype = "~{sd_data_dir}/{phenotype_id}.tsv",
+    sc_white_brits = "~{sc_data_dir}/22006.tsv",
+    sc_ethnicity_self_report = "~{sc_data_dir}/21000.tsv",
+    sc_sex_aneuploidy = "~{sc_data_dir}/22019.tsv",
+    sc_genetic_sex = "~{sc_data_dir}/22001.tsv",
+    sc_reported_sex = "~{sc_data_dir}/31.tsv",
+    sc_kinship_count = "~{sc_data_dir}/22021.tsv",
+    sc_assessment_ages = "~{sc_data_dir}/21003.tsv",
+    sc_pcs ="~{sc_data_dir}/22009.tsv",
+    sc_year_of_birth = "~{sc_data_dir}/34.tsv",
+    sc_month_of_birth = "~{sc_data_dir}/52.tsv",
+    sc_date_of_death = "~{sc_data_dir}/40000.tsv",
+    sc_phenotype = "~{sc_data_dir}/~{phenotype_id}.tsv",
   }
 
   output {

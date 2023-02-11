@@ -600,7 +600,7 @@ task locus_plot {
       out \
       ~{chrom} \
       ~{pos} \
-      ~{phenotype} \
+      ~{phenotype_name} \
       --unit ~{unit} \
       --publication
   >>>
