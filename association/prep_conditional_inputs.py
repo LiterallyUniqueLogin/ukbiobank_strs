@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 
 import numpy as np
 
 import load_and_filter_genotypes as lfg
 import sample_utils
-import load_PACSIN2
+#import load_PACSIN2
 
 def process_STR(itr, pos):
     try:
@@ -42,17 +41,15 @@ def PACSIN2_itr(pos):
         yield (dosage_dict, unique_alleles, chrom,  found_pos, locus_filtered, locus_details)
 
 def main():
-    ukb = os.environ['UKB']
-
     parser = argparse.ArgumentParser()
     parser.add_argument('outprefix')
-    parser.add_argument('phenotype')
+    parser.add_argument('all_samples')
     parser.add_argument('chr')
     parser.add_argument('--str-vcf')
     parser.add_argument('--snp-bgen')
     parser.add_argument('--snp-mfi')
-    parser.add_argument('--STRs', nargs='+', default=[])
-    parser.add_argument('--imputed-SNPs', nargs='+', default=[])
+    parser.add_argument('--STRs', default=[]) # will be ignored if empty
+    parser.add_argument('--imputed-SNPs', default=[]) # will be ignored if empty
     parser.add_argument('--PACSIN2-STRs', nargs='+', default=[])
 
     args = parser.parse_args()
@@ -69,7 +66,7 @@ def main():
     if len(args.PACSIN2_STRs) > 0:
         assert args.chr == '22'
 
-    samples_array = sample_utils.get_all_samples().reshape(-1).astype(float)
+    samples_array = sample_utils.get_samples(args.all_samples).reshape(-1).astype(float)
     assert len(samples_array) == 487409
 
     variant_names = []

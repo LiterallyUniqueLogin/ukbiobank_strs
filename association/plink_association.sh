@@ -34,7 +34,7 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-temp_name="$PROJECT_TEMP"/plink_snp"$SUFFIX"/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"_conditional_"$CONDITIONAL"
+temp_name="$PROJECT_TEMP"/plink_snp"$SUFFIX"/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"
 mkdir -p "$temp_name"
 cd "$temp_name" || {
 	echo "Failed to move to $temp_name"

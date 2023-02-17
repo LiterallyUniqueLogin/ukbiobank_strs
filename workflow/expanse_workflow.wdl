@@ -155,6 +155,7 @@ workflow main {
     PRIMUS_command = "run_PRIMUS.pl",
 
     chr_lens = "misc_data/genome/chr_lens.txt",
+    str_loci = "snpstr/str_loci.txt",
 
     str_vcfs = str_vcfs,
     #imputed_snp_p_files = imputed_snp_p_files,

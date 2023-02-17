@@ -25,11 +25,18 @@ struct VCF {
   File index
 }
 
+struct bgen {
+  File bgen
+  File index
+}
+
 struct PFiles {
   File pgen
   File psam
   File pvar
 }
+
+# TODO struct for phenotypes?
 
 ####################### Helper tasks ###########################
 
@@ -211,6 +218,7 @@ task load_shared_covars {
   }
 
   command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} . ~{fam_file} ~{sc_pcs} ~{sc_assessment_ages}
   >>>
 
@@ -243,6 +251,7 @@ task load_continuous_phenotype {
   }
 
   command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       ~{sc} \
       'pheno' \
@@ -340,6 +349,8 @@ task unrelated_samples {
   }
 
   command <<<
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} out.samples ~{kinship} ~{sample_list} ~{PRIMUS_command} ~{"--binary-pheno " + binary_pheno_data}
   >>>
   
@@ -367,6 +378,7 @@ task transform_trait_values {
   }
 
   command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} out ~{pheno_data} ~{unrelated_samples_for_phenotype} ~{if is_binary then "--binary" else ""}
   >>>
 
@@ -405,6 +417,8 @@ task fig_4a {
   }
 
   command <<<
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} . ~{str_vcf_chr_11.vcf} ~{specific_alleles} ~{all_samples_list} \
       ~{white_brits_sample_list} ~{black_sample_list} ~{south_asian_sample_list} ~{chinese_sample_list}
   >>>
@@ -463,6 +477,50 @@ task association_regions {
   }
 }
 
+task prep_conditional_input {
+  input {
+    String script_dir
+    File script = "~{script_dir}/prep_conditional_inputs.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
+    File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
+    File sample_utils = "~{script_dir}/association/sample_utils.py"
+
+    File all_samples
+    Int chrom
+    VCF? str_vcf
+    Array[Int] strs
+    bgen? snp_bgen
+    File? snp_mfi
+    Array[Int] snps
+  }
+
+  output {
+    File data = "out.npy"
+    File varnames = "out_varnames.txt"
+    File readme = "out_readme.txt"
+  }
+
+  command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} \
+      out \
+      ~{all_samples} \
+      ~{chrom} \
+      ~{"--str-vcf " + str_vcf} \
+      ~{"--STRs " + strs} \
+      ~{"--imputed-SNPs " + snps} \
+      ~{"--snp-mfi " + snp_mfi} \
+      ~{"--snp-bgen " + snp_bgen.bgen} # TODO this may crash if snp_bgen is none
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+  }
+}
+
 task str_spot_test {
   input {
     String script_dir
@@ -481,7 +539,6 @@ task str_spot_test {
     Int chrom
     Int pos
     String phenotype_name
-    String temp_dir
   }
 
   output {
@@ -489,9 +546,11 @@ task str_spot_test {
     File data = "out.tab"
   }
 
-  # TODO remove:
-  # trtools
   command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{weighted_binom_conf} # necessary for dxCompiler to bother to localize this file
+    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       README.txt \
       strs \
@@ -509,7 +568,7 @@ task str_spot_test {
       --untransformed-phenotypes ~{untransformed_phenotype} \
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
-      --temp-dir ~{temp_dir} \
+      --temp-dir . \
       ~{if is_binary then "--binary logistic" else ""}
   >>>
 
@@ -535,6 +594,7 @@ task regional_my_str_gwas {
     File shared_covars # from task
     File untransformed_phenotype # from task
     File transformed_phenotype # from task
+    File? conditional_covars # from task
     File all_samples_list
     Boolean is_binary
     String binary_type # linear or logistic, only needs to be set if is_binary == true
@@ -542,16 +602,17 @@ task regional_my_str_gwas {
     Int start_pos
     Int end_pos
     String phenotype_name
-    String temp_dir
   }
 
   output {
     File data = "out.tab"
   }
   
-  # TODO remove:
-  # trtools
   command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{weighted_binom_conf} # necessary for dxCompiler to bother to localize this file
+    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       out.tab \
       strs \
@@ -560,9 +621,10 @@ task regional_my_str_gwas {
       --pheno-and-covars ~{transformed_phenotype} \
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
+      ~{"--conditional-covars " + conditional_covars} \
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
-      --temp-dir ~{temp_dir} \
+      --temp-dir . \
       ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
@@ -581,8 +643,8 @@ task locus_plot {
     Int chrom
     Int pos
     String phenotype_name
-    Array[File] assoc_results
-    Array[String] group_names
+    Array[File]+ assoc_results
+    Array[String]? group_names
 
     Int? dosage_threshold
     Float? dosage_fraction_threshold
@@ -601,7 +663,13 @@ task locus_plot {
       ~{chrom} \
       ~{pos} \
       ~{phenotype_name} \
-      --unit ~{unit} \
+      --assoc-results ~{sep=" " assoc_results} \
+      $(if [[ -n "~{sep=" " group_names}" ]] echo "--group-names ~{sep=" " group_names}") \ # TODO check the correct flag is used here
+      ~{"--dosage-threshold " + doasge_threshold} \
+      ~{"--dosage-fraction-threshold " + doasge_fraction_threshold} \
+      ~{"--unit " + unit} \
+      ~{if unit then "--binary" else ""} \ # TODO if unit
+      ~{if residual then "--residual-phenos" else ""} \
       --publication
   >>>
 
@@ -623,6 +691,8 @@ task prep_plink_input {
     File shared_covar_names # from task
     File transformed_phenotype # from task
     File pheno_covar_names # from task
+    File? conditional_genotypes # npy from task prep conditional input
+    File? conditional_covar_names # varnames from task above
     Boolean is_binary
     String binary_type # linear or logistic, only needs to be set if is_binary == true
     String phenotype_name
@@ -633,6 +703,7 @@ task prep_plink_input {
   }
 
   command <<<
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       out.tab \
       ~{phenotype_name} \
@@ -640,6 +711,8 @@ task prep_plink_input {
       ~{pheno_covar_names} \
       ~{shared_covars} \
       ~{shared_covar_names}
+      ~{"--conditional-genotypes " + conditional_genotypes} \
+      ~{"--conditional-covar-names " + conditional_covar_names} \
       ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
@@ -657,7 +730,6 @@ task chromosomal_plink_snp_association {
 
     PFiles imputed_snp_p_file # TODO could generate this with task
     File pheno_data # from task
-    String temp_dir
 
     Int chrom
     String phenotype_name
@@ -677,7 +749,7 @@ task chromosomal_plink_snp_association {
     PHENO_FILE=~{pheno_data} \
     P_FILE=~{sub(imputed_snp_p_file.pgen, ".pgen$", "")} \
     PLINK_EXECUTABLE=~{plink_command} \
-    PROJECT_TEMP=~{temp_dir} \
+    PROJECT_TEMP=. \
     envsetup ~{script}
   >>>
 
@@ -694,23 +766,107 @@ task chromosomal_plink_snp_association {
 ## TODO compare my to plink GWAS
 
 # TODO , also many variants
-task manhattan {
+#task manhattan {
+#  input {
+#    String script_dir
+#    File script = "~{script_dir}/interactive_manhattan_plot.py"
+#  }
+#
+#  output {
+#
+#  }
+#
+#  command <<<
+#    envsetup ~{script}
+#  >>>
+#
+#  runtime {
+#    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+#    dx_timeout: ""
+#  }
+#}
+
+####################### Extracting association signals #########################
+
+task generate_regions {
   input {
     String script_dir
-    File script = "~{script_dir}/"
+    File script = "~{script_dir}/signals/regions.py"
+
+    File chr_lens # misc_data/genome/chr_lens.txt
+    String phenotype
+    File str_assoc_results
+    File snp_assoc_results
   }
 
   output {
-
+    File data = "out.tab"
+    File readme = "out_README.txt"
   }
 
   command <<<
-    envsetup ~{script}
+    envsetup ~{script} \
+      ~{phenotype} \
+      ~{chr_lens} \
+      ~{str_assoc_results} \
+      ~{snp_assoc_results} \
+      ~{out.tab}
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: "30m"
+    mem: "10g"
+  }
+}
+
+task get_strs_in_finemapping_regions
+  input {
+    String script_dir
+    File script = "~{script_dir}/signals/write_finemapped_strs.py"
+
+    File str_loci
+    File finemapping_regions_for_pheno # from generate regions
+  }
+
+  output {
+    Array[File] str_loci = ]
+      "out_chr1.tab",
+      "out_chr2.tab",
+      "out_chr3.tab",
+      "out_chr4.tab",
+      "out_chr5.tab",
+      "out_chr6.tab",
+      "out_chr7.tab",
+      "out_chr8.tab",
+      "out_chr9.tab",
+      "out_chr10.tab",
+      "out_chr11.tab",
+      "out_chr12.tab",
+      "out_chr13.tab",
+      "out_chr14.tab",
+      "out_chr15.tab",
+      "out_chr16.tab",
+      "out_chr17.tab",
+      "out_chr18.tab",
+      "out_chr19.tab",
+      "out_chr20.tab",
+      "out_chr21.tab",
+      "out_chr22.tab"
+    ] # one per chr
+  }
+
+  command <<<
+    envsetup ~{script} \
+      out \
+      ~{finemapping_regions_for_pheno} \
+      ~{str_loci}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    mem: "4g"
   }
 }
 

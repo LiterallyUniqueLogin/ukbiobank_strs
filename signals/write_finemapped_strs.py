@@ -4,11 +4,8 @@ import argparse
 
 import polars as pl
 
-import phenotypes
-
 parser = argparse.ArgumentParser()
-parser.add_argument('outdir')
-parser.add_argument('phenotype')
+parser.add_argument('outprefix')
 parser.add_argument('finemapping_regions')
 parser.add_argument('str_loci')
 args = parser.parse_args()
@@ -31,12 +28,6 @@ for chrom in range(1, 23):
         ) if region_chrom == chrom
     ]
     if len(dfs) > 0:
-        pl.concat(dfs).sort('pos').to_csv(f'{args.outdir}/{args.phenotype}_chr{chrom}.tab', sep='\t')
+        pl.concat(dfs).sort('pos').to_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')
     else:
-        pl.DataFrame({'chrom': [], 'pos': []}).to_csv(f'{args.outdir}/{args.phenotype}_chr{chrom}.tab', sep='\t')
-    '''
-    df.filter(
-        (pl.col('phenotype') == phenotype) &
-        (pl.col('chrom') == chrom)
-    ).select(['chrom', 'pos']).sort('pos').to_csv(, sep='\t')
-    '''
+        pl.DataFrame({'chrom': [], 'pos': []}).to_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')

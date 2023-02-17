@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 
 import numpy as np
 import pandas as pd
 
-ukb = os.environ['UKB']
-
-chr_lens = np.genfromtxt(
-    f'{ukb}/misc_data/genome/chr_lens.txt',
-    usecols=[1],
-    skip_header=1,
-    dtype=int
-)
-
 # default spacing is 250kb between variants (125kb at each side of the leftmost and right most variants)
 # which is same spacing that plink uses in its clumping algorithm (though its algorithm
 # is more nuanced)
-def generate_clumps(iters, spacing=250000):
+def generate_clumps(chr_lens_fname, iters, spacing=250000):
+    chr_lens = np.genfromtxt(
+        chr_lens_fname,
+        usecols=[1],
+        skip_header=1,
+        dtype=int
+    )
     curr_items = [next(itr) for itr in iters]
     # currently only designed for integer chromosome numbers
 
@@ -82,6 +78,7 @@ def filter_MHC_itr(itr):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
+    parser.add_argument('chr_lens_fname')
     parser.add_argument('my_str_fname')
     parser.add_argument('plink_imputed_snp_fname')
     parser.add_argument('out_fname')
@@ -90,7 +87,8 @@ def main():
     phenotype = args.phenotype
 
     results = pd.read_csv(
-        f"{ukb}/association/results/{phenotype}/my_str/results.tab",
+        #f"{ukb}/association/results/{phenotype}/my_str/results.tab",
+        args.my_str_fname,
         header=0,
         usecols=['chrom', 'pos', f'p_{phenotype}', 'locus_filtered'],
         delimiter='\t',
@@ -117,7 +115,7 @@ def main():
         outfile.write('chrom\tstart\tend\tany_strs\n')
         outfile.flush()
         prev_clump = None
-        for clump in generate_clumps(itrs):
+        for clump in generate_clumps(chr_lens_fname, itrs):
             clump = [int(val) for val in clump]
             if prev_clump is not None and prev_clump[0] == clump[0] and prev_clump[2] >= clump[1]:
                 print(prev_clump, clump)

@@ -21,6 +21,7 @@ workflow main {
     String plink_command = "plink2"
 
     File chr_lens
+    File str_loci
 
     Array[VCF]+ str_vcfs
     #Array[PFiles]+ imputed_snp_p_files
@@ -167,23 +168,13 @@ workflow main {
     }
   }
   File phenotype_unrelated_samples = select_first([not_binary_phenotype_unrelated_samples.data, binary_phenotype_unrelated_samples.data])
+  # TODO double check that if we use the unrelated file already generated from this point that we get the same results
 
   call tasks.transform_trait_values { input :
     script_dir = script_dir,
     pheno_data = pheno_data,
     unrelated_samples_for_phenotype = phenotype_unrelated_samples,
     is_binary = is_binary
-  }
-
-  call tasks.fig_4a { input :
-    script_dir = script_dir,
-    all_samples_list = all_samples_list,
-    white_brits_sample_list = ethnicity_unrelated_samples.data[0],
-    black_sample_list = ethnicity_unrelated_samples.data[1],
-    south_asian_sample_list = ethnicity_unrelated_samples.data[2],
-    chinese_sample_list = ethnicity_unrelated_samples.data[3],
-    str_vcf_chr_11 = str_vcfs[10],
-    specific_alleles = specific_alleles,
   }
 
   call tasks.association_regions as str_association_regions { input :
@@ -205,7 +196,6 @@ workflow main {
 #      start_pos = read_int(region[1]),
 #      end_pos = read_int(region[2]),
 #      phenotype_name = phenotype_name,
-#      temp_dir = "."
 #    }
 #  }
 #
@@ -221,7 +211,6 @@ workflow main {
     transformed_phenotype = transform_trait_values.data,
     all_samples_list = all_samples_list,
     is_binary = is_binary,
-    temp_dir = ".",
     chrom = 1,
     pos = 204527033,
     phenotype_name = "platelet_count"
@@ -235,12 +224,10 @@ workflow main {
     transformed_phenotype = transform_trait_values.data,
     all_samples_list = all_samples_list,
     is_binary = is_binary,
-    temp_dir = ".",
     chrom = 1,
     pos = 205255038,
     phenotype_name = "platelet_count"
   }
-
 
   call tasks.prep_plink_input { input :
     script_dir = script_dir,
@@ -257,7 +244,6 @@ workflow main {
 #    Int chrom_minus_one = chrom - 1
 #    call tasks.chromosomal_plink_snp_association { input :
 #      script_dir = script_dir,
-#      temp_dir = temp_dir, #TODO
 #      plink_command = plink_command,
 #      imputed_snp_p_file = imputed_snp_p_files[chrom_minus_one],
 #      pheno_data = prep_plink_input.data,
@@ -273,21 +259,21 @@ workflow main {
 
   # TODO second round for binary
 
-  output {
-    Array[File] out_sample_lists = all_qced_sample_lists.data
-    File assessment_ages = load_shared_covars.assessment_ages
-    File shared_covars = load_shared_covars.shared_covars
-    File shared_covar_names = load_shared_covars.covar_names
-    File pheno_data_out = pheno_data
-    File covar_names_out = covar_names
-    File pheno_readme_out = pheno_readme
-    File unrelated_samples_for_phenotype_out = phenotype_unrelated_samples
-    File transform_trait_values_out = transform_trait_values.data
-    File fig_4a_svg_out = fig_4a.svg
-    File fig_4a_png_out = fig_4a.png
-    File sp1 = spot_test_1.data
-    File sp2 = spot_test_2.data
-    #File my_str_gwas_out = my_str_gwas.tsv
-    #File plink_snp_gwas_out = plink_snp_association.tsv
-  }
+  call 
+
+#  output {
+#    Array[File] out_sample_lists = all_qced_sample_lists.data
+#    File assessment_ages = load_shared_covars.assessment_ages
+#    File shared_covars = load_shared_covars.shared_covars
+#    File shared_covar_names = load_shared_covars.covar_names
+#    File pheno_data_out = pheno_data
+#    File covar_names_out = covar_names
+#    File pheno_readme_out = pheno_readme
+#    File unrelated_samples_for_phenotype_out = phenotype_unrelated_samples
+#    File transform_trait_values_out = transform_trait_values.data
+#    File sp1 = spot_test_1.data
+#    File sp2 = spot_test_2.data
+#    #File my_str_gwas_out = my_str_gwas.tsv
+#    #File plink_snp_gwas_out = plink_snp_association.tsv
+#  }
 }
