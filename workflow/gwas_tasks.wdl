@@ -36,6 +36,12 @@ struct PFiles {
   File pvar
 }
 
+struct region {
+  Int chrom
+  Int start
+  Int end
+}
+
 # TODO struct for phenotypes?
 
 ####################### Helper tasks ###########################
@@ -597,10 +603,10 @@ task regional_my_str_gwas {
     File? conditional_covars # from task
     File all_samples_list
     Boolean is_binary
-    String binary_type # linear or logistic, only needs to be set if is_binary == true
-    Int chrom
-    Int start_pos
-    Int end_pos
+    String binary_type # linear or logistic, ignored if not binary
+    region? bounds
+    # TODO get vars_file to work
+    File? vars_file
     String phenotype_name
   }
 
@@ -617,7 +623,8 @@ task regional_my_str_gwas {
       out.tab \
       strs \
       ~{phenotype_name} \
-      --region ~{chrom}:~{start_pos}-~{end_pos} \
+      ~{if defined(bounds) then "--region ~{bounds.chrom}:~{bounds.start}-~{bounds.end}" else ""} \
+      ~{"--vars-file " + vars_file} \
       --pheno-and-covars ~{transformed_phenotype} \
       --shared-covars ~{shared_covars} \
       --untransformed-phenotypes ~{untransformed_phenotype} \
@@ -625,7 +632,7 @@ task regional_my_str_gwas {
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
       --temp-dir . \
-      ~{if is_binary then "--binary " + binary_type else ""}
+      ~{if is_binary then "--binary " + binary_type}
   >>>
 
   runtime {
@@ -664,11 +671,10 @@ task locus_plot {
       ~{pos} \
       ~{phenotype_name} \
       --assoc-results ~{sep=" " assoc_results} \
-      $(if [[ -n "~{sep=" " group_names}" ]] echo "--group-names ~{sep=" " group_names}") \ # TODO check the correct flag is used here
+      ~{if defined(group_names) then "--group-names ~{sep=" " group_names}" else ""} \
       ~{"--dosage-threshold " + doasge_threshold} \
       ~{"--dosage-fraction-threshold " + doasge_fraction_threshold} \
-      ~{"--unit " + unit} \
-      ~{if unit then "--binary" else ""} \ # TODO if unit
+      ~{if defined(unit) then "--unit ~{unit}" else "--binary"} \
       ~{if residual then "--residual-phenos" else ""} \
       --publication
   >>>
@@ -766,6 +772,7 @@ task chromosomal_plink_snp_association {
 ## TODO compare my to plink GWAS
 
 # TODO , also many variants
+# and conditional and peaks
 #task manhattan {
 #  input {
 #    String script_dir
@@ -786,89 +793,39 @@ task chromosomal_plink_snp_association {
 #  }
 #}
 
-####################### Extracting association signals #########################
-
-task generate_regions {
+task generate_peaks {
   input {
     String script_dir
-    File script = "~{script_dir}/signals/regions.py"
+    File script = "~{script_dir}/signals/peaks.py"
 
-    File chr_lens # misc_data/genome/chr_lens.txt
-    String phenotype
     File str_assoc_results
     File snp_assoc_results
+    String phenotype
+    String spacing
+    String thresh
   }
 
   output {
-    File data = "out.tab"
-    File readme = "out_README.txt"
+    File peaks = "peaks.tab"
+    File readme = "readme.txt"
   }
 
   command <<<
     envsetup ~{script} \
       ~{phenotype} \
-      ~{chr_lens} \
+      ~{spacing} \
+      ~{thresh} \
       ~{str_assoc_results} \
       ~{snp_assoc_results} \
-      ~{out.tab}
+      readme.txt peaks.tab
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "30m"
-    mem: "10g"
+    dx_timeout: "1h"
   }
 }
 
-task get_strs_in_finemapping_regions
-  input {
-    String script_dir
-    File script = "~{script_dir}/signals/write_finemapped_strs.py"
-
-    File str_loci
-    File finemapping_regions_for_pheno # from generate regions
-  }
-
-  output {
-    Array[File] str_loci = ]
-      "out_chr1.tab",
-      "out_chr2.tab",
-      "out_chr3.tab",
-      "out_chr4.tab",
-      "out_chr5.tab",
-      "out_chr6.tab",
-      "out_chr7.tab",
-      "out_chr8.tab",
-      "out_chr9.tab",
-      "out_chr10.tab",
-      "out_chr11.tab",
-      "out_chr12.tab",
-      "out_chr13.tab",
-      "out_chr14.tab",
-      "out_chr15.tab",
-      "out_chr16.tab",
-      "out_chr17.tab",
-      "out_chr18.tab",
-      "out_chr19.tab",
-      "out_chr20.tab",
-      "out_chr21.tab",
-      "out_chr22.tab"
-    ] # one per chr
-  }
-
-  command <<<
-    envsetup ~{script} \
-      out \
-      ~{finemapping_regions_for_pheno} \
-      ~{str_loci}
-  >>>
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "30m"
-    mem: "4g"
-  }
-}
 
 task todo {
   input {

@@ -1,0 +1,10 @@
+gwas_and_finemapping_tasks.wdl
+gwas_and_finemapping_agnostic_workflow.wdl
+gwas_and_finemapping_expanse_workflow.wdl
+gwas_and_finemapping_nexus_workflow.wdl
+
+summarize_results_tasks.wdl
+summarize_results_workflow.wdl
+
+imputed_strs_paper.wdl # tasks and workflow
+

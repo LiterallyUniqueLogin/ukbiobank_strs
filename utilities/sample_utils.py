@@ -31,6 +31,9 @@ def get_ordered_samples_phenotype(ethnicity, phenotype):
 def get_samples_idx(all_samples_fname, samples_fname):
     return ~np.isnan(samples_array_with_indicator(all_samples_fname, samples_fname)[:, 1])
 
+def n_samples(samples_fname):
+    return get_samples(samples_fname).shape[0]
+
 '''
 def get_samples_idx_ethnicity(ethnicity):
     return get_samples_idx(f'{ukb}/sample_qc/runs/{ethnicity}/no_phenotype/combined_unrelated.sample')

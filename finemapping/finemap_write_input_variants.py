@@ -2,26 +2,21 @@
 
 import argparse
 import datetime
-import os
-import tempfile
 
-import numpy as np
 import polars as pl
 
-import python_file_utils as file_utils
 import sample_utils
 
-ukb = os.environ['UKB']
-
-def write_input_variants(workdir, outdir, gts_dir, readme, phenotype, chrom, start, end, inclusion_threshold, mac, snp_str_ratio, total_prob, use_PACSIN2):
+def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_results_fname, filter_set_fname, samples_fname, readme, phenotype, chrom, start, end, inclusion_threshold, mac, snp_str_ratio, total_prob, use_PACSIN2):
     '''
     write README.txt
     write finemap_input.z
     write finemap_innput.master
     '''
 
-    sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
-    n_samples = np.sum(sample_idx)
+    #sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
+    #n_samples = np.sum(sample_idx)
+    n_samples = sample_utils.n_samples(samples_fname)
 
     if mac:
         mac_threshold = int(mac[0])
@@ -47,9 +42,9 @@ def write_input_variants(workdir, outdir, gts_dir, readme, phenotype, chrom, sta
             'pos'
         ).collect()['pos'].to_list()
 
-    plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
-    str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
+    #plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
+    #str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
+    #filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
 
     with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
         finemap_master.write(
@@ -176,6 +171,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outdir')
     parser.add_argument('gts_dir')
+    parser.add_argument('plink_results')
+    parser.add_argument('str_results')
+    parser.add_argument('variants_to_filter')
+    parser.add_argument('samples_fname')
     parser.add_argument('phenotype')
     parser.add_argument('chrom', type=int)
     parser.add_argument('start_pos', type=int)
@@ -197,10 +196,8 @@ def main():
 
     outdir = args.outdir
     gts_dir= args.gts_dir
-    with file_utils.temp_dir(outdir) as tempdir:
-        with open(f'{tempdir}/README.txt', 'w') as readme:
-            write_input_variants(tempdir, outdir, gts_dir, readme, phenotype, chrom, start_pos, end_pos, args.inclusion_threshold, args.mac, args.snp_str_ratio, args.total_prob, args.three_PACSIN2_STRs)
-        file_utils.move_files(tempdir, outdir)
+    with open(f'{outdir}/README.txt', 'w') as readme:
+        write_input_variants(outdir, outdir, gts_dir, args.plink_results, args.str_results, args.variants_to_filter, args.samples_fname, readme, phenotype, chrom, start_pos, end_pos, args.inclusion_threshold, args.mac, args.snp_str_ratio, args.total_prob, args.three_PACSIN2_STRs)
 
 if __name__ == '__main__':
     main()

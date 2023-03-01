@@ -2,15 +2,10 @@
 
 import argparse
 import itertools
-import os
 
 import numpy as np
 import polars as pl
 import sortedcontainers
-
-import python_array_utils as utils
-
-ukb = os.environ['UKB']
 
 def get_snp_loci(plink_imputed_snp_fname, thresh):
     csv = pl.scan_csv(
