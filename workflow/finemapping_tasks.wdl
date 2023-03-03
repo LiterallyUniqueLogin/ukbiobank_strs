@@ -154,47 +154,173 @@ task finemap_write_input_variants {
 task finemap_load_gts {
   input {
     String script_dir
-    File script = "~{script_dir}/"
+    File script = "~{script_dir}/finemapping/finemapping_load_gts.py"
+    File load_and_filter_genotypes = "~{script_dir}/finemapping/load_and_filter_genotypes.py"
+    File python_array_utils = "~{script_dir}/finemapping/python_array_utils.py"
+    File sample_utils = "~{script_dir}/finemapping/sample_utils.py"    
+
+    VCF strs
+    bgen snps
+    File all_samples
+    File phenotype_samples
+    
+    File zfile # from prev finemapping step
+    String phenotype_name
+    region bounds
   }
 
   output {
-
+    File gts_h5 = "gts.h5"
+    File readme = "readme.txt"
   }
 
   command <<<
-    envsetup ~{script}
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} \
+      readme.txt \
+      gts.h5 \
+      ~{strs.vcf} \
+      ~{snps.bgen} \
+      ~{zfile} \
+      ~{phenotype_name} \
+      ~{bounds.chrom} \
+      ~{bounds.start} \
+      ~{bounds.end} \
+      --varname-header
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: "23h30m"
+    mem: "6g"
   }
 }
 
 task finemap_calc_corrs {
   input {
     String script_dir
-    File script = "~{script_dir}/"
+    File script = "~{script_dir}/finemapping/finemap_calc_corrs.py"
+
+    File gts_h5
+    String time
   }
 
   output {
-
+    File? lds_h5 = "lds.h5"
   }
 
   command <<<
-    envsetup ~{script}
+    envsetup ~{script} . ~{gts_h5}
+    exit 0 # ignore the previous return code
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: "~{time}"
+    mem: "4g"
   }
 }
 
 task finemap_write_corrs {
   input {
     String script_dir
+    File script = "~{script_dir}/finemap_write_corrs.py"
+
+    File lds_h5
+    String time
+  }
+
+  output {
+    File? all_variants_ld = "all_variants.ld"
+  }
+
+  command <<<
+    envsetup ~{script} . ~{lds_h5}
+    exit 0 # ignore the previous return code
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "~{time}"
+    # TODO
+    cpus: 4
+    mem: "8g"
+  }
+}
+
+# TODO add FIENMAP to docker
+# TODO check that prior snps flag passing makes sense
+task finemap_run {
+  input {
+    String script_dir
+    File script = "~{script_dir}/finemap_run.py"
+    String finemap_command
+
+    File master
+    File zfile
+    File all_variants_ld
+
+    Boolean prior_snps = false
+    Float? prior_std
+    Float? prob_conv_sss_tol
+  }
+
+  output {
+    #TODO are there other output files
+    File snp_file = "finemap_output.snp"
+    File config = #TODO
+  }
+
+  command <<<
+    # need all files in the same directory for FINEMAP to work
+    # also necessary for dxCompiler to bother to localize this file
+    ln -s ~{master} .
+    ln -s ~{zfile} .
+    ln -s ~{all_variants_ld} .
+    envsetup ~{script} \
+      . \
+      ~{finemap_command} \
+      ~{if prior_snps then "--prior-snps" else if defined(prior_std) then "--prior-std ~{prior_std}" else if defined(prob_conv_sss_tol) then "--prob-conv-sss-tol ~{prob_conv_sss_tol}"
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    mem: "8gb"
+  }
+}
+
+task susie_choose_vars {
+  input {
+    String script_dir
+    File script = "~{script_dir}/susie_choose_vars.py"
+  }
+
+  output {
+    File readme = "readme.txt"
+    File colnames = "colnames.txt"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      readme.txt \
+      colnames.txt \
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+  }
+}
+
+task susie_load_gts {
+  input {
+    String script_dir
     File script = "~{script_dir}/"
+
+    String time
   }
 
   output {
@@ -207,11 +333,12 @@ task finemap_write_corrs {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: "~{time}"
+    mem: "4g"
   }
 }
 
-task finemap_run {
+task susie_run {
   input {
     String script_dir
     File script = "~{script_dir}/"

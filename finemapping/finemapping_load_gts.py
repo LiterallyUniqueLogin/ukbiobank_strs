@@ -2,7 +2,6 @@
 
 import argparse
 import datetime
-import os
 import shutil
 import tempfile
 import time
@@ -15,10 +14,7 @@ import sklearn.linear_model
 import load_and_filter_genotypes as lfg
 import python_array_utils as utils
 import sample_utils
-import load_PACSIN2
-
-ukb = os.environ['UKB']
-project_temp = f'{ukb}/scratch'
+#import load_PACSIN2
 
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for
@@ -34,42 +30,40 @@ def store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals):
         for count, idx in enumerate(stored_indexes):
             gts_dset[:, idx] = gt_temp[:, count]
 
-def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, snp_mfi, varname_fname, phenotype, chrom, start_pos, end_pos, varname_header, pheno_fname, take_residuals, hardcalls):
+def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samples_fname, phenotype_samples_fname, phenotype, chrom, start_pos, end_pos, varname_header, pheno_fname, shared_covars_fname, pheno_out, hardcalls):
     today = datetime.datetime.now().strftime("%Y_%M_%D")
     with open(readme_fname, 'w') as readme:
         readme.write(f'Run date: {today}\nLoading STR and SNP gts from {varname_fname}.\n')
         if pheno_fname:
-            readme.write(f'Loading phenotype values from {pheno_fname}.\n')
-        if take_residuals:
             readme.write('Regressing covariates out.\n')
+            readme.write('Regressing covariates out of phenotype as well.\n')
         if not hardcalls:
             readme.write('Using dosages.\n')
         else:
             readme.write('Using hardcalls.\n')
 
     print('Loading samples (and phenotypes if selected) ... ', flush=True)
-    sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
+    sample_idx = sample_utils.get_samples_idx(all_samples_fname, phenotype_samples_fname)
     n_samples = np.sum(sample_idx)
 
-    if take_residuals:
-        pheno_covars = np.load(f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{phenotype}.npy')
-        shared_covars = np.load(f'{ukb}/traits/shared_covars/shared_covars.npy')
+    if pheno_fname:
+        pheno_covars = np.load(pheno_fname)#f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{phenotype}.npy')
+        shared_covars = np.load(shared_covars_fname)#f'{ukb}/traits/shared_covars/shared_covars.npy')
         covars = utils.merge_arrays(pheno_covars, shared_covars)
 
         # reorder samples to the proper order
-        ordered_samples = sample_utils.get_ordered_samples_phenotype('white_brits', phenotype)
+        ordered_samples = sample_utils.get_ordered_samples(all_samples_fname, phenotype_samples_fname)
         covars = utils.merge_arrays(ordered_samples.reshape(-1, 1), covars)
         pheno_vals = covars[:, 1]
         covars = covars[:, 2:]
 
-        if pheno_fname:
-            print("Regressing phentoypes ... ",  flush=True)
-            pheno_residuals = pheno_vals - sklearn.linear_model.LinearRegression().fit(covars, pheno_vals).predict(covars)
-            with h5py.File(pheno_fname, 'w') as pheno_residuals_file:
-                pheno_residuals_dset = pheno_residuals_file.create_dataset(
-                    'pheno_residuals', pheno_residuals.shape, dtype='f'
-                )
-                pheno_residuals_dset[:] = pheno_residuals
+        print("Regressing phentoypes ... ",  flush=True)
+        pheno_residuals = pheno_vals - sklearn.linear_model.LinearRegression().fit(covars, pheno_vals).predict(covars)
+        with h5py.File(pheno_out, 'w') as pheno_residuals_file:
+            pheno_residuals_dset = pheno_residuals_file.create_dataset(
+                'pheno_residuals', pheno_residuals.shape, dtype='f'
+            )
+            pheno_residuals_dset[:] = pheno_residuals
     else:
         covars = None
 
@@ -207,7 +201,7 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, snp_mfi, varname_fname,
 
         snp_itr = lfg.load_imputed_snps(
             snp_bgen,
-            snp_mfi,
+            None,
             region,
             sample_idx,
             apply_filter=False,
@@ -262,46 +256,52 @@ if __name__ == '__main__':
     parser.add_argument('gts_file')
     parser.add_argument('str_vcf')
     parser.add_argument('snp_bgen')
-    parser.add_argument('snp_mfi')
     parser.add_argument('varname_file', help='varnames should be first entry of each row when split on spaces')
+    parser.add_argument('all_samples_file')
+    parser.add_argument('phenotype_samples_file')
     parser.add_argument('phenotype')
     parser.add_argument('chrom')
     parser.add_argument('start')
     parser.add_argument('end')
     parser.add_argument('--varname-header', action='store_true', default=False, help='if true, skip the first line of the varname file')
-    parser.add_argument('--residuals', action='store_true', default=False)
-    parser.add_argument('--pheno-file', help='where to save the pheno residuals')
+    parser.add_argument('--pheno-fname')
+    parser.add_argument('--shared-covar-fname')
+    parser.add_argument('--pheno-out', help='where to save the pheno residuals')
     parser.add_argument('--hardcalls', action='store_true')
     args = parser.parse_args()
 
+    assert bool(args.pheno_fname) == bool(args.shared_covar_fname) == bool(args.pheno_file)
+
     if args.pheno_file:
         assert args.residuals
-    with tempfile.TemporaryDirectory(prefix='finemapping_load_gts', dir=project_temp) as tempdir:
+    with tempfile.TemporaryDirectory(prefix='finemapping_load_gts', dir='.') as tempdir:
         print(f'tempdir name: {tempdir}', flush=True)
         readme = tempdir + '/' + args.readme.split('/')[-1]
         gts_file = tempdir + '/' + args.gts_file.split('/')[-1]
-        if args.pheno_file:
-            pheno_file = tempdir + '/' + args.pheno_file.split('/')[-1]
+        if args.pheno_out:
+            pheno_out = tempdir + '/' + args.pheno_file.split('/')[-1]
         else:
-            pheno_file = None
+            pheno_out = None
         load_gts(
             readme,
             gts_file,
             args.str_vcf,
             args.snp_bgen,
-            args.snp_mfi,
             args.varname_file,
+            args.all_samples_file,
+            args.phenotype_samples_file,
             args.phenotype,
             args.chrom,
             args.start,
             args.end,
             args.varname_header,
-            pheno_file,
-            args.residuals,
+            args.pheno_fname,
+            args.shared_covar_fname,
+            pheno_out,
             args.hardcalls
         )
         shutil.move(readme, args.readme)
         shutil.move(gts_file, args.gts_file)
         if args.pheno_file:
-            shutil.move(pheno_file, args.pheno_file)
+            shutil.move(pheno_out, args.pheno_out)
 

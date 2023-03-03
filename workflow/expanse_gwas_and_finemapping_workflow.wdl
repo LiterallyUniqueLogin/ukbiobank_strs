@@ -53,6 +53,9 @@ workflow main {
   input {
     String script_dir  = "."
 
+    File chr_lens = "misc_data/genome/chr_lens.txt"
+    File str_loci = "snpstr/str_loci.txt"
+
     String phenotype_name = "platelet_count"
     Int phenotype_id = 30080
     Array[String] categorical_covariate_names = ["platelet_count_device_id"]
@@ -65,10 +68,10 @@ workflow main {
     Boolean is_zero_one_neg_nan = false # different binary encoding
     String date_of_most_recent_first_occurrence_update = "2021-04-01" # only needed for binary phenotypes
 
-    File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam"
-    File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
+    File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam" # Could instead create a task for downloading this with ukbgene
+    File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample" # could instead create a task for downloading this with ukbgene
     File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
-    File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat"
+    File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat" # could create a task for downloading this with ukbgene
   }
 
   call extract_field as white_brits { input:
@@ -148,18 +151,25 @@ workflow main {
       "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
       "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
     }
+    bgen imputed_snp_bgens = {
+      "bgen": "array_imputed/ukb_imp_chr{chrom+1}_v3.bgen",
+      "index": "array_imputed/ukb_imp_chr{chrom+1}_v3.bgen.bgi"
+    }
+    File snp_vars_to_filter_from_finemapping = "finemapping/str_imp_snp_overlaps/chr~{chrom+1}_to_filter.tab'"
   }
 
   call platform_agnostic_workflow.main { input:
     script_dir = script_dir,
     PRIMUS_command = "run_PRIMUS.pl",
+    finemap_command = "utilities/finemap/finemap_v1.4_x86_64",
 
-    chr_lens = "misc_data/genome/chr_lens.txt",
-    str_loci = "snpstr/str_loci.txt",
+    chr_lens = chr_lens,
+    str_loci = str_loci,
 
     str_vcfs = str_vcfs,
     #imputed_snp_p_files = imputed_snp_p_files,
-    specific_alleles = "association/specific_alleles.tab",
+    imputed_snp_bgens = imputed_snp_bgens,
+    snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping, # could write a task for generating this file
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
@@ -168,10 +178,10 @@ workflow main {
     is_zero_one_neg_nan = is_zero_one_neg_nan,
     date_of_most_recent_first_occurrence_update = date_of_most_recent_first_occurrence_update,
 
-    fam_file = fam_file, # Could instead create a task for downloading this with ukbgene
+    fam_file = fam_file,
     all_samples_list = all_samples_list,
     withdrawn_sample_list = withdrawn_sample_list,
-    kinship = kinship, # could create a task for downloading this with ukbgene
+    kinship = kinship, 
 
     sc_white_brits = white_brits.data,
     sc_ethnicity_self_report = ethnicity_self_report.data,

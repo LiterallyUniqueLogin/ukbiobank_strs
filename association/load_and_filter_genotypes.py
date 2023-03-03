@@ -270,7 +270,7 @@ def load_strs(vcf_fname: str,
         )
 
 def load_imputed_snps(bgen_fname: str,
-                      mfi_fname: str,
+                      mfi_fname: Optional[str],
                       region: str,
                       samples: np.ndarray,
                       info_thresh: Optional[float] = None,
@@ -288,6 +288,8 @@ def load_imputed_snps(bgen_fname: str,
     ----------
     bgen_fname:
     mfi_fname:
+        if details is None False and  info_thresh is None, can be omitted
+        in that case, will occassionally include snps which are constant
     region:
         chr:start-end
     samples:

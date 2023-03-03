@@ -4,6 +4,8 @@ version 1.0
 
 import "gwas_tasks.wdl"
 import "finemapping_tasks.wdl"
+import "finemap_calc_corrs_retryable.wdl"
+import "finemap_write_corrs_retryable.wdl"
 
 # TODO fix chr_lens 21 and 20 the same
 
@@ -22,13 +24,15 @@ workflow main {
     String script_dir
     String PRIMUS_command
     String plink_command = "plink2"
+    String finemap_command
 
     File chr_lens
     File str_loci
 
     Array[VCF]+ str_vcfs
     #Array[PFiles]+ imputed_snp_p_files
-    File specific_alleles # could replace this with a different way of providing this info
+    Array[bgen]+ imputed_snp_bgens
+    Array[File] snp_vars_to_filter_from_finemapping
 
     String phenotype_name
     Array[String] categorical_covariate_names
@@ -172,6 +176,7 @@ workflow main {
         binary_pheno_data = pheno_data
       }
     }
+    # This is the final sample list file for a given phenotype
     File phenotype_unrelated_samples = select_first([not_binary_phenotype_unrelated_samples.data, binary_phenotype_unrelated_samples.data])
     # TODO double check that if we use the unrelated file already generated from this point that we get the same results
   
@@ -191,7 +196,7 @@ workflow main {
 #  scatter (region in str_association_regions.out_tsv) {
 #    call gwas_tasks.regional_my_str_gwas { input :
 #      script_dir = script_dir,
-#      str_vcf = str_vcfs[read_int(region[0])],
+#      str_vcf = str_vcfs[read_int(region[0]) - 1],
 #      shared_covars = load_shared_covars.shared_covars,
 #      untransformed_phenotype = pheno_data[0],
 #      transformed_phenotype = transform_trait_values.data[0],
@@ -249,11 +254,10 @@ workflow main {
   }
 
 #  scatter (chrom in chroms) {
-#    Int chrom_minus_one = chrom - 1
 #    call gwas_tasks.chromosomal_plink_snp_association { input :
 #      script_dir = script_dir,
 #      plink_command = plink_command,
-#      imputed_snp_p_file = imputed_snp_p_files[chrom_minus_one],
+#      imputed_snp_p_file = imputed_snp_p_files[chrom-1],
 #      pheno_data = prep_plink_input.data,
 #      chrom = chrom,
 #      phenotype_name = phenotype_name,
@@ -269,6 +273,7 @@ workflow main {
   # TODO do ethnic STR subset differently for binary?
 
   call gwas_tasks.generate_peaks { input :
+    script_dir = script_dir,
     snp_assoc_results = plink_snp_association.tsv,
     str_assoc_results = my_str_gwas.tsv,
     phenotype = phenotype_name,
@@ -277,6 +282,7 @@ workflow main {
   }
 
   call gwas_tasks.generate_peaks as summary_manhattan_peaks { input :
+    script_dir = script_dir,
     snp_assoc_results = plink_snp_association.tsv,
     str_assoc_results = my_str_gwas.tsv,
     phenotype = phenotype_name,
@@ -287,18 +293,22 @@ workflow main {
   # TODO summary manhattan
 
   call finemapping_tasks.generate_regions { input : 
+    script_dir = script_dir,
     chr_lens = chr_lens,
     phenotype = phenotype_name,
     snp_assoc_results = plink_snp_association.tsv,
     str_assoc_results = my_str_gwas.tsv
   }
 
+  # for future analyses
+
   call finemapping_tasks.get_strs_in_finemapping_regions { input :
+    script_dir = script_dir,
     str_loci = str_loci,
     finemapping_regions_for_pheno = generate_regions.data
   }
 
-  scatter (ethnicity_enumeration in range(len(ethnicities))) {
+  scatter (ethnicity_enumeration in range(length(ethnicities))) {
     scatter (pair in zip(chroms, get_strs_in_finemapping_regions.str_loci)) {
       call gwas_tasks.regional_my_str_gwas as ethnic_regional_my_str_gwas { input :
         script_dir = script_dir,
@@ -315,6 +325,58 @@ workflow main {
     }
     call gwas_tasks.concatenate_tsvs as ethnic_my_str_gwas { input :
       tsvs = ethnic_regional_my_str_gwas.data
+    }
+  }
+
+  # continue fine-mapping
+
+  Array[Array[String]] finemapping_regions_tsv = read_tsv(generate_regions.data)
+
+  # finemap each region
+  scatter (region_idx in range(length(finemapping_regions_tsv) - 1)) {
+    region bounds = {
+      "chrom": read_int(region[0]),
+      "start": read_int(region[1]),
+      "end": read_int(region[2]),
+    }
+
+    # first call FINEMAP
+
+    call finemapping_tasks.finemap_write_input_variants { innput :
+      str_assoc_results = my_str_gwas.tsv,
+      snp_assoc_results = plink_snp_association.tsv,
+      variants_to_filter = snp_vars_to_filter_from_finemapping[bounds[0] - 1],
+      phenotype_samples_list = phenotype_unrelated_samples[0],
+      phenotype = phenotype_name,
+      bounds = bounds
+    }
+
+    call finemapping_tasks.finemap_load_gts { input :
+      script_dir = script_dir,
+      strs = str_vcfs[bounds[0] - 1],
+      bgen = imputed_snp_bgens[bounds[0] - 1],
+      all_samples = all_samples_list,
+      phenotype_samples = phenotype_unrelated_samples[0],
+      zfile = finemap_write_input_variants.zfile,
+      phenotype_name = phenotype_name,
+      bounds = bounds
+    }
+
+    call finemap_calc_corrs_retryable.finemap_calc_corrs_retryable { input :
+      script_dir = script_dir,
+      gts_h5 = finemap_load_gts.gts_h5
+    }
+
+    call finemap_write_corrs_retryable.finemap_write_corrs_retryable { input :
+      script_dir = script_dir,
+      lds_h5 = finemap_calc_corrs_retryable.lds_h5
+    }
+
+    call finemapping_tasks.finemap_run { input :
+      script_dir = script_dir,
+      master = finemap_write_input_variants.master,
+      zfile = finemap_write_input_variants.zfile,
+      all_variants_ld = finemap_write_corrs_retryable.all_variants_ld
     }
   }
 

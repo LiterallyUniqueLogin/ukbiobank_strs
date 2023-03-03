@@ -9,7 +9,7 @@ import polars as pl
 
 ukb = os.environ['UKB']
 
-def choose_vars(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_pos, p_cutoff, mac, use_PACSIN2):
+def choose_vars(readme_fname, outcols_fname, str_associations_fname, snp_associations_fname, phenotype, chrom, start_pos, end_pos, p_cutoff, mac, use_PACSIN2):
     if use_PACSIN2:
         assert int(chrom) == 22
 
@@ -59,7 +59,8 @@ def choose_vars(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_po
     snps_to_include = set()
 
     strs_to_include = pl.scan_csv(
-        f'{ukb}/association/results/{phenotype}/my_str/results.tab',
+        str_associations,fname,
+        #f'{ukb}/association/results/{phenotype}/my_str/results.tab',
         sep='\t'
     ).filter(
         (pl.col('chrom') == chrom) &
@@ -83,7 +84,8 @@ def choose_vars(readme_fname, outcols_fname, phenotype, chrom, start_pos, end_po
     ])
 
     snps_to_include = pl.scan_csv(
-        f'{ukb}/association/results/{phenotype}/plink_snp/results.tab',
+        snp_associations_fname,
+        #f'{ukb}/association/results/{phenotype}/plink_snp/results.tab',
         sep='\t',
         null_values='NA'
     ).filter(
@@ -139,6 +141,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('readme')
     parser.add_argument('outcols')
+    parser.add_argument('str_associations')
+    parser.add_argument('snp_associations')
     parser.add_argument('phenotype')
     parser.add_argument('chrom')
     parser.add_argument('start', type=int)
@@ -148,4 +152,4 @@ if __name__ == '__main__':
     parser.add_argument('--three-PACSIN2-STRs', action='store_true', default=False)
     args = parser.parse_args()
 
-    choose_vars(args.readme, args.outcols, args.phenotype, args.chrom, args.start, args.end, args.threshold, args.mac, args.three_PACSIN2_STRs)
+    choose_vars(args.readme, args.outcols, args.str_associations, args.snp_associations, args.phenotype, args.chrom, args.start, args.end, args.threshold, args.mac, args.three_PACSIN2_STRs)

@@ -518,7 +518,7 @@ task prep_conditional_input {
       ~{"--STRs " + strs} \
       ~{"--imputed-SNPs " + snps} \
       ~{"--snp-mfi " + snp_mfi} \
-      ~{"--snp-bgen " + snp_bgen.bgen} # TODO this may crash if snp_bgen is none
+      ~{if defined(snp_begn) then "--snp-bgen " + snp_bgen.bgen else ""}
   >>>
 
   runtime {
@@ -728,6 +728,7 @@ task prep_plink_input {
   }
 }
 
+# TODO regional plink snp association
 task chromosomal_plink_snp_association {
   input {
     String script_dir

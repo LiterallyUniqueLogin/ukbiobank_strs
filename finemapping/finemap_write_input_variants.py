@@ -11,7 +11,7 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
     '''
     write README.txt
     write finemap_input.z
-    write finemap_innput.master
+    write finemap_input.master
     '''
 
     #sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
