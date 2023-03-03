@@ -4,8 +4,10 @@ version 1.0
 
 import "gwas_tasks.wdl"
 import "finemapping_tasks.wdl"
-import "finemap_calc_corrs_retryable.wdl"
-import "finemap_write_corrs_retryable.wdl"
+import "retryable_finemap_calc_corrs.wdl"
+import "retryable_finemap_write_corrs.wdl"
+import "retryable_susie_load_gts.wdl"
+import "escalating_susie_run.wdl"
 
 # TODO fix chr_lens 21 and 20 the same
 
@@ -340,12 +342,12 @@ workflow main {
       "end": read_int(region[2]),
     }
 
-    # first call FINEMAP
+    # call FINEMAP
 
     call finemapping_tasks.finemap_write_input_variants { innput :
       str_assoc_results = my_str_gwas.tsv,
       snp_assoc_results = plink_snp_association.tsv,
-      variants_to_filter = snp_vars_to_filter_from_finemapping[bounds[0] - 1],
+      variants_to_filter = snp_vars_to_filter_from_finemapping[bounds.chrom - 1],
       phenotype_samples_list = phenotype_unrelated_samples[0],
       phenotype = phenotype_name,
       bounds = bounds
@@ -353,8 +355,8 @@ workflow main {
 
     call finemapping_tasks.finemap_load_gts { input :
       script_dir = script_dir,
-      strs = str_vcfs[bounds[0] - 1],
-      bgen = imputed_snp_bgens[bounds[0] - 1],
+      strs = str_vcfs[bounds.chrom - 1],
+      bgen = imputed_snp_bgens[bounds.chrom - 1],
       all_samples = all_samples_list,
       phenotype_samples = phenotype_unrelated_samples[0],
       zfile = finemap_write_input_variants.zfile,
@@ -377,6 +379,36 @@ workflow main {
       master = finemap_write_input_variants.master,
       zfile = finemap_write_input_variants.zfile,
       all_variants_ld = finemap_write_corrs_retryable.all_variants_ld
+    }
+
+    # call SuSiE 
+ 
+    call finemapping_tasks.susie_choose_vars { input :
+      script_dir = script_dir,
+      str_assoc_results = my_str_gwas.tsv,
+      snp_assoc_results = plink_snp_association.tsv,
+      variants_to_filter = snp_vars_to_filter_from_finemapping[bounds.chrom - 1],
+      phenotype_name = phenotype_name,
+      bounds = bounds
+    }
+
+    call susie_load_gts_retryable.susie_load_gts_retryable { input :
+      script_dir = script_dir,
+      strs = str_vcfs[bounds.chrom - 1],
+      bgen = imputed_snp_bgens[bounds.chrom - 1],
+      all_samples = all_samples_list,
+      phenotype_samples = phenotype_unrelated_samples[0],
+      pheno_data = transform_trait_values[0].data,
+      shared_covars = load_shared_covars.shared_covars,
+      zfile = finemap_write_input_variants.zfile,
+      phenotype_name = phenotype_name,
+      bounds = bounds
+    }
+
+    call escalating_susie_run.escalating_susie_run { input :
+      script_dir = script_dir,
+      gts_h5 = susie_load_gts_retryable.gts_h5,
+      pheno_residuals_h5 = susie_load_gts_retryable.pheno_residuals_h5,
     }
   }
 

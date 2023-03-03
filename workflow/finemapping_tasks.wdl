@@ -113,7 +113,7 @@ task finemap_write_input_variants {
 
     File str_assoc_results
     File snp_assoc_results
-    File variants_to_filter #TODO?
+    File variants_to_filter
     File phenotype_samples_list
     String phenotype
     region bounds
@@ -218,7 +218,7 @@ task finemap_calc_corrs {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "~{time}"
+    dx_timeout: time
     mem: "4g"
   }
 }
@@ -243,7 +243,7 @@ task finemap_write_corrs {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "~{time}"
+    dx_timeout: time
     # TODO
     cpus: 4
     mem: "8g"
@@ -296,6 +296,15 @@ task susie_choose_vars {
   input {
     String script_dir
     File script = "~{script_dir}/susie_choose_vars.py"
+
+    File str_assoc_results
+    File snp_assoc_results
+    File variants_to_filter
+
+    String phenotype_name
+    region bounds
+    # TODO we could have used a MAF cutoff for susie vars but never did
+    # how come? Should this be added as another followup to supp note 3?
   }
 
   output {
@@ -307,6 +316,13 @@ task susie_choose_vars {
     envsetup ~{script} \
       readme.txt \
       colnames.txt \
+      ~{str_assoc_results} \
+      ~{snp_assoc_results} \
+      ~{variants_to_filter} \
+      ~{phenotype_name} \
+      ~{bounds.chrom} \
+      ~{bounds.start} \
+      ~{bounds.end} \
   >>>
 
   runtime {
@@ -318,22 +334,56 @@ task susie_choose_vars {
 task susie_load_gts {
   input {
     String script_dir
-    File script = "~{script_dir}/"
+    File script = "~{script_dir}/finemapping/finemapping_load_gts.py"
+    File load_and_filter_genotypes = "~{script_dir}/finemapping/load_and_filter_genotypes.py"
+    File python_array_utils = "~{script_dir}/finemapping/python_array_utils.py"
+    File sample_utils = "~{script_dir}/finemapping/sample_utils.py"    
+
+    VCF strs
+    bgen snps
+    File all_samples
+    File phenotype_samples
+    File pheno_data
+    File shared_covars
+    
+    File colnames # from prev finemapping step
+    String phenotype_name
+    region bounds
+    Boolean hardcalls = false
 
     String time
   }
 
   output {
-
+    File? gts_h5 = "gts.h5"
+    File? pheno_residuals_h5 = "pheno_residuals.h5"
+    File? readme = "readme.txt"
   }
 
   command <<<
-    envsetup ~{script}
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
+    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} \
+      readme.txt \
+      gts.h5 \
+      ~{strs.vcf} \
+      ~{snps.bgen} \
+      ~{colnames} \
+      ~{phenotype_name} \
+      ~{bounds.chrom} \
+      ~{bounds.start} \
+      ~{bounds.end} \
+      --pheno-fname ~{pheno_data} \
+      --shared-covars-fname ~{shared_covars} \
+      --pheno-out pheno_residual.h5 \
+      ~{if hardcalls then "--hardcalls" else ""}
+    exit 0 # ignore the previous return code
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "~{time}"
+    dx_timeout: time
     mem: "4g"
   }
 }
@@ -341,20 +391,44 @@ task susie_load_gts {
 task susie_run {
   input {
     String script_dir
-    File script = "~{script_dir}/"
+    File script = "~{script_dir}/finemapping/susie_run.r"
+
+    File gts_h5
+    File pheno_residuals_h5
+    #TODO
+    Int L
+    Int max_iter
+
+    String mem
+    String time
   }
 
   output {
-
+    File? lbf = "lbf.tab",
+    File? lbf_variable = "lbf_variable.tab",
+    File? sigma2 = "sigma2.txt",
+    File? V = "V.tab",
+    File? converged = "converged.txt",
+    File? lfsr = "lfsr.tab",
+    File? requested_coverage = "requested_coverage.txt",
+    File? alpha = "alpha.tab",
+    Array[File]? CSs = glob("cs*.txt")
   }
 
   command <<<
-    envsetup ~{script}
+    ACTIVATE=ukb_r envsetup Rscript ~{script} \
+      .
+      ~{pheno_residuals_h5} \
+      ~{gts_h5} \
+      ~{L} \
+      ~{max_iter}
+    exit 0 # ignore the previous return code
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: time
+    mem: mem
   }
 }
 

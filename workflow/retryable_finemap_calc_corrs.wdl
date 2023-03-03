@@ -2,7 +2,7 @@ version 1.0
 
 import "finemapping_tasks.wdl"
 
-workflow finemap_calc_corrs_retryable {
+workflow retryable_finemap_calc_corrs {
 
   input {
     String script_dir
@@ -15,7 +15,7 @@ workflow finemap_calc_corrs_retryable {
     time = "1h"
   }
 
-  if (!defined(finemap_calc_corrs.lds_h5)) {
+  if (!defined(try_zero.lds_h5)) {
     call finemapping_tasks.finemap_calc_corrs as try_one { input :
       script_dir = script_dir,
       gts_h5 = gts_h5,
