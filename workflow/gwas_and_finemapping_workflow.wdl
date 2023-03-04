@@ -381,6 +381,8 @@ workflow main {
       all_variants_ld = finemap_write_corrs_retryable.all_variants_ld
     }
 
+    # TODO need to rerun places where finemapping suggests 20+ causal snps
+
     # call SuSiE 
  
     call finemapping_tasks.susie_choose_vars { input :
