@@ -13,7 +13,7 @@ task should_escalate_susie_run {
   }
 
   output {
-    escalate = read_boolean(stdout())
+    Boolean escalate = read_boolean(stdout())
   }
 
   command <<<
@@ -35,7 +35,7 @@ task should_escalate_susie_run {
       found_count = 0
       done = False
       redo = False
-      for num in range(~{maax_CSs}):
+      for num in range(~{max_CSs}):
         assert CSs[num].split('/')[-1] == f'cs{num}.txt'
         with open(CSs[num]) as cs:
           n_vars = len(next(cs).split())
@@ -62,14 +62,14 @@ workflow escalating_susie_run {
   input {
     String script_dir
     
-    File alpha
+    File gts_h5
     File pheno_residuals_h5
   }
 
   call retryable_susie_run.retryable_susie_run as try_zero { input :
     script_dir = script_dir,
-    alpha = alpha,
-    pheno_residual_h5 = pheno_residual_h5,
+    gts_h5 = gts_h5,
+    pheno_residuals_h5 = pheno_residuals_h5,
     L = 10,
     max_iter = 100
   }
@@ -80,11 +80,11 @@ workflow escalating_susie_run {
     max_CSs = 10
   }
 
-  if (escalate_zero.escalate)) {
+  if (escalate_zero.escalate) {
     call retryable_susie_run.retryable_susie_run as try_one { input :
       script_dir = script_dir,
-      alpha = alpha,
-      pheno_residual_h5 = pheno_residual_h5,
+      gts_h5 = gts_h5,
+      pheno_residuals_h5 = pheno_residuals_h5,
       L = 30,
       max_iter = 500
     }
@@ -98,8 +98,8 @@ workflow escalating_susie_run {
     if (escalate_one.escalate) {
       call retryable_susie_run.retryable_susie_run as try_two { input :
         script_dir = script_dir,
-        alpha = alpha,
-        pheno_residual_h5 = pheno_residual_h5,
+        gts_h5 = gts_h5,
+        pheno_residuals_h5 = pheno_residuals_h5,
         L = 50,
         max_iter = 500
       }
@@ -119,7 +119,7 @@ workflow escalating_susie_run {
     File sigma2 = select_first([try_two.sigma2, try_one.sigma2, try_zero.sigma2])
     File V = select_first([try_two.V, try_one.V, try_zero.V])
     File converged = select_first([try_two.converged, try_one.converged, try_zero.converged])
-    File lfsr = select_first([try_two.lfsr, try_one.lsfr, try_zero.lsfr])
+    File lfsr = select_first([try_two.lfsr, try_one.lfsr, try_zero.lfsr])
     File requested_coverage = select_first([try_two.requested_coverage, try_one.requested_coverage, try_zero.requested_coverage])
     File alpha = select_first([try_two.alpha, try_one.alpha, try_zero.alpha])
     Array[File] CSs = select_first([try_two.CSs, try_one.CSs, try_zero.CSs])

@@ -374,18 +374,18 @@ task transform_trait_values {
     File python_array_utils = "~{script_dir}/traits/python_array_utils.py"
 
     File pheno_data # from task
-    File unrelated_samples_for_phenotype  # from task
+    File samples_for_phenotype  # from task
     Boolean is_binary
   }
 
   output {
-    File README = "out_README.txt"
+    File readme = "out_README.txt"
     File data = "out.npy"
   }
 
   command <<<
     ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
-    envsetup ~{script} out ~{pheno_data} ~{unrelated_samples_for_phenotype} ~{if is_binary then "--binary" else ""}
+    envsetup ~{script} out ~{pheno_data} ~{samples_for_phenotype} ~{if is_binary then "--binary" else ""}
   >>>
 
   runtime {
@@ -514,11 +514,11 @@ task prep_conditional_input {
       out \
       ~{all_samples} \
       ~{chrom} \
-      ~{"--str-vcf " + str_vcf} \
-      ~{"--STRs " + strs} \
-      ~{"--imputed-SNPs " + snps} \
+      ~{if defined(str_vcf) then "--str-vcf ~{str_vcf.vcf}" else "" } \
+      ~{if length(strs) > 0 then "--STRs ~{sep=" " strs}" else "" } \
+      ~{if length(snps) > 0 then "--imputed-SNPs ~{sep=" " snps}" else "" } \
       ~{"--snp-mfi " + snp_mfi} \
-      ~{if defined(snp_begn) then "--snp-bgen " + snp_bgen.bgen else ""}
+      ~{if defined(snp_bgen) then "--snp-bgen ~{snp_bgen.bgen}" else ""}
   >>>
 
   runtime {
@@ -632,7 +632,7 @@ task regional_my_str_gwas {
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
       --temp-dir . \
-      ~{if is_binary then "--binary " + binary_type}
+      ~{if is_binary then "--binary " + binary_type else ""}
   >>>
 
   runtime {
@@ -672,8 +672,8 @@ task locus_plot {
       ~{phenotype_name} \
       --assoc-results ~{sep=" " assoc_results} \
       ~{if defined(group_names) then "--group-names ~{sep=" " group_names}" else ""} \
-      ~{"--dosage-threshold " + doasge_threshold} \
-      ~{"--dosage-fraction-threshold " + doasge_fraction_threshold} \
+      ~{"--dosage-threshold " + dosage_threshold} \
+      ~{"--dosage-fraction-threshold " + dosage_fraction_threshold} \
       ~{if defined(unit) then "--unit ~{unit}" else "--binary"} \
       ~{if residual then "--residual-phenos" else ""} \
       --publication

@@ -45,7 +45,7 @@ task generate_regions {
       ~{chr_lens} \
       ~{str_assoc_results} \
       ~{snp_assoc_results} \
-      ~{out.tab}
+      out.tab
   >>>
 
   runtime {
@@ -55,7 +55,7 @@ task generate_regions {
   }
 }
 
-task get_strs_in_finemapping_regions
+task get_strs_in_finemapping_regions {
   input {
     String script_dir
     File script = "~{script_dir}/signals/write_finemapped_strs.py"
@@ -133,7 +133,7 @@ task finemap_write_input_variants {
       ~{snp_assoc_results} \
       ~{str_assoc_results} \
       ~{variants_to_filter} \
-      ~{phenotype_sample_list} \
+      ~{phenotype_samples_list} \
       ~{phenotype} \
       ~{bounds.chrom} \
       ~{bounds.start} \
@@ -244,8 +244,7 @@ task finemap_write_corrs {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
-    # TODO
-    cpus: 4
+    cpu: 4
     mem: "8g"
   }
 }
@@ -268,9 +267,10 @@ task finemap_run {
   }
 
   output {
-    #TODO are there other output files
     File snp_file = "finemap_output.snp"
-    File config = #TODO
+    File log_sss = "finemap_output.log_sss"
+    File config = "finemap_output.config"
+    Array[File] creds = glob("finemap_output.cred*")
   }
 
   command <<<
@@ -282,7 +282,7 @@ task finemap_run {
     envsetup ~{script} \
       . \
       ~{finemap_command} \
-      ~{if prior_snps then "--prior-snps" else if defined(prior_std) then "--prior-std ~{prior_std}" else if defined(prob_conv_sss_tol) then "--prob-conv-sss-tol ~{prob_conv_sss_tol}"
+      ~{if prior_snps then "--prior-snps" else if defined(prior_std) then "--prior-std ~{prior_std}" else if defined(prob_conv_sss_tol) then "--prob-conv-sss-tol ~{prob_conv_sss_tol}" else ""}
   >>>
 
   runtime {
@@ -295,7 +295,7 @@ task finemap_run {
 task susie_choose_vars {
   input {
     String script_dir
-    File script = "~{script_dir}/susie_choose_vars.py"
+    File script = "~{script_dir}/finemapping/susie_choose_vars.py"
 
     File str_assoc_results
     File snp_assoc_results
@@ -404,14 +404,14 @@ task susie_run {
   }
 
   output {
-    File? lbf = "lbf.tab",
-    File? lbf_variable = "lbf_variable.tab",
-    File? sigma2 = "sigma2.txt",
-    File? V = "V.tab",
-    File? converged = "converged.txt",
-    File? lfsr = "lfsr.tab",
-    File? requested_coverage = "requested_coverage.txt",
-    File? alpha = "alpha.tab",
+    File? lbf = "lbf.tab"
+    File? lbf_variable = "lbf_variable.tab"
+    File? sigma2 = "sigma2.txt"
+    File? V = "V.tab"
+    File? converged = "converged.txt"
+    File? lfsr = "lfsr.tab"
+    File? requested_coverage = "requested_coverage.txt"
+    File? alpha = "alpha.tab"
     Array[File]? CSs = glob("cs*.txt")
   }
 

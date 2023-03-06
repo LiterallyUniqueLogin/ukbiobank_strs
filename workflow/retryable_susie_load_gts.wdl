@@ -21,8 +21,7 @@ workflow retryable_susie_load_gts {
 
   call finemapping_tasks.susie_load_gts as try_zero { input :
     script_dir = script_dir,
-    time = "1h"
-    script_dir = script_dir,
+    time = "1h",
     strs = strs,
     snps = snps,
     all_samples = all_samples,
@@ -39,8 +38,7 @@ workflow retryable_susie_load_gts {
   if (!defined(try_zero.gts_h5)) {
     call finemapping_tasks.susie_load_gts as try_one { input :
       script_dir = script_dir,
-      time = "47h30m"
-      script_dir = script_dir,
+      time = "47h30m",
       strs = strs,
       snps = snps,
       all_samples = all_samples,
@@ -57,7 +55,7 @@ workflow retryable_susie_load_gts {
 
   output {
     File gts_h5 = select_first([try_zero.gts_h5, try_one.gts_h5])
-    File pheno_residual_h5 = select_first([try_zero.pheno_residual_h5, try_one.pheno_residual_h5])
+    File pheno_residuals_h5 = select_first([try_zero.pheno_residuals_h5, try_one.pheno_residuals_h5])
     File readme = select_first([try_zero.readme, try_one.readme])
   }
 }
