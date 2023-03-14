@@ -97,14 +97,14 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
     with h5py.File(gts_fname, 'w') as gts_file:
         if len(varnames) >= chunk_len:
             gts_dset = gts_file.create_dataset(
-                'gts' if not take_residuals else 'gt_residuals',
+                'gts' if not pheno_fname else 'gt_residuals',
                 (n_samples, len(varnames)),
                 dtype='f',
                 chunks=(n_samples, chunk_len)
             )
         else:
             gts_dset = gts_file.create_dataset(
-                'gts' if not take_residuals else 'gt_residuals',
+                'gts' if not pheno_fname else 'gt_residuals',
                 (n_samples, len(varnames)),
                 dtype='f',
             )
@@ -114,7 +114,7 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
         stored_indexes = []
 
         if len(pacsin2_vars) > 0:
-            if not take_residuals:
+            if not pheno_fname:
                 print('loading PACSIN2 STRs ... ', flush=True)
             else:
                 print('loading and regressing PACSIN2 STRs ... ', flush=True)
@@ -139,12 +139,12 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
 
             assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
             gt_temp = gt_temp[:, :len(stored_indexes)]
-            store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
+            store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
             print('done!', flush=True)
             gt_temp = np.full((n_samples, n_temp), np.nan)
             stored_indexes = []
 
-        if take_residuals:
+        if pheno_fname:
             print('loading and regressing STRs... ', flush=True)
         else:
             print('loading STRs... ', flush=True)
@@ -156,15 +156,24 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             sample_idx,
             details=False,
             var_subset=strs_to_include,
-            hardcalls=hardcalls
+            hardcalls=hardcalls,
+            both_poses = True
         )
-        for str_count, (str_dosages_or_hardcalls, _, _, str_pos, str_locus_filtered, _) in enumerate(str_itr):
+        for str_count, (str_dosages_or_hardcalls, _, _, (str_start_pos, str_written_pos), str_locus_filtered, _) in enumerate(str_itr):
             str_count += 1
             print(f'loading STR {str_count}, time/STR: {(time.time() - start)/str_count:.2}s ... ', flush=True)
-            str_name = f'STR_{str_pos}'
-            if str_locus_filtered or str_name not in varnames:
-                print(str_name, strs_to_include)
+            done = False
+            for pos in (str_start_pos, str_written_pos):
+                str_name = f'STR_{pos}'
+                if str_name in varnames:
+                    done = True
+                    break
+            if not done or str_locus_filtered or var_inclusion[str_name]:
+                print(str_start_pos, str_written_pos, varnames, var_inclusion[str_name])
                 assert False
+
+            var_inclusion[str_name] = True
+
             idx = varnames.index(str_name)
             stored_indexes.append(idx)
             if not hardcalls:
@@ -173,18 +182,16 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
                 gts = np.sum(str_dosages_or_hardcalls, axis=1)
 
             gt_temp[:, (str_count - 1) % n_temp] = gts
-            assert not var_inclusion[str_name]
-            var_inclusion[str_name] = True
             if str_count % n_temp == 0:
                 assert len(stored_indexes) == n_temp
-                store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
+                store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
                 gt_temp = np.full((n_samples, n_temp), np.nan)
                 stored_indexes = []
 
         if len(stored_indexes) > 0:
             assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
             gt_temp = gt_temp[:, :len(stored_indexes)]
-            store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
+            store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
         gt_temp = np.full((n_samples, n_temp), np.nan)
         stored_indexes = []
 
@@ -194,7 +201,7 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             print(strs_to_include)
             assert False
 
-        if not take_residuals:
+        if not pheno_fname:
             print('loading SNPs... ', flush=True)
         else:
             print('loading and regressing SNPs... ', flush=True)
@@ -233,14 +240,14 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             var_inclusion[snp_name] = True
             if snp_count % n_temp == 0:
                 assert len(stored_indexes) == n_temp
-                store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
+                store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
                 gt_temp = np.full((n_samples, n_temp), np.nan)
                 stored_indexes = []
 
         if len(stored_indexes) > 0:
             assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
             gt_temp = gt_temp[:, :len(stored_indexes)]
-            store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals)
+            store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
 
         print(f"Time: {time.time() - start}s")
         if sum(var_inclusion.values()) != len(var_inclusion):
@@ -270,16 +277,14 @@ if __name__ == '__main__':
     parser.add_argument('--hardcalls', action='store_true')
     args = parser.parse_args()
 
-    assert bool(args.pheno_fname) == bool(args.shared_covar_fname) == bool(args.pheno_file)
+    assert bool(args.pheno_fname) == bool(args.shared_covar_fname) == bool(args.pheno_out)
 
-    if args.pheno_file:
-        assert args.residuals
     with tempfile.TemporaryDirectory(prefix='finemapping_load_gts', dir='.') as tempdir:
         print(f'tempdir name: {tempdir}', flush=True)
         readme = tempdir + '/' + args.readme.split('/')[-1]
         gts_file = tempdir + '/' + args.gts_file.split('/')[-1]
         if args.pheno_out:
-            pheno_out = tempdir + '/' + args.pheno_file.split('/')[-1]
+            pheno_out = tempdir + '/' + args.pheno_out.split('/')[-1]
         else:
             pheno_out = None
         load_gts(
@@ -302,6 +307,6 @@ if __name__ == '__main__':
         )
         shutil.move(readme, args.readme)
         shutil.move(gts_file, args.gts_file)
-        if args.pheno_file:
+        if args.pheno_out:
             shutil.move(pheno_out, args.pheno_out)
 

@@ -138,7 +138,7 @@ if __name__ == '__main__':
     parser.add_argument('snp_associations')
     parser.add_argument('filter_set_fname')
     parser.add_argument('phenotype')
-    parser.add_argument('chrom')
+    parser.add_argument('chrom', type=int)
     parser.add_argument('start', type=int)
     parser.add_argument('end', type=int)
     parser.add_argument('--threshold', default=5e-4, type=float)

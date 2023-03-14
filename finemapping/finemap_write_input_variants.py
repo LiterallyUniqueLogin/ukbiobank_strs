@@ -113,7 +113,7 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
         ])
         strs = pl.concat([strs, pacsin2_strs])
 
-    assert strs.distinct(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
+    assert strs.unique(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
 
     n_strs = strs.shape[0]
 
@@ -165,7 +165,7 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             pl.lit(total_prob/(n_snps + n_strs)).alias('prob')
         )
 
-    vars_df.to_csv(f'{workdir}/finemap_input.z', sep=' ')
+    vars_df.write_csv(f'{workdir}/finemap_input.z', sep=' ')
 
 def main():
     parser = argparse.ArgumentParser()

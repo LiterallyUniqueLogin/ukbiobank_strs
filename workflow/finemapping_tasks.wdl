@@ -109,6 +109,7 @@ task finemap_write_input_variants {
   input {
     String script_dir
     File script = "~{script_dir}/finemapping/finemap_write_input_variants.py"
+    File python_array_utils = "~{script_dir}/finemapping/python_array_utils.py"
     File sample_utils = "~{script_dir}/finemapping/sample_utils.py"    
 
     File str_assoc_results
@@ -127,6 +128,7 @@ task finemap_write_input_variants {
 
   command <<<
     ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       . \
       . \
@@ -184,6 +186,8 @@ task finemap_load_gts {
       ~{strs.vcf} \
       ~{snps.bgen} \
       ~{zfile} \
+      ~{all_samples} \
+      ~{phenotype_samples} \
       ~{phenotype_name} \
       ~{bounds.chrom} \
       ~{bounds.start} \
@@ -370,6 +374,8 @@ task susie_load_gts {
       ~{strs.vcf} \
       ~{snps.bgen} \
       ~{colnames} \
+      ~{all_samples} \
+      ~{phenotype_samples} \
       ~{phenotype_name} \
       ~{bounds.chrom} \
       ~{bounds.start} \
