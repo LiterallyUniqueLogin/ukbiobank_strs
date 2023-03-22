@@ -19,26 +19,28 @@ def check(merged_file, batches):
 #            print(batch_sample_list)
 #            assert False
 
-    if not np.all(merged_samples == np.array(sum(batch_samples, []))):
+    if not np.all(merged_samples == np.concatenate(batch_samples)):
         print(repr(merged_samples))
         print(repr(batch_samples))
         assert False
 
-    for merged_var, batch_vars in merged_file, zip(*batches):
-        merged_gts = merged_var.genotype.array[:, :-1]
+    for merged_var, batch_vars in zip(merged_file, zip(*batches)):
+        merged_gts = merged_var.genotype.array()[:, :-1]
         merged_alleles = [merged_var.REF] + merged_var.ALT
         sample_offset = 0
         for batch_idx, batch_var in enumerate(batch_vars):
-            if merged_var.INFO['START'] != batch_var.INFO['START'] or merged_var.INFO['END'] != batch_var.INFO['START']:
+            if merged_var.INFO['START'] != batch_var.INFO['START'] or merged_var.INFO['END'] != batch_var.INFO['END']:
                 print(merged_var.POS, batch_idx)
                 assert False
 
-            batch_gts = batch_var.genotype.array[:, :-1]
-            corresponding_merged_gts = merged_gts[sample_offset:len(batch_samples[batch_idx]), :]
+            batch_gts = batch_var.genotype.array()[:, :-1]
+            corresponding_merged_gts = merged_gts[sample_offset:(sample_offset+len(batch_samples[batch_idx])), :]
 
             len_offset = len(batch_var.REF) - batch_var.INFO['END'] + batch_var.INFO['START'] - 1
             batch_alleles = [batch_var.REF] + batch_var.ALT
             for allele_idx, allele in enumerate(batch_alleles):
+                if np.sum(batch_gts == allele_idx) == 0:
+                    continue
                 merged_allele_set = np.unique(corresponding_merged_gts[batch_gts == allele_idx])
                 if not len(merged_allele_set) == 1:
                     print(merged_var.POS, batch_idx, allele_idx)
@@ -58,8 +60,10 @@ def main():
 
     try:
         batch_files = []
+        print("opening merged file")
         merged_file = cyvcf2.VCF(args.merged_file)
-        for file in args.batches:
+        for i, file in enumerate(args.batches):
+            print(f"opening batch file {i+1}")
             batch_files.append(cyvcf2.VCF(file))
 
         check(merged_file, batch_files)
