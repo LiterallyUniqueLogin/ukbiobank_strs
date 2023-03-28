@@ -28,10 +28,7 @@ zcat "$MERGED_FILE" | grep -Pv '^#' | cut -f 1 > merged1.tab
 zcat "$MERGED_FILE" | grep -Pv '^#' | cut -f 3- > merged3on.tab
 paste merged1.tab <( zcat hg19_merged_pos.bed.gz | cut -f 3 ) merged3on.tab >> temp.merged.hg19.vcf
 
-# for now match on column two and, for start, add 1 to column three
-# once the off by one error caused by HipSTR expecting 1-indexed bed files is fixed,
-# match on one plut column two and don't modify column three
-zcat hg19_merged_start.bed.gz | awk '{print $1 "\t" $2 "\t" $3 + 1}' > hg19_merged_start.annotation
+zcat hg19_merged_start.bed.gz | awk '{print $1 "\t" $2 + 1 "\t" $3}' > hg19_merged_start.annotation
 bgzip -f hg19_merged_start.annotation
 tabix -f -p bed hg19_merged_start.annotation.gz
 bcftools annotate \
@@ -52,4 +49,5 @@ tabix -f imputed_strs.reheadered.vcf.gz
 compareSTR --ignore-phasing --balanced-accuracy --fraction-concordant-len-sum --vcf2-beagle-probabilities \
 	--vcf1 merged.hg19.vcf.gz \
 	--vcf2 imputed_strs.reheadered.vcf.gz \
-	--out out
+	--out out \
+	--noplot
