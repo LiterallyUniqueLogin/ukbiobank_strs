@@ -1,52 +1,7 @@
 version 1.0
 
 import "platform_agnostic_workflow.wdl"
-
-task extract_field {
-  input {
-    String script_dir
-    File script = "~{script_dir}/main_dataset/decompress_trait.py"
-    File ukbconv = "~{script_dir}/ukb_utilities/ukbconv"
-    File encoding = "~{script_dir}/ukb_utilities/encoding.ukb"
-    Array[File]+ fields_files = ["main_dataset/raw_data/fields46781.ukb", "main_dataset/raw_data/fields46782.ukb"]
-    Array[File]+ enc_files = ["main_dataset/raw_data/ukb46781.enc_ukb", "main_dataset/raw_data/ukb46782.enc_ukb"]
-
-    Int id # data field id
-  }
-
-  output {
-    File data = "~{id}_cleaned.tab"
-  }
-
-  command <<<
-    envsetup ~{script} \
-      ~{id} \
-      ~{id} \
-      ~{ukbconv} \
-      ~{encoding} \
-      --fields-files ~{sep=" " fields_files} \
-      --enc-files ~{sep=" " enc_files} && \
-    sed -e 's/^\t//' -e 's/\t$//' ~{id}.txt > ~{id}_cleaned.tab
-    # ukb's extract skip pad every line but the first with an extra tab at the beginning and end
-    # seemingly for no reason. This messes up tsv column alignment, so remove them.
-  >>>
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "5h"
-  }
-}
-
-#workflow extract_height {
-#  call extract_field as height { input:
-#    script_dir = ".",
-#    id = 50
-#  }
-#
-#  output {
-#    File out = height.data
-#  }
-#}
+import "expanse_tasks.wdl"
 
 workflow main {
 
@@ -74,68 +29,68 @@ workflow main {
     File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat" # could create a task for downloading this with ukbgene
   }
 
-  call extract_field as white_brits { input:
+  call expanse_tasks.extract_field as white_brits { input:
     script_dir = script_dir,
     id = 22006
   }
 
-  call extract_field as ethnicity_self_report { input :
+  call expanse_tasks.extract_field as ethnicity_self_report { input :
     script_dir = script_dir,
     id = 21000
   }
 
-  call extract_field as sex_aneuploidy { input:
+  call expanse_tasks.extract_field as sex_aneuploidy { input:
     script_dir = script_dir,
     id = 22019
   }
 
-  call extract_field as genetic_sex { input:
+  call expanse_tasks.extract_field as genetic_sex { input:
     script_dir = script_dir,
     id = 22001
   }
 
-  call extract_field as reported_sex { input:
+  call expanse_tasks.extract_field as reported_sex { input:
     script_dir = script_dir,
     id = 31
   }
 
-  call extract_field as kinship_count { input:
+  call expanse_tasks.extract_field as kinship_count { input:
     script_dir = script_dir,
     id = 22021
   }
 
-  call extract_field as assessment_ages { input :
+  call expanse_tasks.extract_field as assessment_ages { input :
     script_dir = script_dir,
     id = 21003
   }
   
-  call extract_field as pcs { input :
+  call expanse_tasks.extract_field as pcs { input :
     script_dir = script_dir,
     id = 22009
   }
 
-  call extract_field as year_of_birth { input :
+  call expanse_tasks.extract_field as year_of_birth { input :
     script_dir = script_dir,
     id = 34
   }
 
-  call extract_field as month_of_birth { input :
+  call expanse_tasks.extract_field as month_of_birth { input :
     script_dir = script_dir,
     id = 52
   }
 
-  call extract_field as date_of_death { input :
+  call expanse_tasks.extract_field as date_of_death { input :
     script_dir = script_dir,
     id = 40000
   }
 
-  call extract_field as phenotype { input :
+  call expanse_tasks.extract_field as phenotype { input :
     script_dir = script_dir,
     id = phenotype_id
   }
 
   scatter (categorical_covariate_id in categorical_covariate_ids) {
-    call extract_field as categorical_covariates { input :
+    call expanse_tasks.extract_field as categorical_covariates { input :
       script_dir = script_dir,
       id = categorical_covariate_id
     }

@@ -20,6 +20,15 @@ def human_format(num):
         num /= 1000.0
     return '{}{}'.format('{:f}'.format(num).rstrip('0').rstrip('.'), ['', 'k', 'm', 'b', 't'][magnitude])
 
+def fix_header(header):
+    def fix_header_helper(_):
+        part1 = header.rpartition('0.05_significance_CI')
+        fix1 = part1[0] + 'foo' + part1[2]
+        part2 = fix1.rpartition('5e-8_significance_CI')
+        fix2 = part2[0] + 'bar' + part2[2]
+        return fix2.split('\t')
+    return fix_header_helper
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outloc')
@@ -34,17 +43,87 @@ def main():
     parser.add_argument('--binary', action='store_true', default=False)
     parser.add_argument('--residual-phenos', default=False, action='store_true')
     parser.add_argument('--publication', default=False, action='store_true')
-    #parser.add_argument('--whiskers', default=False, action='store_true')
+    parser.add_argument('--count-per-length-sum', nargs='+')
+    parser.add_argument('--stat-per-length-sum', nargs='+')
+    parser.add_argument('--05-CI-per-length-sum', nargs='+')
     args = parser.parse_args()
+   
+    assert bool(args.total_subset_dosage_per_summed_gt) != bool(args.assoc_results)
+    assert bool(args.total_subset_dosage_per_summed_gt) == bool(args.stat_per_summed_genotype) == bool(args.summed_05_significance_CI)
 
-    assert 1 <= len(args.assoc_results)
+    if bool(args.assoc_results):
+        n_results = len(args.assoc_results)
+    else:
+        assert bool(args.total_subset_dosage_per_summed_gt)
+        n_results = len(args.total_subset_dosage_per_summed_gt)
+
+    assert 1 >= n_results
     assert bool(args.dosage_threshold) + bool(args.dosage_fraction_threshold) == 1
-    if len(args.assoc_results) > 1:
+    if n_results > 1:
         assert len(args.group_names) == len(args.assoc_results)
         assert args.dosage_threshold is not None
 
+    if bool(args.assoc_results):
+        dosage_test_dicts = []
+        mean_per_dosages = []
+        ci5e_2s = []
+        if not args.binary:
+            stat_name = 'mean'
+        else:
+            stat_name = 'fraction'
+
+        if not args.residual_phenos:
+            small_ci_col = 'summed_0.05_significance_CI'
+            pheno_col = f'{stat_name}_{args.phenotype}_per_summed_genotype'
+        else:
+            small_ci_col = 'res_per_sum_0.05_significance_CI'
+            pheno_col = f'{stat_name}_{args.phenotype}_residual_per_summed_gt'
+
+        for assoc_results_fname in args.assoc_results:
+            with open(assoc_results_fname) as tsv:
+                header = tsv.readline().strip()
+            result = pl.scan_csv(
+                assoc_results_fname,
+                sep='\t',
+                dtypes={'locus_filtered': str},
+                skip_rows=1,
+                has_header=False,
+                with_column_names = fix_header(header)
+            ).filter(
+                (pl.col('chrom') == args.chrom) & (pl.col('pos') == args.pos)
+            ).collect().select([ # have to collect first due to some sort of bug
+                small_ci_col,
+                pheno_col,
+                'total_subset_dosage_per_summed_gt'
+            ])
+            assert result.shape[0] == 1
+           
+            dosage_dict = {
+                float(allele): val for allele, val in
+                ast.literal_eval(result['total_subset_dosage_per_summed_gt'].to_numpy()[0]).items()
+            }
+            # TODO need to pass non fraction through regardless
+            if bool(args.dosage_fraction_threshold):
+                total_dosage = np.sum(list(dosage_dict.values()))
+                dosage_test_dicts.append({key: val/total_dosage for key, val in dosage_dict.items()})
+            else:
+                dosage_test_dicts.append(dosage_dict)
+
+            mean_per_dosages.append({float(allele): val for allele, val in ast.literal_eval(result[pheno_col].to_numpy()[0]).items()})
+            ci5e_2s.append({float(allele): val for allele, val in ast.literal_eval(result[small_ci_col].to_numpy()[0]).items()})
+    else:
+        pass
+#        parser.add_argument('--count-per-length-sum', nargs='+')
+#        parser.add_argument('--stat-per-length-sum', nargs='+')
+#        parser.add_argument('--05-CI-per-length-sum', nargs='+')
+#        dosage_test_dicts = args.total_subset_dosage_per_summed_gt
+#        mean_per_dosages = args.stat_per_summed_genotype
+#        ci5e_2s = args.summed_05_significance_CI
+     
     figure = generate_figure(
-        args.assoc_results,
+        dosage_test_dicts,
+        mean_per_dosages,
+        ci5e_2s,
         args.group_names,
         args.chrom,
         args.pos,
@@ -55,14 +134,15 @@ def main():
         args.binary,
         args.residual_phenos,
         args.publication,
-        #args.whiskers
     )
 
     bokeh.io.export_svg(figure, filename=f'{args.outloc}.svg')
     bokeh.io.export_png(figure, filename=f'{args.outloc}.png')
 
 def generate_figure(
-    assoc_results_fnames,
+    dosage_test_dicts,
+    mean_per_dosages,
+    ci5e_2s,
     group_names,
     chrom,
     pos,
@@ -73,7 +153,6 @@ def generate_figure(
     binary,
     use_residual_phenos,
     publication,
-    #whiskers
 ):
     assert bool(unit) or binary
 
@@ -83,7 +162,6 @@ def generate_figure(
         assert threshold > 1
         assert isinstance(threshold, int)
 
-
     y_axis_label = phenotype.replace('_', ' ')
     if use_residual_phenos:
         y_axis_label = 'residual ' + y_axis_label
@@ -92,7 +170,6 @@ def generate_figure(
     else:
         # TODO check this
         y_axis_label='fraction '+ y_axis_label + ' cases'
-
 
     y_axis_label = y_axis_label[0].upper() + y_axis_label[1:]
 
@@ -111,64 +188,14 @@ def generate_figure(
     figure.axis.major_label_text_font_size = '30px'
     figure.axis.minor_tick_line_color = None
 
-    if not binary:
-        stat_name = 'mean'
-    else:
-        stat_name = 'fraction'
-
-    def fix_header(header):
-        def fix_header_helper(_):
-            part1 = header.rpartition('0.05_significance_CI')
-            fix1 = part1[0] + 'foo' + part1[2]
-            part2 = fix1.rpartition('5e-8_significance_CI')
-            fix2 = part2[0] + 'bar' + part2[2]
-            return fix2.split('\t')
-        return fix_header_helper
-
     #markers = ['circle', 'triangle']
-    markers = ['circle']*len(assoc_results_fnames)
+    markers = ['circle']*len(dosage_test_dicts)
     y_mins = []
     y_maxs = []
 
-    if not use_residual_phenos:
-        small_ci_col = '0.05_significance_CI'
-        big_ci_col = '5e-8_significance_CI'
-        pheno_col = f'{stat_name}_{phenotype}_per_single_dosage'
-    else:
-        small_ci_col = 'res_per_sum_0.05_significance_CI'
-        big_ci_col = 'res_per_sum_5e-8_significance_CI'
-        pheno_col = f'{stat_name}_{phenotype}_residual_per_summed_gt'
-
-    for assoc_idx, assoc_results_fname in enumerate(assoc_results_fnames):
-        with open(assoc_results_fname) as tsv:
-            header = tsv.readline().strip()
-        result = pl.scan_csv(
-            assoc_results_fname,
-            sep='\t',
-            dtypes={'locus_filtered': str},
-            skip_rows=1,
-            has_header=False,
-            with_column_names = fix_header(header)
-        ).filter(
-            (pl.col('chrom') == chrom) & (pl.col('pos') == pos)
-        ).collect().select([ # have to collect first due to some sort of bug
-            'motif',
-            small_ci_col,
-            big_ci_col,
-            pheno_col,
-            'total_subset_dosage_per_summed_gt'
-        ])
-        assert result.shape[0] == 1
-       
-        dosage_dict = {
-            float(allele): val for allele, val in
-            ast.literal_eval(result['total_subset_dosage_per_summed_gt'].to_numpy()[0]).items()
-        }
-        if is_fraction_threshold:
-            total_dosage = np.sum(list(dosage_dict.values()))
-            dosage_test_dict = {key: val/total_dosage for key, val in dosage_dict.items()}
-        else:
-            dosage_test_dict = dosage_dict
+    assert len(dosage_test_dicts) == len(mean_per_dosages) == len(ci5e_2s)
+    for assoc_idx, (dosage_test_dict, mean_per_dosage, ci5e_2) in enumerate(zip(dosage_test_dicts, mean_per_dosage, ci5e_2)):
+        assert dosage_test_dict.keys() == mean_per_dosage.keys() == ci5e_2.keys()
 
         alleles = list(dosage_test_dict.keys())
         alleles_copy = alleles.copy()
@@ -178,40 +205,20 @@ def generate_figure(
                 alleles.remove(allele)
         alleles = sorted(alleles)
 
-        mean_per_dosage = {float(allele): val for allele, val in ast.literal_eval(result[pheno_col].to_numpy()[0]).items()}
-        ci5e_2 = {float(allele): val for allele, val in ast.literal_eval(result[small_ci_col].to_numpy()[0]).items()}
-        #ci5e_8 = {float(allele): val for allele, val in ast.literal_eval(result[big_ci_col].to_numpy()[0]).items()}
         y_mins.append(min(ci5e_2[allele][0] for allele in alleles))
         y_maxs.append(max(ci5e_2[allele][1] for allele in alleles))
 
-        if len(assoc_results_fnames) == 1:
+        if len(dosage_test_dicts) == 1:
             color = 'dimgrey'
         else:
-            if len(assoc_results_fnames) < 5:
+            if len(dosage_test_dicts) < 5:
                 color =  bokeh.palettes.Colorblind[4][assoc_idx] # if assoc_idx == 0 else 3]
             else:
-                color = bokeh.palettes.Category20[len(assoc_results_fnames)][assoc_idx]
+                color = bokeh.palettes.Category20[len(dosage_test_dicts)][assoc_idx]
         small_ci_legend_label = '95% CI'
-        if len(assoc_results_fnames) > 1:
+        if len(dosage_test_dicts) > 1:
             small_ci_legend_label = f'{group_names[assoc_idx]} ' + small_ci_legend_label
-        """
-        if not whiskers:
-            if len(assoc_results_fnames) == 1:
-                pass
-                #figure.varea(alleles, [ci5e_2[allele][1] for allele in alleles], [ci5e_8[allele][1] for allele in alleles], color=color, alpha=0.2, legend_label='1 - 5e-8 Confidence Interval')
-                #figure.varea(alleles, [ci5e_8[allele][0] for allele in alleles], [ci5e_2[allele][0] for allele in alleles], color=color, alpha=0.2)
-            else:
-                small_ci_legend_label = f'{group_names[assoc_idx]} ' + small_ci_legend_label
-            figure.varea(alleles, [ci5e_2[allele][0] for allele in alleles], [ci5e_2[allele][1] for allele in alleles], color=color, alpha=0.4, legend_label=small_ci_legend_label)
-            '''
-            smooth area
-            lower_bound = scipy.interpolate.interp1d(alleles, [ci5e_2[allele][0] for allele in alleles], kind='cubic')
-            upper_bound = scipy.interpolate.interp1d(alleles, [ci5e_2[allele][1] for allele in alleles], kind='cubic')
-            xs = np.arange(alleles[0], alleles[-1], (alleles[-1] - alleles[0]-0.0001)/1000)
-            figure.varea(xs, lower_bound(xs), upper_bound(xs), color=color, alpha=0.4, legend_label=small_ci_legend_label)
-            '''
-        else:
-        """
+
         #for y_vals, offset, color, bold in [(ci5e_2, .45, 'red', 2)]: #(ci5e_8, .3, 'orange', 1), (ci5e_2, .45, 'red', 2):
         y_vals = ci5e_2
         offset = 0.25
@@ -236,7 +243,6 @@ def generate_figure(
                 color=color,
                 line_width=3,
             )
-        
 
         # totals
         cds = bokeh.models.ColumnDataSource(dict(
@@ -249,7 +255,7 @@ def generate_figure(
                                              text='text', source=cds, text_font_size='18px', text_color='black'))
 
         scatter_label = 'mean'
-        if len(assoc_results_fnames) > 1:
+        if len(dosage_test_dicts) > 1:
             scatter_label = f'{group_names[assoc_idx]}'
             figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=2, color=color)
             figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=1, color='black')
@@ -261,7 +267,7 @@ def generate_figure(
                        #fill_color=color, line_color='black',
                        size=7, legend_label=scatter_label)
         '''
-        if len(assoc_results_fnames) > 1:
+        if len(dosage_test_dicts) > 1:
             figure.legend[0].items.insert(len(figure.legend[0].items), figure.legend[0].items[-2])
             del figure.legend[0].items[-3]
         '''
