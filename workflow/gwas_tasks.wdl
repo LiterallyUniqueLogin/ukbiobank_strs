@@ -674,7 +674,7 @@ task locus_plot {
       ~{if defined(group_names) then "--group-names ~{sep=" " group_names}" else ""} \
       ~{"--dosage-threshold " + dosage_threshold} \
       ~{"--dosage-fraction-threshold " + dosage_fraction_threshold} \
-      ~{if defined(unit) then "--unit ~{unit}" else "--binary"} \
+      ~{if defined(unit) then "--unit '~{unit}'" else "--binary"} \
       ~{if residual then "--residual-phenos" else ""} \
       --publication
   >>>

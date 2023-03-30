@@ -60,8 +60,12 @@ def perform_regional_gwas_helper(
     unfiltered_samples = ~np.any(np.isnan(merge), axis=1)
 
     outcome = merge[unfiltered_samples, 1].copy()
+
     covars = merge[unfiltered_samples, :]
-    covars = (covars - np.mean(covars, axis=0))/np.std(covars, axis=0)
+    # standardize the covariates for numerical stability
+    stds = covars.std(axis=0)
+    stds[np.isnan(stds)] = 1 # ignore covariates which have no variation
+    covars = (covars - np.mean(covars, axis=0))/stds
     covars[:, 1] = 1 # reuse the column that was the outcome as the intercept
     
     ori_phenotypes = np.load(untransformed_phenotypes_fname)

@@ -57,6 +57,11 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
         pheno_vals = covars[:, 1]
         covars = covars[:, 2:]
 
+        # standardize covars for numerical stability
+        stds = covars.std(axis = 0)
+        stds[np.isnan(stds)] = 1 # for covariates which are constant, simply ignore them
+        covars = (covars - covars.mean(axis = 0))/stds
+
         print("Regressing phentoypes ... ",  flush=True)
         pheno_residuals = pheno_vals - sklearn.linear_model.LinearRegression().fit(covars, pheno_vals).predict(covars)
         with h5py.File(pheno_out, 'w') as pheno_residuals_file:
@@ -272,12 +277,12 @@ if __name__ == '__main__':
     parser.add_argument('end')
     parser.add_argument('--varname-header', action='store_true', default=False, help='if true, skip the first line of the varname file')
     parser.add_argument('--pheno-fname')
-    parser.add_argument('--shared-covar-fname')
+    parser.add_argument('--shared-covars-fname')
     parser.add_argument('--pheno-out', help='where to save the pheno residuals')
     parser.add_argument('--hardcalls', action='store_true')
     args = parser.parse_args()
 
-    assert bool(args.pheno_fname) == bool(args.shared_covar_fname) == bool(args.pheno_out)
+    assert bool(args.pheno_fname) == bool(args.shared_covars_fname) == bool(args.pheno_out)
 
     with tempfile.TemporaryDirectory(prefix='finemapping_load_gts', dir='.') as tempdir:
         print(f'tempdir name: {tempdir}', flush=True)
@@ -301,7 +306,7 @@ if __name__ == '__main__':
             args.end,
             args.varname_header,
             args.pheno_fname,
-            args.shared_covar_fname,
+            args.shared_covars_fname,
             pheno_out,
             args.hardcalls
         )

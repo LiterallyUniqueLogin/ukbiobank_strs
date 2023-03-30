@@ -15,12 +15,14 @@ workflow expanse_figures {
     File specific_alleles = "association/specific_alleles.tab"
 
     # files that could be computed via WDL but were pregenerated beforehand
-    File white_brits_sample_list = "sample_qc/runs/white_brits/no_phenotype/combined_unrelated.sample"
-    File black_sample_list = "sample_qc/runs/black/no_phenotype/combined_unrelated.sample"
-    File south_asian_sample_list = "sample_qc/runs/south_asian/no_phenotype/combined_unrelated.sample"
-    File chinese_sample_list = "sample_qc/runs/chinese/no_phenotype/combined_unrelated.sample"
-    File unrelated_samples_CBL_hom_not_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_not_begin_C_T_snp/white_brits/platelet_count/combined.sample"
-    File unrelated_samples_CBL_hom_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_begin_C_T_snp/white_brits/platelet_count/combined.sample"
+
+    File all_white_brits_sample_list = "sample_qc/common_filters/ethnicity/white_brits.sample"  # move this to being auto generated
+    File unrelated_white_brits_sample_list = "sample_qc/runs/white_brits/no_phenotype/combined_unrelated.sample"
+    File unrelated_black_sample_list = "sample_qc/runs/black/no_phenotype/combined_unrelated.sample"
+    File unrelated_south_asian_sample_list = "sample_qc/runs/south_asian/no_phenotype/combined_unrelated.sample"
+    File unrelated_chinese_sample_list = "sample_qc/runs/chinese/no_phenotype/combined_unrelated.sample"
+    File unrelated_samples_CBL_hom_not_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_not_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
+    File unrelated_samples_CBL_hom_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
     File platelet_count_sample_list = "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample"
   }
 
@@ -56,10 +58,10 @@ workflow expanse_figures {
   call gwas_tasks.fig_4a { input :
     script_dir = script_dir,
     all_samples_list = all_samples_list,
-    white_brits_sample_list = white_brits_sample_list,
-    black_sample_list = black_sample_list,
-    south_asian_sample_list = south_asian_sample_list,
-    chinese_sample_list = chinese_sample_list,
+    white_brits_sample_list = unrelated_white_brits_sample_list,
+    black_sample_list = unrelated_black_sample_list,
+    south_asian_sample_list = unrelated_south_asian_sample_list,
+    chinese_sample_list = unrelated_chinese_sample_list,
     str_vcf_chr_11 = str_vcfs[10],
     specific_alleles = specific_alleles,
   }
@@ -75,10 +77,10 @@ workflow expanse_figures {
   }
 
   # all, not qced or subset to unrelated, the sample list for this won't be used, only the data
-  call gwas_tasks.load_continuous_phenotype as platelet_count_all_samples { input:
+  call gwas_tasks.load_continuous_phenotype as platelet_count_all_white_brits { input:
     script_dir = script_dir,
     sc = platelet_count_sc.data,
-    qced_sample_list = all_samples_list, 
+    qced_sample_list = all_white_brits_sample_list,
     assessment_ages_npy = load_shared_covars.assessment_ages,
     categorical_covariate_names = ["platelet_count_device_id"],
     categorical_covariate_scs = [platelet_count_covariate_sc.data],
@@ -86,7 +88,7 @@ workflow expanse_figures {
 
   call gwas_tasks.transform_trait_values as transformed_platelet_count { input:
     script_dir = script_dir,
-    pheno_data = platelet_count_all_samples.data,
+    pheno_data = platelet_count_all_white_brits.data,
     samples_for_phenotype = platelet_count_sample_list,
     is_binary = false
   }
@@ -95,7 +97,7 @@ workflow expanse_figures {
     script_dir = script_dir,
     str_vcf = str_vcfs[10],
     shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = platelet_count_all_samples.data,
+    untransformed_phenotype = platelet_count_all_white_brits.data,
     transformed_phenotype = transformed_platelet_count.data,
     all_samples_list = all_samples_list,
     is_binary = false,
@@ -115,9 +117,9 @@ workflow expanse_figures {
   }
 
   # use precomputed sample lists
-  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_SNP_not_hom_samples { input:
+  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_not_SNP_samples { input:
     script_dir = script_dir,
-    pheno_data = platelet_count_all_samples.data,
+    pheno_data = platelet_count_all_white_brits.data,
     samples_for_phenotype = unrelated_samples_CBL_hom_not_begin_C_T_snp,
     is_binary = false
   }
@@ -126,8 +128,8 @@ workflow expanse_figures {
     script_dir = script_dir,
     str_vcf = str_vcfs[10],
     shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = platelet_count_all_samples.data,
-    transformed_phenotype = platelet_count_transformed_CBL_SNP_not_hom_samples.data, 
+    untransformed_phenotype = platelet_count_all_white_brits.data,
+    transformed_phenotype = platelet_count_transformed_CBL_hom_not_SNP_samples.data, 
     all_samples_list = all_samples_list,
     is_binary = false,
     chrom = 11,
@@ -135,9 +137,9 @@ workflow expanse_figures {
     phenotype_name = "platelet_count",
   }
 
-  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_SNP_hom_samples { input:
+  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_SNP_samples { input:
     script_dir = script_dir,
-    pheno_data = platelet_count_all_samples.data,
+    pheno_data = platelet_count_all_white_brits.data,
     samples_for_phenotype = unrelated_samples_CBL_hom_begin_C_T_snp,
     is_binary = false
   }
@@ -146,8 +148,8 @@ workflow expanse_figures {
     script_dir = script_dir,
     str_vcf = str_vcfs[10],
     shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = platelet_count_all_samples.data, 
-    transformed_phenotype = platelet_count_transformed_CBL_SNP_hom_samples.data,
+    untransformed_phenotype = platelet_count_all_white_brits.data, 
+    transformed_phenotype = platelet_count_transformed_CBL_hom_SNP_samples.data,
     all_samples_list = all_samples_list,
     is_binary = false,
     chrom = 11,

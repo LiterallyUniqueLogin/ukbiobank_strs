@@ -26,8 +26,6 @@ shared_covars = np.load(args.shared_covar_file)
 
 subset_transformed_phenotype = np.load(args.transformed_phenotype_file)
 
-# shared covars here aren't necessarily going to have exactly mean 0 and std 1
-# because they were standardized before subsetting, but that's okay
 data = utils.merge_arrays(
     subset_transformed_phenotype,
     shared_covars
@@ -36,6 +34,7 @@ data = np.concatenate((data[:, 0:1], data), axis=1)
 
 col_names = ['FID', 'IID']
 if not args.binary:
+    # phenotype has already been transformed, so no need to further modify
     col_names.append(f'rin_{phenotype}')
 else:
     col_names.append(phenotype)
@@ -70,16 +69,7 @@ if not args.binary:
 else:
     suffix = '_' + args.binary
 
-if not args.conditional_genotypes:
-    np.savetxt(
-        args.outloc,
-        data,
-        delimiter='\t',
-        header='\t'.join(col_names),
-        comments='',
-        fmt='%.16g'
-    )
-else:
+if args.conditional_genotypes:
     genotypes = np.load(args.conditional_genotypes)
     data = utils.merge_arrays(data, genotypes)
 
@@ -92,12 +82,16 @@ else:
                 continue
             col_names.append(word)
 
-    np.savetxt(
-        args.outloc,
-        data,
-        delimiter='\t',
-        header='\t'.join(col_names),
-        comments='',
-        fmt='%.16g'
-    )
+# standardize covariates for numerical stability
+stds = data[:, 3:].std(axis=0)
+stds[np.isnan(stds)] = 1 # simmply ignore covariates which are constant
+data[:, 3:] = (data[:, 3:] - data[:, 3:].mean(axis=0))/stds
 
+np.savetxt(
+    args.outloc,
+    data,
+    delimiter='\t',
+    header='\t'.join(col_names),
+    comments='',
+    fmt='%.16g'
+)

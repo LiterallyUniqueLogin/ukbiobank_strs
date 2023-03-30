@@ -55,15 +55,12 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
         skip_header = 1,
         delimiter='\t'
     )
-    # drop first and last rows which because of the way data is extracted
-    # and then read by numpy are always nans
 
     readme.write(f"Subsetting to samples at {args.samples}\n")
     # load samples that have passed qc
-    samples = np.genfromtxt(
-        args.samples,
-        skip_header=1
-    )
+    with open(args.samples) as sample_file:
+        next(sample_file)
+        samples = np.array([int(sample.split()[0]) for sample in sample_file])
 
     # subset to those samples
     data = utils.merge_arrays(

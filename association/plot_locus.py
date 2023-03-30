@@ -18,7 +18,6 @@ def mod1000(num, precision):
         num /= 1000.0
     return num, magnitude
 
-
 # from https://stackoverflow.com/a/45846841
 def human_format(num):
     # shouldn't be called if num < 1000

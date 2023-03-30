@@ -49,18 +49,17 @@ def main():  # noqa: D103
 
 
         readme.write(
-            "Standardizing covariates (subtracting mean, then dividing by standard deviation)\n"
+            "Not standardizing covariates. Standardization should be done immediately before performing a regression. "
+            "This way I don't have to keep track of if covariates have standardized yet or not.\n"
         )
         readme.flush()
         covariates = data[:, 2:]
-        standardized_covariates = \
-                (covariates - covariates.mean(axis=0))/covariates.std(axis=0)
 
         if not args.binary:
             ranks = rank_phenotypes(readme, data)
             rin_ranks = inverse_normalize_ranks(readme, ranks)
             transformed_data = np.concatenate(
-                (samples, rin_ranks.reshape(-1, 1), standardized_covariates),
+                (samples, rin_ranks.reshape(-1, 1), covariates),
                 axis=1
             )
         else:
@@ -69,7 +68,7 @@ def main():  # noqa: D103
             )
             phenotype = data[:, 1:2]
             transformed_data = np.concatenate(
-                (samples, phenotype, standardized_covariates),
+                (samples, phenotype, covariates),
                 axis=1
             )
 
