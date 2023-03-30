@@ -84,7 +84,7 @@ if args.conditional_genotypes:
 
 # standardize covariates for numerical stability
 stds = data[:, 3:].std(axis=0)
-stds[np.isnan(stds)] = 1 # simmply ignore covariates which are constant
+stds[stds == 0] = 1 # simmply ignore covariates which are constant
 data[:, 3:] = (data[:, 3:] - data[:, 3:].mean(axis=0))/stds
 
 np.savetxt(

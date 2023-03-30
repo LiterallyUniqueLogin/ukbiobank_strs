@@ -59,7 +59,7 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
 
         # standardize covars for numerical stability
         stds = covars.std(axis = 0)
-        stds[np.isnan(stds)] = 1 # for covariates which are constant, simply ignore them
+        stds[stds == 0] = 1 # for covariates which are constant, simply ignore them
         covars = (covars - covars.mean(axis = 0))/stds
 
         print("Regressing phentoypes ... ",  flush=True)
