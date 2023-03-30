@@ -14,6 +14,8 @@ workflow expanse_figures {
 
     File specific_alleles = "association/specific_alleles.tab"
 
+    File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
+
     # files that could be computed via WDL but were pregenerated beforehand
 
     File all_white_brits_sample_list = "sample_qc/common_filters/ethnicity/white_brits.sample"  # move this to being auto generated
@@ -175,16 +177,22 @@ workflow expanse_figures {
 
   ### plot with data from GTEx Yang
 
-#  call gwas_tasks.locus_plot as fig_4g { input:
-#    script_dir = script_dir,
-#    chrom = 11,
-#    pos = 119077000,
-#    phenotype_name = "platelet_count",
-#    unit = "10^9 cells/L",
-#    assoc_results = [CBL_hom_not_SNP_assoc.data, CBL_hom_SNP_assoc.data],
-#    group_names = ["homozygous (CGG)n", "homozygous CGGTGG(CGG)m"],
-#    dosage_threshold = 200,
-#  }
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_CBL_gtex_expression { input :
+    script_dir = script_dir,
+    individual_tsv = CBL_gtex_expression,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "TPM(expression)"
+  }
+
+  call gwas_tasks.locus_plot as fig_4g { input:
+    script_dir = script_dir,
+    chrom = 11,
+    pos = 119077000,
+    phenotype_name = "CBL expression",
+    unit = "TPM",
+    data_tsvs = [summarized_CBL_gtex_expression.out],
+    dosage_threshold = 5
+  }
 
   output {
     File fig_4a_svg_out = fig_4a.svg
@@ -193,5 +201,7 @@ workflow expanse_figures {
     File fig_4b_png_out = fig_4b.png
     File fig_4f_svg_out = fig_4f.svg
     File fig_4f_png_out = fig_4f.png
+    File fig_4g_svg_out = fig_4g.svg
+    File fig_4g_png_out = fig_4g.png
   }  
 }

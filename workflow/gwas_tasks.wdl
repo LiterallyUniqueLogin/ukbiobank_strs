@@ -650,8 +650,9 @@ task locus_plot {
     Int chrom
     Int pos
     String phenotype_name
-    Array[File]+ assoc_results
-    Array[String]? group_names
+    Array[File] assoc_results = []
+    Array[File] data_tsvs = []
+    Array[String] group_names = []
 
     Int? dosage_threshold
     Float? dosage_fraction_threshold
@@ -669,9 +670,10 @@ task locus_plot {
       out \
       ~{chrom} \
       ~{pos} \
-      ~{phenotype_name} \
+      '~{phenotype_name}' \
       --assoc-results ~{sep=" " assoc_results} \
-      ~{if defined(group_names) then "--group-names ~{sep=" " group_names}" else ""} \
+      --datas-per-length-sum ~{sep=" " data_tsvs} \
+      --group-names '~{sep="' '" group_names}' \
       ~{"--dosage-threshold " + dosage_threshold} \
       ~{"--dosage-fraction-threshold " + dosage_fraction_threshold} \
       ~{if defined(unit) then "--unit '~{unit}'" else "--binary"} \
@@ -682,6 +684,32 @@ task locus_plot {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30:00"
+  }
+}
+
+# for getting Geuvadis and GTEx data into a format that can be passed to locus plot
+task summarize_individual_data_for_plotting {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/summarize_individual_data_for_plotting.py"
+
+    File individual_tsv
+    String length_sum_column_name
+    String trait_column_name
+  }
+
+  output {
+    File out = "out.tsv"
+  }
+
+  command <<<
+    envsetup ~{script} out.tsv ~{individual_tsv} ~{length_sum_column_name} '~{trait_column_name}'
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+    shortTask: true
   }
 }
 

@@ -52,35 +52,32 @@ def main():
     parser.add_argument('phenotype')
     parser.add_argument('--dosage-threshold', type=int)
     parser.add_argument('--dosage-fraction-threshold', type=float)
-    parser.add_argument('--assoc-results', nargs='+')
-    parser.add_argument('--group-names', nargs='+', default=[])
+    parser.add_argument('--assoc-results', nargs='*')
+    parser.add_argument('--datas-per-length-sum', nargs='*')
+    parser.add_argument('--group-names', nargs='*')
     parser.add_argument('--unit')
     parser.add_argument('--binary', action='store_true', default=False)
     parser.add_argument('--residual-phenos', default=False, action='store_true')
     parser.add_argument('--publication', default=False, action='store_true')
-    parser.add_argument('--count-per-length-sum', nargs='+')
-    parser.add_argument('--stat-per-length-sum', nargs='+')
-    parser.add_argument('--CI-05-per-length-sum', nargs='+')
     args = parser.parse_args()
    
-    assert bool(args.count_per_length_sum) != bool(args.assoc_results)
-    assert bool(args.count_per_length_sum) == bool(args.stat_per_length_sum) == bool(args.CI_05_per_length_sum)
+    assert bool(args.datas_per_length_sum) != bool(args.assoc_results)
 
     if bool(args.assoc_results):
         n_results = len(args.assoc_results)
     else:
-        assert bool(args.count_per_length_sum)
-        n_results = len(args.count_per_length_sum)
+        assert bool(args.datas_per_length_sum)
+        n_results = len(args.datas_per_length_sum)
 
     assert 1 <= n_results
     assert bool(args.dosage_threshold) + bool(args.dosage_fraction_threshold) <= 1
     if n_results > 1:
         assert len(args.group_names) == n_results
 
+    dosage_dicts = []
+    mean_per_dosages = []
+    ci5e_2s = []
     if bool(args.assoc_results):
-        dosage_dicts = []
-        mean_per_dosages = []
-        ci5e_2s = []
         if not args.binary:
             stat_name = 'mean'
         else:
@@ -114,13 +111,11 @@ def main():
             mean_per_dosages.append({float(allele): val for allele, val in ast.literal_eval(result[pheno_col].to_numpy()[0]).items()})
             ci5e_2s.append({float(allele): val for allele, val in ast.literal_eval(result[small_ci_col].to_numpy()[0]).items()})
     else:
-        pass
-#        parser.add_argument('--count-per-length-sum', nargs='+')
-#        parser.add_argument('--stat-per-length-sum', nargs='+')
-#        parser.add_argument('--05-CI-per-length-sum', nargs='+')
-#        dosage_dicts = args.total_subset_dosage_per_summed_gt
-#        mean_per_dosages = args.stat_per_summed_genotype
-#        ci5e_2s = args.summed_05_significance_CI
+        for data_per_length_sum in args.datas_per_length_sum:
+            df = pl.read_csv(data_per_length_sum, sep='\t')
+            dosage_dicts.append(dict(zip(df['length_sum'], df['count'])))
+            mean_per_dosages.append(dict(zip(df['length_sum'], df['mean'])))
+            ci5e_2s.append({allele: ast.literal_eval(tup) for allele, tup in zip(df['length_sum'], df['conf_int'])})
 
     figure = generate_figure(
         dosage_dicts,
