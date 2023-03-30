@@ -67,7 +67,8 @@ def load_strs(vcf_fname: str,
               samples: np.ndarray,
               details: bool = True,
               var_subset: Optional[Set[int]] = None,
-              hardcalls = False):
+              hardcalls = False,
+              both_poses = False):
     """
     Iterate over a region returning genotypes at STR loci.
 
@@ -157,11 +158,16 @@ def load_strs(vcf_fname: str,
 
         trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='hipstr')
 
+        if both_poses:
+            ret_pos = (trrecord.pos, record.POS)
+        else:
+            ret_pos = trrecord.pos
+
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
         len_alleles = [round(allele_len, allele_len_precision) for allele_len in len_alleles]
 
         if hardcalls:
-            yield (trrecord.GetLengthGenotypes()[samples, :-1], np.unique(len_alleles), trrecord.chrom, trrecord.pos, None, None)
+            yield (trrecord.GetLengthGenotypes()[samples, :-1], np.unique(len_alleles), trrecord.chrom, ret_pos, None, None)
             continue
 
         if details:
@@ -183,20 +189,19 @@ def load_strs(vcf_fname: str,
         else:
             n_subset_samples = int(np.sum(samples))
 
-        subset_dosage_gts = {
+        subset_allele_probs = {
             _len: np.zeros((n_subset_samples, 2)) for _len in np.unique(len_alleles)
         }
 
         for p in (1, 2):
-            # todo genotype dosages
             ap = trrecord.format[f'AP{p}']
-            subset_dosage_gts[len_alleles[0]][:, (p-1)] += \
+            subset_allele_probs[len_alleles[0]][:, (p-1)] += \
                     np.maximum(0, 1 - np.sum(ap[samples, :], axis=1))
             for i in range(ap.shape[1]):
-                subset_dosage_gts[len_alleles[i+1]][:, (p-1)] += ap[samples, i]
+                subset_allele_probs[len_alleles[i+1]][:, (p-1)] += ap[samples, i]
 
         subset_total_dosages = {
-            _len: np.sum(subset_dosage_gts[_len]) for _len in subset_dosage_gts
+            _len: np.sum(subset_allele_probs[_len]) for _len in subset_allele_probs
         }
 
         if details:
@@ -225,7 +230,7 @@ def load_strs(vcf_fname: str,
                 calls = subset_hardcalls == length
 
                 subset_allele_dosage_r2[length] = np.corrcoef(
-                    calls.reshape(-1), subset_dosage_gts[length].reshape(-1)
+                    calls.reshape(-1), subset_allele_probs[length].reshape(-1)
                 )[0,1]**2
 
             locus_details = (
@@ -254,17 +259,17 @@ def load_strs(vcf_fname: str,
                 None,
                 np.unique(len_alleles),
                 trrecord.chrom,
-                trrecord.pos,
+                ret_pos,
                 'MAC<20',
                 locus_details
             )
             continue
 
         yield (
-            subset_dosage_gts,
+            subset_allele_probs,
             np.unique(len_alleles),
             trrecord.chrom,
-            trrecord.pos,
+            ret_pos,
             None,
             locus_details
         )
@@ -364,7 +369,10 @@ def load_imputed_snps(bgen_fname: str,
 
     start_num = np.searchsorted(bgen.positions, start)
 
-    with open(mfi_fname) as mfi:
+    try:
+        if mfi_fname:
+            mfi = open(mfi_fname)
+
         for variant_num_offset, pos in enumerate(bgen.positions[start_num:]):
             variant_num = variant_num_offset + start_num
             if details or info_thresh:
@@ -491,4 +499,7 @@ def load_imputed_snps(bgen_fname: str,
                 None,
                 locus_details
             )
+    finally:
+        if mfi_fname:
+            mfi.close()
 

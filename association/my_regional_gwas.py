@@ -79,6 +79,7 @@ def perform_regional_gwas_helper(
         stat = 'fraction'
 
     # TODO maybe only do these calculations if there's a flag on
+    # TODO what to do if runtype isn't STRs? currently will crash from here forward
     if runtype == 'strs':
         outfile.write(
             'total_subset_dosage_per_summed_gt\t'
@@ -112,9 +113,9 @@ def perform_regional_gwas_helper(
             outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\t')
             outfile.write('\t'.join(locus_details))
             if runtype == 'strs':
-                outfile.write('\tnan'*6 + '\n')
+                outfile.write('\tnan'*14 + '\n')
             else:
-                outfile.write('\tnan'*3 + '\n')
+                outfile.write('\tnan'*3 + '\n') # TODO not sure what the number of nans will be when this is fixed
             outfile.flush()
             continue
         else:
