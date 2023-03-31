@@ -835,6 +835,7 @@ task generate_peaks {
   }
 
   output {
+    # originally located in signals/peaks/{phenotype}_{spacing}_{thresh}.tab
     File peaks = "peaks.tab"
     File readme = "readme.txt"
   }
@@ -852,6 +853,38 @@ task generate_peaks {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
+  }
+}
+
+task summarize_peaks {
+  input {
+    String script_dir
+    File script = "~{script_dir}/signals/peak_summary_images.py"
+    File graphing_utils = "~{script_dir}/signals/graphing_utils.py"
+    File phenotype_utils = "~{script_dir}/signals/phenotypes.py"
+
+    Array[String] phenotype_names
+    Array[File] peak_files
+  }
+
+  output {
+    # originally located in export_scripts/results/
+    File barplot_svg = "peaks_by_pheno.svg"
+    File barplot_png = "peaks_by_pheno.png"
+    File heatmap_svg = "peak_p_val_heatmap.svg"
+    File heatmap_png = "peak_p_val_heatmap.png"
+  }
+
+  command <<<
+    ls ~{graphing_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{phenotype_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} . --phenotypes ~{sep=" " phenotype_names} --peak-files ~{sep=" " peak_files}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    shortTask: true
   }
 }
 

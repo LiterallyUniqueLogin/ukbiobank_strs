@@ -2,7 +2,6 @@
 
 import argparse
 import math
-import os
 
 import bokeh.io
 import bokeh.layouts
@@ -17,7 +16,6 @@ import numpy as np
 import graphing_utils
 import phenotypes
 
-ukb = os.environ['UKB']
 rng = np.random.default_rng(13)
 
 def parse_p(f):
@@ -215,13 +213,16 @@ def get_p_val_heatmap(peaks):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('phenotypes', nargs='+')
-    phenotypes = parser.parse_args().phenotypes
+    parser.add_argument('outdir')
+    parser.add_argument('--phenotypes', nargs='+')
+    parser.add_argument('--peak-files', nargs='+')
+    args = parser.parse_args()
+    assert len(args.phenotypes) == len(args.peak_files)
 
     peaks = {}
-    for phenotype in phenotypes:
+    for phenotype, peak_fname in zip(args.phenotypes, args.peak_files):
         peaks[phenotype] = []
-        with open(f'{ukb}/signals/peaks/{phenotype}_250000_5e-8.tab') as peaks_file:
+        with open(peak_fname) as peaks_file:
             header = next(peaks_file).strip().split('\t')
             var_type_idx = header.index('variant_type')
             p_val_idx = header.index('p_value')
@@ -236,12 +237,12 @@ def main():
                 ))
 
     peaks_by_pheno = get_peaks_by_pheno(peaks)
-    bokeh.io.export_png(peaks_by_pheno, filename=f'{ukb}/export_scripts/results/peaks_by_pheno.png')
-    bokeh.io.export_svg(peaks_by_pheno, filename=f'{ukb}/export_scripts/results/peaks_by_pheno.svg')
+    bokeh.io.export_png(peaks_by_pheno, filename=f'{args.outdir}/peaks_by_pheno.png')
+    bokeh.io.export_svg(peaks_by_pheno, filename=f'{args.outdir}/peaks_by_pheno.svg')
 
     p_val_heatmap = get_p_val_heatmap(peaks)
-    bokeh.io.export_png(p_val_heatmap, filename=f'{ukb}/export_scripts/results/peak_p_val_heatmap.png')
-    bokeh.io.export_svg(p_val_heatmap, filename=f'{ukb}/export_scripts/results/peak_p_val_heatmap.svg')
+    bokeh.io.export_png(p_val_heatmap, filename=f'{args.outdir}/peak_p_val_heatmap.png')
+    bokeh.io.export_svg(p_val_heatmap, filename=f'{args.outdir}/peak_p_val_heatmap.svg')
 
 if __name__ == '__main__':
     main()

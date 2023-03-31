@@ -15,10 +15,10 @@ workflow expanse_figures {
     File specific_alleles = "association/specific_alleles.tab"
 
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
+    File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
+    File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
 
-    # files that could be computed via WDL but were pregenerated beforehand
-
-    File all_white_brits_sample_list = "sample_qc/common_filters/ethnicity/white_brits.sample"  # move this to being auto generated
+    # files that could be computed via WDL but were pregenerated beforehand and include randomness, so need to be reused for consistency
     File unrelated_white_brits_sample_list = "sample_qc/runs/white_brits/no_phenotype/combined_unrelated.sample"
     File unrelated_black_sample_list = "sample_qc/runs/black/no_phenotype/combined_unrelated.sample"
     File unrelated_south_asian_sample_list = "sample_qc/runs/south_asian/no_phenotype/combined_unrelated.sample"
@@ -26,6 +26,58 @@ workflow expanse_figures {
     File unrelated_samples_CBL_hom_not_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_not_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
     File unrelated_samples_CBL_hom_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
     File platelet_count_sample_list = "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample"
+  }
+
+  Array[String] phenotype_names = [
+		"alanine_aminotransferase",
+		"albumin",
+		"alkaline_phosphatase",
+		"apolipoprotein_a",
+		"apolipoprotein_b",
+		"aspartate_aminotransferase",
+		"c_reactive_protein",
+		"calcium",
+		"cholesterol",
+		"creatinine",
+		"cystatin_c",
+		"eosinophil_count",
+		"eosinophil_percent",
+		"gamma_glutamyltransferase",
+		"glucose",
+		"glycated_haemoglobin",
+		"haematocrit",
+		"haemoglobin_concentration",
+		"hdl_cholesterol",
+		"igf_1",
+		"ldl_cholesterol_direct",
+		"lymphocyte_count",
+		"lymphocyte_percent",
+		"mean_corpuscular_haemoglobin",
+		"mean_corpuscular_haemoglobin_concentration",
+		"mean_corpuscular_volume",
+		"mean_platelet_volume",
+		"mean_sphered_cell_volume",
+		"neutrophil_count",
+		"neutrophil_percent",
+		"phosphate",
+		"platelet_count",
+		"platelet_crit",
+		"platelet_distribution_width",
+		"red_blood_cell_count",
+		"red_blood_cell_distribution_width",
+		"shbg",
+		"total_bilirubin",
+		"total_protein",
+		"triglycerides",
+		"urate",
+		"urea",
+		"vitamin_d",
+		"white_blood_cell_count",
+  ]
+
+  # these files were pregenerated but could be generated from the WDL
+	scatter (phenotype_name in phenotype_names) {
+    String peak_files = "signals/peaks/~{phenotype_name}_250000_5e-8.tab"
   }
 
   scatter (chrom in range(22)) {
@@ -38,6 +90,16 @@ workflow expanse_figures {
       "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
       "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
     }
+  }
+
+  call expanse_tasks.extract_field as sc_white_brits { input :
+    script_dir = script_dir,
+    id = 22006
+  }
+
+  call gwas_tasks.write_sample_list as white_brits_sample_list { input:
+    script_dir = script_dir,
+    sc = sc_white_brits.data
   }
 
   call expanse_tasks.extract_field as pcs { input :
@@ -60,7 +122,7 @@ workflow expanse_figures {
   call gwas_tasks.fig_4a { input :
     script_dir = script_dir,
     all_samples_list = all_samples_list,
-    white_brits_sample_list = unrelated_white_brits_sample_list,
+    white_brits_sample_list = white_brits_sample_list.data,
     black_sample_list = unrelated_black_sample_list,
     south_asian_sample_list = unrelated_south_asian_sample_list,
     chinese_sample_list = unrelated_chinese_sample_list,
@@ -82,7 +144,7 @@ workflow expanse_figures {
   call gwas_tasks.load_continuous_phenotype as platelet_count_all_white_brits { input:
     script_dir = script_dir,
     sc = platelet_count_sc.data,
-    qced_sample_list = all_white_brits_sample_list,
+    qced_sample_list = white_brits_sample_list.data,
     assessment_ages_npy = load_shared_covars.assessment_ages,
     categorical_covariate_names = ["platelet_count_device_id"],
     categorical_covariate_scs = [platelet_count_covariate_sc.data],
@@ -170,10 +232,11 @@ workflow expanse_figures {
     dosage_threshold = 200,
   }
 
-#  call gwas_tasks.plot_locus as plot_SLC2A2_locus {
-#    phenotype_name = "total_bilirubin"
-#    unit = ""
-#  }
+  call gwas_tasks.summarize_peaks as fig_1ef { input :
+    script_dir = script_dir,
+    phenotype_names = phenotype_names,
+    peak_files = peak_files
+  }
 
   ### plot with data from GTEx Yang
 
@@ -194,7 +257,46 @@ workflow expanse_figures {
     dosage_threshold = 5
   }
 
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon4 { input :
+    script_dir = script_dir,
+    individual_tsv = Liver_SLC2A2_exon4_psi,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "PSI"
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_15a { input:
+    script_dir = script_dir,
+    chrom = 3,
+    pos = 17100913,
+    phenotype_name = "SCL2A2 exon 4",
+    unit = "percent spliced in",
+    data_tsvs = [summarized_SLC2A2_gtex_exon4.out],
+    dosage_threshold = 5
+  }
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon6 { input :
+    script_dir = script_dir,
+    individual_tsv = Liver_SLC2A2_exon6_psi,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "PSI"
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_15b { input:
+    script_dir = script_dir,
+    chrom = 3,
+    pos = 17100913,
+    phenotype_name = "SCL2A2 exon 6",
+    unit = "percent spliced in",
+    data_tsvs = [summarized_SLC2A2_gtex_exon6.out],
+    dosage_threshold = 5
+  }
+
   output {
+    File fig_1e_svg_out = fig_1ef.barplot_svg
+    File fig_1e_png_out = fig_1ef.barplot_png
+    File fig_1f_svg_out = fig_1ef.heatmap_svg
+    File fig_1f_png_out = fig_1ef.heatmap_png
+
     File fig_4a_svg_out = fig_4a.svg
     File fig_4a_png_out = fig_4a.png
     File fig_4b_svg_out = fig_4b.svg
@@ -203,5 +305,10 @@ workflow expanse_figures {
     File fig_4f_png_out = fig_4f.png
     File fig_4g_svg_out = fig_4g.svg
     File fig_4g_png_out = fig_4g.png
+
+    File supp_fig_15a_svg_out = supp_fig_15a.svg
+    File supp_fig_15a_png_out = supp_fig_15a.png
+    File supp_fig_15b_svg_out = supp_fig_15b.svg
+    File supp_fig_15b_png_out = supp_fig_15b.png
   }  
 }
