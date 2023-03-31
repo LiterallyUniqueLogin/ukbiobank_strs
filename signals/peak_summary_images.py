@@ -8,9 +8,6 @@ import bokeh.layouts
 import bokeh.models
 import bokeh.plotting
 import bokeh.transform
-import bokeh.util.hex
-import matplotlib.colors
-import matplotlib.pyplot as plt
 import numpy as np
 
 import graphing_utils
@@ -164,43 +161,54 @@ def get_p_val_heatmap(peaks):
             snp_ps.append(p2)
             str_ps.append(p1)
 
-    '''
-    for thresh in 50, 100:
-        print(sum((
-            ((np.array(str_ps) >= thresh*.8) & (np.array(snp_ps) >= thresh*.8))
-            [(np.array(str_ps) >= thresh) | (np.array(snp_ps) >= thresh)]
-        )))
-        print(sum(
-            (np.array(str_ps) >= thresh) | (np.array(snp_ps) >= thresh)
-        ))
-    exit()
-    '''
-
     snp_ps = np.array(snp_ps)
     str_ps = np.array(str_ps)
 
-    bin_size = 5
+    bin_size = 8
+    max_p = 296
+    grid = np.mgrid[:(max_p+bin_size):bin_size, :(max_p+bin_size):bin_size]
+    x = grid[0,:,:].flatten()
+    y = grid[1,:,:].flatten()
+    x, y = x[(x >= bin_size) | (y >= bin_size)], y[(x >= bin_size) | (y >= bin_size)]
 
-    bins = bokeh.util.hex.hexbin(snp_ps, str_ps, size=bin_size)
-
+    cds = bokeh.models.ColumnDataSource(dict(
+        left = x,
+        right = x + bin_size,
+        bottom = y,
+        top = y + bin_size,
+        counts = np.sum(
+            (snp_ps[:, np.newaxis] >= x[np.newaxis, :]) &
+            (snp_ps[:, np.newaxis] < x[np.newaxis, :] + bin_size) &
+            (str_ps[:, np.newaxis] >= y[np.newaxis, :]) &
+            (str_ps[:, np.newaxis] < y[np.newaxis, :] + bin_size),
+        axis = 0)
+    ))
     palette = [
-    #    linear_int_interpolate((134,204,195), (25,97,87), i/254) for i in range(-1, 255)
         linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)
     ]
     cmap = bokeh.transform.log_cmap(
         'counts',
         palette = palette,
         low=1,
-        high=max(bins.counts),
+        high=np.max(cds.data['counts']),
         low_color=(255, 255, 255)
     )
     color_mapper = bokeh.models.LogColorMapper(
         palette = palette,
         low=1,
-        high=max(bins.counts)
+        high=np.max(cds.data['counts'])
     )
 
-    fig.hex_tile(q='q', r='r', size=bin_size, line_color=None, source=bins, fill_color=cmap)
+    fig.quad(
+        left='left', right='right', bottom='bottom', top='top', source=cds, fill_color=cmap, line_width=0
+    )
+    fig.line(
+        x = [0, max_p + bin_size],
+        y = [0, max_p + bin_size],
+        line_width = 20,
+        color = 'dimgrey',
+    )
+
     color_bar = bokeh.models.ColorBar(
         color_mapper = color_mapper,
         width=70,
