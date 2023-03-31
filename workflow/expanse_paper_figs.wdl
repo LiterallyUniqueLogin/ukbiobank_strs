@@ -102,6 +102,20 @@ workflow expanse_figures {
     sc = sc_white_brits.data
   }
 
+  scatter (chrom in range(22)) {
+    call gwas_tasks.imputed_str_locus_summary { input :
+      script_dir = script_dir,
+      vcf = str_vcfs[chrom],
+      qced_white_brits = unrelated_white_brits_sample_list
+    }
+  }
+
+  call str_multiallelicness_distro as fig_1b { input:
+    script_dir = script_dir,
+    thresh = 0.01,
+    chrom_locus_summaries = imputed_str_locus_summaries
+  }
+
   call expanse_tasks.extract_field as pcs { input :
     script_dir = script_dir,
     id = 22009
@@ -292,6 +306,8 @@ workflow expanse_figures {
   }
 
   output {
+    File fig_1b_svg_out = fig_1b.svg
+    File fig_1b_png_out = fig_1b.png
     File fig_1e_svg_out = fig_1ef.barplot_svg
     File fig_1e_png_out = fig_1ef.barplot_png
     File fig_1f_svg_out = fig_1ef.heatmap_svg

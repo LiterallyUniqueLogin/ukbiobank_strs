@@ -399,6 +399,55 @@ task transform_trait_values {
 
 # TODO could do length confusion, pre imputation allele freqs, calc macs
 
+task imputed_str_locus_summary {
+  input {
+    String script_dir
+    File script = "~{script_dir}/str_imputed/analyses/loci_stat_inputs.py"
+
+    VCF vcf
+    File qced_white_brits
+  }
+
+  output {
+    File out = "out.tab"
+  }
+
+  command <<<
+    envsetup ~{script} out.tab ~{vcf.vcf} ~{all_white_brits_fname}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "24h"
+    mem: "5g"
+  }
+}
+
+task str_multiallelicness_distro {
+  input {
+    String script_dir
+    File script = "~{script_dir}/str_imputed/analyses/loci_stats.py"
+
+    Float thresh
+    Array[File] chrom_locus_summaries # from imputed_str_locus_summary
+  }
+
+  output {
+    File svg = "out.svg"
+    File png = "out.png" 
+  }
+
+  command <<<
+    envsetup ~{script} out ~{thresh} ~{sep=" " chrom_locus_summaries}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "5m"
+    shortTask: true
+  }
+}
+
 # cbl allele dist
 task fig_4a {
   input {

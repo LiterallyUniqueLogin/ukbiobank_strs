@@ -1,35 +1,31 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
-import sys
+import shutil
 
 import cyvcf2
 import numpy as np
 import scipy.stats
-
-ukb = os.environ['UKB']
-
-sys.path.insert(0, f'{ukb}/../trtools/repo')
 
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('str_imputation_run_name')
-    parser.add_argument('chrom')
+    # f'{ukb}/export_scripts/intermediate_results/chr{chrom}_loci_summary.tab'
+    parser.add_argument('out')
+    # vcf_fname = (f'{ukb}/str_imputed/runs/{str_imputation_run_name}/'
+    #                         f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
+    parser.add_argument('vcf_fname')
     parser.add_argument('all_white_brits_fname')
     args = parser.parse_args()
-    str_imputation_run_name = args.str_imputation_run_name
-    chrom = args.chrom
 
-    with open(f'{ukb}/export_scripts/intermediate_results/chr{chrom}_loci_summary.tab', 'w') as output:
-        main_helper(output, str_imputation_run_name, chrom, args.all_white_brits_fname)
+    with open(f'{args.out}.temp', 'w') as output:
+        main_helper(output, args.vcf_fname, args.all_white_brits_fname)
 
-def main_helper(output, str_imputation_run_name, chrom, all_white_brits_fname):
-    vcf_fname = (f'{ukb}/str_imputed/runs/{str_imputation_run_name}/'
-                             f'vcfs/annotated_strs/chr{chrom}.vcf.gz')
+    shutil.move(f'{args.out}.temp', args.out)
+
+def main_helper(output, vcf_fname, all_white_brits_fname):
     vcf = cyvcf2.VCF(vcf_fname)
 
     subset_samples = []
