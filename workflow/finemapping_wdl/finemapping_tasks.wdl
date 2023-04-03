@@ -21,6 +21,25 @@ import "gwas_tasks.wdl"
 # first line is 'ID' (case insensitive)
 # every successive line is a sample ID
 
+struct FINEMAP_output {
+  File snp_file
+  File log_sss
+  File config
+  Array[File] creds
+}
+
+struct SuSiE_output {
+  File lbf
+  File lbf_variable
+  File sigma2
+  File V
+  File converged
+  File lfsr
+  File requested_coverage
+  File alpha
+  Array[File] CSs
+}
+
 ####################### Extracting association signals #########################
 
 task generate_regions {
@@ -118,6 +137,11 @@ task finemap_write_input_variants {
     File phenotype_samples_list
     String phenotype
     region bounds
+
+    Float? snp_str_ratio
+    Float? total_prob
+    Int? mac
+    Float? inclusion_threshold
   }
 
   output {
@@ -140,10 +164,10 @@ task finemap_write_input_variants {
       ~{bounds.chrom} \
       ~{bounds.start} \
       ~{bounds.end} \
-      # TODO snp str ratio
-      # TODO total prob
-      # TODO inclusion threshold
-      # TODO mac
+      ~{if defined(snp_str_ratio) then "--snp-str-ratio ~{snp_str_ratio}" else ""}
+      ~{if defined(total_prob) then "--total-prob ~{total_prob}" else ""}
+      ~{if defined(mac) then "--mac ~{mac}" else ""}
+      ~{if defined(inclusion_threshold) then "--inclusion-threshold ~{inclusion_threshold}" else ""}
   >>>
 
   runtime {
@@ -270,10 +294,12 @@ task finemap_run {
   }
 
   output {
-    File snp_file = "finemap_output.snp"
-    File log_sss = "finemap_output.log_sss"
-    File config = "finemap_output.config"
-    Array[File] creds = glob("finemap_output.cred*")
+    FINEMAP_output finemap_output = {
+      "snp_file": "finemap_output.snp"
+      "log_sss": "finemap_output.log_sss"
+      "config": "finemap_output.config"
+      "creds": glob("finemap_output.cred*")
+    }
   }
 
   command <<<
@@ -409,15 +435,17 @@ task susie_run {
   }
 
   output {
-    File? lbf = "lbf.tab"
-    File? lbf_variable = "lbf_variable.tab"
-    File? sigma2 = "sigma2.txt"
-    File? V = "V.tab"
-    File? converged = "converged.txt"
-    File? lfsr = "lfsr.tab"
-    File? requested_coverage = "requested_coverage.txt"
-    File? alpha = "alpha.tab"
-    Array[File]? CSs = glob("cs*.txt")
+    SuSiE_output? susie_output = {
+      "lbf": "lbf.tab"
+      "lbf_variable": "lbf_variable.tab"
+      "sigma2": "sigma2.txt"
+      "V": "V.tab"
+      "converged": "converged.txt"
+      "lfsr": "lfsr.tab"
+      "requested_coverage": "requested_coverage.txt"
+      "alpha": "alpha.tab"
+      "CSs": glob("cs*.txt")
+    }
   }
 
   command <<<
@@ -434,6 +462,56 @@ task susie_run {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
     mem: mem
+  }
+}
+
+# TODO missing stuff in between
+
+task followup_finemapping_conditions_comparison {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+
+    Array[File] all_conditions_tsvs
+  }
+
+  output {
+    # intermediate tsvs
+    File doubly_finemapped_STRs = "doubly_finemapped_STRs.tab"
+    File confidently_finemapped_STRs = "confidently_finemapped_STRs.tab"
+    File overconfidently_finemapped_STRs = "overconfidently_finemapped_STRs.tab"
+
+    # used for deciding confidently finemapped
+    File susie_best_guess_png = "susie_consistency_alpha_best_guess.png"
+    File susie_best_guess_svg = "susie_consistency_alpha_best_guess.svg"
+    File finemap_conv_tol_png = "finemap_consistency_alpha_conv_tol.png"
+    File finemap_conv_tol_svg = "finemap_consistency_alpha_conv_tol.svg"
+    File finemap_total_prob_png = "finemap_consistency_alpha_total_prob.png"
+    File finemap_total_prob_svg = "finemap_consistency_alpha_total_prob.svg"
+    File finemap_prior_std_derived_png = "finemap_consistency_alpha_prior_std_derived.png"
+    File finemap_prior_std_derived_svg = "finemap_consistency_alpha_prior_std_derived.svg"
+    File finemap_mac_png = "finemap_consistency_alpha_mac.png"
+    File finemap_mac_svg = "finemap_consistency_alpha_mac.svg"
+    File finemap_p_thresh_png = "finemap_consistency_alpha_p_thresh.png"
+    File finemap_p_thresh_svg = "finemap_consistency_alpha_p_thresh.svg"
+
+    # too conservative
+    File finemap_ratio_png = "finemap_consistency_alpha_ratio.png"
+    File finemap_ratio_svg = "finemap_consistency_alpha_ratio.svg"
+    File susie_ratio_png = "susie_consistency_alpha_ratio.png"
+    File susie_ratio_svg = "susie_consistency_alpha_ratio.svg"
+    File finemap_prior_std_low_png = "finemap_consistency_alpha_prior_std_low.png"
+    File finemap_prior_std_low_svg = "finemap_consistency_alpha_prior_std_low.svg"
+  }
+
+  command <<<
+    envsetup ~{script} . . ~{sep=" " all_conditions_tsvs}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    mem: "50g"
   }
 }
 
@@ -456,4 +534,3 @@ task todo {
     dx_timeout: ""
   }
 }
-

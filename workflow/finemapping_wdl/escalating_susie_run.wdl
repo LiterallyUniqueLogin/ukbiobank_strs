@@ -75,8 +75,8 @@ workflow escalating_susie_run {
   }
 
   call should_escalate_susie_run as escalate_zero { input :
-    converged = try_zero.converged,
-    CSs = try_zero.CSs,
+    converged = try_zero.susie_output.converged,
+    CSs = try_zero.susie_output.CSs,
     max_CSs = 10
   }
 
@@ -90,8 +90,8 @@ workflow escalating_susie_run {
     }
   
     call should_escalate_susie_run as escalate_one { input :
-      converged = try_one.converged,
-      CSs = try_one.CSs,
+      converged = try_one.susie_output.converged,
+      CSs = try_one.susie_output.CSs,
       max_CSs = 30
     }
 
@@ -105,8 +105,8 @@ workflow escalating_susie_run {
       }
   
       call should_escalate_susie_run { input :
-        converged = try_two.converged,
-        CSs = try_two.CSs,
+        converged = try_two.susie_output.converged,
+        CSs = try_two.susie_output.CSs,
         max_CSs = 50,
         assert = "True"
       }
@@ -114,14 +114,15 @@ workflow escalating_susie_run {
   }
 
   output {
-    File lbf = select_first([try_two.lbf, try_one.lbf, try_zero.lbf])
-    File lbf_variable = select_first([try_two.lbf_variable, try_one.lbf_variable, try_zero.lbf_variable])
-    File sigma2 = select_first([try_two.sigma2, try_one.sigma2, try_zero.sigma2])
-    File V = select_first([try_two.V, try_one.V, try_zero.V])
-    File converged = select_first([try_two.converged, try_one.converged, try_zero.converged])
-    File lfsr = select_first([try_two.lfsr, try_one.lfsr, try_zero.lfsr])
-    File requested_coverage = select_first([try_two.requested_coverage, try_one.requested_coverage, try_zero.requested_coverage])
-    File alpha = select_first([try_two.alpha, try_one.alpha, try_zero.alpha])
-    Array[File] CSs = select_first([try_two.CSs, try_one.CSs, try_zero.CSs])
+    SuSiE_output susie_output = select_first([try_two.susie_output, try_one.susie_output, try_zero.susie_output])
+#    File lbf = select_first([try_two.lbf, try_one.lbf, try_zero.lbf])
+#    File lbf_variable = select_first([try_two.lbf_variable, try_one.lbf_variable, try_zero.lbf_variable])
+#    File sigma2 = select_first([try_two.sigma2, try_one.sigma2, try_zero.sigma2])
+#    File V = select_first([try_two.V, try_one.V, try_zero.V])
+#    File converged = select_first([try_two.converged, try_one.converged, try_zero.converged])
+#    File lfsr = select_first([try_two.lfsr, try_one.lfsr, try_zero.lfsr])
+#    File requested_coverage = select_first([try_two.requested_coverage, try_one.requested_coverage, try_zero.requested_coverage])
+#    File alpha = select_first([try_two.alpha, try_one.alpha, try_zero.alpha])
+#    Array[File] CSs = select_first([try_two.CSs, try_one.CSs, try_zero.CSs])
   }
 }

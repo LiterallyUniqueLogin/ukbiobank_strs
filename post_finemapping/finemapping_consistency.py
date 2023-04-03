@@ -185,36 +185,27 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
     else:
         return (out_df, min_abs_corrs)
 
-def load_finemap(results_regions_dir, regions = None, phenotype=None):
-    assert (phenotype is not None) + (regions is not None) == 1
-    unfinished_regions = []
+def load_finemap(snp_files, log_sss_s, creds_s, chroms):
     underexplored_regions = []
     dfs = []
 
-    if regions is None:
-        regions = all_regions(phenotype)
-    for (region, chrom) in regions:
-        if phenotype:
-            print(f'Loading finemap {phenotype} region {region}', flush=True)
-        if os.path.exists(f'{results_regions_dir}/{region}/no_strs'):
-            continue
-        if not os.path.exists(f'{results_regions_dir}/{region}/finemap_output.snp') or os.stat(f'{results_regions_dir}/{region}/finemap_output.snp').st_size == 0:
-            unfinished_regions.append(region)
-            continue
-        with open(f'{results_regions_dir}/{region}/finemap_output.log_sss') as log:
+    print('finemapping snp_files:', snp_files)
+    for count, (snp_file, log_sss, creds, chrom) in enumerate(zip(snp_files, log_ss_s, creds_s, chroms)):
+        print(f'Loading finemap region {count+1}/{len(region_dirs)} ...', flush=True)
+        with open(log_sss) as log:
             found_n_causal = False
             for line in log:
                 if 'n-causal' not in line:
                     continue
                 found_n_causal = True
                 n_causal = int(line.split()[-1])
-                if os.path.exists(f'{results_regions_dir}/{region}/finemap_output.cred{n_causal}'):
+                if any(cred.endswith(f'.cred{n_causal}') for cred in creds):
                     underexplored_regions.append(region)
                 break
             assert found_n_causal
 
         df = pl.scan_csv(
-            f'{results_regions_dir}/{region}/finemap_output.snp',
+            snp_file,
             sep=' '
         ).select([
             pl.col('rsid').alias('varname'),
@@ -224,7 +215,6 @@ def load_finemap(results_regions_dir, regions = None, phenotype=None):
         ])
         dfs.append(df)
 
-    print('unfinished_regions: ', unfinished_regions)
     print('underexplored_regions: ', underexplored_regions)
     return pl.concat(dfs)
 
@@ -823,22 +813,16 @@ def get_putatively_causal_regions(phenotype):
     #return list(zip(phenos, regions, chroms))
     return list(zip(regions, chroms))
 
-def putatively_causal_hits_df(phenotype, should_assert):
+def followup_finemapping_conditions_df(phenotype, should_assert, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames):
     regions = get_putatively_causal_regions(phenotype)
     if len(regions) == 0:
         pathlib.Path(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab').touch()
         pathlib.Path(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty').touch()
         return
 
-    fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    with open(fname) as tsv:
-        header = tsv.readline().strip()
     str_assocs = pl.scan_csv(
-        fname,
+        str_gwas_fname,
         sep='\t',
-        skip_rows=1,
-        has_header=False,
-        with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
     ).select([
         'chrom',
         'pos',
@@ -848,16 +832,10 @@ def putatively_causal_hits_df(phenotype, should_assert):
     ])
 
     other_ethnicity_assocs = None
-    for ethnicity in other_ethnicities:
-        fname = f'{ukb}/association/results_finemapped_only/{ethnicity}/{phenotype}/my_str/results.tab'
-        with open(fname) as tsv:
-            header = tsv.readline().strip()
+    for ethnicity, ethnic_str_gwas_fname in zip(other_ethnicities, ethnic_str_gwas_fnames):
         one_other_ethnicity = pl.scan_csv(
-            fname,
+            ethnic_str_gwas_fname,
             sep='\t',
-            skip_rows=1,
-            has_header=False,
-            with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
         ).select([
             'chrom',
             'pos',
@@ -874,7 +852,7 @@ def putatively_causal_hits_df(phenotype, should_assert):
             )
 
     snp_assocs = pl.scan_csv(
-        f'{ukb}/association/results/{phenotype}/plink_snp/results.tab',
+        snp_gwas_fname,
         sep='\t',
         null_values='NA',
     ).select([
@@ -1087,20 +1065,24 @@ def plot_upset_plots(total_df):
                 plt.savefig(f'{ukb}/post_finemapping/results/upsets/{name}_{upset_thresh}_found_in_default_{found_in_default}.png')
 
 
-def putatively_causal_hits_comparison():
-    print('loading pre-generated df ...', end='', flush=True)
+# intermediate_dir was {ukb}/post_finemapping/intermediate_results
+# outdir was {ukb}/post_finemapping/results/consistency
+# all_finemapping_conditions_tsvs was f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab'
+def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followup_finemapping_conditions_tsvs):
+    print('loading pre-generated dfs ...', end='', flush=True)
+    # was 
     cols = pl.read_csv(
-        f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab',
+        followup_finemapping_conditions_tsvs[0],
         sep='\t',
         n_rows=1
     ).columns
     total_df = pl.concat([
         pl.read_csv(
-            f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab',
+            followup_finemapping_conditions_tsvs,
             sep='\t',
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
         ) for phenotype in phenotypes.phenotypes_in_use
-        if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
+        # if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
     ]).rename({'susie_cs_hardcall' : 'susie_cs_best_guess', 'susie_alpha_hardcall': 'susie_alpha_best_guess', 'susie_pip_hardcall': 'susie_pip_best_guess'})
     print(' done', flush=True)
 
@@ -1111,12 +1093,6 @@ def putatively_causal_hits_comparison():
         pl.when(pl.col('susie_cs_ratio') > 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_alpha_ratio'),
         pl.when(pl.col('susie_cs_best_guess') > 0).then(pl.col('susie_alpha_best_guess')).otherwise(0).alias('susie_alpha_best_guess'),
     ])
-    total_df.filter(
-        pl.col('is_STR') &
-        (pl.col('p_val') <= 1e-10) &
-        (pl.col('susie_alpha') >= .8) &
-        (pl.col('finemap_pip') >= .8)
-    ).drop('is_STR').write_csv(f'{ukb}/post_finemapping/intermediate_results/original_causal_STR_candidates.tab', sep='\t')
 
     susie_cols = total_df.select([
         pl.col('^susie_alpha.*$'),
@@ -1124,17 +1100,30 @@ def putatively_causal_hits_comparison():
     finemap_cols = total_df.select([
         pl.col('^finemap_pip.*$')
     ]).columns
+
+    total_df.filter(
+        pl.col('is_STR') &
+        (pl.col('p_val') <= 1e-10) &
+        (pl.col('susie_alpha') >= .8) &
+        (pl.col('finemap_pip') >= .8)
+    ).drop('is_STR').write_csv(f'{intermediate_dir}/doubly_finemapped_STRs.tab', sep='\t')
+    # was original_causal_STR_candidates.tab
+
     pass_all_threshes = total_df.filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
-    ).drop(['susie_cs', 'susie_cs_best_guess', 'susie_cs_ratio', 'is_STR', 'varname'])
-    pass_all_threshes.write_csv(f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab', sep='\t')
+    ).drop([
+        'susie_cs', 'susie_cs_best_guess', 'susie_cs_ratio', 'is_STR', 'varname'
+    ]).write_csv(f'{intermediate_dir}/confidently_finemapped_STRs.tab', sep='\t')
+    # was concordant_causal_STR_candidates.tab
+
     total_df.filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
-    ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{ukb}/post_finemapping/intermediate_results/strictly_concordant_causal_STR_candidates.tab', sep='\t')
+    ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{intermediate_dir}/overconfidently_finemapped_STRs.tab', sep='\t')
+    # was strictly_concordant_causal_STR_candidates
 
     # concordance graphs
     for mapper, meas, suffix, y_label in [
@@ -1322,10 +1311,10 @@ def putatively_causal_hits_comparison():
         figs[-1].add_layout(color_bar, 'right')
 
         total_fig = bokeh.layouts.row([*figs, size_scale_fig])
-        bokeh.io.export_png(total_fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{meas}_{suffix}.png')
-        bokeh.io.export_svg(total_fig, filename=f'{ukb}/post_finemapping/results/consistency/{mapper.lower()}_consistency_{meas}_{suffix}.svg')
+        bokeh.io.export_png(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.png')
+        bokeh.io.export_svg(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.svg')
 
-def first_pass_df(phenotype, should_assert):
+def first_pass_df(phenotype, should_assert, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames):
     #pheno_dfs = []
     min_abs_corrs = []
     #for count, phenotype in [(0, 'aspartate_aminotransferase'), (1, 'total_bilirubin')]:
@@ -1333,15 +1322,9 @@ def first_pass_df(phenotype, should_assert):
     #for count, phenotype in enumerate(phenotypes.phenotypes_in_use):
     #    print(f"Loading phenotype #{count+1} ({phenotype})", flush=True)
 
-    fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    with open(fname) as tsv:
-        header = tsv.readline().strip()
     str_assocs = pl.scan_csv(
-        fname,
+        str_gwas_fname,
         sep='\t',
-        skip_rows=1,
-        has_header=False,
-        with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
     ).select([
         'chrom',
         'pos',
@@ -1353,7 +1336,7 @@ def first_pass_df(phenotype, should_assert):
     ])
 
     snp_assocs = pl.scan_csv(
-        f'{ukb}/association/results/{phenotype}/plink_snp/results.tab',
+        snp_gwas_fname,
         sep='\t',
         null_values='NA',
     ).select([
@@ -1368,17 +1351,10 @@ def first_pass_df(phenotype, should_assert):
     assocs = pl.concat([snp_assocs, str_assocs])
 
     other_ethnicity_assocs = None
-    other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
-    for ethnicity in other_ethnicities:
-        fname = f'{ukb}/association/results_finemapped_only/{ethnicity}/{phenotype}/my_str/results.tab'
-        with open(fname) as tsv:
-            header = tsv.readline().strip()
+    for ethnicity, ethnic_str_gwas_fname in zip(other_ethnicities, ethnic_str_gwas_fnames):
         one_other_ethnicity = pl.scan_csv(
-            fname,
+            ethnic_str_gwas_fname,
             sep='\t',
-            skip_rows=1,
-            has_header=False,
-            with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
         ).select([
             'chrom',
             'pos',
@@ -2004,6 +1980,25 @@ def first_pass_comparison():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+
+    df_parser = subparsers.add_parser('df')
+    df_parser.add_argument('phenotype_name')
+    df_parser.add_argument('snp_gwas_results')
+    df_parser.add_argument('str_gwas_results')
+    df_parser.add_argument('ethnic_str_gwas_results', nargs=5)
+    df_subparsers = df_parser.add_subparsers()
+    followup_df_parser = df_subparsers.add_parser('followup_conditions')
+
+
+    followup_comparison_parser = subparsers.add_parser('followup_conditions_comparison')
+    followup_comparison_parser.add_argument('outdir')
+    followup_comparison_parser.add_argument('intermediate_outdir')
+    followup_comparison_parser.add_argument('followup_conditions_tsvs', nargs='+')
+    def execute_followup_comparison(args):
+        followup_finemapping_conditions_comparison(args.outdir, args.intermediate_outdir, args.followup_conditions_tsvs)
+    followup_comparison_parser.set_defaults(func=execute_followup_comparison)
+        
     parser.add_argument('--putatively-causal-hits', action='store_true', default=False)
     parser.add_argument('--mpv', action='store_true', default=False)
     parser.add_argument('--first-pass', action='store_true', default=False)
@@ -2028,6 +2023,6 @@ if __name__ == '__main__':
     else:
         assert args.putatively_causal_hits
         if args.regenerate:
-            putatively_causal_hits_df(args.phenotype, not args.no_assert)
-        else:
-            putatively_causal_hits_comparison()
+            followup_finemapping_conditions_df(args.phenotype, not args.no_assert)
+        #else:
+        #    followup_finemapping_conditions_comparison()
