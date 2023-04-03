@@ -253,7 +253,6 @@ task finemap_write_corrs {
   }
 }
 
-# TODO add FIENMAP to docker
 # TODO check that prior snps flag passing makes sense
 task finemap_run {
   input {

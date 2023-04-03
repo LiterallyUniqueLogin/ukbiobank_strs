@@ -102,19 +102,20 @@ workflow expanse_figures {
     sc = sc_white_brits.data
   }
 
-  scatter (chrom in range(22)) {
-    call gwas_tasks.imputed_str_locus_summary { input :
-      script_dir = script_dir,
-      vcf = str_vcfs[chrom],
-      qced_white_brits = unrelated_white_brits_sample_list
-    }
-  }
-
-  call str_multiallelicness_distro as fig_1b { input:
-    script_dir = script_dir,
-    thresh = 0.01,
-    chrom_locus_summaries = imputed_str_locus_summaries
-  }
+#  # TODO this crashes because of a missing header in the VCF ##command=Hipstr
+#  scatter (chrom in range(22)) {
+#    call gwas_tasks.imputed_str_locus_summary as imputed_str_locus_summaries { input :
+#      script_dir = script_dir,
+#      vcf = str_vcfs[chrom],
+#      qced_white_brits = unrelated_white_brits_sample_list
+#    }
+#  }
+#
+#  call gwas_tasks.str_multiallelicness_distro as fig_1b { input:
+#    script_dir = script_dir,
+#    thresh = 0.01,
+#    chrom_locus_summaries = imputed_str_locus_summaries.out
+#  }
 
   call expanse_tasks.extract_field as pcs { input :
     script_dir = script_dir,

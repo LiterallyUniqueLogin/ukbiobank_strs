@@ -41,7 +41,7 @@ def main_helper(output, vcf_fname, all_white_brits_fname):
     for record in vcf:
         if record.INFO.get('PERIOD') is None:
             continue
-        trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='beagle-hipstr')
+        trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='hipstr')
 
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
         total_subset_dosages = {

@@ -113,6 +113,20 @@ workflow finemapping_one_region {
     pheno_residuals_h5 = retryable_susie_load_gts.pheno_residuals_h5,
   }
 
-#  output {
-#  }
+  output {
+    File finemap_snp_file = finemap_run.snp_file
+    File finemap_log_sss = finemap_run.log_sss
+    File finemap_config = finemap_run.config
+    File finemap_creds = finemap_run.creds
+
+    File susie_lbf = escalating_susie_run.lbf
+    File susie_lbf_variable = escalating_susie_run.lbf_variable
+    File susie_sigma2 = escalating_susie_run.sigma2
+    File susie_V = escalating_susie_run.V
+    File susie_converged = escalating_susie_run.converged
+    File susie_lfsr = escalating_susie_run.lfsr
+    File susie_requested_coverage = escalating_susie_run.requested_coverage
+    File susie_alpha = escalating_susie_run.alpha
+    Array[File] susie_CSs = escalating_susie_run.CSs
+  }
 }

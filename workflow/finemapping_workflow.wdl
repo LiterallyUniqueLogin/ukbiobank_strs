@@ -76,6 +76,20 @@ workflow finemapping {
     }
   }
 
-#  output {
-#  }
+  output {
+    File finemap_snp_file = finemapping_one_region.finemap_snp_file
+    File finemap_log_sss = finemapping_one_region.finemap_log_sss
+    File finemap_config = finemapping_one_region.finemap_config
+    File finemap_creds = finemapping_one_region.finemap_creds
+
+    File susie_lbf = finemapping_one_region.susie_lbf
+    File susie_lbf_variable = finemapping_one_region.susie_lbf_variable
+    File susie_sigma2 = finemapping_one_region.susie_sigma2
+    File susie_V = finemapping_one_region.susie_V
+    File susie_converged = finemapping_one_region.susie_converged
+    File susie_lfsr = finemapping_one_region.susie_lfsr
+    File susie_requested_coverage = finemapping_one_region.susie_requested_coverage
+    File susie_alpha = finemapping_one_region.susie_alpha
+    Array[File] susie_CSs = finemapping_one_region.susie_CSs
+  }
 }

@@ -413,7 +413,7 @@ task imputed_str_locus_summary {
   }
 
   command <<<
-    envsetup ~{script} out.tab ~{vcf.vcf} ~{all_white_brits_fname}
+    envsetup ~{script} out.tab ~{vcf.vcf} ~{qced_white_brits}
   >>>
 
   runtime {
