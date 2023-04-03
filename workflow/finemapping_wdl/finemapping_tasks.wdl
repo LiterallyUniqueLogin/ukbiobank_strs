@@ -1,7 +1,7 @@
 version 1.0
 
 # for structs
-import "gwas_tasks.wdl"
+import "../gwas_wdl/gwas_tasks.wdl"
 
 # any input file with a default relative to the script_dir
 # needs to be supplied by the user, it won't be the product of another task
@@ -41,88 +41,6 @@ struct SuSiE_output {
 }
 
 ####################### Extracting association signals #########################
-
-task generate_regions {
-  input {
-    String script_dir
-    File script = "~{script_dir}/signals/regions.py"
-
-    File chr_lens # misc_data/genome/chr_lens.txt
-    String phenotype
-    File str_assoc_results
-    File snp_assoc_results
-  }
-
-  output {
-    File data = "out.tab"
-    File readme = "out_README.txt"
-  }
-
-  command <<<
-    envsetup ~{script} \
-      ~{phenotype} \
-      ~{chr_lens} \
-      ~{str_assoc_results} \
-      ~{snp_assoc_results} \
-      out.tab
-  >>>
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "30m"
-    mem: "10g"
-  }
-}
-
-task get_strs_in_finemapping_regions {
-  input {
-    String script_dir
-    File script = "~{script_dir}/signals/write_finemapped_strs.py"
-
-    File str_loci
-    File finemapping_regions_for_pheno # from generate regions
-  }
-
-  output {
-    Array[File] str_loci = [
-      "out_chr1.tab",
-      "out_chr2.tab",
-      "out_chr3.tab",
-      "out_chr4.tab",
-      "out_chr5.tab",
-      "out_chr6.tab",
-      "out_chr7.tab",
-      "out_chr8.tab",
-      "out_chr9.tab",
-      "out_chr10.tab",
-      "out_chr11.tab",
-      "out_chr12.tab",
-      "out_chr13.tab",
-      "out_chr14.tab",
-      "out_chr15.tab",
-      "out_chr16.tab",
-      "out_chr17.tab",
-      "out_chr18.tab",
-      "out_chr19.tab",
-      "out_chr20.tab",
-      "out_chr21.tab",
-      "out_chr22.tab"
-    ] # one per chr
-  }
-
-  command <<<
-    envsetup ~{script} \
-      out \
-      ~{finemapping_regions_for_pheno} \
-      ~{str_loci}
-  >>>
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "30m"
-    mem: "4g"
-  }
-}
 
 task finemap_write_input_variants {
   input {
@@ -295,9 +213,9 @@ task finemap_run {
 
   output {
     FINEMAP_output finemap_output = {
-      "snp_file": "finemap_output.snp"
-      "log_sss": "finemap_output.log_sss"
-      "config": "finemap_output.config"
+      "snp_file": "finemap_output.snp",
+      "log_sss": "finemap_output.log_sss",
+      "config": "finemap_output.config",
       "creds": glob("finemap_output.cred*")
     }
   }
@@ -436,14 +354,14 @@ task susie_run {
 
   output {
     SuSiE_output? susie_output = {
-      "lbf": "lbf.tab"
-      "lbf_variable": "lbf_variable.tab"
-      "sigma2": "sigma2.txt"
-      "V": "V.tab"
-      "converged": "converged.txt"
-      "lfsr": "lfsr.tab"
-      "requested_coverage": "requested_coverage.txt"
-      "alpha": "alpha.tab"
+      "lbf": "lbf.tab",
+      "lbf_variable": "lbf_variable.tab",
+      "sigma2": "sigma2.txt",
+      "V": "V.tab",
+      "converged": "converged.txt",
+      "lfsr": "lfsr.tab",
+      "requested_coverage": "requested_coverage.txt",
+      "alpha": "alpha.tab",
       "CSs": glob("cs*.txt")
     }
   }
@@ -463,6 +381,72 @@ task susie_run {
     dx_timeout: time
     mem: mem
   }
+}
+
+task first_pass_finemapping_df {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+
+    String phenotype_name
+    File snp_assoc_results
+    File str_assoc_results
+    Array[File] ethnic_str_assoc_results
+
+    Array[FINEMAP_output] original_finemap_outputs
+    Array[SuSIE_output] original_susie_outputs
+  }
+
+  output {
+    File all_regions_concordance = "finemapping_all_regions_concordance_~{phenotype_name}.tab"
+    File susie_all_regions_min_abs_corrs = "susie_all_regions_min_abs_corrs_~{phenotype_name}.npy"
+  }
+
+  command <<<
+    REGIONS=~{write_lines(regions)}
+    { echo "region" ; cat $REGIONS ; } >> "$REGIONS".headered
+    CHROMS=~{write_lines(chroms)}
+    { echo "chrom" ; cat $CHROMS ; } >> "$CHROMS".headered
+    envsetup ~{script} \
+      . \
+      True \
+      ~{phenotype_name} \
+      ~{snp_assoc_results} \
+      ~{str_assoc_results} \
+      ~{sep=" " ethnic_str_assoc_results} \
+      first_pass
+      <(paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "3h"
+    mem: "50g"
+  }
+}
+
+task generate_followup_regions_tsv {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+
+    File first_pass_df
+  }
+
+  output {
+    File tsv = "followup_regions.tsv"
+  }
+
+  command <<<
+    envsetup ~{script} . ~{first_pass_df}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+    shortTask: true
+  } 
 }
 
 # TODO missing stuff in between

@@ -254,7 +254,7 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             gt_temp = gt_temp[:, :len(stored_indexes)]
             store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
 
-        print(f"Time: {time.time() - start}s")
+        print(f"Time: {time.time() - start}s", flush=True)
         if sum(var_inclusion.values()) != len(var_inclusion):
             print(var_inclusion)
             print(snps_to_include)

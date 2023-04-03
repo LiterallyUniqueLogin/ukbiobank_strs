@@ -146,7 +146,7 @@ workflow gwas_given_pheno_data {
 
   # TODO overview manhattan
 
-  call finemapping_tasks.generate_regions { input :
+  call gwas_tasks.generate_finemapping_regions { input :
     script_dir = script_dir,
     chr_lens = chr_lens,
     phenotype = phenotype_name,
@@ -154,7 +154,7 @@ workflow gwas_given_pheno_data {
     str_assoc_results = my_str_gwas_.tsv
   }
   
-  call finemapping_tasks.get_strs_in_finemapping_regions { input :
+  call gwas_tasks.get_strs_in_finemapping_regions { input :
     script_dir = script_dir,
     str_loci = str_loci,
     finemapping_regions_for_pheno = generate_regions.data

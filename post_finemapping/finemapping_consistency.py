@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import dataclass
 import glob
 import os
 import os.path
 import pathlib
 import time
+from typing import List
 
 import bokeh.models
 import bokeh.models.tickers
@@ -30,6 +32,24 @@ other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 corr_cutoff = .8
 p_val_thresh = 5e-8
 
+@dataclass.dataclass
+class FINEMAP_output:
+    snp_file: str
+    log_sss: str
+    creds: List[str]
+    region: str
+    chrom: int
+
+@dataclass.dataclass
+class SuSiE_output:
+    converged: str
+    colnames: str
+    alpha: str
+    V: str
+    CSes: List[str]
+    region: str
+    chrom: int
+
 def all_regions(phenotype):
     return zip(*list(pl.read_csv(
         f'{ukb}/signals/regions/{phenotype}.tab',
@@ -52,69 +72,53 @@ def all_regions(phenotype):
         )
     )).to_dict(False).values()))
 
-def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None, phenotype=None, original=False, return_corrs = False, only_L = None):
-    assert (phenotype is not None) + (regions is not None) == 1
-    assert (colnames_regions_dir is not None) + original <= 1
+def load_susie(susie_outputs, return_corrs = False, only_L = None):
+    # results_regions_dir, colnames_regions_dir = None, regions = None, phenotype=None, original=False, return_corrs = False, only_L = None):
+    # assert (phenotype is not None) + (regions is not None) == 1
+    # assert (colnames_regions_dir is not None) + original <= 1
     dfs = []
     unconverged_regions = []
     underexplored_regions = []
-    unfinished_regions = []
-    only_L_skips = []
+    only_L_skips = [] # only look at regions with exactly this many signals
     min_abs_corrs = []
 
-    if regions is None:
-        regions = all_regions(phenotype)
-    for (region, chrom) in regions:
-        if phenotype:
-            print(f'Loading susie {phenotype} region {region}', flush=True)
-        if colnames_regions_dir:
-            if not os.path.exists(f'{colnames_regions_dir}/{region}'):
-                print(f'{colnames_regions_dir}/{region}')
-                assert False
-        if os.path.exists(f'{results_regions_dir}/{region}/no_strs'):
-            continue
+    for count, susie_output in enumerate(susie_outputs):
+        print(f'Loading finemap region {count+1}/{len(susie_outputs)} ...', flush=True)
 
-        converged_fname = f'{results_regions_dir}/{region}/converged.txt'
-        if not os.path.exists(converged_fname):
-            unfinished_regions.append(region)
-            continue
-        with open(converged_fname) as converged_file:
+        with open(susie_output.converged) as converged_file:
             if not next(converged_file).strip() == 'TRUE':
-                unconverged_regions.append(region)
+                unconverged_regions.append(susie_output.region)
                 continue
 
-        if original:
-            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt.normal_run'
-            if not os.path.exists(colnames_fname):
-                colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
-        elif not colnames_regions_dir:
-            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
-        else:
-            colnames_fname = f'{colnames_regions_dir}/{region}/colnames.txt'
-        if not os.path.exists(colnames_fname) and not original:
-            colnames_fname = f'{colnames_fname}.normal_run'
-        if not os.path.exists(colnames_fname):
-            print(colnames_fname)
-            assert False
-        with open(colnames_fname) as var_file:
+#        if original:
+#            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt.normal_run'
+#            if not os.path.exists(colnames_fname):
+#                colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
+#        elif not colnames_regions_dir:
+#            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
+#        else:
+#            colnames_fname = f'{colnames_regions_dir}/{region}/colnames.txt'
+#        if not os.path.exists(colnames_fname) and not original:
+#            colnames_fname = f'{colnames_fname}.normal_run'
+        with open(susie_output.colnames) as var_file:
             susie_vars = [line.strip() for line in var_file if line.strip()]
 
         alphas = np.genfromtxt(
-            f'{results_regions_dir}/{region}/alpha.tab',
+            susie_output.alpha,
             delimiter='\t',
         ).T
         if only_L is not None and only_L != alphas.shape[1]:
             only_L_skips.append(region)
             continue
         estimated_signal_vars = np.genfromtxt(
-            f'{results_regions_dir}/{region}/V.tab',
+            susie_output.V,
             delimiter='\t'
         )
 
         n_alphas = alphas.shape[1]
         susie_pips=1-np.prod(1-alphas[:, estimated_signal_vars >= 1e-9], axis=1)
         if not susie_pips.shape[0] == len(susie_vars):
-            print(results_regions_dir, colnames_fname)
+            print(susie_output)
             assert False
         susie_idx = np.arange(len(susie_vars)) + 1
         susie_df = pl.DataFrame({
@@ -133,7 +137,7 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
         ]).sort('susie_idx')
 
         real_cs_count = 0
-        for cs_fname in glob.glob(f'{results_regions_dir}/{region}/cs*.txt'):
+        for cs_fname in susie_output.CSes:
             cs_id = int(cs_fname.split('cs')[-1].split('.')[0])
             with open(cs_fname) as cs_file:
                 # susie uses 1 based indexing, python uses 0
@@ -171,7 +175,6 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
 
     print('unconverged_regions: ', unconverged_regions)
     print('underexplored_regions: ', underexplored_regions)
-    print('unfinished_regions: ', unfinished_regions)
     if only_L is not None:
         print('only_L skips:', only_L_skips)
 
@@ -185,33 +188,33 @@ def load_susie(results_regions_dir, colnames_regions_dir = None, regions = None,
     else:
         return (out_df, min_abs_corrs)
 
-def load_finemap(snp_files, log_sss_s, creds_s, chroms):
+def load_finemap(finemap_outputs):
     underexplored_regions = []
     dfs = []
 
     print('finemapping snp_files:', snp_files)
-    for count, (snp_file, log_sss, creds, chrom) in enumerate(zip(snp_files, log_ss_s, creds_s, chroms)):
-        print(f'Loading finemap region {count+1}/{len(region_dirs)} ...', flush=True)
-        with open(log_sss) as log:
+    for count, finemap_output in enumerate(finemap_outputs):
+        print(f'Loading finemap region {count+1}/{len(finemap_outputs)} ...', flush=True)
+        with open(finemap_output.log_sss) as log:
             found_n_causal = False
             for line in log:
                 if 'n-causal' not in line:
                     continue
                 found_n_causal = True
                 n_causal = int(line.split()[-1])
-                if any(cred.endswith(f'.cred{n_causal}') for cred in creds):
-                    underexplored_regions.append(region)
+                if any(cred.endswith(f'.cred{n_causal}') for cred in finemap_output.creds):
+                    underexplored_regions.append(finemap_output.region)
                 break
             assert found_n_causal
 
         df = pl.scan_csv(
-            snp_file,
+            finemap_output.snp_file,
             sep=' '
         ).select([
             pl.col('rsid').alias('varname'),
             pl.col('prob').alias('finemap_pip'),
-            pl.lit(region).alias('region'),
-            pl.lit(chrom).alias('chrom').cast(int)
+            pl.lit(finemap_output.region).alias('region'),
+            pl.lit(finemap_output.chrom).alias('chrom').cast(int)
         ])
         dfs.append(df)
 
@@ -1314,7 +1317,9 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
         bokeh.io.export_png(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.png')
         bokeh.io.export_svg(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.svg')
 
-def first_pass_df(phenotype, should_assert, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames):
+# used to out to {ukb}/post_finemapping/intermediate_results
+def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames, original_FINEMAP_outputs, original_SuSiE_outputs):
+
     #pheno_dfs = []
     min_abs_corrs = []
     #for count, phenotype in [(0, 'aspartate_aminotransferase'), (1, 'total_bilirubin')]:
@@ -1373,10 +1378,10 @@ def first_pass_df(phenotype, should_assert, snp_gwas_fname, str_gwas_fname, ethn
             )
 
     print('original SuSiE')
-    original_susies, pheno_min_abs_corrs = load_susie(f'{ukb}/finemapping/susie_results/{phenotype}', phenotype=phenotype, original=True, return_corrs=True)
+    original_susies, pheno_min_abs_corrs = load_susie(original_SuSiE_outputs, return_corrs=True)
     min_abs_corrs.extend(pheno_min_abs_corrs)
     print('original FINEMAP')
-    original_finemaps = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}', phenotype=phenotype)
+    original_finemaps = load_finemap(original_FINEMAP_outputs)
 
     print('Collecting ... ', end='', flush=True)
     start = time.time()
@@ -1417,13 +1422,45 @@ def first_pass_df(phenotype, should_assert, snp_gwas_fname, str_gwas_fname, ethn
         *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
         *[f'{ethnicity}_se' for ethnicity in other_ethnicities],
     ])
-    total_df.write_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab', sep='\t')
-    np.save(f'{ukb}/post_finemapping/intermediate_results/susie_all_min_abs_corrs_{phenotype}.npy', np.array(min_abs_corrs))
+    total_df.write_csv(f'{outdir}/finemapping_all_regions_concordance_{phenotype}.tab', sep='\t')
+    np.save(f'{outdir}/susie_all_regions_min_abs_corrs_{phenotype}.npy', np.array(min_abs_corrs))
     if should_assert:
         assert total_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
         assert np.all(~np.isnan(total_df['p_val'].to_numpy()))
         assert np.all(~np.isnan(total_df['finemap_pip'].to_numpy()))
         assert np.all(1 == total_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
+
+def generate_followup_regions_tsv(outdir, first_pass_dfs):
+    total_df = pl.concat([
+        pl.read_csv(
+            first_pass_df,
+            sep='\t',
+            dtypes={
+                **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
+                **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
+                **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
+            }
+        ) for first_pass_df in first_pass_dfs
+    ])
+    total_df.filter(
+        pl.col('is_STR') &
+        (pl.col('p_val') <= 1e-10) &
+        (pl.col('susie_alpha') >= .8) &
+        (pl.col('finemap_pip') >= .8)
+    ).filter(~(
+        (
+            (pl.col('phenotype') == 'total_bilirubin') &
+            (pl.col('signal_region') == '12_19976272_22524428')
+        ) |
+        (
+            (pl.col('phenotype') == 'mean_platelet_volume') &
+            (pl.col('signal_region') == '17_2341352_2710113')
+        ) |
+        (
+            (pl.col('phenotype') == 'alkaline_phosphatase') &
+            (pl.col('signal_region') == '1_19430673_24309348')
+        )
+    )).groupby(['phenotype', 'chrom', 'region']).agg([]).write(f'{outdir}/followup_regions.tsv')
 
 def first_pass_comparison():
     total_df = pl.concat([
@@ -1978,21 +2015,71 @@ def first_pass_comparison():
         bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.png')
         bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.svg')
 
+def tsv_to_finemap_outputs(tsv):
+    df = pl.read_csv(tsv, sep='\t')
+    finemap_outputs = []
+    for row in range(df.shape[0]):
+        finemap_outputs.append(FINEMAP_output(
+            snp_file = df['snp_file'][row],
+            log_sss = df['log_sss'][row],
+            creds = df['creds'][row].split(','),
+            region = df['region'][row],
+            chrom = df['chrom'][row],
+        ))
+    return finemap_outputs
+
+def tsv_to_susie_outputs(tsv):
+    df = pl.read_csv(tsv, sep='\t')
+    susie_outputs = []
+    for row in range(df.shape[0]):
+        susie_outputs.append(SuSIE_output(
+            converged = df['converged'][row],
+            colnames = df['colnames'][row],
+            alpha = df['alpha'][row],
+            V = df['V'][row],
+            CSes = df['CSes'][row].split(','),
+            region = df['region'][row],
+            chrom = df['chrom'][row],
+        ))
+    return susie_outputs
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('outdir')
     subparsers = parser.add_subparsers()
 
     df_parser = subparsers.add_parser('df')
+    df_parser.add_argument('should_assert', dtype=bool)
     df_parser.add_argument('phenotype_name')
     df_parser.add_argument('snp_gwas_results')
     df_parser.add_argument('str_gwas_results')
     df_parser.add_argument('ethnic_str_gwas_results', nargs=5)
     df_subparsers = df_parser.add_subparsers()
+    first_pass_df_parser = df_subparsers.add_parser('first_pass')
     followup_df_parser = df_subparsers.add_parser('followup_conditions')
 
+    first_pass_df_parser.add_argument('original_FINEMAP_outputs_tsv')
+    first_pass_df_parser.add_argument('original_SuSiE_outputs_tsv')
+    def exec_first_pass_df(args):
+        first_pass_df(
+            args.outdir,
+            args.should_assert,
+            args.phenotype_name,
+            args.snp_gwas_results,
+            args.str_gwas_results,
+            args.ethnic_str_gwas_results,
+            tsv_to_finemap_outputs(args.original_FINEMAP_outputs_tsv),
+            tsv_to_susie_outputs(args.original_SuSiE_outputs_tsv)
+        )
+    first_pass_df_parser.set_defaults(func=exec_first_pass_df)
+
+    followup_regions_parser = subparsers.add_parser('followup_regions')
+    followup_regions_parser.add_argument('first_pass_df')
+    def exec_followup_regions(args):
+        generate_followup_regions_tsv(args.outdir, args.first_pass_df)
+    followup_regions_parser.set_defaults(func=exec_followup_regions)
 
     followup_comparison_parser = subparsers.add_parser('followup_conditions_comparison')
-    followup_comparison_parser.add_argument('outdir')
     followup_comparison_parser.add_argument('intermediate_outdir')
     followup_comparison_parser.add_argument('followup_conditions_tsvs', nargs='+')
     def execute_followup_comparison(args):

@@ -353,9 +353,11 @@ def load_imputed_snps(bgen_fname: str,
 
     chrom, posses = region.split(':')
     start, end = tuple(int(val) for val in posses.split('-'))
+    print('opening bgen', flush=True)
     bgen = bgen_reader.open_bgen(bgen_fname,
-                                 verbose=False,
+                                 #verbose=False,
                                  allow_complex=True)
+    print('done opening bgen', flush=True)
 
     if details:
         yield (
@@ -367,7 +369,9 @@ def load_imputed_snps(bgen_fname: str,
             'subset_HWEP'
         )
 
+    print('finding start num', flush=True)
     start_num = np.searchsorted(bgen.positions, start)
+    print('found start num', flush=True)
 
     try:
         if mfi_fname:
@@ -380,7 +384,8 @@ def load_imputed_snps(bgen_fname: str,
                     mfi_line = next(mfi)
                 except StopIteration:
                     return
-
+        
+            print('pos', pos, flush=True)
             if pos < start:
                 continue
             if pos > end:
@@ -388,6 +393,7 @@ def load_imputed_snps(bgen_fname: str,
 
             alleles = np.array(bgen.allele_ids[variant_num].split(','))
             if var_subset is not None and (pos, alleles[0], alleles[1]) not in var_subset:
+                print((pos, alleles[0], alleles[1]), flush=True)
                 continue
 
             if hardcalls:
@@ -432,14 +438,14 @@ def load_imputed_snps(bgen_fname: str,
             '''
 
             dosages = probs[:, 1] + 2*probs[:, 2]
+            subset_dosages = dosages[samples]
+            subset_total_alt_dosage = np.sum(subset_dosages)
+            subset_total_ref_dosage = \
+                    2*subset_dosages.shape[0] - subset_total_alt_dosage
+
             if details:
                 total_alt_dosage = np.sum(dosages)
                 total_ref_dosage = 2*dosages.shape[0] - total_alt_dosage
-
-                subset_dosages = dosages[samples]
-                subset_total_alt_dosage = np.sum(subset_dosages)
-                subset_total_ref_dosage = \
-                        2*subset_dosages.shape[0] - subset_total_alt_dosage
 
                 hardcalls = probs.argmax(axis=1)
                 n_hom_ref = np.sum(hardcalls == 0)

@@ -958,3 +958,90 @@ task todo {
   }
 }
 
+####################### Tasks to determine finemapping regions #########################
+
+# these are here because they are used to prioritize STRs for follow up ethnic GWAS
+
+task generate_regions {
+  input {
+    String script_dir
+    File script = "~{script_dir}/signals/regions.py"
+
+    File chr_lens # misc_data/genome/chr_lens.txt
+    String phenotype
+    File str_assoc_results
+    File snp_assoc_results
+  }
+
+  output {
+    File data = "out.tab"
+    File readme = "out_README.txt"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{phenotype} \
+      ~{chr_lens} \
+      ~{str_assoc_results} \
+      ~{snp_assoc_results} \
+      out.tab
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    mem: "10g"
+  }
+}
+
+task get_strs_in_finemapping_regions {
+  input {
+    String script_dir
+    File script = "~{script_dir}/signals/write_finemapped_strs.py"
+
+    File str_loci
+    File finemapping_regions_for_pheno # from generate regions
+  }
+
+  output {
+    Array[File] str_loci = [
+      "out_chr1.tab",
+      "out_chr2.tab",
+      "out_chr3.tab",
+      "out_chr4.tab",
+      "out_chr5.tab",
+      "out_chr6.tab",
+      "out_chr7.tab",
+      "out_chr8.tab",
+      "out_chr9.tab",
+      "out_chr10.tab",
+      "out_chr11.tab",
+      "out_chr12.tab",
+      "out_chr13.tab",
+      "out_chr14.tab",
+      "out_chr15.tab",
+      "out_chr16.tab",
+      "out_chr17.tab",
+      "out_chr18.tab",
+      "out_chr19.tab",
+      "out_chr20.tab",
+      "out_chr21.tab",
+      "out_chr22.tab"
+    ] # one per chr
+  }
+
+  command <<<
+    envsetup ~{script} \
+      out \
+      ~{finemapping_regions_for_pheno} \
+      ~{str_loci}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    mem: "4g"
+  }
+}
+
+
