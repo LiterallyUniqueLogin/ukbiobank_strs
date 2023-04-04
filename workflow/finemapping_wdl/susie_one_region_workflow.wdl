@@ -36,6 +36,8 @@ workflow susie_one_region {
   }
 
   # call SuSiE 
+
+  Int chrom_minus_one = bounds.chrom-1
  
   call finemapping_tasks.susie_choose_vars { input :
     script_dir = script_dir,
@@ -57,7 +59,7 @@ workflow susie_one_region {
     colnames = susie_choose_vars.colnames,
     phenotype_name = phenotype_name,
     bounds = bounds,
-    buest_guess = best_guess
+    best_guess = best_guess
   }
 
   call escalating_susie_run.escalating_susie_run { input :

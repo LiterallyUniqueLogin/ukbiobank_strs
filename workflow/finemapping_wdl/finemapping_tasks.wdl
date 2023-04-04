@@ -303,7 +303,7 @@ task susie_load_gts {
 
   output {
     File? gts_h5 = "gts.h5"
-    File? pheno_residuals_h5 = "pheno_residuals.h5"
+    File? pheno_residuals_h5 = "pheno_residual.h5"
     File? readme = "readme.txt"
   }
 
@@ -373,7 +373,7 @@ task susie_run {
 
   command <<<
     ACTIVATE=ukb_r envsetup Rscript ~{script} \
-      .
+      . \
       ~{pheno_residuals_h5} \
       ~{gts_h5} \
       ~{L} \

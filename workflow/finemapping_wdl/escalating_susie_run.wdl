@@ -18,36 +18,36 @@ task should_escalate_susie_run {
 
   command <<<
     envsetup python -c "
-      with open(~{converged}) as converged:
-        did_converge = next(converged).strip()
-        if did_converge == 'FALSE':
-          if ~{assert}:
-            assert False
-          print("true")
-          exit()
-        else:
-          assert did_converge == 'TRUE'
-      if ~{length(CSs)} < ~{max_CSs}:
-          print("false")
-          exit()
-      assert ~{length(CSs)} == ~{max_CSs}:
-      CSs = '~{sep=" " CSs}'.split()
-      found_count = 0
-      done = False
-      redo = False
-      for num in range(~{max_CSs}):
-        assert CSs[num].split('/')[-1] == f'cs{num}.txt'
-        with open(CSs[num]) as cs:
-          n_vars = len(next(cs).split())
-          next(cs)
-          min_ld = float(next(cs).split()[0])
-        if min_ld < .2 and n_vars > 50:
-          print("false")
-          exit()
-      if ~{assert}:
-        assert False
-      print("true")
-      exit()
+    with open('~{converged}') as converged:
+      did_converge = next(converged).strip()
+      if did_converge == 'FALSE':
+        if ~{assert}:
+          assert False
+        print('true')
+        exit()
+      else:
+        assert did_converge == 'TRUE'
+    if ~{length(CSs)} < ~{max_CSs}:
+        print('false')
+        exit()
+    assert ~{length(CSs)} == ~{max_CSs}
+    CSs = '~{sep=' ' CSs}'.split()
+    found_count = 0
+    done = False
+    redo = False
+    for num in range(~{max_CSs}):
+      assert CSs[num].split('/')[-1] == f'cs{num}.txt'
+      with open(CSs[num]) as cs:
+        n_vars = len(next(cs).split())
+        next(cs)
+        min_ld = float(next(cs).split()[0])
+      if min_ld < .2 and n_vars > 50:
+        print('false')
+        exit()
+    if ~{assert}:
+      assert False
+    print('true')
+    exit()
     "
   >>>
 
