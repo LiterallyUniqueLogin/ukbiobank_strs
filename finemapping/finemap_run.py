@@ -6,12 +6,10 @@ import subprocess as sp
 import sys
 import time
 
-import h5py
-
-def run_finemap(outdir, finemap_command, *, prob_conv_sss_tol, prior_std, prior_snps):
+def run_finemap(outdir, finemap_command, *, n_causal_snps, prob_conv_sss_tol, prior_std, prior_snps):
     with open(f'{outdir}/finemap_input.z') as input_vars:
         n_vars = len(input_vars.readlines()) - 1
-    causal_snps_flag = min(40, n_vars)
+    causal_snps_flag = min(n_causal_snps, n_vars)
 
     out = sp.run(
         #f'{ukb}/utilities/finemap/finemap_v1.4_x86_64 --sss '
@@ -42,6 +40,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outdir')
     parser.add_argument('finemap_command')
+    parser.add_argument('--n-causal-snps', default=20)
     parser.add_argument('--prob-conv-sss-tol', default=0.001, type=float)
     parser.add_argument('--prior-std', default=0.05, type=float)
     parser.add_argument('--prior-snps', default=False, action='store_true')
@@ -50,6 +49,7 @@ def main():
     run_finemap(
         args.outdir,
         args.finemap_command,
+        n_causal_snps=args.n_causal_snps,
         prob_conv_sss_tol=args.prob_conv_sss_tol,
         prior_std=args.prior_std,
         prior_snps=args.prior_snps

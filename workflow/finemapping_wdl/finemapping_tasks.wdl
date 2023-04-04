@@ -392,6 +392,8 @@ task susie_run {
   }
 }
 
+####################### Summarize finemapping #########################
+
 task first_pass_finemapping_df {
   input {
     String script_dir
@@ -420,6 +422,7 @@ task first_pass_finemapping_df {
     { echo "chrom" ; cat $CHROMS ; } >> "$CHROMS".headered
     envsetup ~{script} \
       . \
+      df \
       True \
       ~{phenotype_name} \
       ~{snp_assoc_results} \
@@ -437,6 +440,49 @@ task first_pass_finemapping_df {
   }
 }
 
+task first_pass_comparison {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+
+    Array[File] first_pass_dfs
+    Array[File] susie_all_min_abs_corrs
+  }
+
+  output {
+    File stat_statements = "stat_statements.txt"
+    File cs_min_abs_corrs_png = "cs_min_abs_corrs.png"
+    File cs_min_abs_corrs_svg = "cs_min_abs_corrs.svg"
+    File susie_alpha_v_pip_png = "susie_alpha_v_pip.png"
+    File susie_alpha_v_pip_svg = "susie_alpha_v_pip.svg"
+    File susie_alpha_histogram_png = "susie_alpha_histogram.png"
+    File susie_alpha_histogram_svg = "susie_alpha_histogram.svg"
+    File finemap_pip_histogram_png = "finemap_pip_histogram.png"
+    File finemap_pip_histogram_svg = "finemap_pip_histogram.svg"
+    File susie_cs_finemap_total_pips_png = "susie_cs_finemap_total_pips.png"
+    File susie_cs_finemap_total_pips_svg = "susie_cs_finemap_total_pips.svg"
+    File finemap_v_susie_consistency_STR_png = "finemap_v_susie_consistency_STR.png"
+    File finemap_v_susie_consistency_STR_svg = "finemap_v_susie_consistency_STR.svg"
+    File finemap_v_susie_consistency_SNP_png = "finemap_v_susie_consistency_SNP.png"
+    File finemap_v_susie_consistency_SNP_svg = "finemap_v_susie_consistency_SNP.svg"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      first_pass_comparison \
+      . \
+      --first-pass-dfs {sep=" " first_pass_dfs} \
+      --susie-all-min-abs-corrs {sep=" " susie_all_min_abs_corrs} \
+      > stat_statements.txt
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    mem: "50g"
+  }
+}
+
 task generate_followup_regions_tsv {
   input {
     String script_dir
@@ -450,7 +496,7 @@ task generate_followup_regions_tsv {
   }
 
   command <<<
-    envsetup ~{script} . ~{first_pass_df}
+    envsetup ~{script} followup_regions . ~{first_pass_df}
   >>>
 
   runtime {
@@ -460,14 +506,76 @@ task generate_followup_regions_tsv {
   } 
 }
 
-# TODO missing stuff in between
+task followup_finemapping_conditions_df {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
 
+    String phenotype_name
+    File snp_assoc_results
+    File str_assoc_results
+    Array[File] ethnic_str_assoc_results
+
+    Array[FINEMAP_output] original_finemap_outputs
+    Array[SuSiE_output] original_susie_outputs
+
+    Array[FINEMAP_output] total_prob_FINEMAP_outputs
+    Array[FINEMAP_output] dervied_prior_std_FINEMAP_outputs
+    Array[FINEMAP_output] conv_tol_FINEMAP_outputs
+    Array[FINEMAP_output] mac_FINEMAP_outputs
+    Array[FINEMAP_output] threshold_FINEMAP_outputs
+    Array[SuSiE_output] best_guess_susie_outputs
+
+    Array[FINEMAP_output] low_prior_std_finemap_outputs
+    Array[FINEMAP_output] ratio_finemap_outputs
+    Array[SuSiE_output] ratio_susie_outputs
+
+    Array[String] regions
+    Array[Int] chroms
+  }
+
+  output {
+    File df = "finemapping_followup_concordance_~{phenotype_name}.tab"
+  }
+
+  command <<<
+    REGIONS=~{write_lines(regions)}
+    { echo "region" ; cat $REGIONS ; } >> "$REGIONS".headered
+    CHROMS=~{write_lines(chroms)}
+    { echo "chrom" ; cat $CHROMS ; } >> "$CHROMS".headered
+    envsetup ~{script} \
+      . \
+      df \
+      True \
+      ~{phenotype_name} \
+      ~{snp_assoc_results} \
+      ~{str_assoc_results} \
+      ~{sep=" " ethnic_str_assoc_results} \
+      followup 
+      <(paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(total_prob_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(derived_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(conv_tol_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(mac_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(threshold_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(best_guess_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(low_prior_std_finemap_outputs_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(ratio_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(ratio_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: ""
+  }
+}
 task followup_finemapping_conditions_comparison {
   input {
     String script_dir
     File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
 
-    Array[File] all_conditions_tsvs
+    Array[File] followup_conditions_tsvs
   }
 
   output {
@@ -500,7 +608,7 @@ task followup_finemapping_conditions_comparison {
   }
 
   command <<<
-    envsetup ~{script} . . ~{sep=" " all_conditions_tsvs}
+    envsetup ~{script} followup_conditions_comparison . . ~{sep=" " followup_conditions_tsvs}
   >>>
 
   runtime {

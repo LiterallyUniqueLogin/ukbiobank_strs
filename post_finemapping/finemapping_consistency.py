@@ -49,28 +49,6 @@ class SuSiE_output:
     region: str
     chrom: int
 
-def all_regions(phenotype):
-    return zip(*list(pl.read_csv(
-        f'{ukb}/signals/regions/{phenotype}.tab',
-        sep='\t'
-    ).select([
-        (pl.col('chrom').cast(str) + '_' + pl.col('start').cast(str) + '_' + pl.col('end')).alias('region'),
-        pl.col('chrom')
-    ]).distinct().filter(~(
-        (
-            (pl.lit(phenotype) == 'total_bilirubin') &
-            (pl.col('region') == '12_19976272_22524428')
-        ) |
-        (
-            (pl.lit(phenotype) == 'alkaline_phosphatase') &
-            (pl.col('region') == '1_19430673_24309348')
-        ) |
-        (
-            (pl.lit(phenotype) == 'urate') &
-            (pl.col('region') == '4_19976272_22524428')
-        )
-    )).to_dict(False).values()))
-
 def load_susie(susie_outputs, return_corrs = False, only_L = None):
     # results_regions_dir, colnames_regions_dir = None, regions = None, phenotype=None, original=False, return_corrs = False, only_L = None):
     # assert (phenotype is not None) + (regions is not None) == 1
@@ -314,7 +292,7 @@ def mpv_comparison():
         how='outer',
         on=['chrom', 'varname'],
         suffix='_prior_std_derived'
-    ).drop('region_prior_std_dervied').join(
+    ).drop('region_prior_std_derived').join(
         conv_tol_finemaps,
         how='outer',
         on=['chrom', 'varname'],
@@ -645,182 +623,26 @@ def mpv_comparison():
         bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_FINEMAP_consistency_{suffix}.png')
         bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_FINEMAP_consistency_{suffix}.svg')
 
-
-
-
-        '''
-                thresh = .05
-        both_df = cs_STRs.filter(
-            (pl.col(pip_col) >= 1-thresh) &
-            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
-        )
-        n_both = both_df.shape[0]
-        avg_both_other_pip = both_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
-
-        not_rep_df = cs_STRs.filter(
-            (pl.col(pip_col) >= 1-thresh) &
-            (pl.col(f'{pip_col}_{suffix}') <= thresh)
-        )
-        n_not_rep = not_rep_df.shape[0]
-        avg_not_rep_other_pip = not_rep_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
-
-        new_df = cs_STRs.filter(
-            (pl.col(pip_col) <= thresh) &
-            (pl.col(f'{pip_col}_{suffix}') >= 1-thresh)
-        )
-        n_new = new_df.shape[0]
-        avg_new_other_pip = new_df.select(pl.col(other_pip_col).mean())[other_pip_col].to_numpy()[0]
-
-        fig = bokeh.plotting.figure(
-            width=1200,
-            height=1200,
-            y_axis_label = f'PIP under {y_label}',
-            x_axis_label = 'original PIP',
-            x_range=[0,1],
-            y_range=[0,1],
-            title=f'{mapper} metaparameter comparison'
-        )
-        fig.title.text_font_size = '30px'
-        fig.axis.axis_label_text_font_size = '26px'
-        fig.axis.major_label_text_font_size = '20px'
-
-        palette = [
-            linear_int_interpolate((111,107,237), (219,46,40), i/254) for i in range(-1, 255)
-        ]
-        color_mapper = bokeh.models.LinearColorMapper(
-            palette = palette,
-            low=0,
-            high=1
-        )
-        fig.circle(
-            cs_STRs[pip_col].to_numpy(),
-            cs_STRs[f'{pip_col}_{suffix}'].to_numpy(),
-            size = -np.log10(cs_STRs['p_val'].to_numpy())/7.5,
-            alpha = 0.25,
-            color=[palette[int(step)] for step in cs_STRs[other_pip_col].to_numpy()*255]
-        )
-
-        xs = np.arange(0, 1, 0.0001)
-        fig.line(
-            xs,
-            xs,
-            line_dash='dashed'
-        )
-        fig.quad(
-            left=[1-thresh],
-            right=[1],
-            bottom=[1-thresh],
-            top=[1],
-            color='orange',
-            alpha=0.25
-        )
-        fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
-            text_font_size='18px'
-        ), 'above')
-        fig.quad(
-            left=[1-thresh],
-            right=[1],
-            bottom=[0],
-            top=[thresh],
-            color='orange',
-            alpha=0.25
-        )
-        fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
-            text_font_size='18px'
-        ), 'right')
-
-        fig.quad(
-            left=[0],
-            right=[thresh],
-            bottom=[1-thresh],
-            top=[1],
-            color='orange',
-            alpha=0.25
-        )
-        fig.add_layout(bokeh.models.Title(
-            text=f'# STRs: {n_new}, avg {other_label}: {avg_new_other_pip:.2}', align='left',
-            text_font_size='18px'
-        ), 'above')
-
-        color_bar = bokeh.models.ColorBar(
-            color_mapper = color_mapper,
-            width=70,
-            title_text_font_size = '26px',
-            title=other_label,
-            major_label_text_font_size = '20px'
-        )
-        fig.add_layout(color_bar, 'right')
-
-        fig.toolbar_location = None
-        fig.background_fill_color = None
-        fig.border_fill_color = None
-        fig.grid.grid_line_color=None
-        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_{mapper.lower()}_consistency_{suffix}.png')
-        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_{mapper.lower()}_consistency_{suffix}.svg')
-        '''
-
-def get_putatively_causal_regions(phenotype):
-    causal_df = pl.scan_csv(
-        f'{ukb}/post_finemapping/results/validated/putatively_causal_STRs.tab',
-        sep='\t'
-    ).filter(
-        pl.col('phenotype') == phenotype
-    )
-    '''
-    pheno_summaries = []
-    for phenotype in phenotypes.phenotypes_in_use:
-    '''
-    pheno_summary = pl.scan_csv(
-        f'{ukb}/finemapping/summary/{phenotype}_table.tab',
-        sep='\t'
-    ).with_column(
-        pl.lit(phenotype).alias('phenotype')
-    ).select([
-        'phenotype', 'chrom', 'start_pos', 'signal_region'
-    ])
-    '''
-        pheno_summaries.append(pheno_summary)
-    causal_df = causal_df.join(
-        pl.concat(pheno_summaries),
-    '''
-    causal_df = causal_df.join(
-        pheno_summary,
-        how='left',
-        on=['phenotype', 'chrom', 'start_pos']
-    ).select([
-        'phenotype', 'signal_region', 'chrom'
-    ]).distinct().filter(~(
-        (
-            (pl.col('phenotype') == 'total_bilirubin') &
-            (pl.col('signal_region') == '12_19976272_22524428')
-        ) |
-        (
-            (pl.col('phenotype') == 'mean_platelet_volume') &
-            (pl.col('signal_region') == '17_2341352_2710113')
-        ) |
-        (
-            (pl.col('phenotype') == 'alkaline_phosphatase') &
-            (pl.col('signal_region') == '1_19430673_24309348')
-        )
-    )).select([
-        'signal_region', 'chrom'
-    ]).collect().to_dict(False)
-
-    #phenos, regions, chroms = [
-    regions, chroms = [
-        causal_df[col] for col in ('signal_region', 'chrom') #('phenotype', 'signal_region', 'chrom')
-    ]
-    #return list(zip(phenos, regions, chroms))
-    return list(zip(regions, chroms))
-
-def followup_finemapping_conditions_df(phenotype, should_assert, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames):
-    regions = get_putatively_causal_regions(phenotype)
-    if len(regions) == 0:
-        pathlib.Path(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab').touch()
-        pathlib.Path(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty').touch()
-        return
+# outdir used to be {ukb}/post_finemapping/intermediate_results
+def followup_finemapping_conditions_df(
+    outdir,
+    should_assert,
+    phenotype,
+    snp_gwas_fname,
+    str_gwas_fname,
+    ethnic_str_gwas_fnames,
+    original_FINEMAP_outputs,
+    original_SuSiE_outputs,
+    total_prob_FINEMAP_outputs,
+    derived_prior_std_FINEMAP_outputs,
+    conv_tol_FINEMAP_outputs,
+    mac_FINEMAP_outputs,
+    threshold_FINEMAP_outputs,
+    best_guess_SuSiE_outputs,
+    low_prior_std_FINEMAP_outputs,
+    ratio_FINEMAP_outputs,
+    ratio_SuSiE_outputs
+):
 
     str_assocs = pl.scan_csv(
         str_gwas_fname,
@@ -867,32 +689,36 @@ def followup_finemapping_conditions_df(phenotype, should_assert, snp_gwas_fname,
     assocs = pl.concat([snp_assocs, str_assocs])
 
     print('original SuSiE')
-    original_susies = load_susie(f'{ukb}/finemapping/susie_results/{phenotype}', regions=regions)
+    original_susies = load_susie([
+        original_SuSiE_output
+        for original_SuSiE_output in original_SuSiE_outputs
+        if any([original_SuSiE_output.region == mac_FINEMAP_output.region for mac_FINEMAP_output in mac_FINEMAP_outputs])
+    ])
     print('best guess SuSiE')
-    best_guess_susies = load_susie(f'{ukb}/finemapping/susie_hardcall_results/{phenotype}', regions=regions)
+    best_guess_susies = load_susie(best_guess_SuSiE_outputs)
     print('ratio SuSiE')
-    ratio_susies = load_susie(
-        f'{ukb}/finemapping/susie_results/{phenotype}_snp_str_ratio_4',
-        colnames_regions_dir=f'{ukb}/finemapping/susie_results/{phenotype}',
-        regions=regions
-    )
+    ratio_susies = load_susie(ratio_SuSiE_outputs)
 
     print('original FINEMAP')
-    original_finemaps          = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}', regions=regions)
+    original_finemaps          = load_finemap([
+        original_FINEMAP_output
+        for original_FINEMAP_output in original_FINEMAP_outputs
+        if any([original_FINEMAP_output.region == mac_FINEMAP_output.region for mac_FINEMAP_output in mac_FINEMAP_outputs])
+    ])
     print('ratio FINEMAP')
-    ratio_finemaps             = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.snp_str_ratio_4', regions=regions)
+    ratio_finemaps             = load_finemap(ratio_FINEMAP_outputs)
     print('total prob FINEMAP')
-    total_prob_finemaps        = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.total_prob_4', regions=regions)
+    total_prob_finemaps        = load_finemap(total_prob_FINEMAP_outputs)
     print('prior std FINEMAP derived')
-    prior_std_derived_finemaps = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.prior_std_0.0224', regions=regions)
+    prior_std_derived_finemaps = load_finemap(derived_prior_std_FINEMAP_outputs)
     print('prior std FINEMAP low')
-    prior_std_low_finemaps     = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.prior_std_0.005', regions=regions)
+    prior_std_low_finemaps     = load_finemap(low_prior_std_FINEMAP_outputs)
     print('conv tol FINEMAP')
-    conv_tol_finemaps          = load_finemap(f'{ukb}/finemapping/finemap_results/{phenotype}.prob_conv_sss_tol_0.0001', regions=regions)
+    conv_tol_finemaps          = load_finemap(conv_tol_FINEMAP_outputs)
     print('mac FINEMAP')
-    mac_finemaps               = load_finemap(f'{ukb}/finemapping/finemap_results_mac_100/{phenotype}', regions=regions)
+    mac_finemaps               = load_finemap(mac_FINEMAP_outputs)
     print('p threshold FINEMAP')
-    p_threshold_finemaps      = load_finemap(f'{ukb}/finemapping/finemap_results_threshold_0.0005/{phenotype}', regions=regions)
+    p_threshold_finemaps      = load_finemap(threshold_FINEMAP_outputs)
 
     print('Collecting ... ', end='', flush=True)
     start = time.time()
@@ -986,7 +812,7 @@ def followup_finemapping_conditions_df(phenotype, should_assert, snp_gwas_fname,
         'finemap_pip_p_thresh',
         *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
     ])
-    pheno_df.write_csv(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab', sep='\t')
+    pheno_df.write_csv(f'{outdir}/finemapping_followup_concordance_{phenotype}.tab', sep='\t')
     if should_assert:
         assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
         assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
@@ -1072,7 +898,6 @@ def plot_upset_plots(total_df):
 # all_finemapping_conditions_tsvs was f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab'
 def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followup_finemapping_conditions_tsvs):
     print('loading pre-generated dfs ...', end='', flush=True)
-    # was 
     cols = pl.read_csv(
         followup_finemapping_conditions_tsvs[0],
         sep='\t',
@@ -1084,7 +909,6 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
             sep='\t',
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
         ) for phenotype in phenotypes.phenotypes_in_use
-        # if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
     ]).rename({'susie_cs_hardcall' : 'susie_cs_best_guess', 'susie_alpha_hardcall': 'susie_alpha_best_guess', 'susie_pip_hardcall': 'susie_pip_best_guess'})
     print(' done', flush=True)
 
@@ -2075,6 +1899,39 @@ if __name__ == '__main__':
         )
     first_pass_df_parser.set_defaults(func=exec_first_pass_df)
 
+    followup_df_parser.add_argument('original_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('original_SuSiE_outputs_tsv')
+    followup_df_parser.add_argument('total_prob_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('derived_prior_std_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('conv_tol_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('mac_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('threshold_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('best_guess_SuSiE_outputs_tsv')
+    followup_df_parser.add_argument('low_prior_std_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('ratio_FINEMAP_outputs_tsv')
+    followup_df_parser.add_argument('ratio_SuSiE_outputs_tsv')
+    def exec_followup_df(args):
+        followup_finemapping_conditions_df(
+            args.outdir,
+            args.should_assert,
+            args.phenotype_name,
+            args.snp_gwas_results,
+            args.str_gwas_results,
+            args.ethnic_str_gwas_results,
+            tsv_to_finemap_outputs(args.original_FINEMAP_outputs_tsv),
+            tsv_to_susie_outputs(args.original_SuSiE_outputs_tsv),
+            tsv_to_finemap_outputs(args.total_prob_FINEMAP_outputs_tsv),
+            tsv_to_finemap_outputs(args.derived_prior_std_FINEMAP_outputs_tsv),
+            tsv_to_finemap_outputs(args.conv_tol_FINEMAP_outputs_tsv),
+            tsv_to_finemap_outputs(args.mac_FINEMAP_outputs_tsv),
+            tsv_to_finemap_outputs(args.threshold_FINEMAP_outputs_tsv),
+            tsv_to_susie_outputs(args.best_guess_SuSiE_outputs_tsv),
+            tsv_to_finemap_outputs(args.low_prior_std_FINEMAP_outputs_tsv),
+            tsv_to_finemap_outputs(args.ratio_FINEMAP_outputs_tsv),
+            tsv_to_susie_outputs(args.ratio_SuSiE_outputs_tsv)
+        )
+    followup_df_parser.set_defaults(func=exec_followup_df)
+
     followup_regions_parser = subparsers.add_parser('followup_regions')
     followup_regions_parser.add_argument('first_pass_df')
     def exec_followup_regions(args):
@@ -2082,43 +1939,17 @@ if __name__ == '__main__':
     followup_regions_parser.set_defaults(func=exec_followup_regions)
 
     first_pass_comparison_parser = subparsers.add_parser('first_pass_comparison')
-    first_pass_comparison_parser.add_argument('--first_pass_dfs', nargs='+')
-    first_pass_comparison_parser.add_argument('--susie_all_min_abs_corrs', nargs='+')
+    first_pass_comparison_parser.add_argument('--first-pass-dfs', nargs='+')
+    first_pass_comparison_parser.add_argument('--susie-all-min-abs-corrs', nargs='+')
     def exec_first_passs_comparison(args):
-        first_pass_comparison(argsoutdir, args.first_pass_dfs, args.susie_all_min_abs_corrs)
+        first_pass_comparison(args.outdir, args.first_pass_dfs, args.susie_all_min_abs_corrs)
     first_pass_comparison_parser.set_defaults(func=exec_first_passs_comparison)
 
     followup_comparison_parser = subparsers.add_parser('followup_conditions_comparison')
     followup_comparison_parser.add_argument('intermediate_outdir')
     followup_comparison_parser.add_argument('followup_conditions_tsvs', nargs='+')
-    def execute_followup_comparison(args):
+    def exec_followup_comparison(args):
         followup_finemapping_conditions_comparison(args.outdir, args.intermediate_outdir, args.followup_conditions_tsvs)
-    followup_comparison_parser.set_defaults(func=execute_followup_comparison)
-        
-    parser.add_argument('--putatively-causal-hits', action='store_true', default=False)
-    parser.add_argument('--mpv', action='store_true', default=False)
-    parser.add_argument('--first-pass', action='store_true', default=False)
-    parser.add_argument('--regenerate', action='store_true', default=False)
-    parser.add_argument('--phenotype')
-    parser.add_argument('--no-assert', action='store_true', default=False)
-    args = parser.parse_args()
-    assert args.putatively_causal_hits + args.mpv + args.first_pass == 1
+    followup_comparison_parser.set_defaults(func=exec_followup_comparison)
 
-    if not args.regenerate:
-        assert not args.no_assert
-
-    assert args.regenerate == (args.phenotype is not None)
-
-    if args.mpv:
-        mpv_comparison()
-    elif args.first_pass:
-        if args.regenerate:
-            first_pass_df(args.phenotype, not args.no_assert)
-        else:
-            first_pass_comparison()
-    else:
-        assert args.putatively_causal_hits
-        if args.regenerate:
-            followup_finemapping_conditions_df(args.phenotype, not args.no_assert)
-        #else:
-        #    followup_finemapping_conditions_comparison()
+    parser.parse_args()

@@ -75,14 +75,5 @@ workflow susie_one_region {
 
   output {
     SuSiE_output susie_output = escalating_susie_run.susie_output
-#    File susie_lbf = escalating_susie_run.lbf
-#    File susie_lbf_variable = escalating_susie_run.lbf_variable
-#    File susie_sigma2 = escalating_susie_run.sigma2
-#    File susie_V = escalating_susie_run.V
-#    File susie_converged = escalating_susie_run.converged
-#    File susie_lfsr = escalating_susie_run.lfsr
-#    File susie_requested_coverage = escalating_susie_run.requested_coverage
-#    File susie_alpha = escalating_susie_run.alpha
-#    Array[File] susie_CSs = escalating_susie_run.CSs
   }
 }

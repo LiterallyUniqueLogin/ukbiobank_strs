@@ -91,9 +91,5 @@ workflow finemap_one_region {
 
   output {
     FINEMAP_output finemap_output = finemap_run.finemap_output
-#    File finemap_snp_file = finemap_run.snp_file
-#    File finemap_log_sss = finemap_run.log_sss
-#    File finemap_config = finemap_run.config
-#    File finemap_creds = finemap_run.creds
   }
 }
