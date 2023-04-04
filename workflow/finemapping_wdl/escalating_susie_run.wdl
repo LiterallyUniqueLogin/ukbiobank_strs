@@ -64,6 +64,12 @@ workflow escalating_susie_run {
     
     File gts_h5
     File pheno_residuals_h5
+
+    Float? tol
+    Float? snp_p_over_str_p
+    File? varnames_file
+    Float? res_var
+    Float? prior_var
   }
 
   call retryable_susie_run.retryable_susie_run as try_zero { input :
@@ -71,7 +77,12 @@ workflow escalating_susie_run {
     gts_h5 = gts_h5,
     pheno_residuals_h5 = pheno_residuals_h5,
     L = 10,
-    max_iter = 100
+    max_iter = 100,
+    tol = tol,
+    snp_p_over_str_p = snp_p_over_str_p,
+    res_var = res_var,
+    prior_var = prior_var,
+    varnames_file = varnames_file,
   }
 
   call should_escalate_susie_run as escalate_zero { input :
@@ -86,7 +97,12 @@ workflow escalating_susie_run {
       gts_h5 = gts_h5,
       pheno_residuals_h5 = pheno_residuals_h5,
       L = 30,
-      max_iter = 500
+      max_iter = 500,
+      tol = tol,
+      snp_p_over_str_p = snp_p_over_str_p,
+      res_var = res_var,
+      prior_var = prior_var,
+      varnames_file = varnames_file,
     }
   
     call should_escalate_susie_run as escalate_one { input :
@@ -101,8 +117,13 @@ workflow escalating_susie_run {
         gts_h5 = gts_h5,
         pheno_residuals_h5 = pheno_residuals_h5,
         L = 50,
-        max_iter = 500
-      }
+        max_iter = 500,
+        tol = tol,
+        snp_p_over_str_p = snp_p_over_str_p,
+        res_var = res_var,
+        prior_var = prior_var,
+        varnames_file = varnames_file,
+     }
   
       call should_escalate_susie_run { input :
         converged = try_two.susie_output.converged,

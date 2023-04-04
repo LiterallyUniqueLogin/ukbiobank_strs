@@ -16,7 +16,7 @@ workflow retryable_susie_load_gts {
     File colnames
     String phenotype_name
     region bounds
-    Boolean hardcalls = false
+    Boolean best_guess = false
   }
 
   call finemapping_tasks.susie_load_gts as try_zero { input :
@@ -32,7 +32,7 @@ workflow retryable_susie_load_gts {
     colnames = colnames,
     phenotype_name = phenotype_name,
     bounds = bounds,
-    hardcalls = hardcalls
+    best_guess = best_guess 
   }
 
 #  if (!defined(try_zero.gts_h5)) {

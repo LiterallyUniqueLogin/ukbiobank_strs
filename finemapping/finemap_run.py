@@ -8,10 +8,6 @@ import time
 
 import h5py
 
-import python_file_utils as file_utils
-
-ukb = os.environ['UKB']
-
 def run_finemap(outdir, finemap_command, *, prob_conv_sss_tol, prior_std, prior_snps):
     with open(f'{outdir}/finemap_input.z') as input_vars:
         n_vars = len(input_vars.readlines()) - 1
@@ -53,7 +49,7 @@ def main():
 
     run_finemap(
         args.outdir,
-        args.finemap_command
+        args.finemap_command,
         prob_conv_sss_tol=args.prob_conv_sss_tol,
         prior_std=args.prior_std,
         prior_snps=args.prior_snps

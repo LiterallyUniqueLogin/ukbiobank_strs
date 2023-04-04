@@ -67,7 +67,7 @@ def load_strs(vcf_fname: str,
               samples: np.ndarray,
               details: bool = True,
               var_subset: Optional[Set[int]] = None,
-              hardcalls = False,
+              best_guesses = False,
               both_poses = False):
     """
     Iterate over a region returning genotypes at STR loci.
@@ -93,7 +93,7 @@ def load_strs(vcf_fname: str,
 
         None if locus_filtered is not None
     
-        If hardcalls, then instead of that just an array nx2 of length alleles
+        If best_guesses, then instead of that just an array nx2 of length alleles
     unique_alleles: np.ndarray
         Array of unique length alleles (measured in number of repeats),
         same length as the dosages dict
@@ -106,21 +106,21 @@ def load_strs(vcf_fname: str,
         'MAC<20' if the minor allele dosage is less than 20
         after sample subsetting, per plink's standard.
 
-        None if hardcalls.
+        None if best_guesses.
     locus_details:
         tuple of strings with the same length as the first yield
         with the corresponding order.
 
-        None if hardcalls.
+        None if best_guesses.
         
 
     Notes
     -----
-    Hardcalls mentioned in the locus details are phased hardcalls, and in some
+    Hardcalls mentioned in the locus details are phased best_guesses, and in some
     corner cases will not correspond to the maximum likelihood unphased allele.
     """
 
-    if hardcalls:
+    if best_guesses:
         assert var_subset is not None and not details
 
     chrom, region_poses = region.split(':')
@@ -166,7 +166,7 @@ def load_strs(vcf_fname: str,
         len_alleles = [trrecord.ref_allele_length] + trrecord.alt_allele_lengths
         len_alleles = [round(allele_len, allele_len_precision) for allele_len in len_alleles]
 
-        if hardcalls:
+        if best_guesses:
             yield (trrecord.GetLengthGenotypes()[samples, :-1], np.unique(len_alleles), trrecord.chrom, ret_pos, None, None)
             continue
 
@@ -221,13 +221,13 @@ def load_strs(vcf_fname: str,
             # appendix 1
             subset_allele_dosage_r2 = {}
 
-            subset_hardcalls = np.around(trrecord.GetLengthGenotypes()[samples, :-1], allele_len_precision)
+            subset_best_guesses = np.around(trrecord.GetLengthGenotypes()[samples, :-1], allele_len_precision)
             for length in len_alleles:
                 # calculate allele dosage r**2 for this length
                 if length in subset_allele_dosage_r2:
                     continue
 
-                calls = subset_hardcalls == length
+                calls = subset_best_guesses == length
 
                 subset_allele_dosage_r2[length] = np.corrcoef(
                     calls.reshape(-1), subset_allele_probs[length].reshape(-1)
@@ -282,7 +282,7 @@ def load_imputed_snps(bgen_fname: str,
                       apply_filter: bool = True,
                       details: bool = True,
                       var_subset: Optional[Set[Tuple[int, str, str]]] = None,
-                      hardcalls=False): # pos, ref, alt
+                      best_guesses=False): # pos, ref, alt
     """
     Iterate over a region returning genotypes at SNP loci.
 
@@ -313,7 +313,7 @@ def load_imputed_snps(bgen_fname: str,
 
         None if locus_filtered is not None
 
-        If hardcalls, then instead of that just an array nx2 of length alleles
+        If best_guesses, then instead of that just an array nx2 of length alleles
     unique_alleles: np.ndarray
         Array of unique length alleles, same length as the dosages dict
     chrom: str
@@ -329,12 +329,12 @@ def load_imputed_snps(bgen_fname: str,
         'info<{thresh}' if an info thresh
         is set and this locus is under that
 
-        None if hardcalls
+        None if best_guesses
     locus_details:
         tuple of strings with the same length as the first yield
         with the corresponding order.
 
-        None if hardcalls
+        None if best_guesses
 
     Notes
     -----
@@ -348,30 +348,26 @@ def load_imputed_snps(bgen_fname: str,
     """
     assert (not apply_filter) or info_thresh is None
 
-    if hardcalls:
+    if best_guesses:
         assert var_subset is not None and not details
 
     chrom, posses = region.split(':')
     start, end = tuple(int(val) for val in posses.split('-'))
-    print('opening bgen', flush=True)
     bgen = bgen_reader.open_bgen(bgen_fname,
-                                 #verbose=False,
+                                 verbose=False,
                                  allow_complex=True)
-    print('done opening bgen', flush=True)
 
     if details:
         yield (
             'info',
             "total_per_allele_dosages",
-            'total_hardcalls',
+            'total_best_guesses',
             'subset_total_per_allele_dosages',
-            'subset_total_hardcalls',
+            'subset_total_best_guesses',
             'subset_HWEP'
         )
 
-    print('finding start num', flush=True)
     start_num = np.searchsorted(bgen.positions, start)
-    print('found start num', flush=True)
 
     try:
         if mfi_fname:
@@ -385,7 +381,6 @@ def load_imputed_snps(bgen_fname: str,
                 except StopIteration:
                     return
         
-            print('pos', pos, flush=True)
             if pos < start:
                 continue
             if pos > end:
@@ -393,10 +388,9 @@ def load_imputed_snps(bgen_fname: str,
 
             alleles = np.array(bgen.allele_ids[variant_num].split(','))
             if var_subset is not None and (pos, alleles[0], alleles[1]) not in var_subset:
-                print((pos, alleles[0], alleles[1]), flush=True)
                 continue
 
-            if hardcalls:
+            if best_guesses:
                 probs, missing, ploidy = bgen.read(
                     variant_num,
                     return_missings=True,
@@ -447,21 +441,21 @@ def load_imputed_snps(bgen_fname: str,
                 total_alt_dosage = np.sum(dosages)
                 total_ref_dosage = 2*dosages.shape[0] - total_alt_dosage
 
-                hardcalls = probs.argmax(axis=1)
-                n_hom_ref = np.sum(hardcalls == 0)
-                n_het = np.sum(hardcalls == 1)
-                n_hom_alt = np.sum(hardcalls == 2)
+                best_guesses = probs.argmax(axis=1)
+                n_hom_ref = np.sum(best_guesses == 0)
+                n_het = np.sum(best_guesses == 1)
+                n_hom_alt = np.sum(best_guesses == 2)
 
-                subset_hardcalls = hardcalls[samples]
-                subset_n_hom_ref = np.sum(subset_hardcalls == 0)
-                subset_n_het = np.sum(subset_hardcalls == 1)
-                subset_n_hom_alt = np.sum(subset_hardcalls == 2)
+                subset_best_guesses = best_guesses[samples]
+                subset_n_hom_ref = np.sum(subset_best_guesses == 0)
+                subset_n_het = np.sum(subset_best_guesses == 1)
+                subset_n_hom_alt = np.sum(subset_best_guesses == 2)
 
                 subset_n_ref_alleles = 2*subset_n_hom_ref + subset_n_het
-                subset_frac_ref_alleles = (subset_n_ref_alleles)/(2*subset_hardcalls.shape[0])
+                subset_frac_ref_alleles = (subset_n_ref_alleles)/(2*subset_best_guesses.shape[0])
                 subset_exp_hom_frac = subset_frac_ref_alleles**2 + (1-subset_frac_ref_alleles)**2
                 subset_hwep = scipy.stats.binom_test(subset_n_hom_ref + subset_n_hom_alt,
-                                                     n=subset_hardcalls.shape[0],
+                                                     n=subset_best_guesses.shape[0],
                                                      p=subset_exp_hom_frac)
 
                 locus_details = (

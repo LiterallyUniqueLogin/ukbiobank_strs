@@ -2,7 +2,6 @@
 
 version 1.0
 
-import "gwas_tasks.wdl"
 import "finemapping_tasks.wdl"
 import "retryable_susie_load_gts.wdl"
 import "escalating_susie_run.wdl"
@@ -28,6 +27,12 @@ workflow susie_one_region {
     region bounds
 
     File all_samples_list
+
+    Float? tol
+    Float? snp_p_over_str_p
+    Float? res_var
+    Float? prior_var
+    Boolean best_guess = false
   }
 
   # call SuSiE 
@@ -38,7 +43,7 @@ workflow susie_one_region {
     snp_assoc_results = plink_snp_gwas,
     variants_to_filter = snp_vars_to_filter_from_finemapping[chrom_minus_one],
     phenotype_name = phenotype_name,
-    bounds = bounds
+    bounds = bounds,
   }
 
   call retryable_susie_load_gts.retryable_susie_load_gts { input :
@@ -52,12 +57,18 @@ workflow susie_one_region {
     colnames = susie_choose_vars.colnames,
     phenotype_name = phenotype_name,
     bounds = bounds,
+    buest_guess = best_guess
   }
 
   call escalating_susie_run.escalating_susie_run { input :
     script_dir = script_dir,
     gts_h5 = retryable_susie_load_gts.gts_h5,
     pheno_residuals_h5 = retryable_susie_load_gts.pheno_residuals_h5,
+    varnames_file = susie_choose_vars.colnames,
+    tol = tol,
+    snp_p_over_str_p = snp_p_over_str_p,
+    res_var = res_var,
+    prior_var = prior_var
   }
 
   output {

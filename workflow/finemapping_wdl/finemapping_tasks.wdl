@@ -172,7 +172,7 @@ task finemap_calc_corrs {
 task finemap_write_corrs {
   input {
     String script_dir
-    File script = "~{script_dir}/finemap_write_corrs.py"
+    File script = "~{script_dir}/finemapping/finemap_write_corrs.py"
 
     File lds_h5
     String time
@@ -199,7 +199,7 @@ task finemap_write_corrs {
 task finemap_run {
   input {
     String script_dir
-    File script = "~{script_dir}/finemap_run.py"
+    File script = "~{script_dir}/finemapping/finemap_run.py"
     String finemap_command
 
     File master
@@ -212,11 +212,11 @@ task finemap_run {
   }
 
   output {
-    FINEMAP_output finemap_output = {
-      "snp_file": "finemap_output.snp",
-      "log_sss": "finemap_output.log_sss",
-      "config": "finemap_output.config",
-      "creds": glob("finemap_output.cred*")
+    FINEMAP_output finemap_output = object {
+      snp_file: "finemap_output.snp",
+      log_sss: "finemap_output.log_sss",
+      config: "finemap_output.config",
+      creds: glob("finemap_output.cred*")
     }
   }
 
@@ -296,7 +296,7 @@ task susie_load_gts {
     File colnames # from prev finemapping step
     String phenotype_name
     region bounds
-    Boolean hardcalls = false
+    Boolean best_guess = false
 
     String time
   }
@@ -326,7 +326,7 @@ task susie_load_gts {
       --pheno-fname ~{pheno_data} \
       --shared-covars-fname ~{shared_covars} \
       --pheno-out pheno_residual.h5 \
-      ~{if hardcalls then "--hardcalls" else ""}
+      ~{if best_guess then "--best-guess" else ""}
     exit 0 # ignore the previous return code
   >>>
 
@@ -344,25 +344,30 @@ task susie_run {
 
     File gts_h5
     File pheno_residuals_h5
-    #TODO
     Int L
     Int max_iter
+
+    Float? tol
+    Float? snp_p_over_str_p
+    File? varnames_file
+    Float? res_var
+    Float? prior_var
 
     String mem
     String time
   }
 
   output {
-    SuSiE_output? susie_output = {
-      "lbf": "lbf.tab",
-      "lbf_variable": "lbf_variable.tab",
-      "sigma2": "sigma2.txt",
-      "V": "V.tab",
-      "converged": "converged.txt",
-      "lfsr": "lfsr.tab",
-      "requested_coverage": "requested_coverage.txt",
-      "alpha": "alpha.tab",
-      "CSs": glob("cs*.txt")
+    SuSiE_output? susie_output = object {
+      lbf: "lbf.tab",
+      lbf_variable: "lbf_variable.tab",
+      sigma2: "sigma2.txt",
+      V: "V.tab",
+      converged: "converged.txt",
+      lfsr: "lfsr.tab",
+      requested_coverage: "requested_coverage.txt",
+      alpha: "alpha.tab",
+      CSs: glob("cs*.txt")
     }
   }
 
@@ -372,7 +377,11 @@ task susie_run {
       ~{pheno_residuals_h5} \
       ~{gts_h5} \
       ~{L} \
-      ~{max_iter}
+      ~{max_iter} \
+      ~{"--tol " + tol} \
+      ~{"--snp-p-over-str-p " + snp_p_over_str_p + " --varnames-file " + varnames_file} \
+      ~{"--residual-variance " + res_var} \
+      ~{"--scaled-prior-variance " + prior_var}
     exit 0 # ignore the previous return code
   >>>
 
@@ -394,7 +403,9 @@ task first_pass_finemapping_df {
     Array[File] ethnic_str_assoc_results
 
     Array[FINEMAP_output] original_finemap_outputs
-    Array[SuSIE_output] original_susie_outputs
+    Array[SuSiE_output] original_susie_outputs
+    Array[String] regions
+    Array[Int] chroms
   }
 
   output {

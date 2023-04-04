@@ -11,6 +11,12 @@ workflow retryable_susie_run {
     File pheno_residuals_h5
     Int L
     Int max_iter
+
+    Float? tol
+    Float? snp_p_over_str_p
+    File? varnames_file
+    Float? res_var
+    Float? prior_var
   }
 
   call finemapping_tasks.susie_run as try_zero { input :
@@ -20,7 +26,12 @@ workflow retryable_susie_run {
     gts_h5 = gts_h5,
     pheno_residuals_h5 = pheno_residuals_h5,
     L = L,
-    max_iter = max_iter
+    max_iter = max_iter,
+    tol = tol,
+    snp_p_over_str_p = snp_p_over_str_p,
+    res_var = res_var,
+    prior_var = prior_var,
+    varnames_file = varnames_file,
   }
 
   #if (!defined(try_zero.alpha)) {
@@ -32,7 +43,12 @@ workflow retryable_susie_run {
       gts_h5 = gts_h5,
       pheno_residuals_h5 = pheno_residuals_h5,
       L = L,
-      max_iter = max_iter
+      max_iter = max_iter,
+      tol = tol,
+      snp_p_over_str_p = snp_p_over_str_p,
+      res_var = res_var,
+      prior_var = prior_var,
+      varnames_file = varnames_file,
     }
 
     #if (!defined(try_one.alpha)) {
@@ -44,7 +60,12 @@ workflow retryable_susie_run {
         gts_h5 = gts_h5,
         pheno_residuals_h5 = pheno_residuals_h5,
         L = L,
-        max_iter = max_iter
+        max_iter = max_iter,
+        tol = tol,
+        snp_p_over_str_p = snp_p_over_str_p,
+        res_var = res_var,
+        prior_var = prior_var,
+        varnames_file = varnames_file,
       }
     
       #if (!defined(try_two.alpha)) {
@@ -56,7 +77,12 @@ workflow retryable_susie_run {
           gts_h5 = gts_h5,
           pheno_residuals_h5 = pheno_residuals_h5,
           L = L,
-          max_iter = max_iter
+          max_iter = max_iter,
+          tol = tol,
+          snp_p_over_str_p = snp_p_over_str_p,
+          res_var = res_var,
+          prior_var = prior_var,
+          varnames_file = varnames_file,
         }
       }
     }

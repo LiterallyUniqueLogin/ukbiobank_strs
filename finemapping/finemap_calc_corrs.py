@@ -45,7 +45,7 @@ def main():
     parser.add_argument('gts')
     args = parser.parse_args()
 
-    calc_corrs(args.gts)
+    calc_corrs(args.outdir, args.gts)
 
 if __name__ == '__main__':
     main()

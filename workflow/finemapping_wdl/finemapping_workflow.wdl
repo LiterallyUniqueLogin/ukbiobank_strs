@@ -220,7 +220,7 @@ workflow finemapping {
       threshold = 0.0005
     }
 
-    call susie_one_region_workflow.susie_one_region as { input :
+    call susie_one_region_workflow.susie_one_region as susie_best_guess { input :
       script_dir = script_dir,
       str_vcfs = str_vcfs,
       imputed_snp_bgens = imputed_snp_bgens,
@@ -233,7 +233,23 @@ workflow finemapping {
       phenotype_name = phenotype_name,
       bounds = followup_bounds,
       all_samples_list = all_samples_list,
-      sadf
+      best_guess = true,
+    }
+
+    call susie_one_region_workflow.susie_one_region as susie_ratio { input :
+      script_dir = script_dir,
+      str_vcfs = str_vcfs,
+      imputed_snp_bgens = imputed_snp_bgens,
+      snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping,
+      shared_covars = shared_covars,
+			phenotype_samples = phenotype_samples,
+      transformed_phenotype_data = transformed_phenotype_data,
+      my_str_gwas = my_str_gwas,
+      plink_snp_gwas = plink_snp_gwas,
+      phenotype_name = phenotype_name,
+      bounds = followup_bounds,
+      all_samples_list = all_samples_list,
+      ratio = 4
     }
   }
 

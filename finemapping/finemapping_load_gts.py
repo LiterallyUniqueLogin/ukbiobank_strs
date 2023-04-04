@@ -30,17 +30,17 @@ def store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals):
         for count, idx in enumerate(stored_indexes):
             gts_dset[:, idx] = gt_temp[:, count]
 
-def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samples_fname, phenotype_samples_fname, phenotype, chrom, start_pos, end_pos, varname_header, pheno_fname, shared_covars_fname, pheno_out, hardcalls):
+def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samples_fname, phenotype_samples_fname, phenotype, chrom, start_pos, end_pos, varname_header, pheno_fname, shared_covars_fname, pheno_out, best_guesses):
     today = datetime.datetime.now().strftime("%Y_%M_%D")
     with open(readme_fname, 'w') as readme:
         readme.write(f'Run date: {today}\nLoading STR and SNP gts from {varname_fname}.\n')
         if pheno_fname:
             readme.write('Regressing covariates out.\n')
             readme.write('Regressing covariates out of phenotype as well.\n')
-        if not hardcalls:
+        if not best_guesses:
             readme.write('Using dosages.\n')
         else:
-            readme.write('Using hardcalls.\n')
+            readme.write('Using best_guesses.\n')
 
     print('Loading samples (and phenotypes if selected) ... ', flush=True)
     sample_idx = sample_utils.get_samples_idx(all_samples_fname, phenotype_samples_fname)
@@ -126,7 +126,7 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             PACSIN2_count = 0
             PACSIN2_itr = load_PACSIN2.get_gt_itr(sample_idx)
             next(PACSIN2_itr) # skip details
-            for (PACSIN2_dosages_or_hardcalls, _, _, PACSIN2_pos, _, _) in PACSIN2_itr:
+            for (PACSIN2_dosages_or_best_guesses, _, _, PACSIN2_pos, _, _) in PACSIN2_itr:
                 if PACSIN2_pos not in pacsin2_vars:
                     continue
                 PACSIN2_count += 1
@@ -135,10 +135,10 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
                 del var_inclusion[PACSIN2_name]
                 idx = varnames.index(PACSIN2_name)
                 stored_indexes.append(idx)
-                if not hardcalls:
-                    gts = get_str_dosages(PACSIN2_dosages_or_hardcalls)
+                if not best_guesses:
+                    gts = get_str_dosages(PACSIN2_dosages_or_best_guesses)
                 else:
-                    gts = np.sum(PACSIN2_dosages_or_hardcalls, axis=1)
+                    gts = np.sum(PACSIN2_dosages_or_best_guesses, axis=1)
 
                 gt_temp[:, (PACSIN2_count - 1) % n_temp] = gts
 
@@ -161,10 +161,10 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             sample_idx,
             details=False,
             var_subset=strs_to_include,
-            hardcalls=hardcalls,
+            best_guesses=best_guesses,
             both_poses = True
         )
-        for str_count, (str_dosages_or_hardcalls, _, _, (str_start_pos, str_written_pos), str_locus_filtered, _) in enumerate(str_itr):
+        for str_count, (str_dosages_or_best_guesses, _, _, (str_start_pos, str_written_pos), str_locus_filtered, _) in enumerate(str_itr):
             str_count += 1
             print(f'loading STR {str_count}, time/STR: {(time.time() - start)/str_count:.2}s ... ', flush=True)
             done = False
@@ -181,10 +181,10 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
 
             idx = varnames.index(str_name)
             stored_indexes.append(idx)
-            if not hardcalls:
-                gts = get_str_dosages(str_dosages_or_hardcalls)
+            if not best_guesses:
+                gts = get_str_dosages(str_dosages_or_best_guesses)
             else:
-                gts = np.sum(str_dosages_or_hardcalls, axis=1)
+                gts = np.sum(str_dosages_or_best_guesses, axis=1)
 
             gt_temp[:, (str_count - 1) % n_temp] = gts
             if str_count % n_temp == 0:
@@ -219,9 +219,9 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             apply_filter=False,
             details=False,
             var_subset=snps_to_include,
-            hardcalls = hardcalls
+            best_guesses = best_guesses
         )
-        for snp_count, (snp_dosages_or_hardcalls, alleles, _, snp_pos, snp_filtered, _) in enumerate(snp_itr):
+        for snp_count, (snp_dosages_or_best_guesses, alleles, _, snp_pos, snp_filtered, _) in enumerate(snp_itr):
             snp_count += 1
             if snp_count % n_temp == 0:
                 if snp_count > 3:
@@ -236,11 +236,11 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
                 assert False
             idx = varnames.index(snp_name)
             stored_indexes.append(idx)
-            if not hardcalls:
-                dosages = snp_dosages_or_hardcalls[:, 1] + 2*snp_dosages_or_hardcalls[:, 2]
+            if not best_guesses:
+                dosages = snp_dosages_or_best_guesses[:, 1] + 2*snp_dosages_or_best_guesses[:, 2]
                 gt_temp[:, (snp_count - 1) % n_temp] = dosages
             else:
-                gt_temp[:, (snp_count - 1) % n_temp] = snp_dosages_or_hardcalls
+                gt_temp[:, (snp_count - 1) % n_temp] = snp_dosages_or_best_guesses
             assert not var_inclusion[snp_name]
             var_inclusion[snp_name] = True
             if snp_count % n_temp == 0:
@@ -279,7 +279,7 @@ if __name__ == '__main__':
     parser.add_argument('--pheno-fname')
     parser.add_argument('--shared-covars-fname')
     parser.add_argument('--pheno-out', help='where to save the pheno residuals')
-    parser.add_argument('--hardcalls', action='store_true')
+    parser.add_argument('--best_guesses', action='store_true')
     args = parser.parse_args()
 
     assert bool(args.pheno_fname) == bool(args.shared_covars_fname) == bool(args.pheno_out)
@@ -308,7 +308,7 @@ if __name__ == '__main__':
             args.pheno_fname,
             args.shared_covars_fname,
             pheno_out,
-            args.hardcalls
+            args.best_guesses
         )
         shutil.move(readme, args.readme)
         shutil.move(gts_file, args.gts_file)

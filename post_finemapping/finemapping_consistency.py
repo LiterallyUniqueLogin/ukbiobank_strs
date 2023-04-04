@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import dataclass
-import glob
+import dataclasses
 import os
 import os.path
 import pathlib
@@ -32,7 +31,7 @@ other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 corr_cutoff = .8
 p_val_thresh = 5e-8
 
-@dataclass.dataclass
+@dataclasses.dataclass
 class FINEMAP_output:
     snp_file: str
     log_sss: str
@@ -40,7 +39,7 @@ class FINEMAP_output:
     region: str
     chrom: int
 
-@dataclass.dataclass
+@dataclasses.dataclass
 class SuSiE_output:
     converged: str
     colnames: str
@@ -1462,21 +1461,24 @@ def generate_followup_regions_tsv(outdir, first_pass_dfs):
         )
     )).groupby(['phenotype', 'chrom', 'region']).agg([]).write(f'{outdir}/followup_regions.tsv')
 
-def first_pass_comparison():
+
+# outdir used to be {ukb}/post_finemapping/results
+# or {ukb}/post_finemapping/results/consistency
+def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     total_df = pl.concat([
         pl.read_csv(
-            f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
+            first_pass_df,
             sep='\t',
             dtypes={
                 **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
                 **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
                 **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
             }
-        ) for phenotype in phenotypes.phenotypes_in_use
+        ) for first_pass_df in first_pass_dfs
     ])
     min_abs_corrs = np.concatenate([
-        np.load(f'{ukb}/post_finemapping/intermediate_results/susie_all_min_abs_corrs_{phenotype}.npy')
-        for phenotype in phenotypes.phenotypes_in_use
+        np.load(susie_all_min_abs_corr)
+        for susie_all_min_abs_corr in susie_all_min_abs_corrs
     ])
 
     # ----- Stats ----
@@ -1679,8 +1681,8 @@ def first_pass_comparison():
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     print('Exporting min abs corr plots', flush=True)
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/cs_min_abs_corrs.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/cs_min_abs_corrs.svg')
+    bokeh.io.export_png(fig, filename=f'{outdir}/cs_min_abs_corrs.png')
+    bokeh.io.export_svg(fig, filename=f'{outdir}/cs_min_abs_corrs.svg')
 
     fig_height=1200
     fig = bokeh.plotting.figure(
@@ -1734,8 +1736,8 @@ def first_pass_comparison():
     fig.add_layout(color_bar, 'right')
 
     graphing_utils.resize(fig, 5000/1200, legend=False)
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_v_pip.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_v_pip.svg')
+    bokeh.io.export_png(fig, filename=f'{outdir}/susie_alpha_v_pip.png')
+    bokeh.io.export_svg(fig, filename=f'{outdir}/susie_alpha_v_pip.svg')
 
     fig = bokeh.plotting.figure(
         width=1200,
@@ -1772,8 +1774,8 @@ def first_pass_comparison():
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     graphing_utils.resize(fig, 5000/1200, legend=False)
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_histogram.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/susie_alpha_histogram.svg')
+    bokeh.io.export_png(fig, filename=f'{outdir}/susie_alpha_histogram.png')
+    bokeh.io.export_svg(fig, filename=f'{outdir}/susie_alpha_histogram.svg')
 
     fig = bokeh.plotting.figure(
         width=1200,
@@ -1809,8 +1811,8 @@ def first_pass_comparison():
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     graphing_utils.resize(fig, 5000/1200, legend=False)
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/finemap_pip_histogram.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/finemap_pip_histogram.svg')
+    bokeh.io.export_png(fig, filename=f'{outdir}/finemap_pip_histogram.png')
+    bokeh.io.export_svg(fig, filename=f'{outdir}/finemap_pip_histogram.svg')
 
     fig = bokeh.plotting.figure(
         width=1200,
@@ -1849,8 +1851,8 @@ def first_pass_comparison():
     fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
     print('Exporting FINEMAP CS PIP plots', flush=True)
-    bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/susie_cs_finemap_total_pips.png')
-    bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/susie_cs_finemap_total_pips.svg')
+    bokeh.io.export_png(fig, filename=f'{outdir}/susie_cs_finemap_total_pips.png')
+    bokeh.io.export_svg(fig, filename=f'{outdir}/susie_cs_finemap_total_pips.svg')
 
     for var_type, filter_cond in [
         ('STR', pl.col('is_STR')),
@@ -2012,8 +2014,8 @@ def first_pass_comparison():
         fig.background_fill_color = None
         fig.border_fill_color = None
         fig.grid.grid_line_color=None
-        bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.png')
-        bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/finemap_v_susie_consistency_{var_type.split("/")[0]}.svg')
+        bokeh.io.export_png(fig, filename=f'{outdir}/finemap_v_susie_consistency_{var_type.split("/")[0]}.png')
+        bokeh.io.export_svg(fig, filename=f'{outdir}/finemap_v_susie_consistency_{var_type.split("/")[0]}.svg')
 
 def tsv_to_finemap_outputs(tsv):
     df = pl.read_csv(tsv, sep='\t')
@@ -2078,6 +2080,13 @@ if __name__ == '__main__':
     def exec_followup_regions(args):
         generate_followup_regions_tsv(args.outdir, args.first_pass_df)
     followup_regions_parser.set_defaults(func=exec_followup_regions)
+
+    first_pass_comparison_parser = subparsers.add_parser('first_pass_comparison')
+    first_pass_comparison_parser.add_argument('--first_pass_dfs', nargs='+')
+    first_pass_comparison_parser.add_argument('--susie_all_min_abs_corrs', nargs='+')
+    def exec_first_passs_comparison(args):
+        first_pass_comparison(argsoutdir, args.first_pass_dfs, args.susie_all_min_abs_corrs)
+    first_pass_comparison_parser.set_defaults(func=exec_first_passs_comparison)
 
     followup_comparison_parser = subparsers.add_parser('followup_conditions_comparison')
     followup_comparison_parser.add_argument('intermediate_outdir')

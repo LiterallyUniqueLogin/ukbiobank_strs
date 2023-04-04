@@ -28,6 +28,10 @@ struct VCF {
 struct bgen {
   File bgen
   File index
+  # precomputed indices from the python program bgen_reader
+  File? bgen_reader_metadata
+  File? bgen_reader_metadata2
+  File? bgen_reader_complex_metadata2
 }
 
 struct PFiles {
