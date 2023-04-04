@@ -398,6 +398,7 @@ task first_pass_finemapping_df {
   input {
     String script_dir
     File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+    File graphing_utils = "~{script_dir}/post_finemapping/graphing_utils.py"
 
     String phenotype_name
     File snp_assoc_results
@@ -444,6 +445,7 @@ task first_pass_comparison {
   input {
     String script_dir
     File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+    File graphing_utils = "~{script_dir}/post_finemapping/graphing_utils.py"
 
     Array[File] first_pass_dfs
     Array[File] susie_all_min_abs_corrs
@@ -469,10 +471,10 @@ task first_pass_comparison {
 
   command <<<
     envsetup ~{script} \
-      first_pass_comparison \
       . \
-      --first-pass-dfs {sep=" " first_pass_dfs} \
-      --susie-all-min-abs-corrs {sep=" " susie_all_min_abs_corrs} \
+      first_pass_comparison \
+      --first-pass-dfs ~{sep=" " first_pass_dfs} \
+      --susie-all-min-abs-corrs ~{sep=" " susie_all_min_abs_corrs} \
       > stat_statements.txt
   >>>
 
@@ -487,6 +489,7 @@ task generate_followup_regions_tsv {
   input {
     String script_dir
     File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+    File graphing_utils = "~{script_dir}/post_finemapping/graphing_utils.py"
 
     File first_pass_df
   }
@@ -496,7 +499,7 @@ task generate_followup_regions_tsv {
   }
 
   command <<<
-    envsetup ~{script} followup_regions . ~{first_pass_df}
+    envsetup ~{script} . followup_regions ~{first_pass_df}
   >>>
 
   runtime {
@@ -510,6 +513,7 @@ task followup_finemapping_conditions_df {
   input {
     String script_dir
     File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+    File graphing_utils = "~{script_dir}/post_finemapping/graphing_utils.py"
 
     String phenotype_name
     File snp_assoc_results
@@ -519,11 +523,11 @@ task followup_finemapping_conditions_df {
     Array[FINEMAP_output] original_finemap_outputs
     Array[SuSiE_output] original_susie_outputs
 
-    Array[FINEMAP_output] total_prob_FINEMAP_outputs
-    Array[FINEMAP_output] dervied_prior_std_FINEMAP_outputs
-    Array[FINEMAP_output] conv_tol_FINEMAP_outputs
-    Array[FINEMAP_output] mac_FINEMAP_outputs
-    Array[FINEMAP_output] threshold_FINEMAP_outputs
+    Array[FINEMAP_output] total_prob_finemap_outputs
+    Array[FINEMAP_output] derived_prior_std_finemap_outputs
+    Array[FINEMAP_output] conv_tol_finemap_outputs
+    Array[FINEMAP_output] mac_finemap_outputs
+    Array[FINEMAP_output] threshold_finemap_outputs
     Array[SuSiE_output] best_guess_susie_outputs
 
     Array[FINEMAP_output] low_prior_std_finemap_outputs
@@ -560,7 +564,7 @@ task followup_finemapping_conditions_df {
       <(paste ~{write_objects(mac_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
       <(paste ~{write_objects(threshold_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
       <(paste ~{write_objects(best_guess_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(low_prior_std_finemap_outputs_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      <(paste ~{write_objects(low_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
       <(paste ~{write_objects(ratio_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
       <(paste ~{write_objects(ratio_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
   >>>
@@ -574,6 +578,7 @@ task followup_finemapping_conditions_comparison {
   input {
     String script_dir
     File script = "~{script_dir}/post_finemapping/finemapping_consistency.py"
+    File graphing_utils = "~{script_dir}/post_finemapping/graphing_utils.py"
 
     Array[File] followup_conditions_tsvs
   }
@@ -587,28 +592,28 @@ task followup_finemapping_conditions_comparison {
     # used for deciding confidently finemapped
     File susie_best_guess_png = "susie_consistency_alpha_best_guess.png"
     File susie_best_guess_svg = "susie_consistency_alpha_best_guess.svg"
-    File finemap_conv_tol_png = "finemap_consistency_alpha_conv_tol.png"
-    File finemap_conv_tol_svg = "finemap_consistency_alpha_conv_tol.svg"
-    File finemap_total_prob_png = "finemap_consistency_alpha_total_prob.png"
-    File finemap_total_prob_svg = "finemap_consistency_alpha_total_prob.svg"
-    File finemap_prior_std_derived_png = "finemap_consistency_alpha_prior_std_derived.png"
-    File finemap_prior_std_derived_svg = "finemap_consistency_alpha_prior_std_derived.svg"
-    File finemap_mac_png = "finemap_consistency_alpha_mac.png"
-    File finemap_mac_svg = "finemap_consistency_alpha_mac.svg"
-    File finemap_p_thresh_png = "finemap_consistency_alpha_p_thresh.png"
-    File finemap_p_thresh_svg = "finemap_consistency_alpha_p_thresh.svg"
+    File finemap_conv_tol_png = "finemap_consistency_pip_conv_tol.png"
+    File finemap_conv_tol_svg = "finemap_consistency_pip_conv_tol.svg"
+    File finemap_total_prob_png = "finemap_consistency_pip_total_prob.png"
+    File finemap_total_prob_svg = "finemap_consistency_pip_total_prob.svg"
+    File finemap_prior_std_derived_png = "finemap_consistency_pip_prior_std_derived.png"
+    File finemap_prior_std_derived_svg = "finemap_consistency_pip_prior_std_derived.svg"
+    File finemap_mac_png = "finemap_consistency_pip_mac.png"
+    File finemap_mac_svg = "finemap_consistency_pip_mac.svg"
+    File finemap_p_thresh_png = "finemap_consistency_pip_p_thresh.png"
+    File finemap_p_thresh_svg = "finemap_consistency_pip_p_thresh.svg"
 
     # too conservative
-    File finemap_ratio_png = "finemap_consistency_alpha_ratio.png"
-    File finemap_ratio_svg = "finemap_consistency_alpha_ratio.svg"
+    File finemap_ratio_png = "finemap_consistency_pip_ratio.png"
+    File finemap_ratio_svg = "finemap_consistency_pip_ratio.svg"
     File susie_ratio_png = "susie_consistency_alpha_ratio.png"
     File susie_ratio_svg = "susie_consistency_alpha_ratio.svg"
-    File finemap_prior_std_low_png = "finemap_consistency_alpha_prior_std_low.png"
-    File finemap_prior_std_low_svg = "finemap_consistency_alpha_prior_std_low.svg"
+    File finemap_prior_std_low_png = "finemap_consistency_pip_prior_std_low.png"
+    File finemap_prior_std_low_svg = "finemap_consistency_pip_prior_std_low.svg"
   }
 
   command <<<
-    envsetup ~{script} followup_conditions_comparison . . ~{sep=" " followup_conditions_tsvs}
+    envsetup ~{script} . followup_conditions_comparison . ~{sep=" " followup_conditions_tsvs}
   >>>
 
   runtime {

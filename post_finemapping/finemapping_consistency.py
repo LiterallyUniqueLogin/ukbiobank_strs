@@ -3,8 +3,6 @@
 import argparse
 import dataclasses
 import os
-import os.path
-import pathlib
 import time
 from typing import List
 
@@ -14,18 +12,11 @@ import bokeh.io
 import bokeh.layouts
 import bokeh.plotting
 import bokeh.util.hex
-import matplotlib.cm
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-import seaborn
-import scipy.stats.kde
-import upsetplot
 
 import graphing_utils
-import phenotypes
 
-ukb = os.environ['UKB']
 other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 corr_cutoff = .8
@@ -829,70 +820,6 @@ def linear_int_interpolate(c1, c2, dist):
         c_new.append(coord1 + round((coord2 - coord1)*dist))
     return c_new
 
-def plot_upset_plots(total_df):
-    for upset_thresh in .8, .9:
-        susie_cols = total_df.select([
-            pl.col('^susie_alpha.*$'),
-        ]).columns
-        susie_cols.remove('susie_alpha')
-        susie_cols.insert(len(susie_cols), 'susie_alpha')
-
-        finemap_cols = total_df.select([
-            pl.col('^finemap_pip.*$')
-        ]).columns
-        finemap_cols.remove('finemap_pip')
-        #finemap_cols.remove('finemap_pip_ratio')
-        finemap_cols.insert(len(finemap_cols), 'finemap_pip')
-
-        print('Converting to pandas ... ', flush=True)
-        for found_in_default in True, False:
-            intermediate_df = total_df.filter(
-                pl.col('is_STR') &
-                (pl.col('p_val') <= 1e-10)
-            ).with_columns([
-                pl.col('^susie_alpha.*$') >= upset_thresh,
-                pl.col('^finemap_pip.*$') >= upset_thresh
-            ]).filter(
-                # passes thresh in at least one fine-mapping run
-                pl.sum([pl.col(col).cast(int) for col in susie_cols + finemap_cols]) > 0
-            )
-            if found_in_default:
-                intermediate_df = intermediate_df.filter(
-                    pl.col('susie_alpha') | pl.col('finemap_pip')
-                )
-            intermediate_df = intermediate_df.to_pandas()
-
-            #all plot
-            upset_df = upsetplot.from_indicators([col for col in susie_cols + finemap_cols], data=intermediate_df)
-            upsetplot.UpSet(
-                upset_df,
-                sort_categories_by=None,
-                show_counts=True,
-            ).plot()
-            plt.suptitle('Fine-mapping conditions breakdown')
-            plt.savefig(f'{ukb}/post_finemapping/results/upsets/all_{upset_thresh}_found_in_default_{found_in_default}.png')
-            
-            for name, upset_cols, other_col, other_name in ('susie', susie_cols, 'finemap_pip', 'FINEMAP'), ('finemap', finemap_cols, 'susie_alpha', 'SuSiE'):
-                print('Plotting upset ... ', flush=True)
-                upset_df = upsetplot.from_indicators(upset_cols, data=intermediate_df)
-                print('done.', flush=True)
-                upset = upsetplot.UpSet(
-                    upset_df,
-                    sort_categories_by=None,
-                    show_counts=True,
-                    intersection_plot_elements=0
-                )
-                upset.add_stacked_bars(
-                    by=other_col,
-                    title=f'Count, selected by default {other_name} run or not',
-                    elements=10,
-                    colors=matplotlib.cm.Pastel1
-                )
-                upset.plot()
-                plt.suptitle(f'{name} fine-mapping conditions breakdown')
-                plt.savefig(f'{ukb}/post_finemapping/results/upsets/{name}_{upset_thresh}_found_in_default_{found_in_default}.png')
-
-
 # intermediate_dir was {ukb}/post_finemapping/intermediate_results
 # outdir was {ukb}/post_finemapping/results/consistency
 # all_finemapping_conditions_tsvs was f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab'
@@ -905,10 +832,10 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
     ).columns
     total_df = pl.concat([
         pl.read_csv(
-            followup_finemapping_conditions_tsvs,
+            followup_finemapping_conditions_tsv,
             sep='\t',
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
-        ) for phenotype in phenotypes.phenotypes_in_use
+        ) for followup_finemapping_conditions_tsv in followup_finemapping_conditions_tsvs if os.stat(followup_finemapping_conditions_tsv).st_size > 100
     ]).rename({'susie_cs_hardcall' : 'susie_cs_best_guess', 'susie_alpha_hardcall': 'susie_alpha_best_guess', 'susie_pip_hardcall': 'susie_pip_best_guess'})
     print(' done', flush=True)
 
@@ -1875,7 +1802,7 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers()
 
     df_parser = subparsers.add_parser('df')
-    df_parser.add_argument('should_assert', dtype=bool)
+    df_parser.add_argument('should_assert', type=bool)
     df_parser.add_argument('phenotype_name')
     df_parser.add_argument('snp_gwas_results')
     df_parser.add_argument('str_gwas_results')
@@ -1952,4 +1879,5 @@ if __name__ == '__main__':
         followup_finemapping_conditions_comparison(args.outdir, args.intermediate_outdir, args.followup_conditions_tsvs)
     followup_comparison_parser.set_defaults(func=exec_followup_comparison)
 
-    parser.parse_args()
+    args = parser.parse_args()
+    args.func(args)

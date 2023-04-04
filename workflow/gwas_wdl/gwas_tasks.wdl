@@ -46,6 +46,65 @@ struct region {
   Int end
 }
 
+task phenotype_names {
+  output { 
+		Array[String] n = [
+			"alanine_aminotransferase",
+			"albumin",
+			"alkaline_phosphatase",
+			"apolipoprotein_a",
+			"apolipoprotein_b",
+			"aspartate_aminotransferase",
+			"c_reactive_protein",
+			"calcium",
+			"cholesterol",
+			"creatinine",
+			"cystatin_c",
+			"eosinophil_count",
+			"eosinophil_percent",
+			"gamma_glutamyltransferase",
+			"glucose",
+			"glycated_haemoglobin",
+			"haematocrit",
+			"haemoglobin_concentration",
+			"hdl_cholesterol",
+			"igf_1",
+			"ldl_cholesterol_direct",
+			"lymphocyte_count",
+			"lymphocyte_percent",
+			"mean_corpuscular_haemoglobin",
+			"mean_corpuscular_haemoglobin_concentration",
+			"mean_corpuscular_volume",
+			"mean_platelet_volume",
+			"mean_sphered_cell_volume",
+			"neutrophil_count",
+			"neutrophil_percent",
+			"phosphate",
+			"platelet_count",
+			"platelet_crit",
+			"platelet_distribution_width",
+			"red_blood_cell_count",
+			"red_blood_cell_distribution_width",
+			"shbg",
+			"total_bilirubin",
+			"total_protein",
+			"triglycerides",
+			"urate",
+			"urea",
+			"vitamin_d",
+			"white_blood_cell_count",
+		]
+  }
+
+  command <<< >>>
+
+	runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+		shortTask: true
+  }
+}
+
 # TODO struct for phenotypes?
 
 ####################### Helper tasks ###########################

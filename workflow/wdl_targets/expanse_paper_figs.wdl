@@ -28,55 +28,10 @@ workflow expanse_figures {
     File platelet_count_sample_list = "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample"
   }
 
-  Array[String] phenotype_names = [
-		"alanine_aminotransferase",
-		"albumin",
-		"alkaline_phosphatase",
-		"apolipoprotein_a",
-		"apolipoprotein_b",
-		"aspartate_aminotransferase",
-		"c_reactive_protein",
-		"calcium",
-		"cholesterol",
-		"creatinine",
-		"cystatin_c",
-		"eosinophil_count",
-		"eosinophil_percent",
-		"gamma_glutamyltransferase",
-		"glucose",
-		"glycated_haemoglobin",
-		"haematocrit",
-		"haemoglobin_concentration",
-		"hdl_cholesterol",
-		"igf_1",
-		"ldl_cholesterol_direct",
-		"lymphocyte_count",
-		"lymphocyte_percent",
-		"mean_corpuscular_haemoglobin",
-		"mean_corpuscular_haemoglobin_concentration",
-		"mean_corpuscular_volume",
-		"mean_platelet_volume",
-		"mean_sphered_cell_volume",
-		"neutrophil_count",
-		"neutrophil_percent",
-		"phosphate",
-		"platelet_count",
-		"platelet_crit",
-		"platelet_distribution_width",
-		"red_blood_cell_count",
-		"red_blood_cell_distribution_width",
-		"shbg",
-		"total_bilirubin",
-		"total_protein",
-		"triglycerides",
-		"urate",
-		"urea",
-		"vitamin_d",
-		"white_blood_cell_count",
-  ]
+  call gwas_tasks.phenotype_names
 
   # these files were pregenerated but could be generated from the WDL
-	scatter (phenotype_name in phenotype_names) {
+	scatter (phenotype_name in phenotype_names.n) {
     String peak_files = "signals/peaks/~{phenotype_name}_250000_5e-8.tab"
   }
 
@@ -249,7 +204,7 @@ workflow expanse_figures {
 
   call gwas_tasks.summarize_peaks as fig_1ef { input :
     script_dir = script_dir,
-    phenotype_names = phenotype_names,
+    phenotype_names = phenotype_names.n,
     peak_files = peak_files
   }
 
