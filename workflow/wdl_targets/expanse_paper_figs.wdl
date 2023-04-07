@@ -1,7 +1,8 @@
 version 1.0
 
-import "gwas_tasks.wdl"
-import "expanse_tasks.wdl"
+import "../gwas_wdl/gwas_tasks.wdl"
+import "../platform_wdl/expanse_tasks.wdl"
+import "../finemapping_wdl/post_finemapping_workflow.wdl"
 
 # figures that use preexisting files
 # and so are not part of the main GWAS -> finemapping pipeline
@@ -18,7 +19,9 @@ workflow expanse_figures {
     File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
     File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
 
-    # files that could be computed via WDL but were pregenerated beforehand and include randomness, so need to be reused for consistency
+    ##### files that could be computed via WDL but were pregenerated beforehand
+    
+    # sample files which include randomness, so need to be reused for consistency
     File unrelated_white_brits_sample_list = "sample_qc/runs/white_brits/no_phenotype/combined_unrelated.sample"
     File unrelated_black_sample_list = "sample_qc/runs/black/no_phenotype/combined_unrelated.sample"
     File unrelated_south_asian_sample_list = "sample_qc/runs/south_asian/no_phenotype/combined_unrelated.sample"
@@ -28,11 +31,20 @@ workflow expanse_figures {
     File platelet_count_sample_list = "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample"
   }
 
+  #### arrays of inputs that need to scatter blocks to create
+
   call gwas_tasks.phenotype_names
 
-  # these files were pregenerated but could be generated from the WDL
+  # cached signal peaks - TODO generate these?
 	scatter (phenotype_name in phenotype_names.n) {
     String peak_files = "signals/peaks/~{phenotype_name}_250000_5e-8.tab"
+  }
+
+  # cached results of fine-mapping analyses
+  scatter (phenotype in phenotype_names.n) {
+    File first_pass_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_all_concordance_~{phenotype}.tab"
+    File susie_all_min_abs_corrs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/susie_all_min_abs_corrs_~{phenotype}.npy"
+    File followup_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_~{phenotype}.tab"
   }
 
   scatter (chrom in range(22)) {
@@ -261,6 +273,13 @@ workflow expanse_figures {
     dosage_threshold = 5
   }
 
+  call post_finemapping_workflow.post_finemapping { input :
+    script_dir = ".",
+    first_pass_dfs = first_pass_dfs,
+    susie_all_min_abs_corrs = susie_all_min_abs_corrs,
+    followup_dfs = followup_dfs
+  }
+
   output {
     File fig_1b_svg_out = fig_1b.svg
     File fig_1b_png_out = fig_1b.png
@@ -282,5 +301,48 @@ workflow expanse_figures {
     File supp_fig_15a_png_out = supp_fig_15a.png
     File supp_fig_15b_svg_out = supp_fig_15b.svg
     File supp_fig_15b_png_out = supp_fig_15b.png
-  }  
+
+    File stat_statements = post_finemapping.stat_statements
+    File supp_fig_3_png = post_finemapping.cs_min_abs_corrs_png
+    File supp_fig_3_svg = post_finemapping.cs_min_abs_corrs_svg
+    File supp_fig_4_png = post_finemapping.susie_alpha_v_pip_png
+    File supp_fig_4_svg = post_finemapping.susie_alpha_v_pip_svg
+    File supp_fig_5a_png = post_finemapping.susie_alpha_histogram_png
+    File supp_fig_5a_svg = post_finemapping.susie_alpha_histogram_svg
+    File supp_fig_5b_png = post_finemapping.finemap_pip_histogram_png
+    File supp_fig_5b_svg = post_finemapping.finemap_pip_histogram_svg
+    File supp_fig_6_png = post_finemapping.susie_cs_finemap_total_pips_png
+    File supp_fig_6_svg = post_finemapping.susie_cs_finemap_total_pips_svg
+    File supp_fig_7a_png = post_finemapping.finemap_v_susie_consistency_STR_png
+    File supp_fig_7a_svg = post_finemapping.finemap_v_susie_consistency_STR_svg
+    File supp_fig_7b_png = post_finemapping.finemap_v_susie_consistency_SNP_png
+    File supp_fig_7b_svg = post_finemapping.finemap_v_susie_consistency_SNP_svg
+
+    File doubly_finemapped_STRs = post_finemapping.doubly_finemapped_STRs
+    File confidently_finemapped_STRs = post_finemapping.confidently_finemapped_STRs
+    File overconfidently_finemapped_STRs = post_finemapping.overconfidently_finemapped_STRs
+
+    # used for deciding confidently finemap
+    File supp_fig_10ab_png = post_finemapping.susie_best_guess_png
+    File supp_fig_10ab_svg = post_finemapping.susie_best_guess_svg
+    File supp_fig_11a_png = post_finemapping.finemap_p_thresh_png
+    File supp_fig_11a_svg = post_finemapping.finemap_p_thresh_svg
+    File supp_fig_11b_png = post_finemapping.finemap_mac_png
+    File supp_fig_11b_svg = post_finemapping.finemap_mac_svg
+    File supp_fig_11c_png = post_finemapping.finemap_prior_std_derived_png
+    File supp_fig_11c_svg = post_finemapping.finemap_prior_std_derived_svg
+    File supp_fig_11d_png = post_finemapping.finemap_total_prob_png
+    File supp_fig_11d_svg = post_finemapping.finemap_total_prob_svg
+    File supp_fig_11e_png = post_finemapping.finemap_conv_tol_png
+    File supp_fig_11e_svg = post_finemapping.finemap_conv_tol_svg
+
+    # too conservative
+    File supp_fig_11f_png = post_finemapping.finemap_prior_std_low_png
+    File supp_fig_11f_svg = post_finemapping.finemap_prior_std_low_svg
+    File supp_fig_12a_png = post_finemapping.susie_ratio_png
+    File supp_fig_12a_svg = post_finemapping.susie_ratio_svg
+    File supp_fig_12b_png = post_finemapping.finemap_ratio_png
+    File supp_fig_12b_svg = post_finemapping.finemap_ratio_svg
+  }
+
 }

@@ -1,5 +1,3 @@
-# platform agnostic workflow
-
 version 1.0
 
 import "../gwas_tasks.wdl"
@@ -47,9 +45,9 @@ workflow finemapping {
   # finemap each region
   scatter (region_idx in range(length(finemapping_regions_tsv) - 1)) {
     region first_pass_bounds = {
-      "chrom": read_int(finemapping_regions_tsv[region_idx+1][0]),
-      "start": read_int(finemapping_regions_tsv[region_idx+1][1]),
-      "end": read_int(finemapping_regions_tsv[region_idx+1][2]),
+      "chrom": finemapping_regions_tsv[region_idx+1][0],
+      "start": finemapping_regions_tsv[region_idx+1][1],
+      "end": finemapping_regions_tsv[region_idx+1][2],
     }
 
     call finemap_one_region_workflow.finemap_one_region as original_finemap_ { input :
@@ -103,9 +101,9 @@ workflow finemapping {
   # finemap each region
   scatter (region_idx in range(length(followup_finemapping_regions_tsv) - 1)) {
     region followup_bounds = {
-      "chrom": read_int(finemapping_regions_tsv[region_idx+1][0]),
-      "start": read_int(finemapping_regions_tsv[region_idx+1][1]),
-      "end": read_int(finemapping_regions_tsv[region_idx+1][2]),
+      "chrom": finemapping_regions_tsv[region_idx+1][0],
+      "start": finemapping_regions_tsv[region_idx+1][1],
+      "end": finemapping_regions_tsv[region_idx+1][2],
     }
 
     call finemap_one_region_workflow.finemap_one_region as finemap_ratio_ { input :

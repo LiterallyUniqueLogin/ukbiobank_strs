@@ -15,9 +15,6 @@ import cyvcf2
 import numpy as np
 import scipy
 
-#if 'UKB' in os.environ:
-#    sys.path.insert(0, f'{os.environ["UKB"]}/../trtools/repo')
-
 import trtools.utils.tr_harmonizer as trh
 import trtools.utils.utils as utils
 
@@ -133,11 +130,11 @@ def load_strs(vcf_fname: str,
             'period',
             'ref_len',
             'total_per_allele_dosages',
-            'total_hardcall_alleles',
-            'total_hardcall_genotypes',
+            'total_best_guess_alleles',
+            'total_best_guess_genotypes',
             'subset_total_per_allele_dosages',
-            'subset_total_hardcall_alleles',
-            'subset_total_hardcall_genotypes',
+            'subset_total_best_guess_alleles',
+            'subset_total_best_guess_genotypes',
             'subset_het',
             'subset_entropy',
             'subset_HWEP',
@@ -180,8 +177,8 @@ def load_strs(vcf_fname: str,
 
             # TODO this isn't right - these best guess calls are only best guess if there's only one
             # allele per length, doesn't take into account prob splitting over imperfections
-            total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts())
-            total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts())
+            total_best_guess_alleles = clean_len_alleles(trrecord.GetAlleleCounts())
+            total_best_guess_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts())
 
         if isinstance(samples, slice):
             assert samples == slice(None)
@@ -205,15 +202,15 @@ def load_strs(vcf_fname: str,
         }
 
         if details:
-            subset_total_hardcall_alleles = clean_len_alleles(trrecord.GetAlleleCounts(samples))
-            subset_total_hardcall_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts(samples))
-            subset_hardcall_allele_freqs = clean_len_alleles(trrecord.GetAlleleFreqs(samples))
+            subset_total_best_guess_alleles = clean_len_alleles(trrecord.GetAlleleCounts(samples))
+            subset_total_best_guess_genotypes = clean_len_allele_pairs(trrecord.GetGenotypeCounts(samples))
+            subset_best_guess_allele_freqs = clean_len_alleles(trrecord.GetAlleleFreqs(samples))
 
-            subset_het = utils.GetHeterozygosity(subset_hardcall_allele_freqs)
-            subset_entropy = utils.GetEntropy(subset_hardcall_allele_freqs)
+            subset_het = utils.GetHeterozygosity(subset_best_guess_allele_freqs)
+            subset_entropy = utils.GetEntropy(subset_best_guess_allele_freqs)
             subset_hwep = utils.GetHardyWeinbergBinomialTest(
-                subset_hardcall_allele_freqs,
-                subset_total_hardcall_genotypes
+                subset_best_guess_allele_freqs,
+                subset_total_best_guess_genotypes
             )
 
             # https://www.cell.com/ajhg/fulltext/S0002-9297(09)00012-3#app1
@@ -238,11 +235,11 @@ def load_strs(vcf_fname: str,
                 str(len(trrecord.motif)),
                 str(round(trrecord.ref_allele_length, allele_len_precision)),
                 dict_str(round_vals(total_dosages, dosage_precision)),
-                dict_str(total_hardcall_alleles),
-                dict_str(total_hardcall_genotypes),
+                dict_str(total_best_guess_alleles),
+                dict_str(total_best_guess_genotypes),
                 dict_str(round_vals(subset_total_dosages, dosage_precision)),
-                dict_str(subset_total_hardcall_alleles),
-                dict_str(subset_total_hardcall_genotypes),
+                dict_str(subset_total_best_guess_alleles),
+                dict_str(subset_total_best_guess_genotypes),
                 str(subset_het),
                 str(subset_entropy),
                 str(subset_hwep),

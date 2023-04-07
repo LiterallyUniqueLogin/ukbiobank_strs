@@ -1,11 +1,6 @@
-# platform agnostic workflow
-
 version 1.0
 
 import "gwas_tasks.wdl"
-import "gwas_given_pheno_data_workflow.wdl"
-
-# TODO fix chr_lens 21 and 20 the same
 
 workflow gwas {
 
@@ -19,6 +14,8 @@ workflow gwas {
     # one per chrom
     Array[VCF]+ str_vcfs
     Array[PFiles]+ imputed_snp_p_files
+
+    File str_loci
 
     String phenotype_name
     Array[String] categorical_covariate_names
@@ -45,6 +42,11 @@ workflow gwas {
     File sc_month_of_birth
     File sc_date_of_death
     File sc_phenotype
+
+    # as this involves randomness, can put in a skip for regenerating this file
+    # could also cache unrelated samples per ethnicity
+    Array[File]? cached_unrelated_samples_for_phenotype
+    File? cached_shared_covars # not sure why this cached version has different samples
   }
 
   call gwas_tasks.write_sample_list as white_brits_sample_list { input:
@@ -59,9 +61,9 @@ workflow gwas {
   }
 
   Array[String] ethnicities = ethnic_sample_lists_task.ethnicities
-  Array[String] all_ethnicities = flatten([['white_british'], ethnicities])
+  Array[String] all_ethnicities_ = flatten([['white_british'], ethnicities])
   Array[File] ethnic_sample_lists = ethnic_sample_lists_task.sample_lists
-  Array[File] all_sample_lists = flatten([
+  Array[File] all_sample_lists_ = flatten([
     [white_brits_sample_list.data], ethnic_sample_lists
   ])
 
@@ -82,7 +84,7 @@ workflow gwas {
     value = -1
   }
 
-  scatter (sample_list in all_sample_lists) {
+  scatter (sample_list in all_sample_lists_) {
     call gwas_tasks.qced_sample_list as all_qced_sample_lists { input:
       script_dir = script_dir,
       unqced_sample_list = sample_list,
@@ -109,13 +111,15 @@ workflow gwas {
     sc_assessment_ages = sc_assessment_ages
   }
 
+  File shared_covars_ = select_first([cached_shared_covars, load_shared_covars.shared_covars])
+
   # get qced unrelated phenotype sample list and transformed phenotype data for each ethnicity
-  scatter (sample_list in all_qced_sample_lists.data) {
+  scatter (sample_list_idx in range(length(all_qced_sample_lists.data))) {
     if (!is_binary) {
       call gwas_tasks.load_continuous_phenotype { input :
         script_dir = script_dir,
         sc = sc_phenotype,
-        qced_sample_list = all_qced_sample_lists.data,
+        qced_sample_list = all_qced_sample_lists.data[sample_list_idx],
         assessment_ages_npy = load_shared_covars.assessment_ages,
         categorical_covariate_names = categorical_covariate_names,
         categorical_covariate_scs = categorical_covariate_scs
@@ -125,7 +129,7 @@ workflow gwas {
       call gwas_tasks.load_binary_phenotype { input:
         script_dir = script_dir,
         sc = sc_phenotype,
-        qced_sample_list = all_qced_sample_lists.data,
+        qced_sample_list = all_qced_sample_lists.data[sample_list_idx],
         sc_year_of_birth = sc_year_of_birth,
         sc_month_of_birth = sc_month_of_birth,
         sc_date_of_death = sc_date_of_death,
@@ -138,9 +142,9 @@ workflow gwas {
     File pheno_covar_names_ = select_first([load_continuous_phenotype.covar_names, load_binary_phenotype.covar_names])
     File pheno_readme_ = select_first([load_continuous_phenotype.README, load_binary_phenotype.covar_names])
 
-    call gwas_tasks.write_sample_list_for_phenotype { input:
+    call gwas_tasks.write_sample_list_for_phenotype as write_all_samples_for_phenotype { input:
       script_dir = script_dir,
-      pheno_data = pheno_data
+      pheno_data = pheno_data_
     }
   
     if (!is_binary) {
@@ -148,7 +152,7 @@ workflow gwas {
         script_dir = script_dir,
         PRIMUS_command = PRIMUS_command,
         kinship = kinship,
-        sample_list = write_sample_list_for_phenotype.data,
+        sample_list = write_all_samples_for_phenotype.data,
       }
     }
     if (is_binary) {
@@ -156,49 +160,213 @@ workflow gwas {
         script_dir = script_dir,
         PRIMUS_command = PRIMUS_command,
         kinship = kinship,
-        sample_list = write_sample_list_for_phenotype.data,
-        binary_pheno_data = pheno_data
+        sample_list = write_all_samples_for_phenotype.data,
+        binary_pheno_data = pheno_data_
       }
     }
     # This is the final sample list file for a given phenotype
-    File samples_for_phenotype_= select_first([not_binary_phenotype_unrelated_samples.data, binary_phenotype_unrelated_samples.data])
+
+    if (defined(cached_unrelated_samples_for_phenotype)) {
+      File samples_for_phenotype_cached = select_first([cached_unrelated_samples_for_phenotype])[sample_list_idx]
+    }
+    if (!defined(cached_unrelated_samples_for_phenotype)) {
+      File samples_for_phenotype_uncached = select_first([
+        not_binary_phenotype_unrelated_samples.data,
+        binary_phenotype_unrelated_samples.data
+      ])
+    }
+    File samples_for_phenotype_ = select_first([
+      samples_for_phenotype_cached,
+      samples_for_phenotype_uncached
+    ])
   }
 
-  call gwas_given_pheno_data_workflow.gwas_given_pheno_data { input :
-    script_dir = script_dir,
-    plink_command = plink_command,
+  scatter (ethnicity_idx in range(length(pheno_data_))) {
+    call gwas_tasks.transform_trait_values { input :
+      script_dir = script_dir,
+      pheno_data = pheno_data_[ethnicity_idx],
+      samples_for_phenotype = samples_for_phenotype_[ethnicity_idx],
+      is_binary = is_binary
+    }
+  }
 
+   call gwas_tasks.association_regions as str_association_regions { input :
     chr_lens = chr_lens,
+    region_len = 10000000
+  } 
 
-    str_vcfs = str_vcfs,
-    imputed_snp_p_files = imputed_snp_p_files,
+  scatter (association_region in str_association_regions.out_tsv) {
 
-    phenotype_name = phenotype_name,
-    is_binary = is_binary,
+    Int chrom = association_region[0]
+    Int start = association_region[1]
+    Int end = association_region[2]
 
-    all_samples_list = all_samples_list,
+    Int chrom_minus_one = chrom - 1
 
-    shared_covars = load_shared_covars.shared_covars,
+    region bounds = {
+        "chrom": chrom,
+        "start": start,
+        "end": end
+    }
+
+    call gwas_tasks.regional_my_str_gwas { input :
+      script_dir = script_dir,
+      str_vcf = str_vcfs[chrom_minus_one],
+      shared_covars = shared_covars_,
+      untransformed_phenotype = pheno_data_[0],
+      transformed_phenotype = transform_trait_values.data[0],
+      all_samples_list = all_samples_list,
+      is_binary = is_binary,
+      binary_type = "linear", # won't be used if not binary
+      bounds = bounds,
+      phenotype_name = phenotype_name,
+    }
+  }
+
+  call gwas_tasks.concatenate_tsvs as my_str_gwas_ { input :
+    tsvs = regional_my_str_gwas.data
+  }
+
+#  call gwas_tasks.str_spot_test as spot_test_1 { input:
+#    script_dir = script_dir,
+#    str_vcf = str_vcfs[0],
+#    shared_covars = shared_covars_,
+#    untransformed_phenotype = pheno_data_[0],
+#    transformed_phenotype = transform_trait_values.data[0],
+#    all_samples_list = all_samples_list,
+#    is_binary = is_binary,
+#    chrom = 1,
+#    pos = 204527033,
+#    phenotype_name = "platelet_count"
+#  }
+#
+#  call gwas_tasks.str_spot_test as spot_test_2 { input:
+#    script_dir = script_dir,
+#    str_vcf = str_vcfs[0],
+#    shared_covars = shared_covars_,
+#    untransformed_phenotype = pheno_data_[0],
+#    transformed_phenotype = transform_trait_values.data[0],
+#    all_samples_list = all_samples_list,
+#    is_binary = is_binary,
+#    chrom = 1,
+#    pos = 205255034,
+#    phenotype_name = "platelet_count"
+#  }
+
+  call gwas_tasks.prep_plink_input { input :
+    script_dir = script_dir,
+    shared_covars = shared_covars_,
     shared_covar_names = load_shared_covars.covar_names,
-    pheno_data = pheno_data_,
-    pheno_covar_names = pheno_covar_names_,
-    pheno_readme = pheno_readme_,
-    samples_for_phenotype = samples_for_phenotype_,
+    transformed_phenotype = transform_trait_values.data[0],
+    pheno_covar_names = pheno_covar_names_[0],
+    is_binary = is_binary,
+    binary_type = "linear", # only used if is_binary
+    phenotype_name = phenotype_name
+  }
+
+  scatter (chrom in range(22)) {
+    call gwas_tasks.chromosomal_plink_snp_association { input :
+      script_dir = script_dir,
+      plink_command = plink_command,
+      imputed_snp_p_file = imputed_snp_p_files[chrom],
+      pheno_data = prep_plink_input.data,
+      chrom = chrom+1,
+      phenotype_name = phenotype_name,
+      binary_type = if !is_binary then "linear" else "linear_binary",
+    }
+  }
+
+  call gwas_tasks.concatenate_tsvs as plink_snp_association { input :
+    tsvs = chromosomal_plink_snp_association.data
+  }
+
+  # TODO second round for binary
+  # TODO do ethnic STR subset differently for binary?
+
+  # TODO interactive manhattan
+
+  call gwas_tasks.generate_peaks { input :
+    script_dir = script_dir,
+    snp_assoc_results = plink_snp_association.tsv,
+    str_assoc_results = my_str_gwas_.tsv,
+    phenotype = phenotype_name,
+    spacing = "250000",
+    thresh = "5e-8"
+  }
+
+  call gwas_tasks.generate_peaks as overview_manhattan_peaks { input :
+    script_dir = script_dir,
+    snp_assoc_results = plink_snp_association.tsv,
+    str_assoc_results = my_str_gwas_.tsv,
+    phenotype = phenotype_name,
+    spacing = "20000000",
+    thresh = "5e-8"
+  }
+
+  # TODO overview manhattan
+
+  call gwas_tasks.generate_finemapping_regions { input :
+    script_dir = script_dir,
+    chr_lens = chr_lens,
+    phenotype = phenotype_name,
+    snp_assoc_results = plink_snp_association.tsv,
+    str_assoc_results = my_str_gwas_.tsv
+  }
+  
+  call gwas_tasks.get_strs_in_finemapping_regions { input :
+    script_dir = script_dir,
+    str_loci = str_loci,
+    finemapping_regions_for_pheno = generate_finemapping_regions.data
+  }
+  
+  scatter (ethnicity_enumeration in range(length(pheno_data_) -1)) {
+    scatter (pair in zip(range(22), get_strs_in_finemapping_regions.str_loci)) {
+      Int ethnicity_idx = ethnicity_enumeration + 1
+      call gwas_tasks.regional_my_str_gwas as ethnic_regional_my_str_gwas { input :
+        script_dir = script_dir,
+        str_vcf = str_vcfs[pair.left],
+        vars_file = pair.right,
+        shared_covars = shared_covars_,
+        untransformed_phenotype = pheno_data_[ethnicity_idx],
+        transformed_phenotype = transform_trait_values.data[ethnicity_idx],
+        all_samples_list = all_samples_list,
+        is_binary = is_binary,
+        binary_type = "linear", # won't be used if not binary
+        phenotype_name = phenotype_name,
+      }
+    }
+    call gwas_tasks.concatenate_tsvs as ethnic_my_str_gwas_ { input :
+      tsvs = ethnic_regional_my_str_gwas.data
+    }
+
+    #TODO logistic if binary?
   }
 
   output {
     # arrays are one per the six ethnicities, starting with white brits
-    File shared_covars = load_shared_covars.shared_covars
+    Array[String] all_ethnicities = all_ethnicities_
+    Array[File] all_sample_lists = all_sample_lists_ # unqced
+    Array[File] sample_lists = ethnicity_unrelated_samples.data # unrelated and qced
+
+    File shared_covars = shared_covars_
     File shared_covar_names = load_shared_covars.covar_names
-    Array[File] pheno_data = pheno_data_
-    Array[File] pheno_covar_names = pheno_covar_names_
+
+    Array[File] all_samples_for_phenotype = write_all_samples_for_phenotype.data # unqced
     Array[File] samples_for_phenotype = samples_for_phenotype_ # unrelated and qced
 
-    Array[File] transformed_trait_values = gwas_given_pheno_data.transformed_trait_values
-    Array[File] transformed_trait_values_readme = gwas_given_pheno_data.transformed_trait_values_readme
-    #File my_str_gwas_out = gwas_given_pheno_data.my_str_gwas.tsv
-    #File plink_snp_gwas_out = gwas_given_pheno_data.plink_snp_association.tsv
-    File peaks = gwas_given_pheno_data.peaks
-    File peaks_readme = gwas_given_pheno_data.readme
+    Array[File] pheno_data = pheno_data_ # raw
+    Array[File] transformed_trait_values = transform_trait_values.data
+    Array[File] pheno_covar_names = pheno_covar_names_
+    Array[File] pheno_readme = pheno_readme_
+
+#    File sp1 = spot_test_1.data
+#    File sp2 = spot_test_2.data
+    File my_str_gwas = my_str_gwas_.tsv
+    File plink_snp_gwas = plink_snp_association.tsv
+    File peaks = generate_peaks.peaks
+    File peaks_readme = generate_peaks.readme
+    File finemapping_regions = generate_finemapping_regions.data
+    File finemapping_regions_readme = generate_finemapping_regions.readme
+	  Array[File] ethnic_my_str_gwas = ethnic_my_str_gwas_.tsv
   }
 }

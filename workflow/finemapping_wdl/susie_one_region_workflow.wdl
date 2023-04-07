@@ -1,5 +1,3 @@
-# platform agnostic workflow
-
 version 1.0
 
 import "finemapping_tasks.wdl"

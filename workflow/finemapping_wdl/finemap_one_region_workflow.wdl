@@ -1,12 +1,8 @@
-# platform agnostic workflow
-
 version 1.0
 
 import "finemapping_tasks.wdl"
 import "retryable_finemap_calc_corrs.wdl"
 import "retryable_finemap_write_corrs.wdl"
-
-# TODO fix chr_lens 21 and 20 the same
 
 workflow finemap_one_region {
 

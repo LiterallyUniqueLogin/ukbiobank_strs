@@ -442,7 +442,6 @@ task transform_trait_values {
   }
 
   output {
-    File readme = "out_README.txt"
     File data = "out.npy"
   }
 
@@ -580,7 +579,7 @@ task association_regions {
           end = chr_len
         else:
           end = start + ~{region_len} - 1
-        chroms.append(chroms)
+        chroms.append(chrom)
         starts.append(start)
         ends.append(end)
     for chrom, start, end in zip(chroms, starts, ends):
@@ -735,7 +734,7 @@ task regional_my_str_gwas {
       out.tab \
       strs \
       ~{phenotype_name} \
-      ~{if defined(bounds) then "--region ~{bounds.chrom}:~{bounds.start}-~{bounds.end}" else ""} \
+      ~{if defined(bounds) then "--region ~{select_first([bounds]).chrom}:~{select_first([bounds]).start}-~{select_first([bounds]).end}" else ""} \
       ~{"--vars-file " + vars_file} \
       --pheno-and-covars ~{transformed_phenotype} \
       --shared-covars ~{shared_covars} \
@@ -872,7 +871,7 @@ task prep_plink_input {
 task chromosomal_plink_snp_association {
   input {
     String script_dir
-    File script = "~{script_dir}/plink_association.sh"
+    File script = "~{script_dir}/association/plink_association.sh"
     String plink_command
 
     PFiles imputed_snp_p_file # TODO could generate this with task
@@ -894,7 +893,7 @@ task chromosomal_plink_snp_association {
     CHROM=~{chrom} \
     OUT_DIR=. \
     PHENO_FILE=~{pheno_data} \
-    P_FILE=~{sub(imputed_snp_p_file.pgen, ".pgen$", "")} \
+    P_FILE=$(echo ~{imputed_snp_p_file.pgen} | sed -e 's/\.pgen$//') \
     PLINK_EXECUTABLE=~{plink_command} \
     PROJECT_TEMP=. \
     envsetup ~{script}
@@ -1025,7 +1024,7 @@ task todo {
 
 # these are here because they are used to prioritize STRs for follow up ethnic GWAS
 
-task generate_regions {
+task generate_finemapping_regions {
   input {
     String script_dir
     File script = "~{script_dir}/signals/regions.py"

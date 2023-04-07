@@ -1,9 +1,9 @@
 version 1.0
 
-import "platform_agnostic_workflow.wdl"
-import "expanse_tasks.wdl"
+import "../platform_wdl/expanse_tasks.wdl"
+import "../gwas_wdl/gwas_workflow.wdl"
 
-workflow main {
+workflow expanse_gwas_and_finemapping {
 
   input {
     String script_dir  = "."
@@ -11,14 +11,14 @@ workflow main {
     File chr_lens = "misc_data/genome/chr_lens.txt"
     File str_loci = "snpstr/str_loci.txt"
 
-    String phenotype_name = "platelet_count"
-    Int phenotype_id = 30080
-    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
-    Array[Int] categorical_covariate_ids = [30083]
-    #String phenotype_name
-    #Int phenotype_id
-    #Array[String] categorical_covariate_names = []
-    #Array[Int] categorical_covariate_ids = []
+#    String phenotype_name = "platelet_count"
+#    Int phenotype_id = 30080
+#    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
+#    Array[Int] categorical_covariate_ids = [30083]
+    String phenotype_name
+    Int phenotype_id
+    Array[String] categorical_covariate_names
+    Array[Int] categorical_covariate_ids
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
     String date_of_most_recent_first_occurrence_update = "2021-04-01" # only needed for binary phenotypes
@@ -27,6 +27,16 @@ workflow main {
     File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample" # could instead create a task for downloading this with ukbgene
     File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
     File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat" # could create a task for downloading this with ukbgene
+
+#    Array[File]? cached_unrelated_samples_for_phenotype = [
+#      "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample",
+#      "sample_qc/runs/black/platelet_count/combined_unrelated.sample",
+#      "sample_qc/runs/south_asian/platelet_count/combined_unrelated.sample",
+#      "sample_qc/runs/chinese/platelet_count/combined_unrelated.sample",
+#      "sample_qc/runs/irish/platelet_count/combined_unrelated.sample",
+#      "sample_qc/runs/white_other/platelet_count/combined_unrelated.sample",
+#    ]
+#    File cached_shared_covars = "traits/shared_covars/shared_covars.npy"
   }
 
   call expanse_tasks.extract_field as white_brits { input:
@@ -102,29 +112,30 @@ workflow main {
       "index": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz.tbi"
     }
     PFiles imputed_snp_p_files = {
-      "pgen": "array_imputed/pfile_converted/chr{chrom+1}.pgen",
-      "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
-      "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
+      "pgen": "array_imputed/pfile_converted/chr~{chrom+1}.pgen",
+      "pvar": "array_imputed/pfile_converted/chr~{chrom+1}.pvar",
+      "psam": "array_imputed/pfile_converted/chr~{chrom+1}.psam",
     }
     bgen imputed_snp_bgens = {
-      "bgen": "array_imputed/ukb_imp_chr{chrom+1}_v3.bgen",
-      "index": "array_imputed/ukb_imp_chr{chrom+1}_v3.bgen.bgi"
+      "bgen": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen",
+      "index": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.bgi",
+      "bgen_reader_metadata" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata",
+      "bgen_reader_metadata2" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata2.mmm",
+      "bgen_reader_complex_metadata2" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.complex.metadata2.mmm"
     }
     File snp_vars_to_filter_from_finemapping = "finemapping/str_imp_snp_overlaps/chr~{chrom+1}_to_filter.tab'"
   }
 
-  call platform_agnostic_workflow.main { input:
+  call gwas_workflow.gwas { input:
     script_dir = script_dir,
     PRIMUS_command = "run_PRIMUS.pl",
-    finemap_command = "utilities/finemap/finemap_v1.4_x86_64",
 
     chr_lens = chr_lens,
-    str_loci = str_loci,
 
     str_vcfs = str_vcfs,
-    #imputed_snp_p_files = imputed_snp_p_files,
-    imputed_snp_bgens = imputed_snp_bgens,
-    snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping, # could write a task for generating this file
+    imputed_snp_p_files = imputed_snp_p_files,
+
+    str_loci = str_loci,
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
@@ -149,10 +160,9 @@ workflow main {
     sc_year_of_birth = year_of_birth.data,
     sc_month_of_birth = month_of_birth.data,
     sc_date_of_death = date_of_death.data,
-    sc_phenotype = phenotype.data
-  }
+    sc_phenotype = phenotype.data,
 
-  output {
-    Array[File] out_sample_lists = main.out_sample_lists
+#    cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
+#    cached_shared_covars = cached_shared_covars,
   }
 }
