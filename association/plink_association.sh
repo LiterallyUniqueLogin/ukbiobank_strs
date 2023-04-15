@@ -94,6 +94,10 @@ else
 	RUNTYPE="linear"
 fi
 
-mv "$OUT_DIR"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE" \
-   "$OUT_DIR"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE".done
+cd -
 
+mv "$temp_name"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE" \
+   "$OUT_DIR"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE"
+
+mv "$temp_name"/plink2.log \
+   "$OUT_DIR"/plink2.log

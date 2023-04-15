@@ -1769,6 +1769,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
         bokeh.io.export_svg(fig, filename=f'{outdir}/finemap_v_susie_consistency_{var_type.split("/")[0]}.svg')
 
 def tsv_to_finemap_outputs(tsv):
+    print(tsv)
     df = pl.read_csv(tsv, sep='\t')
     finemap_outputs = []
     for row in range(df.shape[0]):
@@ -1785,7 +1786,7 @@ def tsv_to_susie_outputs(tsv):
     df = pl.read_csv(tsv, sep='\t')
     susie_outputs = []
     for row in range(df.shape[0]):
-        susie_outputs.append(SuSIE_output(
+        susie_outputs.append(SuSiE_output(
             converged = df['converged'][row],
             colnames = df['colnames'][row],
             alpha = df['alpha'][row],

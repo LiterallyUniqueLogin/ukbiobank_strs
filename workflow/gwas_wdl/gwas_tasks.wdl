@@ -693,6 +693,7 @@ task str_spot_test {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "20m"
+    mem: "10g"
   }
 }
 
@@ -748,8 +749,8 @@ task regional_my_str_gwas {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "12h"
-    mem: if binary_type == "logistic" then "40g" else "4g"
+    dx_timeout: "18h"
+    mem: if binary_type == "logistic" then "40g" else "8g" # 4g works for all but a few jobs
   }
 }
 
@@ -883,7 +884,7 @@ task chromosomal_plink_snp_association {
   }
 
   output {
-    File data = "plink2." + (if binary_type == "linear" then "RIN_" else "") + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else "linear") + ".done"
+    File data = "plink2." + (if binary_type == "linear" then "rin_" else "") + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else "linear")
     File log = "plink2.log"
   }
 
@@ -963,7 +964,8 @@ task generate_peaks {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "1h"
+    dx_timeout: "4h"
+    mem: "20g"
   }
 }
 
@@ -996,6 +998,7 @@ task summarize_peaks {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
     shortTask: true
+    mem: "5g"
   }
 }
 
@@ -1033,6 +1036,7 @@ task generate_finemapping_regions {
     String phenotype
     File str_assoc_results
     File snp_assoc_results
+    Boolean remove_skips = false
   }
 
   output {
@@ -1046,7 +1050,8 @@ task generate_finemapping_regions {
       ~{chr_lens} \
       ~{str_assoc_results} \
       ~{snp_assoc_results} \
-      out.tab
+      out.tab \
+      ~{if remove_skips then "--remove-skips" else ""}
   >>>
 
   runtime {

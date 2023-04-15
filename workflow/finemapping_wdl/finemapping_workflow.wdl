@@ -81,17 +81,17 @@ workflow finemapping {
     }
   }
 
-  call first_pass_finemapping_df { input :
+  call finemapping_tasks.first_pass_finemapping_df { input :
     script_dir = script_dir,
     phenotype_name = phenotype_name,
     snp_assoc_results = plink_snp_gwas,
     str_assoc_results = my_str_gwas,
     ethnic_str_assoc_results = ethnic_my_str_gwass,
-    original_finemap_outputs = original_finemap.finemap_output,
-    original_susie_outputs = original_susie.susie_output
+    original_finemap_outputs = original_finemap_.finemap_output,
+    original_susie_outputs = original_susie_.susie_output
   }
 
-  call generate_followup_regions_tsv { input :
+  call finemapping_tasks.generate_followup_regions_tsv { input :
     script_dir = script_dir,
     first_pass_df = first_pass_finemapping_df.all_regions_concordance
   }
@@ -251,7 +251,7 @@ workflow finemapping {
     }
   }
 
-  call followup_finemapping_conditions_df { input :
+  call finemapping_tasks.followup_finemapping_conditions_df { input :
     script_dir = script_dir,
     phenotype_name = phenotype_name,
     snp_assoc_results = plink_snp_gwas,
@@ -282,7 +282,6 @@ workflow finemapping {
     Array[FINEMAP_output] total_prob_finemap = finemap_total_prob_.finemap_output
     Array[FINEMAP_output] derived_prior_std_finemap = finemap_prior_std_dervied_.finemap_output
     Array[FINEMAP_output] prob_conv_sss_tol_finemap = finemap_prob_conv_sss_tol_.finemap_output
-    Array[FINEMAP_output] ratio_finemap = finemap_ratio_.finemap_output
     Array[FINEMAP_output] mac_finemap = finemap_mac_.finemap_output
     Array[FINEMAP_output] threshold_finemap = finemap_threshold_.finemap_output
     Array[SuSiE_output] ratio_susie = susie_ratio_.susie_output

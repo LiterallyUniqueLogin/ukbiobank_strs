@@ -82,6 +82,7 @@ def main():
     parser.add_argument('my_str_fname')
     parser.add_argument('plink_imputed_snp_fname')
     parser.add_argument('out_fname')
+    parser.add_argument('--remove-skips', action='store_true')
     args = parser.parse_args()
 
     phenotype = args.phenotype
@@ -115,7 +116,7 @@ def main():
         outfile.write('chrom\tstart\tend\tany_strs\n')
         outfile.flush()
         prev_clump = None
-        for clump in generate_clumps(chr_lens_fname, itrs):
+        for clump in generate_clumps(args.chr_lens_fname, itrs):
             clump = [int(val) for val in clump]
             if prev_clump is not None and prev_clump[0] == clump[0] and prev_clump[2] >= clump[1]:
                 print(prev_clump, clump)
@@ -125,6 +126,23 @@ def main():
                 (clump[1] <= results['pos']) &
                 (results['pos'] <= clump[2])
             )
+            if args.remove_skips and ((
+                phenotype == 'urate' and
+                clump[0] == 4 and
+                clump[1] == 8165642 and
+                clump[2] == 11717761
+            ) or (
+                phenotype == 'total_bilirubin' and
+                clump[0] == 12 and
+                clump[1] == 19976272 and
+                clump[2] == 22524428
+            ) or (
+                phenotype == 'alkaline_phosphatase' and
+                clump[0] == 1 and
+                clump[1] == 19430673 and
+                clump[2] == 24309348
+            )):
+                continue
             outfile.write(f'{clump[0]}\t{clump[1]}\t{clump[2]}\t{strs}\n')
             outfile.flush()
             prev_clump = clump

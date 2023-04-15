@@ -1,11 +1,29 @@
 version 1.0
 
-import "../gwas_wdl/gwas_tasks.wdl"
 import "../platform_wdl/expanse_tasks.wdl"
+import "../gwas_wdl/gwas_tasks.wdl"
+import "../finemapping_wdl/finemapping_tasks.wdl"
 import "../finemapping_wdl/post_finemapping_workflow.wdl"
 
-# figures that use preexisting files
-# and so are not part of the main GWAS -> finemapping pipeline
+task glob_helper {
+  input {
+    String pattern
+    Array[File] glob_input = glob(pattern)
+  }
+
+  command <<< >>>
+
+  output {
+    Array[File] files = glob_input
+  }
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "2m"
+    shortTask: true
+  }
+}
+
 workflow expanse_figures {
 
   input {
@@ -13,14 +31,14 @@ workflow expanse_figures {
     File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
     File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam"
 
+    File chr_lens = "misc_data/genome/chr_lens.txt"
+
     File specific_alleles = "association/specific_alleles.tab"
 
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
     File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
     File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
 
-    ##### files that could be computed via WDL but were pregenerated beforehand
-    
     # sample files which include randomness, so need to be reused for consistency
     File unrelated_white_brits_sample_list = "sample_qc/runs/white_brits/no_phenotype/combined_unrelated.sample"
     File unrelated_black_sample_list = "sample_qc/runs/black/no_phenotype/combined_unrelated.sample"
@@ -29,24 +47,12 @@ workflow expanse_figures {
     File unrelated_samples_CBL_hom_not_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_not_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
     File unrelated_samples_CBL_hom_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
     File platelet_count_sample_list = "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample"
+
+    # other cached inputs are found directly in the workflow because they need scatters or depend on other logic
+    # >_<
   }
 
-  #### arrays of inputs that need to scatter blocks to create
-
-  call gwas_tasks.phenotype_names
-
-  # cached signal peaks - TODO generate these?
-	scatter (phenotype_name in phenotype_names.n) {
-    String peak_files = "signals/peaks/~{phenotype_name}_250000_5e-8.tab"
-  }
-
-  # cached results of fine-mapping analyses
-  scatter (phenotype in phenotype_names.n) {
-    File first_pass_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_all_concordance_~{phenotype}.tab"
-    File susie_all_min_abs_corrs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/susie_all_min_abs_corrs_~{phenotype}.npy"
-    File followup_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_~{phenotype}.tab"
-  }
-
+  # inputs, would like to be in the inputs block but are arrays and so need scatter statements to make
   scatter (chrom in range(22)) {
     VCF str_vcfs = {
       "vcf": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz",
@@ -59,6 +65,10 @@ workflow expanse_figures {
     }
   }
 
+  # input, but written as a task for reusability
+  call gwas_tasks.phenotype_names
+
+  ##### some common task inputs
   call expanse_tasks.extract_field as sc_white_brits { input :
     script_dir = script_dir,
     id = 22006
@@ -69,6 +79,16 @@ workflow expanse_figures {
     sc = sc_white_brits.data
   }
 
+  scatter (phenotype in phenotype_names.n) {
+    # GWAS results, cached for efficiency
+    File str_gwas_results = "association/results/~{phenotype}/my_str/results.tab"
+    File snp_gwas_results = "association/results/~{phenotype}/plink_snp/results.tab"
+    scatter (ethnicity in ["black", "south_asian", "chinese", "irish", "white_other"]) {
+      File ethnic_str_gwas_resultss = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+    }
+  }
+
+  ##### generate figure 1 (unfinished)
 #  # TODO this crashes because of a missing header in the VCF ##command=Hipstr
 #  scatter (chrom in range(22)) {
 #    call gwas_tasks.imputed_str_locus_summary as imputed_str_locus_summaries { input :
@@ -84,6 +104,206 @@ workflow expanse_figures {
 #    chrom_locus_summaries = imputed_str_locus_summaries.out
 #  }
 
+#  # cached signal peaks - TODO generate these?
+#  scatter (phenotype in phenotype_names.n) {
+#    String peak_files = "signals/peaks/~{phenotype}_250000_5e-8.tab"
+#  }
+
+  scatter (phenotype_idx in range(length(phenotype_names.n))) {
+    call gwas_tasks.generate_peaks { input :
+      script_dir = script_dir,
+      snp_assoc_results = snp_gwas_results[phenotype_idx],
+      str_assoc_results = str_gwas_results[phenotype_idx],
+      phenotype = phenotype_names.n[phenotype_idx],
+      spacing = "250000",
+      thresh = "5e-8"
+    }
+  }
+
+  call gwas_tasks.summarize_peaks as fig_1ef { input :
+    script_dir = script_dir,
+    phenotype_names = phenotype_names.n,
+    peak_files = generate_peaks.peaks
+  }
+
+  ##### generate fine-mapping supplementary figures (3-12, missing 8 and 9)
+  # take cached fine-mapping results and summarize them
+  scatter (phenotype_idx in range(length(phenotype_names.n))) {
+    call gwas_tasks.generate_finemapping_regions { input :
+      script_dir = script_dir,
+      chr_lens = chr_lens,
+      phenotype = phenotype_names.n[phenotype_idx],
+      snp_assoc_results = snp_gwas_results[phenotype_idx],
+      str_assoc_results = str_gwas_results[phenotype_idx],
+      remove_skips = true
+    }
+
+    Array[Array[String]] finemapping_regions_tsv = read_tsv(generate_finemapping_regions.data)
+
+    # first pass finemapping results, cached for efficiency
+    scatter (first_pass_region_idx in range(length(finemapping_regions_tsv) - 1)) {
+      Int first_pass_region_idx_plus_one = first_pass_region_idx + 1
+      region first_pass_bounds = {
+        "chrom": finemapping_regions_tsv[first_pass_region_idx_plus_one][0],
+        "start": finemapping_regions_tsv[first_pass_region_idx_plus_one][1],
+        "end": finemapping_regions_tsv[first_pass_region_idx_plus_one][2],
+      }
+      String first_pass_region_strs = "~{first_pass_bounds.chrom}_{first_pass_bounds.start}_~{first_pass_bounds.end}"
+      Int first_pass_chroms = first_pass_bounds.chrom
+
+      String original_finemap_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/finemap_results/~{phenotype_names.n[phenotype_idx]}/~{first_pass_bounds.chrom}_~{first_pass_bounds.start}_~{first_pass_bounds.end}"
+#      call glob_helper as original_finemap_creds { input :
+#        pattern = "~{original_finemap_dir}/finemap_output.cred*"
+#      }
+#      scatter (num in range(41)) {
+#        File? original_finemap_creds = "~{original_finemap_dir}/finemap_output.cred~{num}"
+#      }
+      serializable_FINEMAP_output original_finemap = object {
+        snp_file: "~{original_finemap_dir}/finemap_output.snp",
+        log_sss: "~{original_finemap_dir}/finemap_output.log_sss",
+        config: "~{original_finemap_dir}/finemap_output.config",
+        # creds: 
+      }
+      Array[String] original_finemap_creds = read_lines("~{original_finemap_dir}/cred_files_list.txt")#select_all(original_finemap_creds),
+
+      String original_susie_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/susie_results/~{phenotype_names.n[phenotype_idx]}/~{first_pass_bounds.chrom}_~{first_pass_bounds.start}_~{first_pass_bounds.end}"
+#      call glob_helper as original_susie_CSes { input :
+#        pattern = "~{original_susie_dir}/cs*.txt"
+#      }
+#      scatter (num in range(51)) {
+#        File? original_susie_CSes = "~{original_susie_dir}/cs~{num}.txt"
+#      }
+      serializable_SuSiE_output original_susie = object {
+        lbf: "~{original_susie_dir}/lbf.tab",
+        lbf_variable: "~{original_susie_dir}/lbf_variable.tab",
+        sigma2: "~{original_susie_dir}/sigma2.txt",
+        V: "~{original_susie_dir}/V.tab",
+        converged: "~{original_susie_dir}/converged.txt",
+        lfsr: "~{original_susie_dir}/lfsr.tab",
+        requested_coverage: "~{original_susie_dir}/requested_coverage.txt",
+        alpha: "~{original_susie_dir}/alpha.tab",
+        # CSs: read_lines("~{original_susie_dir}/cs_files_list.txt"), #select_all(original_susie_CSes)
+      }
+      Array[String] original_susie_CSs = read_lines("~{original_susie_dir}/cs_files_list.txt") #select_all(original_susie_CSes)
+    } # end first pass regions
+
+    call finemapping_tasks.first_pass_finemapping_df { input :
+      script_dir = script_dir,
+      phenotype_name = phenotype_names.n[phenotype_idx],
+      snp_assoc_results = snp_gwas_results[phenotype_idx],
+      str_assoc_results = str_gwas_results[phenotype_idx],
+      ethnic_str_assoc_results = ethnic_str_gwas_resultss[phenotype_idx],
+      original_finemap_outputs = original_finemap,
+      original_finemap_creds = original_finemap_creds,
+      original_susie_outputs = original_susie,
+      original_susie_CSs = original_susie_CSs,
+      regions = first_pass_region_strs,
+      chroms = first_pass_chroms,
+    }
+
+    call finemapping_tasks.generate_followup_regions_tsv { input :
+      script_dir = script_dir,
+      first_pass_df = first_pass_finemapping_df.all_regions_concordance
+    }
+
+    Array[Array[String]] followup_finemapping_regions_tsv = read_tsv(generate_followup_regions_tsv.tsv)
+
+    # followup finemapping results, cached for efficiency
+    scatter (followup_region_idx in range(length(followup_finemapping_regions_tsv) - 1)) {
+      Int followup_region_idx_plus_one = followup_region_idx + 1
+      region followup_bounds = {
+        "chrom": finemapping_regions_tsv[followup_region_idx_plus_one][0],
+        "start": finemapping_regions_tsv[followup_region_idx_plus_one][1],
+        "end": finemapping_regions_tsv[followup_region_idx_plus_one][2],
+      }
+      String followup_region_strs = "~{followup_bounds.chrom}_{followup_bounds.start}_~{followup_bounds.end}"
+      Int followup_chroms = followup_bounds.chrom
+
+      scatter (finemap_run in [
+        "finemap_results/~{phenotype_names.n[phenotype_idx]}.total_prob_4",
+        "finemap_results/~{phenotype_names.n[phenotype_idx]}.prior_std_0.0224",
+        "finemap_results/~{phenotype_names.n[phenotype_idx]}.prob_conv_sss_tol_0.0001",
+        "finemap_results_mac_100/~{phenotype_names.n[phenotype_idx]}",
+        "finemap_results_threshold_0.0005/~{phenotype_names.n[phenotype_idx]}",
+        "finemap_results/~{phenotype_names.n[phenotype_idx]}.prior_std_0.005",
+        "finemap_results/~{phenotype_names.n[phenotype_idx]}.snp_str_ratio_4",
+      ]) {
+        String finemap_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/~{finemap_run}/~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}/"
+#        call glob_helper as finemap_creds { input :
+#          pattern = "~{finemap_dir}/finemap_output.cred*"
+#        }
+        scatter (num in range(41)) {
+          File? finemap_creds = "~{finemap_dir}/finemap_output.cred~{num}"
+        }
+        FINEMAP_output followup_finemaps = object {
+          snp_file: "~{finemap_dir}/finemap_output.snp",
+          log_sss: "~{finemap_dir}/finemap_output.log_sss",
+          config: "~{finemap_dir}/finemap_output.config",
+          creds: select_all(finemap_creds)
+        }
+      }
+      scatter (susie_run in [
+        "susie_hardcall_results/~{phenotype_names.n[phenotype_idx]}", 
+        "susie_results/~{phenotype_names.n[phenotype_idx]}.snp_str_ratio_4",
+      ]) {
+        String susie_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/~{susie_run}/~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}/"
+#        call glob_helper as susie_CSes { input :
+#          pattern = "~{susie_dir}/cs*.txt"
+#        }
+        scatter (num in range(51)) {
+          File? susie_CSes = "~{susie_dir}/cs~{num}.txt"
+        }
+        SuSiE_output followup_susies = object {
+          lbf: "~{susie_dir}/lbf.tab",
+          lbf_variable: "~{susie_dir}/lbf_variable.tab",
+          sigma2: "~{susie_dir}/sigma2.txt",
+          V: "~{susie_dir}/V.tab",
+          converged: "~{susie_dir}/converged.txt",
+          lfsr: "~{susie_dir}/lfsr.tab",
+          requested_coverage: "~{susie_dir}/requested_coverage.txt",
+          alpha: "~{susie_dir}/alpha.tab",
+          CSs: select_all(susie_CSes),
+        }
+      }
+    } # end followup regions
+
+    call finemapping_tasks.followup_finemapping_conditions_df { input :
+      script_dir = script_dir,
+      phenotype_name = phenotype_names.n[phenotype_idx],
+      snp_assoc_results = snp_gwas_results[phenotype_idx],
+      str_assoc_results = str_gwas_results[phenotype_idx],
+      ethnic_str_assoc_results = ethnic_str_gwas_resultss[phenotype_idx],
+      original_finemap_outputs = original_finemap,
+      original_susie_outputs = original_susie,
+      total_prob_finemap_outputs = followup_finemaps[0],
+      derived_prior_std_finemap_outputs = followup_finemaps[1], 
+      conv_tol_finemap_outputs = followup_finemaps[2],
+      mac_finemap_outputs = followup_finemaps[3],
+      threshold_finemap_outputs = followup_finemaps[4],
+      best_guess_susie_outputs = followup_susies[0],
+      low_prior_std_finemap_outputs = followup_finemaps[5],
+      ratio_finemap_outputs = followup_finemaps[6],
+      ratio_susie_outputs = followup_susies[1],
+      regions = followup_region_strs,
+      chroms = followup_chroms,
+    }
+  }
+
+  # cached results of fine-mapping analyses
+#  scatter (phenotype in phenotype_names.n) {
+#    File first_pass_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_all_concordance_~{phenotype}.tab"
+#    File susie_all_min_abs_corrs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/susie_all_min_abs_corrs_~{phenotype}.npy"
+#    File followup_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_~{phenotype}.tab"
+#  }
+
+  call post_finemapping_workflow.post_finemapping { input :
+    script_dir = ".",
+    first_pass_dfs = first_pass_finemapping_df.all_regions_concordance,
+    susie_all_min_abs_corrs = first_pass_finemapping_df.susie_all_regions_min_abs_corrs,
+    followup_dfs = followup_finemapping_conditions_df.df
+  }
+
+  ####### generate figure 4 (missing manhattans)
   call expanse_tasks.extract_field as pcs { input :
     script_dir = script_dir,
     id = 22009
@@ -214,12 +434,6 @@ workflow expanse_figures {
     dosage_threshold = 200,
   }
 
-  call gwas_tasks.summarize_peaks as fig_1ef { input :
-    script_dir = script_dir,
-    phenotype_names = phenotype_names.n,
-    peak_files = peak_files
-  }
-
   ### plot with data from GTEx Yang
 
   call gwas_tasks.summarize_individual_data_for_plotting as summarized_CBL_gtex_expression { input :
@@ -273,16 +487,9 @@ workflow expanse_figures {
     dosage_threshold = 5
   }
 
-  call post_finemapping_workflow.post_finemapping { input :
-    script_dir = ".",
-    first_pass_dfs = first_pass_dfs,
-    susie_all_min_abs_corrs = susie_all_min_abs_corrs,
-    followup_dfs = followup_dfs
-  }
-
   output {
-    File fig_1b_svg_out = fig_1b.svg
-    File fig_1b_png_out = fig_1b.png
+#    File fig_1b_svg_out = fig_1b.svg
+#    File fig_1b_png_out = fig_1b.png
     File fig_1e_svg_out = fig_1ef.barplot_svg
     File fig_1e_png_out = fig_1ef.barplot_png
     File fig_1f_svg_out = fig_1ef.heatmap_svg
@@ -296,11 +503,6 @@ workflow expanse_figures {
     File fig_4f_png_out = fig_4f.png
     File fig_4g_svg_out = fig_4g.svg
     File fig_4g_png_out = fig_4g.png
-
-    File supp_fig_15a_svg_out = supp_fig_15a.svg
-    File supp_fig_15a_png_out = supp_fig_15a.png
-    File supp_fig_15b_svg_out = supp_fig_15b.svg
-    File supp_fig_15b_png_out = supp_fig_15b.png
 
     File stat_statements = post_finemapping.stat_statements
     File supp_fig_3_png = post_finemapping.cs_min_abs_corrs_png
@@ -343,6 +545,10 @@ workflow expanse_figures {
     File supp_fig_12a_svg = post_finemapping.susie_ratio_svg
     File supp_fig_12b_png = post_finemapping.finemap_ratio_png
     File supp_fig_12b_svg = post_finemapping.finemap_ratio_svg
-  }
 
+    File supp_fig_15a_svg_out = supp_fig_15a.svg
+    File supp_fig_15a_png_out = supp_fig_15a.png
+    File supp_fig_15b_svg_out = supp_fig_15b.svg
+    File supp_fig_15b_png_out = supp_fig_15b.png
+  }
 }

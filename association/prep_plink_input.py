@@ -30,6 +30,7 @@ data = utils.merge_arrays(
     subset_transformed_phenotype,
     shared_covars
 )
+data = data[np.all(~np.isnan(data), axis=1), :]
 data = np.concatenate((data[:, 0:1], data), axis=1)
 
 col_names = ['FID', 'IID']

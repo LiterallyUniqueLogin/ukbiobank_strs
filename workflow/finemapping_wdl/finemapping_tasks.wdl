@@ -28,6 +28,12 @@ struct FINEMAP_output {
   Array[File] creds
 }
 
+struct serializable_FINEMAP_output {
+  File snp_file
+  File log_sss
+  File config
+}
+
 struct SuSiE_output {
   File lbf
   File lbf_variable
@@ -38,6 +44,17 @@ struct SuSiE_output {
   File requested_coverage
   File alpha
   Array[File] CSs
+}
+
+struct serializable_SuSiE_output {
+  File lbf
+  File lbf_variable
+  File sigma2
+  File V
+  File converged
+  File lfsr
+  File requested_coverage
+  File alpha
 }
 
 ####################### Extracting association signals #########################
@@ -405,8 +422,10 @@ task first_pass_finemapping_df {
     File str_assoc_results
     Array[File] ethnic_str_assoc_results
 
-    Array[FINEMAP_output] original_finemap_outputs
-    Array[SuSiE_output] original_susie_outputs
+    Array[serializable_FINEMAP_output] original_finemap_outputs
+    Array[Array[File]] original_finemap_creds
+    Array[serializable_SuSiE_output] original_susie_outputs
+    Array[Array[File]] original_susie_CSs
     Array[String] regions
     Array[Int] chroms
   }
@@ -421,6 +440,12 @@ task first_pass_finemapping_df {
     { echo "region" ; cat $REGIONS ; } >> "$REGIONS".headered
     CHROMS=~{write_lines(chroms)}
     { echo "chrom" ; cat $CHROMS ; } >> "$CHROMS".headered
+    original_finemap_creds=~{write_tsv(original_finemap_creds)}
+    { echo "creds" ; cat $original_finemap_creds | sed -e 's/\t/,/g' ; } >> "$original_finemap_creds".headered
+    original_susie_CSs=~{write_tsv(original_susie_CSs)}
+    { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } >> "$original_susie_CSs".headered
+    paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered "$original_finemap_creds".headered > finemap_files.tsv
+    paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered "$original_susie_CSs".headered > susie_files.tsv
     envsetup ~{script} \
       . \
       df \
@@ -429,9 +454,9 @@ task first_pass_finemapping_df {
       ~{snp_assoc_results} \
       ~{str_assoc_results} \
       ~{sep=" " ethnic_str_assoc_results} \
-      first_pass
-      <(paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      first_pass \
+      finemap_files.tsv \
+      susie_files.tsv
   >>>
 
   runtime {
@@ -520,8 +545,8 @@ task followup_finemapping_conditions_df {
     File str_assoc_results
     Array[File] ethnic_str_assoc_results
 
-    Array[FINEMAP_output] original_finemap_outputs
-    Array[SuSiE_output] original_susie_outputs
+    Array[serializable_FINEMAP_output] original_finemap_outputs
+    Array[serializable_SuSiE_output] original_susie_outputs
 
     Array[FINEMAP_output] total_prob_finemap_outputs
     Array[FINEMAP_output] derived_prior_std_finemap_outputs
@@ -555,17 +580,17 @@ task followup_finemapping_conditions_df {
       ~{snp_assoc_results} \
       ~{str_assoc_results} \
       ~{sep=" " ethnic_str_assoc_results} \
-      followup 
-      <(paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(total_prob_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(derived_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(conv_tol_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(mac_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(threshold_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(best_guess_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(low_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
-      <(paste ~{write_objects(ratio_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      followup \
+      <(paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)  \
+      <(paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(total_prob_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(derived_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(conv_tol_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(mac_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(threshold_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(best_guess_susie_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(low_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
+      <(paste ~{write_objects(ratio_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
       <(paste ~{write_objects(ratio_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
   >>>
 
