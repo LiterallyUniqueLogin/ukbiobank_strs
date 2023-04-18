@@ -65,6 +65,8 @@ workflow escalating_susie_run {
     File gts_h5
     File pheno_residuals_h5
 
+    File colnames,
+
     Float? tol
     Float? snp_p_over_str_p
     File? varnames_file
@@ -83,10 +85,11 @@ workflow escalating_susie_run {
     res_var = res_var,
     prior_var = prior_var,
     varnames_file = varnames_file,
+    colnames = colnames,
   }
 
   call should_escalate_susie_run as escalate_zero { input :
-    converged = try_zero.susie_output.converged,
+    converged = try_zero.susie_output.subset.converged,
     CSs = try_zero.susie_output.CSs,
     max_CSs = 10
   }
@@ -103,10 +106,11 @@ workflow escalating_susie_run {
       res_var = res_var,
       prior_var = prior_var,
       varnames_file = varnames_file,
+      colnames = colnames,
     }
   
     call should_escalate_susie_run as escalate_one { input :
-      converged = try_one.susie_output.converged,
+      converged = try_one.susie_output.subset.converged,
       CSs = try_one.susie_output.CSs,
       max_CSs = 30
     }
@@ -123,10 +127,11 @@ workflow escalating_susie_run {
         res_var = res_var,
         prior_var = prior_var,
         varnames_file = varnames_file,
+        colnames = colnames,
      }
   
       call should_escalate_susie_run { input :
-        converged = try_two.susie_output.converged,
+        converged = try_two.susie_output.subset.converged,
         CSs = try_two.susie_output.CSs,
         max_CSs = 50,
         assert = "True"

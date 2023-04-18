@@ -22,9 +22,7 @@ import "../gwas_wdl/gwas_tasks.wdl"
 # every successive line is a sample ID
 
 struct FINEMAP_output {
-  File snp_file
-  File log_sss
-  File config
+  serializable_FINEMAP_output subset
   Array[File] creds
 }
 
@@ -36,14 +34,7 @@ struct serializable_FINEMAP_output {
 }
 
 struct SuSiE_output {
-  File lbf
-  File lbf_variable
-  File sigma2
-  File V
-  File converged
-  File lfsr
-  File requested_coverage
-  File alpha
+  serializable_SuSiE_output subset 
   Array[File] CSs
 }
 
@@ -233,9 +224,11 @@ task finemap_run {
 
   output {
     FINEMAP_output finemap_output = object {
-      snp_file: "finemap_output.snp",
-      log_sss: "finemap_output.log_sss",
-      config: "finemap_output.config",
+      serializable_FINEMAP_output subset = object {
+        snp_file: "finemap_output.snp",
+        log_sss: "finemap_output.log_sss",
+        config: "finemap_output.config",
+      },
       creds: glob("finemap_output.cred*")
     }
   }
@@ -367,6 +360,8 @@ task susie_run {
     Int L
     Int max_iter
 
+    File colnames
+
     Float? tol
     Float? snp_p_over_str_p
     File? varnames_file
@@ -379,14 +374,17 @@ task susie_run {
 
   output {
     SuSiE_output? susie_output = object {
-      lbf: "lbf.tab",
-      lbf_variable: "lbf_variable.tab",
-      sigma2: "sigma2.txt",
-      V: "V.tab",
-      converged: "converged.txt",
-      lfsr: "lfsr.tab",
-      requested_coverage: "requested_coverage.txt",
-      alpha: "alpha.tab",
+      serializable_SuSiE_output subset = object {
+        lbf: "lbf.tab",
+        lbf_variable: "lbf_variable.tab",
+        sigma2: "sigma2.txt",
+        V: "V.tab",
+        converged: "converged.txt",
+        lfsr: "lfsr.tab",
+        requested_coverage: "requested_coverage.txt",
+        alpha: "alpha.tab",
+        colnames: colnames
+      },
       CSs: glob("cs*.txt")
     }
   }

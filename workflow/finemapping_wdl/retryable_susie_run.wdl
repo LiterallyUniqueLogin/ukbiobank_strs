@@ -12,6 +12,8 @@ workflow retryable_susie_run {
     Int L
     Int max_iter
 
+    File colnames
+
     Float? tol
     Float? snp_p_over_str_p
     File? varnames_file
@@ -32,9 +34,9 @@ workflow retryable_susie_run {
     res_var = res_var,
     prior_var = prior_var,
     varnames_file = varnames_file,
+    colnames = colnames,
   }
 
-  #if (!defined(try_zero.alpha)) {
   if (!defined(try_zero.susie_output)) {
     call finemapping_tasks.susie_run as try_one { input :
       script_dir = script_dir,
@@ -49,6 +51,7 @@ workflow retryable_susie_run {
       res_var = res_var,
       prior_var = prior_var,
       varnames_file = varnames_file,
+      colnames = colnames,
     }
 
     #if (!defined(try_one.alpha)) {
@@ -66,6 +69,7 @@ workflow retryable_susie_run {
         res_var = res_var,
         prior_var = prior_var,
         varnames_file = varnames_file,
+        colnames = colnames,
       }
     
       #if (!defined(try_two.alpha)) {
@@ -83,6 +87,7 @@ workflow retryable_susie_run {
           res_var = res_var,
           prior_var = prior_var,
           varnames_file = varnames_file,
+          colnames = colnames,
         }
       }
     }
