@@ -15,9 +15,12 @@ workflow expanse_figures {
 
     File chr_lens = "misc_data/genome/chr_lens.txt"
 
-    # TODO these next two files could be generated through WDL instead of cached
+    # TODO this group of files could be generated through WDL instead of cached
     File str_pos_table = "snpstr/flank_trimmed_vcf/vars.tab"
     File repeat_units_table = "snpstr/repeat_units.tab"
+    File str_pos_table_2 = "snpstr/str_loci.bed"
+    File str_hg38_pos_table = "snpstr/str_loci.hg38.bed"
+    File str_t2t_pos_table = "snpstr/str_loci.t2tv2.bed"
 
     File specific_alleles = "association/specific_alleles.tab"
 

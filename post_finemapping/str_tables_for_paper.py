@@ -111,11 +111,50 @@ finemapping_results = finemapping_results.filter(
     ).any().over(['chrom', 'snpstr_pos'])
 )
 
-pos_table = pl.read_csv(
-    #f'{ukb}/snpstr/flank_trimmed_vcf/vars.tab',
-    args.str_pos_table,
-    sep='\t'
+pos_table = pl.read_csv(args.str_pos_table, sep='\t')
+
+pos_table_2 = pl.read_csv(
+    args.str_pos_table_2,
+    sep='\t',
+    has_header=False,
+    new_columns=['chrom', 'pos', 'end_pos', 'ID']
+).with_columns([
+    pl.col('pos') + 1, # transform from bed to vcf coords
+    pl.col('chrom').str.replace('chr', '').cast(int),
+])
+hg38_pos_table = pl.read_csv(
+    args.str_hg38_pos_table,
+    sep='\t',
+    has_header=False,
+    new_columns=['chrom', 'pos', 'end_pos', 'ID', 'drop']
+).with_columns([
+    pl.col('pos') + 1, # transform from bed to vcf coords
+]).drop(['drop', 'chrom'])
+t2t_pos_table = pl.read_csv(
+    args.str_t2t_pos_table,
+    sep='\t',
+    has_header=False,
+    new_columns=['chrom', 'pos', 'end_pos', 'ID', 'drop']
+).with_columns([
+    pl.col('pos') + 1, # transform from bed to vcf coords
+]).drop(['drop', 'chrom'])
+
+pos_table_2 = pos_table_2.join(
+    hg38_pos_table,
+    on=['ID'],
+    suffix='_hg38',
+).join(
+    t2t_pos_table,
+    on=['ID'],
+    suffix='_t2t'
 )
+
+pos_table = pos_table_2.join(
+    pos_table,
+    on=['chrom', 'pos', 'end_pos']
+).drop(['ID']).groupby(
+    ['chrom', 'pos', 'end_pos']
+).agg([pl.col('snpstr_pos').first()]) # drop duplicate snpstr poses
 
 finemapping_results = finemapping_results.join(
     pos_table,

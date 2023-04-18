@@ -715,6 +715,9 @@ task str_tables_for_paper {
 
     File str_pos_table
     File repeat_units_table
+    File str_pos_table_2
+    File str_hg38_pos_table
+    File str_t2t_pos_table
 
     #annotations
     File intersects_gene
@@ -750,6 +753,9 @@ task str_tables_for_paper {
     envsetup ~{script} \
       --outdir . \
       --str-pos-table ~{str_pos_table} \
+      --str-pos-table-2 ~{str_pos_table_2} \
+      --str-hg38-pos-table ~{str_hg38_pos_table} \
+      --str-t2t-pos-table ~{str_t2t_pos_table} \
       --repeat-units-table ~{repeat_units_table} \
       --intersects-gene-annotation ~{intersects_gene} \
       --intersects-exon-annotation ~{intersects_exon} \
