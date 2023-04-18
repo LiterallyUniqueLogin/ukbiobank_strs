@@ -5,25 +5,7 @@ import "../gwas_wdl/gwas_tasks.wdl"
 import "../finemapping_wdl/finemapping_tasks.wdl"
 import "../finemapping_wdl/post_finemapping_workflow.wdl"
 
-task glob_helper {
-  input {
-    String pattern
-    Array[File] glob_input = glob(pattern)
-  }
-
-  command <<< >>>
-
-  output {
-    Array[File] files = glob_input
-  }
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "2m"
-    shortTask: true
-  }
-}
-
+# also includes tables
 workflow expanse_figures {
 
   input {
@@ -148,31 +130,18 @@ workflow expanse_figures {
         "start": finemapping_regions_tsv[first_pass_region_idx_plus_one][1],
         "end": finemapping_regions_tsv[first_pass_region_idx_plus_one][2],
       }
-      String first_pass_region_strs = "~{first_pass_bounds.chrom}_{first_pass_bounds.start}_~{first_pass_bounds.end}"
+      String first_pass_region_strs = "~{first_pass_bounds.chrom}_~{first_pass_bounds.start}_~{first_pass_bounds.end}"
       Int first_pass_chroms = first_pass_bounds.chrom
 
       String original_finemap_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/finemap_results/~{phenotype_names.n[phenotype_idx]}/~{first_pass_bounds.chrom}_~{first_pass_bounds.start}_~{first_pass_bounds.end}"
-#      call glob_helper as original_finemap_creds { input :
-#        pattern = "~{original_finemap_dir}/finemap_output.cred*"
-#      }
-#      scatter (num in range(41)) {
-#        File? original_finemap_creds = "~{original_finemap_dir}/finemap_output.cred~{num}"
-#      }
       serializable_FINEMAP_output original_finemap = object {
         snp_file: "~{original_finemap_dir}/finemap_output.snp",
         log_sss: "~{original_finemap_dir}/finemap_output.log_sss",
         config: "~{original_finemap_dir}/finemap_output.config",
-        # creds: 
       }
-      Array[String] original_finemap_creds = read_lines("~{original_finemap_dir}/cred_files_list.txt")#select_all(original_finemap_creds),
+      Array[String] original_finemap_creds = read_lines("~{original_finemap_dir}/cred_files_list.txt")
 
       String original_susie_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/susie_results/~{phenotype_names.n[phenotype_idx]}/~{first_pass_bounds.chrom}_~{first_pass_bounds.start}_~{first_pass_bounds.end}"
-#      call glob_helper as original_susie_CSes { input :
-#        pattern = "~{original_susie_dir}/cs*.txt"
-#      }
-#      scatter (num in range(51)) {
-#        File? original_susie_CSes = "~{original_susie_dir}/cs~{num}.txt"
-#      }
       serializable_SuSiE_output original_susie = object {
         lbf: "~{original_susie_dir}/lbf.tab",
         lbf_variable: "~{original_susie_dir}/lbf_variable.tab",
@@ -182,10 +151,10 @@ workflow expanse_figures {
         lfsr: "~{original_susie_dir}/lfsr.tab",
         requested_coverage: "~{original_susie_dir}/requested_coverage.txt",
         alpha: "~{original_susie_dir}/alpha.tab",
-        # CSs: read_lines("~{original_susie_dir}/cs_files_list.txt"), #select_all(original_susie_CSes)
+        colnames: "~{original_susie_dir}/colnames.txt.normal_run",
       }
-      Array[String] original_susie_CSs = read_lines("~{original_susie_dir}/cs_files_list.txt") #select_all(original_susie_CSes)
-    } # end first pass regions
+      Array[String] original_susie_CSs = read_lines("~{original_susie_dir}/cs_files_list.txt")
+    }
 
     call finemapping_tasks.first_pass_finemapping_df { input :
       script_dir = script_dir,
@@ -209,16 +178,7 @@ workflow expanse_figures {
     Array[Array[String]] followup_finemapping_regions_tsv = read_tsv(generate_followup_regions_tsv.tsv)
 
     # followup finemapping results, cached for efficiency
-    scatter (followup_region_idx in range(length(followup_finemapping_regions_tsv) - 1)) {
-      Int followup_region_idx_plus_one = followup_region_idx + 1
-      region followup_bounds = {
-        "chrom": finemapping_regions_tsv[followup_region_idx_plus_one][0],
-        "start": finemapping_regions_tsv[followup_region_idx_plus_one][1],
-        "end": finemapping_regions_tsv[followup_region_idx_plus_one][2],
-      }
-      String followup_region_strs = "~{followup_bounds.chrom}_{followup_bounds.start}_~{followup_bounds.end}"
-      Int followup_chroms = followup_bounds.chrom
-
+    if (length(followup_finemapping_regions_tsv) > 1) {
       scatter (finemap_run in [
         "finemap_results/~{phenotype_names.n[phenotype_idx]}.total_prob_4",
         "finemap_results/~{phenotype_names.n[phenotype_idx]}.prior_std_0.0224",
@@ -228,66 +188,99 @@ workflow expanse_figures {
         "finemap_results/~{phenotype_names.n[phenotype_idx]}.prior_std_0.005",
         "finemap_results/~{phenotype_names.n[phenotype_idx]}.snp_str_ratio_4",
       ]) {
-        String finemap_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/~{finemap_run}/~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}/"
-#        call glob_helper as finemap_creds { input :
-#          pattern = "~{finemap_dir}/finemap_output.cred*"
-#        }
-        scatter (num in range(41)) {
-          File? finemap_creds = "~{finemap_dir}/finemap_output.cred~{num}"
+        scatter (followup_region_idx in range(length(followup_finemapping_regions_tsv) - 1)) {
+          Int followup_region_idx_plus_one = followup_region_idx + 1
+          region followup_bounds = {
+            "chrom": followup_finemapping_regions_tsv[followup_region_idx_plus_one][1],
+            "start": sub(sub(followup_finemapping_regions_tsv[followup_region_idx_plus_one][2], "^[^_]*_", ""), "_[^_]*$", ""),
+            "end": sub(followup_finemapping_regions_tsv[followup_region_idx_plus_one][2], "^[^_]*_[^_]*_", ""),
+          }
+          String followup_region_strs = followup_finemapping_regions_tsv[followup_region_idx_plus_one][2]
+          Int followup_chroms = followup_bounds.chrom
+          
+          String finemap_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/~{finemap_run}/~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}/"
+          serializable_FINEMAP_output followup_finemaps = object {
+            snp_file: "~{finemap_dir}/finemap_output.snp",
+            log_sss: "~{finemap_dir}/finemap_output.log_sss",
+            config: "~{finemap_dir}/finemap_output.config",
+          }
+          Array[String] followup_finemap_creds = read_lines("~{finemap_dir}/cred_files_list.txt")
         }
-        FINEMAP_output followup_finemaps = object {
-          snp_file: "~{finemap_dir}/finemap_output.snp",
-          log_sss: "~{finemap_dir}/finemap_output.log_sss",
-          config: "~{finemap_dir}/finemap_output.config",
-          creds: select_all(finemap_creds)
-        }
-      }
-      scatter (susie_run in [
-        "susie_hardcall_results/~{phenotype_names.n[phenotype_idx]}", 
-        "susie_results/~{phenotype_names.n[phenotype_idx]}.snp_str_ratio_4",
-      ]) {
-        String susie_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/~{susie_run}/~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}/"
-#        call glob_helper as susie_CSes { input :
-#          pattern = "~{susie_dir}/cs*.txt"
-#        }
-        scatter (num in range(51)) {
-          File? susie_CSes = "~{susie_dir}/cs~{num}.txt"
-        }
-        SuSiE_output followup_susies = object {
-          lbf: "~{susie_dir}/lbf.tab",
-          lbf_variable: "~{susie_dir}/lbf_variable.tab",
-          sigma2: "~{susie_dir}/sigma2.txt",
-          V: "~{susie_dir}/V.tab",
-          converged: "~{susie_dir}/converged.txt",
-          lfsr: "~{susie_dir}/lfsr.tab",
-          requested_coverage: "~{susie_dir}/requested_coverage.txt",
-          alpha: "~{susie_dir}/alpha.tab",
-          CSs: select_all(susie_CSes),
-        }
-      }
-    } # end followup regions
+      } # end scatter over finemapping runs
 
-    call finemapping_tasks.followup_finemapping_conditions_df { input :
-      script_dir = script_dir,
-      phenotype_name = phenotype_names.n[phenotype_idx],
-      snp_assoc_results = snp_gwas_results[phenotype_idx],
-      str_assoc_results = str_gwas_results[phenotype_idx],
-      ethnic_str_assoc_results = ethnic_str_gwas_resultss[phenotype_idx],
-      original_finemap_outputs = original_finemap,
-      original_susie_outputs = original_susie,
-      total_prob_finemap_outputs = followup_finemaps[0],
-      derived_prior_std_finemap_outputs = followup_finemaps[1], 
-      conv_tol_finemap_outputs = followup_finemaps[2],
-      mac_finemap_outputs = followup_finemaps[3],
-      threshold_finemap_outputs = followup_finemaps[4],
-      best_guess_susie_outputs = followup_susies[0],
-      low_prior_std_finemap_outputs = followup_finemaps[5],
-      ratio_finemap_outputs = followup_finemaps[6],
-      ratio_susie_outputs = followup_susies[1],
-      regions = followup_region_strs,
-      chroms = followup_chroms,
-    }
-  }
+      scatter (followup_region_idx in range(length(followup_finemapping_regions_tsv) - 1)) {
+        Int followup_region_idx_plus_one_ = followup_region_idx + 1
+        region followup_bounds_ = {
+          "chrom": followup_finemapping_regions_tsv[followup_region_idx_plus_one_][1],
+          "start": sub(sub(followup_finemapping_regions_tsv[followup_region_idx_plus_one_][2], "^[^_]*_", ""), "_[^_]*$", ""),
+          "end": sub(followup_finemapping_regions_tsv[followup_region_idx_plus_one_][2], "^[^_]*_[^_]*_", ""),
+        }
+
+        String susie_best_guess_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/susie_hardcall_results/~{phenotype_names.n[phenotype_idx]}/~{followup_bounds_.chrom}_~{followup_bounds_.start}_~{followup_bounds_.end}/"
+        serializable_SuSiE_output best_guess_susies = object {
+          lbf: "~{susie_best_guess_dir}/lbf.tab",
+          lbf_variable: "~{susie_best_guess_dir}/lbf_variable.tab",
+          sigma2: "~{susie_best_guess_dir}/sigma2.txt",
+          V: "~{susie_best_guess_dir}/V.tab",
+          converged: "~{susie_best_guess_dir}/converged.txt",
+          lfsr: "~{susie_best_guess_dir}/lfsr.tab",
+          requested_coverage: "~{susie_best_guess_dir}/requested_coverage.txt",
+          alpha: "~{susie_best_guess_dir}/alpha.tab",
+          colnames: "~{susie_best_guess_dir}/colnames.txt",
+        }
+        Array[String] best_guess_susie_CSs = read_lines("~{susie_best_guess_dir}/cs_files_list.txt")
+
+        String susie_ratio_dir = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/susie_results/~{phenotype_names.n[phenotype_idx]}_snp_str_ratio_4/~{followup_bounds_.chrom}_~{followup_bounds_.start}_~{followup_bounds_.end}/"
+        String original_susie_dir_for_ratio = "/expanse/projects/gymreklab/jmargoli/ukbiobank/finemapping/susie_results/~{phenotype_names.n[phenotype_idx]}/~{followup_bounds_.chrom}_~{followup_bounds_.start}_~{followup_bounds_.end}/"
+        serializable_SuSiE_output ratio_susies = object {
+          lbf: "~{susie_ratio_dir}/lbf.tab",
+          lbf_variable: "~{susie_ratio_dir}/lbf_variable.tab",
+          sigma2: "~{susie_ratio_dir}/sigma2.txt",
+          V: "~{susie_ratio_dir}/V.tab",
+          converged: "~{susie_ratio_dir}/converged.txt",
+          lfsr: "~{susie_ratio_dir}/lfsr.tab",
+          requested_coverage: "~{susie_ratio_dir}/requested_coverage.txt",
+          alpha: "~{susie_ratio_dir}/alpha.tab",
+          colnames: if phenotype_names.n[phenotype_idx] != "mean_platelet_volume" then "~{original_susie_dir_for_ratio}/colnames.txt" else "~{susie_ratio_dir}/colnames.txt",
+        }
+        Array[String] ratio_susie_CSs = read_lines("~{susie_ratio_dir}/cs_files_list.txt")
+      }
+
+      call finemapping_tasks.followup_finemapping_conditions_df { input :
+        script_dir = script_dir,
+        phenotype_name = phenotype_names.n[phenotype_idx],
+        snp_assoc_results = snp_gwas_results[phenotype_idx],
+        str_assoc_results = str_gwas_results[phenotype_idx],
+        ethnic_str_assoc_results = ethnic_str_gwas_resultss[phenotype_idx],
+        original_finemap_outputs = original_finemap,
+        original_finemap_creds = original_finemap_creds,
+        original_susie_outputs = original_susie,
+        original_susie_CSs = original_susie_CSs,
+        total_prob_finemap_outputs = followup_finemaps[0],
+        total_prob_finemap_creds = followup_finemap_creds[0],
+        derived_prior_std_finemap_outputs = followup_finemaps[1], 
+        derived_prior_std_finemap_creds = followup_finemap_creds[1], 
+        conv_tol_finemap_outputs = followup_finemaps[2],
+        conv_tol_finemap_creds = followup_finemap_creds[2],
+        mac_finemap_outputs = followup_finemaps[3],
+        mac_finemap_creds = followup_finemap_creds[3],
+        threshold_finemap_outputs = followup_finemaps[4],
+        threshold_finemap_creds = followup_finemap_creds[4],
+        best_guess_susie_outputs = best_guess_susies,
+        best_guess_susie_CSs = best_guess_susie_CSs,
+        low_prior_std_finemap_outputs = followup_finemaps[5],
+        low_prior_std_finemap_creds = followup_finemap_creds[5],
+        ratio_finemap_outputs = followup_finemaps[6],
+        ratio_finemap_creds = followup_finemap_creds[6],
+        ratio_susie_outputs = ratio_susies,
+        ratio_susie_CSs = ratio_susie_CSs,
+        original_regions = first_pass_region_strs,
+        original_chroms = first_pass_chroms,
+        followup_regions = followup_region_strs[0], # any index would do, all identical
+        followup_chroms = followup_chroms[0],
+      }
+    } # end if followup finemapping
+  } # end scatter over phenotype
 
   # cached results of fine-mapping analyses
 #  scatter (phenotype in phenotype_names.n) {
@@ -300,7 +293,7 @@ workflow expanse_figures {
     script_dir = ".",
     first_pass_dfs = first_pass_finemapping_df.all_regions_concordance,
     susie_all_min_abs_corrs = first_pass_finemapping_df.susie_all_regions_min_abs_corrs,
-    followup_dfs = followup_finemapping_conditions_df.df
+    followup_dfs = select_all(followup_finemapping_conditions_df.df)
   }
 
   ####### generate figure 4 (missing manhattans)
@@ -487,6 +480,27 @@ workflow expanse_figures {
     dosage_threshold = 5
   }
 
+  call finemapping_tasks.str_tables_for_paper { input :
+    script_dir = script_dir,
+    str_pos_table = str_pos_table,
+    repeat_units_table = repeat_units_table,
+    intersects_gene = intersects_gene_annotation,
+    intersects_exon = intersects_exon_annotation,
+    intersects_CDS = intersects_CDS_annotation,
+    intersects_five_prime_UTR = intersects_five_prime_UTR_annotation,
+    intersects_three_prime_UTR = intersects_three_prime_UTR_annotation,
+    intersects_UTR = intersects_UTR_annotation,
+    phenotype_names = phenotype_names.n,
+    assocs = str_gwas_results,
+    black_assocs = ethnic_str_gwas_resultss[0],
+    south_asian_assocs = ethnic_str_gwas_resultss[1],
+    chinese_assocs = ethnic_str_gwas_resultss[2],
+    irish_assocs = ethnic_str_gwas_resultss[3],
+    white_other_assocs = ethnic_str_gwas_resultss[4],
+    first_pass_finemapping_dfs = first_pass_finemapping_df.all_regions_concordance,
+    followup_finemapping_dfs = select_all(followup_finemapping_conditions_df.df),
+  }
+
   output {
 #    File fig_1b_svg_out = fig_1b.svg
 #    File fig_1b_png_out = fig_1b.png
@@ -520,9 +534,9 @@ workflow expanse_figures {
     File supp_fig_7b_png = post_finemapping.finemap_v_susie_consistency_SNP_png
     File supp_fig_7b_svg = post_finemapping.finemap_v_susie_consistency_SNP_svg
 
-    File doubly_finemapped_STRs = post_finemapping.doubly_finemapped_STRs
-    File confidently_finemapped_STRs = post_finemapping.confidently_finemapped_STRs
-    File overconfidently_finemapped_STRs = post_finemapping.overconfidently_finemapped_STRs
+#    File doubly_finemapped_STRs = post_finemapping.doubly_finemapped_STRs
+#    File confidently_finemapped_STRs = post_finemapping.confidently_finemapped_STRs
+#    File overconfidently_finemapped_STRs = post_finemapping.overconfidently_finemapped_STRs
 
     # used for deciding confidently finemap
     File supp_fig_10ab_png = post_finemapping.susie_best_guess_png
@@ -550,5 +564,10 @@ workflow expanse_figures {
     File supp_fig_15a_png_out = supp_fig_15a.png
     File supp_fig_15b_svg_out = supp_fig_15b.svg
     File supp_fig_15b_png_out = supp_fig_15b.png
+
+   File singly_finemapped_strs_for_paper = str_tables_for_paper.singly_finemapped_strs_for_paper
+   File singly_finemapped_strs_sorted = str_tables_for_paper.singly_finemapped_strs_sorted
+   File confidently_finemapped_strs_for_paper = str_tables_for_paper.confidently_finemapped_strs_for_paper
+   File confidently_finemapped_strs_sorted = str_tables_for_paper.confidently_finemapped_strs_sorted
   }
 }

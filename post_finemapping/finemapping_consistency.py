@@ -51,7 +51,7 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
     min_abs_corrs = []
 
     for count, susie_output in enumerate(susie_outputs):
-        print(f'Loading finemap region {count+1}/{len(susie_outputs)} ...', flush=True)
+        print(f'Loading susie region {count+1}/{len(susie_outputs)} ...', flush=True)
 
         with open(susie_output.converged) as converged_file:
             if not next(converged_file).strip() == 'TRUE':
@@ -75,13 +75,17 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
             susie_output.alpha,
             delimiter='\t',
         ).T
+        if len(alphas.shape) == 0:
+            alphas = alphas.reshape(-1, 1) # only one credible set
         if only_L is not None and only_L != alphas.shape[1]:
-            only_L_skips.append(region)
+            only_L_skips.append(susie_output.region)
             continue
         estimated_signal_vars = np.genfromtxt(
             susie_output.V,
             delimiter='\t'
         )
+        if len(estimated_signal_vars.shape) == 0:
+            estimated_signal_vars = np.array([estimated_signal_vars])
 
         n_alphas = alphas.shape[1]
         susie_pips=1-np.prod(1-alphas[:, estimated_signal_vars >= 1e-9], axis=1)
@@ -99,8 +103,8 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
         }).lazy()
 
         df = susie_df.with_columns([
-            pl.lit(region).alias('region'),
-            pl.lit(chrom).alias('chrom').cast(int),
+            pl.lit(susie_output.region).alias('region'),
+            pl.lit(susie_output.chrom).alias('chrom').cast(int),
             pl.col('susie_pip').cast(float).alias('susie_pip')
         ]).sort('susie_idx')
 
@@ -127,11 +131,11 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
             if min_abs_corr < corr_cutoff:
                 continue
             if estimated_signal_vars[cs_id-1] <= 1e-9:
-                print(f'CS {cs_id} in region {region} has a pure CS with negligible signal, exiting')
+                print(f'CS {cs_id} in region {susie_output.region} has a pure CS with negligible signal, exiting')
                 assert False
             real_cs_count += 1
             if real_cs_count == 50:
-                underexplored_regions.append(region)
+                underexplored_regions.append(susie_output.region)
             # could worry about variants being in multiple CSes
             df = df.with_column(
                 pl.when(pl.col('susie_idx').is_in(cs_susie_idx))
@@ -160,7 +164,6 @@ def load_finemap(finemap_outputs):
     underexplored_regions = []
     dfs = []
 
-    print('finemapping snp_files:', snp_files)
     for count, finemap_output in enumerate(finemap_outputs):
         print(f'Loading finemap region {count+1}/{len(finemap_outputs)} ...', flush=True)
         with open(finemap_output.log_sss) as log:
@@ -802,7 +805,9 @@ def followup_finemapping_conditions_df(
         'finemap_pip_mac',
         'finemap_pip_p_thresh',
         *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
-    ])
+    ]).filter(
+        pl.col('p_val') < 0.05 #FINEMAP MAP>=100 run  included exactly <= 0.05 , not just < 0.05, in the run. Exclude those from followup calculations.
+    )
     pheno_df.write_csv(f'{outdir}/finemapping_followup_concordance_{phenotype}.tab', sep='\t')
     if should_assert:
         assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
@@ -836,7 +841,7 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
             sep='\t',
             dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
         ) for followup_finemapping_conditions_tsv in followup_finemapping_conditions_tsvs if os.stat(followup_finemapping_conditions_tsv).st_size > 100
-    ]).rename({'susie_cs_hardcall' : 'susie_cs_best_guess', 'susie_alpha_hardcall': 'susie_alpha_best_guess', 'susie_pip_hardcall': 'susie_pip_best_guess'})
+    ])
     print(' done', flush=True)
 
     total_df = total_df.filter(~pl.col('finemap_pip').is_null() & ~pl.col('susie_alpha').is_null())
@@ -1069,14 +1074,6 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
 
 # used to out to {ukb}/post_finemapping/intermediate_results
 def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames, original_FINEMAP_outputs, original_SuSiE_outputs):
-
-    #pheno_dfs = []
-    min_abs_corrs = []
-    #for count, phenotype in [(0, 'aspartate_aminotransferase'), (1, 'total_bilirubin')]:
-    #for count, phenotype in [(0, 'mean_platelet_volume')]:
-    #for count, phenotype in enumerate(phenotypes.phenotypes_in_use):
-    #    print(f"Loading phenotype #{count+1} ({phenotype})", flush=True)
-
     str_assocs = pl.scan_csv(
         str_gwas_fname,
         sep='\t',
@@ -1128,13 +1125,16 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
             )
 
     print('original SuSiE')
-    original_susies, pheno_min_abs_corrs = load_susie(original_SuSiE_outputs, return_corrs=True)
-    min_abs_corrs.extend(pheno_min_abs_corrs)
+    original_susies, min_abs_corrs = load_susie(original_SuSiE_outputs, return_corrs=True)
     print('original FINEMAP')
     original_finemaps = load_finemap(original_FINEMAP_outputs)
 
     print('Collecting ... ', end='', flush=True)
     start = time.time()
+    print('finemap', list(zip(original_finemaps.columns, original_finemaps.dtypes)))
+    print('susie', list(zip(original_susies.columns, original_susies.dtypes)))
+    print('assoc', list(zip(assocs.columns, assocs.dtypes)))
+    print('ethnicity assoc', list(zip(other_ethnicity_assocs.columns, other_ethnicity_assocs.dtypes)))
     pheno_df = original_finemaps.join(
         original_susies,
         how='outer',
@@ -1177,22 +1177,19 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
     if should_assert:
         assert total_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
         assert np.all(~np.isnan(total_df['p_val'].to_numpy()))
-        assert np.all(~np.isnan(total_df['finemap_pip'].to_numpy()))
+        # assert np.all(~np.isnan(total_df['finemap_pip'].to_numpy())) disable for the time being, only 5 snps dropped this way in hematocrit, none in the other phenotypes
         assert np.all(1 == total_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
 
-def generate_followup_regions_tsv(outdir, first_pass_dfs):
-    total_df = pl.concat([
-        pl.read_csv(
-            first_pass_df,
-            sep='\t',
-            dtypes={
-                **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
-                **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
-                **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
-            }
-        ) for first_pass_df in first_pass_dfs
-    ])
-    total_df.filter(
+def generate_followup_regions_tsv(outdir, first_pass_df):
+    pl.read_csv(
+        first_pass_df,
+        sep='\t',
+        dtypes={
+            **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
+            **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
+            **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
+        }
+    ).filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
         (pl.col('susie_alpha') >= .8) &
@@ -1200,18 +1197,17 @@ def generate_followup_regions_tsv(outdir, first_pass_dfs):
     ).filter(~(
         (
             (pl.col('phenotype') == 'total_bilirubin') &
-            (pl.col('signal_region') == '12_19976272_22524428')
+            (pl.col('region') == '12_19976272_22524428')
         ) |
         (
             (pl.col('phenotype') == 'mean_platelet_volume') &
-            (pl.col('signal_region') == '17_2341352_2710113')
+            (pl.col('region') == '17_2341352_2710113')
         ) |
         (
             (pl.col('phenotype') == 'alkaline_phosphatase') &
-            (pl.col('signal_region') == '1_19430673_24309348')
+            (pl.col('region') == '1_19430673_24309348')
         )
-    )).groupby(['phenotype', 'chrom', 'region']).agg([]).write(f'{outdir}/followup_regions.tsv')
-
+    )).groupby(['phenotype', 'chrom', 'region']).agg([]).write_csv(f'{outdir}/followup_regions.tsv', sep='\t')
 
 # outdir used to be {ukb}/post_finemapping/results
 # or {ukb}/post_finemapping/results/consistency

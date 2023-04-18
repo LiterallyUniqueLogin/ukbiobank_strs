@@ -28,6 +28,7 @@ struct FINEMAP_output {
   Array[File] creds
 }
 
+# remove creds
 struct serializable_FINEMAP_output {
   File snp_file
   File log_sss
@@ -46,6 +47,7 @@ struct SuSiE_output {
   Array[File] CSs
 }
 
+# remove CSs, add colnames
 struct serializable_SuSiE_output {
   File lbf
   File lbf_variable
@@ -55,6 +57,7 @@ struct serializable_SuSiE_output {
   File lfsr
   File requested_coverage
   File alpha
+  File colnames
 }
 
 ####################### Extracting association signals #########################
@@ -546,21 +549,34 @@ task followup_finemapping_conditions_df {
     Array[File] ethnic_str_assoc_results
 
     Array[serializable_FINEMAP_output] original_finemap_outputs
+    Array[Array[File]] original_finemap_creds
     Array[serializable_SuSiE_output] original_susie_outputs
+    Array[Array[File]] original_susie_CSs
 
-    Array[FINEMAP_output] total_prob_finemap_outputs
-    Array[FINEMAP_output] derived_prior_std_finemap_outputs
-    Array[FINEMAP_output] conv_tol_finemap_outputs
-    Array[FINEMAP_output] mac_finemap_outputs
-    Array[FINEMAP_output] threshold_finemap_outputs
-    Array[SuSiE_output] best_guess_susie_outputs
+    Array[serializable_FINEMAP_output] total_prob_finemap_outputs
+    Array[Array[File]] total_prob_finemap_creds
+    Array[serializable_FINEMAP_output] derived_prior_std_finemap_outputs
+    Array[Array[File]] derived_prior_std_finemap_creds
+    Array[serializable_FINEMAP_output] conv_tol_finemap_outputs
+    Array[Array[File]] conv_tol_finemap_creds
+    Array[serializable_FINEMAP_output] mac_finemap_outputs
+    Array[Array[File]] mac_finemap_creds
+    Array[serializable_FINEMAP_output] threshold_finemap_outputs
+    Array[Array[File]] threshold_finemap_creds
+    Array[serializable_SuSiE_output] best_guess_susie_outputs
+    Array[Array[File]] best_guess_susie_CSs
 
-    Array[FINEMAP_output] low_prior_std_finemap_outputs
-    Array[FINEMAP_output] ratio_finemap_outputs
-    Array[SuSiE_output] ratio_susie_outputs
+    Array[serializable_FINEMAP_output] low_prior_std_finemap_outputs
+    Array[Array[File]] low_prior_std_finemap_creds
+    Array[serializable_FINEMAP_output] ratio_finemap_outputs
+    Array[Array[File]] ratio_finemap_creds
+    Array[serializable_SuSiE_output] ratio_susie_outputs
+    Array[Array[File]] ratio_susie_CSs
 
-    Array[String] regions
-    Array[Int] chroms
+    Array[String] original_regions
+    Array[Int] original_chroms
+    Array[String] followup_regions
+    Array[Int] followup_chroms
   }
 
   output {
@@ -568,10 +584,52 @@ task followup_finemapping_conditions_df {
   }
 
   command <<<
-    REGIONS=~{write_lines(regions)}
-    { echo "region" ; cat $REGIONS ; } >> "$REGIONS".headered
-    CHROMS=~{write_lines(chroms)}
-    { echo "chrom" ; cat $CHROMS ; } >> "$CHROMS".headered
+    ORIGINAL_REGIONS=~{write_lines(original_regions)}
+    { echo "region" ; cat $ORIGINAL_REGIONS ; } >> "$ORIGINAL_REGIONS".headered
+    ORIGINAL_CHROMS=~{write_lines(original_chroms)}
+    { echo "chrom" ; cat $ORIGINAL_CHROMS ; } >> "$ORIGINAL_CHROMS".headered
+
+    FOLLOWUP_REGIONS=~{write_lines(followup_regions)}
+    { echo "region" ; cat $FOLLOWUP_REGIONS ; } >> "$FOLLOWUP_REGIONS".headered
+    FOLLOWUP_CHROMS=~{write_lines(followup_chroms)}
+    { echo "chrom" ; cat $FOLLOWUP_CHROMS ; } >> "$FOLLOWUP_CHROMS".headered
+
+    original_finemap_creds=~{write_tsv(original_finemap_creds)}
+    { echo "creds" ; cat $original_finemap_creds | sed -e 's/\t/,/g' ; } >> "$original_finemap_creds".headered
+    original_susie_CSs=~{write_tsv(original_susie_CSs)}
+    { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } >> "$original_susie_CSs".headered
+
+    total_prob_finemap_creds=~{write_tsv(total_prob_finemap_creds)}
+    { echo "creds" ; cat $total_prob_finemap_creds | sed -e 's/\t/,/g' ; } >> "$total_prob_finemap_creds".headered
+    derived_prior_std_finemap_creds=~{write_tsv(derived_prior_std_finemap_creds)}
+    { echo "creds" ; cat $derived_prior_std_finemap_creds | sed -e 's/\t/,/g' ; } >> "$derived_prior_std_finemap_creds".headered
+    conv_tol_finemap_creds=~{write_tsv(conv_tol_finemap_creds)}
+    { echo "creds" ; cat $conv_tol_finemap_creds | sed -e 's/\t/,/g' ; } >> "$conv_tol_finemap_creds".headered
+    mac_finemap_creds=~{write_tsv(mac_finemap_creds)}
+    { echo "creds" ; cat $mac_finemap_creds | sed -e 's/\t/,/g' ; } >> "$mac_finemap_creds".headered
+    threshold_finemap_creds=~{write_tsv(threshold_finemap_creds)}
+    { echo "creds" ; cat $threshold_finemap_creds | sed -e 's/\t/,/g' ; } >> "$threshold_finemap_creds".headered
+    best_guess_susie_CSs=~{write_tsv(best_guess_susie_CSs)}
+    { echo "CSes" ; cat $best_guess_susie_CSs | sed -e 's/\t/,/g' ; } >> "$best_guess_susie_CSs".headered
+
+    low_prior_std_finemap_creds=~{write_tsv(low_prior_std_finemap_creds)}
+    { echo "creds" ; cat $low_prior_std_finemap_creds | sed -e 's/\t/,/g' ; } >> "$low_prior_std_finemap_creds".headered
+    ratio_finemap_creds=~{write_tsv(ratio_finemap_creds)}
+    { echo "creds" ; cat $ratio_finemap_creds | sed -e 's/\t/,/g' ; } >> "$ratio_finemap_creds".headered
+    ratio_susie_CSs=~{write_tsv(ratio_susie_CSs)}
+    { echo "CSes" ; cat $ratio_susie_CSs | sed -e 's/\t/,/g' ; } >> "$ratio_susie_CSs".headered
+
+    paste ~{write_objects(original_finemap_outputs)} "$ORIGINAL_CHROMS".headered "$ORIGINAL_REGIONS".headered "$original_finemap_creds".headered > original_finemap_files.tsv
+    paste ~{write_objects(original_susie_outputs)} "$ORIGINAL_CHROMS".headered "$ORIGINAL_REGIONS".headered "$original_susie_CSs".headered > original_susie_files.tsv
+    paste ~{write_objects(total_prob_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$total_prob_finemap_creds".headered > total_prob_finemap_files.tsv
+    paste ~{write_objects(derived_prior_std_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$derived_prior_std_finemap_creds".headered > derived_prior_std_finemap_files.tsv
+    paste ~{write_objects(conv_tol_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$conv_tol_finemap_creds".headered > conv_tol_finemap_files.tsv
+    paste ~{write_objects(mac_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$mac_finemap_creds".headered > mac_finemap_files.tsv
+    paste ~{write_objects(threshold_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$threshold_finemap_creds".headered > threshold_finemap_files.tsv
+    paste ~{write_objects(best_guess_susie_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$best_guess_susie_CSs".headered > best_guess_susie_files.tsv
+    paste ~{write_objects(low_prior_std_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$low_prior_std_finemap_creds".headered > low_prior_std_finemap_files.tsv
+    paste ~{write_objects(ratio_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$ratio_finemap_creds".headered > ratio_finemap_files.tsv
+    paste ~{write_objects(ratio_susie_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$ratio_susie_CSs".headered > ratio_susie_files.tsv
     envsetup ~{script} \
       . \
       df \
@@ -580,25 +638,27 @@ task followup_finemapping_conditions_df {
       ~{snp_assoc_results} \
       ~{str_assoc_results} \
       ~{sep=" " ethnic_str_assoc_results} \
-      followup \
-      <(paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered)  \
-      <(paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(total_prob_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(derived_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(conv_tol_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(mac_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(threshold_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(best_guess_susie_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(low_prior_std_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(ratio_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered) \
-      <(paste ~{write_objects(ratio_susie_outputs)} "$CHROMS".headered "$REGIONS".headered)
+      followup_conditions \
+      original_finemap_files.tsv \
+      original_susie_files.tsv \
+      total_prob_finemap_files.tsv \
+      derived_prior_std_finemap_files.tsv \
+      conv_tol_finemap_files.tsv \
+      mac_finemap_files.tsv \
+      threshold_finemap_files.tsv \
+      best_guess_susie_files.tsv \
+      low_prior_std_finemap_files.tsv \
+      ratio_finemap_files.tsv \
+      ratio_susie_files.tsv
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    mem: "50g"
+    dx_timeout: "1h"
   }
 }
+
 task followup_finemapping_conditions_comparison {
   input {
     String script_dir
@@ -647,6 +707,76 @@ task followup_finemapping_conditions_comparison {
     mem: "50g"
   }
 }
+
+task str_tables_for_paper {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/str_tables_for_paper.py"
+    File annotation_utils = "~{script_dir}/post_finemapping/annotation_utils.py"
+    File python_array_utils = "~{script_dir}/post_finemapping/python_array_utils.py"
+
+    File str_pos_table
+    File repeat_units_table
+
+    #annotations
+    File intersects_gene
+    File intersects_exon
+    File intersects_CDS
+    File intersects_five_prime_UTR
+    File intersects_three_prime_UTR
+    File intersects_UTR
+
+    # only str assocs
+    Array[File] phenotype_names # same order as all the assoc files
+    Array[File] assocs
+    Array[File] black_assocs
+    Array[File] south_asian_assocs
+    Array[File] chinese_assocs
+    Array[File] irish_assocs
+    Array[File] white_other_assocs
+
+    Array[File] first_pass_finemapping_dfs
+    Array[File] followup_finemapping_dfs
+  }
+
+  output {
+    File singly_finemapped_strs_for_paper = "singly_finemapped_strs_for_paper.tab"
+    File singly_finemapped_strs_sorted = "singly_finemapped_strs_sorted.tab"
+    File confidently_finemapped_strs_for_paper = "confidently_finemapped_strs_for_paper.tab"
+    File confidently_finemapped_strs_sorted = "confidently_finemapped_strs_sorted.tab"
+  }
+
+  command <<<
+    ls ~{annotation_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} \
+      --outdir . \
+      --str-pos-table ~{str_pos_table} \
+      --repeat-units-table ~{repeat_units_table} \
+      --intersects-gene-annotation ~{intersects_gene} \
+      --intersects-exon-annotation ~{intersects_exon} \
+      --intersects-CDS-annotation ~{intersects_CDS} \
+      --intersects-five-prime-UTR-annotation ~{intersects_five_prime_UTR} \
+      --intersects-three-prime-UTR-annotation ~{intersects_three_prime_UTR} \
+      --intersects-UTR-annotation ~{intersects_UTR} \
+      --assoc-phenotypes ~{sep=" " phenotype_names} \
+      --assocs ~{sep=" " assocs} \
+      --black-assocs ~{sep=" " black_assocs} \
+      --south-asian-assocs ~{sep=" " south_asian_assocs} \
+      --chinese-assocs ~{sep=" " chinese_assocs} \
+      --irish-assocs ~{sep=" " irish_assocs} \
+      --white-other-assocs ~{sep=" " white_other_assocs} \
+      --first-pass-finemapping-dfs ~{sep=" " first_pass_finemapping_dfs} \
+      --followup-finemapping-dfs ~{sep=" " followup_finemapping_dfs} \
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "5h"
+    mem: "50g"
+  }
+}
+
 
 task todo {
   input {

@@ -1,0 +1,6 @@
+check that new plink gwas is accurate - no incorrect transformations
+original HDL finemapping FINEMAP regions 1_219976499_220226499 and 20_55711040_55961040 seem to have the wrong p_val threshold (using variants with p_val >= 0.05). Others for HDL?
+Check difference in first pass susie alpha v pip
+Check difference in followup pass graphs
+add susie mpv graphs?
+

@@ -1,24 +1,54 @@
 #!/usr/bin/env python3
 
+import argparse
 import ast
 import json
-import os
 
 import pandas as pd
 import polars as pl
 
 import annotation_utils
-import phenotypes
-
-ukb = os.environ['UKB']
 
 other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
-#just for testing
-#phenotypes.phenotypes_in_use = ['apolipoprotein_b', 'ldl_cholesterol_direct']
-#phenotypes.phenotypes_in_use = ['platelet_distribution_width', 'platelet_count']
-#phenotypes.phenotypes_in_use = ['albumin', 'calcium']#platelet_distribution_width', 'platelet_count']
-#phenotypes.phenotypes_in_use = ['platelet_distribution_width']
+parser = argparse.ArgumentParser()
+parser.add_argument('--first-pass-finemapping-dfs', nargs='+')
+parser.add_argument('--followup-finemapping-dfs', nargs='+')
+parser.add_argument('--assoc-phenotypes', nargs='+')
+parser.add_argument('--assocs', nargs='+')
+parser.add_argument('--black-assocs', nargs='+')
+parser.add_argument('--south-asian-assocs', nargs='+')
+parser.add_argument('--chinese-assocs', nargs='+')
+parser.add_argument('--irish-assocs', nargs='+')
+parser.add_argument('--white-other-assocs', nargs='+')
+parser.add_argument('--str-pos-table')
+parser.add_argument('--repeat-units-table')
+parser.add_argument('--intersects-gene-annotation')
+parser.add_argument('--intersects-exon-annotation')
+parser.add_argument('--intersects-CDS-annotation')
+parser.add_argument('--intersects-five-prime_UTR-annotation')
+parser.add_argument('--intersects-three-prime-UTR-annotation')
+parser.add_argument('--intersects-UTR-annotation')
+parser.add_argument('--outdir')
+
+args = parser.parse_args()
+
+assert len(args.assoc_phenotypes) == \
+        len(args.assocs) == \
+        len(args.black_assocs) == \
+        len(args.south_asian_assocs) == \
+        len(args.chinese_assocs) == \
+        len(args.irish_assocs) == \
+        len(args.white_other_assocs)
+
+assocs = dict(zip(args.assoc_phenotypes, args.assocs))
+other_ethnicity_assocs = {
+    'black': dict(zip(args.assoc_phenotypes, args.black_assocs)),
+    'south_asian': dict(zip(args.assoc_phenotypes, args.south_asian_assocs)),
+    'chinese': dict(zip(args.assoc_phenotypes, args.chinese_assocs)),
+    'irish': dict(zip(args.assoc_phenotypes, args.irish_assocs)),
+    'white_other': dict(zip(args.assoc_phenotypes, args.white_other_assocs))
+}
 
 def dosages_to_frequencies(dosage_dict_str):
     dosages = ast.literal_eval(dosage_dict_str)
@@ -28,18 +58,10 @@ def dosages_to_frequencies(dosage_dict_str):
     return json.dumps({ k: f'{v/total_dosage*100:.2f}%' for k,v in dosages.items() }).replace('"', '')
 
 finemapping_dfs = []
-for phenotype in phenotypes.phenotypes_in_use:
-    df = pd.read_csv(
-        f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
-        sep='\t',
-        dtype={
-            **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
-            **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
-            **{f'{ethnicity}_se': float for ethnicity in other_ethnicities},
-        }
-    )
+# f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
+for fname in args.first_pass_finemapping_dfs:
     df = pl.DataFrame(pd.read_csv(
-        f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
+        fname,
         sep='\t',
         dtype={
             **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
@@ -47,46 +69,39 @@ for phenotype in phenotypes.phenotypes_in_use:
             **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
         }
     )).filter('is_STR')
-    fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    with open(fname) as tsv:
-        header = tsv.readline().strip()
+    phenotype = df['phenotype'][0] # all will be the same
+    # need to add phenotype col
+    # fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
     assoc_df = pl.scan_csv(
-        fname,
+        assocs[phenotype],
         sep='\t',
-        skip_rows=1,
-        has_header=False,
-        with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
     ).select([
         'chrom',
         'pos',
         pl.col('subset_total_per_allele_dosages').alias('white_brit_allele_dosages')
     ])
-    df = df.lazy().join(
+    lazy_df = df.lazy().join(
         assoc_df,
         how='left',
         on=['chrom', 'pos']
     )
     for ethnicity in other_ethnicities:
-        fname = f'{ukb}/association/results_finemapped_only/{ethnicity}/{phenotype}/my_str/results.tab'
-        with open(fname) as tsv:
-            header = tsv.readline().strip()
+        # need to add phenotype col
+        # fname = f'{ukb}/association/results_finemapped_only/{ethnicity}/{phenotype}/my_str/results.tab'
         assoc_df = pl.scan_csv(
-            fname,
+            other_ethnicity_assocs[ethnicity][phenotype],
             sep='\t',
-            skip_rows=1,
-            has_header=False,
-            with_column_names = lambda _: header.replace('0.05_significance_CI', 'foo', 1).replace('5e-8_significance_CI', 'bar', 1).split('\t') # these duplicate column names won't be used anyway
         ).select([
             'chrom',
             'pos',
             pl.col('subset_total_per_allele_dosages').alias(f'{ethnicity}_allele_dosages')
         ])
-        df = df.join(
+        lazy_df = lazy_df.join(
             assoc_df,
             how='left',
             on=['chrom', 'pos']
         )
-    finemapping_dfs.append(df.collect())
+    finemapping_dfs.append(lazy_df.collect())
 finemapping_results = pl.concat(finemapping_dfs).rename({'pos': 'snpstr_pos'})
 
 finemapping_results = finemapping_results.filter(
@@ -97,7 +112,8 @@ finemapping_results = finemapping_results.filter(
 )
 
 pos_table = pl.read_csv(
-    f'{ukb}/snpstr/flank_trimmed_vcf/vars.tab',
+    #f'{ukb}/snpstr/flank_trimmed_vcf/vars.tab',
+    args.str_pos_table,
     sep='\t'
 )
 
@@ -108,7 +124,8 @@ finemapping_results = finemapping_results.join(
 )
 
 repeat_units = pl.read_csv(
-    f'{ukb}/snpstr/repeat_units.tab',
+    #f'{ukb}/snpstr/repeat_units.tab',
+    args.repeat_units_table,
     sep='\t'
 )
 
@@ -119,17 +136,18 @@ finemapping_results = finemapping_results.join(
 )
 
 concordance_cols = pl.read_csv(
-    f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab',
+    #f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab',
+    args.followup_finemapping_dfs[0],
     sep='\t',
     n_rows=1
 ).columns
 concordance_results = pl.concat([
     pl.read_csv(
-        f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab',
+        #f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab',
+        followup_finemapping_df,
         sep='\t',
         dtypes={col: (float if 'cs' not in col else int) for col in concordance_cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
-    ) for phenotype in phenotypes.phenotypes_in_use
-    if not os.path.exists(f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab.empty')
+    ) for followup_finemapping_df in args.followup_finemapping_dfs
 ]).filter('is_STR').with_column(pl.col('pos').alias('snpstr_pos'))
 
 finemapping_results = finemapping_results.join(
@@ -158,14 +176,20 @@ finemapping_results = finemapping_results.to_pandas()
 print("Loading gene and transcript annotations ...", flush=True)
 
 print("Loading high level intersections...", flush=True)
-gene_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_gene', bp_overlap=True)
-exon_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_exon', bp_overlap=True)
+#gene_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_gene', bp_overlap=True)
+#exon_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_exon', bp_overlap=True)
+gene_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, args.intersects_gene_annotation, bp_overlap=True)
+exon_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, args.intersects_exon_annotation, bp_overlap=True)
 
 print("Loading low level intersections...", flush=True)
-CDS_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_CDS', bp_overlap=True)
-five_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_five_prime_UTR', bp_overlap=True)
-three_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_three_prime_UTR', bp_overlap=True)
-UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_UTR', bp_overlap=True)
+#CDS_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_CDS', bp_overlap=True)
+#five_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_five_prime_UTR', bp_overlap=True)
+#three_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_three_prime_UTR', bp_overlap=True)
+#UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, f'{ukb}/side_analyses/str_annotations/intersects_UTR', bp_overlap=True)
+CDS_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, args.intersects_CDS_annotation, bp_overlap=True)
+five_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, args.intersects_five_prime_UTR_annotation, bp_overlap=True)
+three_prime_UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, args.intersects_three_prime_UTR_annotation, bp_overlap=True)
+UTR_intersect_merge = annotation_utils.get_merged_annotations(finemapping_results, args.intersects_UTR_annotation, bp_overlap=True)
 
 sub_exon_types = pd.concat([CDS_intersect_merge, five_prime_UTR_intersect_merge, three_prime_UTR_intersect_merge, UTR_intersect_merge])
 
@@ -327,12 +351,14 @@ finemapping_results = finemapping_results.select([
     *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_allele_frequencies') for ethnicity in other_ethnicities],
 ])
 
-finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
-finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
+#finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
+#finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
+finemapping_results.write_csv(f'{args.outdir}/singly_finemapped_strs_for_paper.tab', sep='\t')
+finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{args.outdir}/singly_finemapped_strs_sorted.tab', sep='\t')
 
 confident_results = finemapping_results.filter(
     (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos']) &
     (pl.col('association_p_value') <= 1e-10)
 )
-confident_results.write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_for_paper.tab', sep='\t')
-confident_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/confidently_finemapped_strs_sorted.tab', sep='\t')
+confident_results.write_csv(f'{args.outdir}/confidently_finemapped_strs_for_paper.tab', sep='\t')
+confident_results.sort(['chrom', 'start_pos']).write_csv(f'{args.outdir}/confidently_finemapped_strs_sorted.tab', sep='\t')
