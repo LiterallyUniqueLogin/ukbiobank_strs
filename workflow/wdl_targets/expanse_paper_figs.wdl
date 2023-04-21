@@ -24,6 +24,10 @@ workflow expanse_figures {
 
     File specific_alleles = "association/specific_alleles.tab"
 
+    # TODO this file MUST be regenerated with WDL
+    File eQTL_table = "post_finemapping/gtex_STR2/blessed_qtl_STRs.tab"
+
+    # Files from Yang
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
     File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
     File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
@@ -47,12 +51,23 @@ workflow expanse_figures {
       "vcf": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz",
       "index": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz.tbi"
     }
-    PFiles imputed_snp_p_files = {
-      "pgen": "array_imputed/pfile_converted/chr{chrom+1}.pgen",
-      "pvar": "array_imputed/pfile_converted/chr{chrom+1}.pvar",
-      "psam": "array_imputed/pfile_converted/chr{chrom+1}.psam",
-    }
+#    PFiles imputed_snp_p_files = {
+#      "pgen": "array_imputed/pfile_converted/chr~{chrom+1}.pgen",
+#      "pvar": "array_imputed/pfile_converted/chr~{chrom+1}.pvar",
+#      "psam": "array_imputed/pfile_converted/chr~{chrom+1}.psam",
+#    }
+
+    # TODO could generate these with WDL
+    File intersects_gene_annotation = "side_analyses/str_annotations/intersects_gene/chr~{chrom+1}.tab"
+    File intersects_exon_annotation = "side_analyses/str_annotations/intersects_exon/chr~{chrom+1}.tab"
+    File intersects_CDS_annotation = "side_analyses/str_annotations/intersects_CDS/chr~{chrom+1}.tab"
+    File intersects_five_prime_UTR_annotation = "side_analyses/str_annotations/intersects_five_prime_UTR/chr~{chrom+1}.tab"
+    File intersects_three_prime_UTR_annotation = "side_analyses/str_annotations/intersects_three_prime_UTR/chr~{chrom+1}.tab"
+    File intersects_UTR_annotation = "side_analyses/str_annotations/intersects_UTR/chr~{chrom+1}.tab"
+    File closest_gene_annotation = "side_analyses/str_annotations/closest_gene/chr~{chrom+1}.tab"
   }
+
+
 
   # input, but written as a task for reusability
   call gwas_tasks.phenotype_names
@@ -73,7 +88,13 @@ workflow expanse_figures {
     File str_gwas_results = "association/results/~{phenotype}/my_str/results.tab"
     File snp_gwas_results = "association/results/~{phenotype}/plink_snp/results.tab"
     scatter (ethnicity in ["black", "south_asian", "chinese", "irish", "white_other"]) {
-      File ethnic_str_gwas_resultss = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+      File pheno_to_ethnic_to_str_gwas_results = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+    }
+  }
+
+  scatter (ethnicity in ["black", "south_asian", "chinese", "irish", "white_other"]) {
+    scatter (phenotype in phenotype_names.n) {
+      File ethnic_to_pheno_to_str_gwas_results = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
     }
   }
 
@@ -115,7 +136,7 @@ workflow expanse_figures {
     peak_files = generate_peaks.peaks
   }
 
-  ##### generate fine-mapping supplementary figures (3-12, missing 8 and 9)
+  ##### generate fine-mapping supplementary figures (3-12, missing 9)
   # take cached fine-mapping results and summarize them
   scatter (phenotype_idx in range(length(phenotype_names.n))) {
     call gwas_tasks.generate_finemapping_regions { input :
@@ -168,7 +189,7 @@ workflow expanse_figures {
       phenotype_name = phenotype_names.n[phenotype_idx],
       snp_assoc_results = snp_gwas_results[phenotype_idx],
       str_assoc_results = str_gwas_results[phenotype_idx],
-      ethnic_str_assoc_results = ethnic_str_gwas_resultss[phenotype_idx],
+      ethnic_str_assoc_results = pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
       original_finemap_outputs = original_finemap,
       original_finemap_creds = original_finemap_creds,
       original_susie_outputs = original_susie,
@@ -258,7 +279,7 @@ workflow expanse_figures {
         phenotype_name = phenotype_names.n[phenotype_idx],
         snp_assoc_results = snp_gwas_results[phenotype_idx],
         str_assoc_results = str_gwas_results[phenotype_idx],
-        ethnic_str_assoc_results = ethnic_str_gwas_resultss[phenotype_idx],
+        ethnic_str_assoc_results = pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
         original_finemap_outputs = original_finemap,
         original_finemap_creds = original_finemap_creds,
         original_susie_outputs = original_susie,
@@ -296,11 +317,61 @@ workflow expanse_figures {
 #    File followup_dfs = "/expanse/projects/gymreklab/jmargoli/ukbiobank/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_~{phenotype}.tab"
 #  }
 
+  call finemapping_tasks.susie_finemap_venn_diagram { input :
+    script_dir = script_dir,
+    first_pass_dfs = first_pass_finemapping_df.all_regions_concordance
+  }
+
   call post_finemapping_workflow.post_finemapping { input :
     script_dir = ".",
     first_pass_dfs = first_pass_finemapping_df.all_regions_concordance,
     susie_all_min_abs_corrs = first_pass_finemapping_df.susie_all_regions_min_abs_corrs,
     followup_dfs = select_all(followup_finemapping_conditions_df.df)
+  }
+
+  ######### generate supplementary tables 3 and 4
+  call finemapping_tasks.str_tables_for_paper { input :
+    script_dir = script_dir,
+    str_pos_table = str_pos_table,
+    str_pos_table_2 = str_pos_table_2,
+    str_hg38_pos_table = str_hg38_pos_table,
+    str_t2t_pos_table = str_t2t_pos_table,
+    repeat_units_table = repeat_units_table,
+    intersects_gene = intersects_gene_annotation,
+    intersects_exon = intersects_exon_annotation,
+    intersects_CDS = intersects_CDS_annotation,
+    intersects_five_prime_UTR = intersects_five_prime_UTR_annotation,
+    intersects_three_prime_UTR = intersects_three_prime_UTR_annotation,
+    intersects_UTR = intersects_UTR_annotation,
+    phenotype_names = phenotype_names.n,
+    assocs = str_gwas_results,
+    black_assocs = ethnic_to_pheno_to_str_gwas_results[0],
+    south_asian_assocs = ethnic_to_pheno_to_str_gwas_results[1],
+    chinese_assocs = ethnic_to_pheno_to_str_gwas_results[2],
+    irish_assocs = ethnic_to_pheno_to_str_gwas_results[3],
+    white_other_assocs = ethnic_to_pheno_to_str_gwas_results[4],
+    first_pass_finemapping_dfs = first_pass_finemapping_df.all_regions_concordance,
+    followup_finemapping_dfs = select_all(followup_finemapping_conditions_df.df),
+  }
+
+  ######### generate figure 2
+  call finemapping_tasks.graph_main_hits { input :
+    script_dir = script_dir,
+    hits_table = str_tables_for_paper.singly_finemapped_strs_for_paper,
+    eQTL_table = eQTL_table,
+    closest_gene_annotations = closest_gene_annotation
+  }
+
+  ######## generate figure 3, supp figure 13 and supp table 6
+  call finemapping_tasks.concordance_in_other_ethnicities { input :
+    script_dir = script_dir,
+    confidently_finemapped_STRs_df = post_finemapping.confidently_finemapped_STRs,
+    first_pass_dfs = first_pass_finemapping_df.all_regions_concordance
+  }
+
+  ######## generate supp fig 14
+  call finemapping_tasks.enrichments { input :
+
   }
 
   ####### generate figure 4 (missing manhattans)
@@ -487,27 +558,6 @@ workflow expanse_figures {
     dosage_threshold = 5
   }
 
-  call finemapping_tasks.str_tables_for_paper { input :
-    script_dir = script_dir,
-    str_pos_table = str_pos_table,
-    repeat_units_table = repeat_units_table,
-    intersects_gene = intersects_gene_annotation,
-    intersects_exon = intersects_exon_annotation,
-    intersects_CDS = intersects_CDS_annotation,
-    intersects_five_prime_UTR = intersects_five_prime_UTR_annotation,
-    intersects_three_prime_UTR = intersects_three_prime_UTR_annotation,
-    intersects_UTR = intersects_UTR_annotation,
-    phenotype_names = phenotype_names.n,
-    assocs = str_gwas_results,
-    black_assocs = ethnic_str_gwas_resultss[0],
-    south_asian_assocs = ethnic_str_gwas_resultss[1],
-    chinese_assocs = ethnic_str_gwas_resultss[2],
-    irish_assocs = ethnic_str_gwas_resultss[3],
-    white_other_assocs = ethnic_str_gwas_resultss[4],
-    first_pass_finemapping_dfs = first_pass_finemapping_df.all_regions_concordance,
-    followup_finemapping_dfs = select_all(followup_finemapping_conditions_df.df),
-  }
-
   output {
 #    File fig_1b_svg_out = fig_1b.svg
 #    File fig_1b_png_out = fig_1b.png
@@ -515,6 +565,12 @@ workflow expanse_figures {
     File fig_1e_png_out = fig_1ef.barplot_png
     File fig_1f_svg_out = fig_1ef.heatmap_svg
     File fig_1f_png_out = fig_1ef.heatmap_png
+
+    File fig_2_png = graph_main_hits.png
+    File fig_2_svg = graph_main_hits.svg
+
+    File fig_3_png = concordance_in_other_ethnicities.nonwhite_replication_png
+    File fig_3_svg = concordance_in_other_ethnicities.nonwhite_replication_svg
 
     File fig_4a_svg_out = fig_4a.svg
     File fig_4a_png_out = fig_4a.png
@@ -540,6 +596,11 @@ workflow expanse_figures {
     File supp_fig_7a_svg = post_finemapping.finemap_v_susie_consistency_STR_svg
     File supp_fig_7b_png = post_finemapping.finemap_v_susie_consistency_SNP_png
     File supp_fig_7b_svg = post_finemapping.finemap_v_susie_consistency_SNP_svg
+
+    File supp_fig_8a_svg = susie_finemap_venn_diagram.str_svg
+    File supp_fig_8a_png = susie_finemap_venn_diagram.str_png
+    File supp_fig_8b_svg = susie_finemap_venn_diagram.snp_svg
+    File supp_fig_8b_png = susie_finemap_venn_diagram.snp_png
 
 #    File doubly_finemapped_STRs = post_finemapping.doubly_finemapped_STRs
 #    File confidently_finemapped_STRs = post_finemapping.confidently_finemapped_STRs
@@ -567,14 +628,19 @@ workflow expanse_figures {
     File supp_fig_12b_png = post_finemapping.finemap_ratio_png
     File supp_fig_12b_svg = post_finemapping.finemap_ratio_svg
 
+    File supp_fig_13_png = concordance_in_other_ethnicities.white_replication_png
+    File supp_fig_13_svg = concordance_in_other_ethnicities.white_replication_svg
+
     File supp_fig_15a_svg_out = supp_fig_15a.svg
     File supp_fig_15a_png_out = supp_fig_15a.png
     File supp_fig_15b_svg_out = supp_fig_15b.svg
     File supp_fig_15b_png_out = supp_fig_15b.png
 
-   File singly_finemapped_strs_for_paper = str_tables_for_paper.singly_finemapped_strs_for_paper
+   File supp_table_3 = str_tables_for_paper.singly_finemapped_strs_for_paper
    File singly_finemapped_strs_sorted = str_tables_for_paper.singly_finemapped_strs_sorted
-   File confidently_finemapped_strs_for_paper = str_tables_for_paper.confidently_finemapped_strs_for_paper
+   File supp_table_4 = str_tables_for_paper.confidently_finemapped_strs_for_paper
    File confidently_finemapped_strs_sorted = str_tables_for_paper.confidently_finemapped_strs_sorted
+   File supp_table_6 = concordance_in_other_ethnicities.stats
+
   }
 }

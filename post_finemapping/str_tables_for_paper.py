@@ -22,13 +22,16 @@ parser.add_argument('--chinese-assocs', nargs='+')
 parser.add_argument('--irish-assocs', nargs='+')
 parser.add_argument('--white-other-assocs', nargs='+')
 parser.add_argument('--str-pos-table')
+parser.add_argument('--str-pos-table-2')
+parser.add_argument('--str-hg38-pos-table')
+parser.add_argument('--str-t2t-pos-table')
 parser.add_argument('--repeat-units-table')
-parser.add_argument('--intersects-gene-annotation')
-parser.add_argument('--intersects-exon-annotation')
-parser.add_argument('--intersects-CDS-annotation')
-parser.add_argument('--intersects-five-prime_UTR-annotation')
-parser.add_argument('--intersects-three-prime-UTR-annotation')
-parser.add_argument('--intersects-UTR-annotation')
+parser.add_argument('--intersects-gene-annotation', nargs=22)
+parser.add_argument('--intersects-exon-annotation', nargs=22)
+parser.add_argument('--intersects-CDS-annotation', nargs=22)
+parser.add_argument('--intersects-five-prime-UTR-annotation', nargs=22)
+parser.add_argument('--intersects-three-prime-UTR-annotation', nargs=22)
+parser.add_argument('--intersects-UTR-annotation', nargs=22)
 parser.add_argument('--outdir')
 
 args = parser.parse_args()
@@ -59,7 +62,10 @@ def dosages_to_frequencies(dosage_dict_str):
 
 finemapping_dfs = []
 # f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
-for fname in args.first_pass_finemapping_dfs:
+for count, fname in enumerate(args.first_pass_finemapping_dfs):
+    if count > 1:
+        break
+    print(f'Loading finemapping df {count+1}/{len(args.first_pass_finemapping_dfs)}', flush=True)
     df = pl.DataFrame(pd.read_csv(
         fname,
         sep='\t',
@@ -111,7 +117,11 @@ finemapping_results = finemapping_results.filter(
     ).any().over(['chrom', 'snpstr_pos'])
 )
 
-pos_table = pl.read_csv(args.str_pos_table, sep='\t')
+pos_table = pl.read_csv(
+    args.str_pos_table, sep='\t'
+).groupby(
+    ['chrom', 'pos', 'end_pos']
+).agg([pl.col('snpstr_pos').first()]) # drop duplicate snpstr poses
 
 pos_table_2 = pl.read_csv(
     args.str_pos_table_2,
@@ -141,10 +151,12 @@ t2t_pos_table = pl.read_csv(
 
 pos_table_2 = pos_table_2.join(
     hg38_pos_table,
+    how = 'left',
     on=['ID'],
     suffix='_hg38',
 ).join(
     t2t_pos_table,
+    how = 'left',
     on=['ID'],
     suffix='_t2t'
 )
@@ -152,9 +164,7 @@ pos_table_2 = pos_table_2.join(
 pos_table = pos_table_2.join(
     pos_table,
     on=['chrom', 'pos', 'end_pos']
-).drop(['ID']).groupby(
-    ['chrom', 'pos', 'end_pos']
-).agg([pl.col('snpstr_pos').first()]) # drop duplicate snpstr poses
+).drop(['ID'])
 
 finemapping_results = finemapping_results.join(
     pos_table,
@@ -195,7 +205,7 @@ finemapping_results = finemapping_results.join(
     on=['phenotype', 'chrom', 'snpstr_pos']
 ).with_columns([
     pl.when(pl.col('susie_alpha').is_null()).then(None).when(pl.col('susie_cs') >= 0).then(pl.col('susie_alpha')).otherwise(0).alias('susie_CP'),
-    pl.when(pl.col('susie_alpha_hardcall').is_null()).then(None).when(pl.col('susie_cs_hardcall') >= 0).then(pl.col('susie_alpha_hardcall')).otherwise(0).alias('susie_CP_best_guess_genotypes'),
+    pl.when(pl.col('susie_alpha_best_guess').is_null()).then(None).when(pl.col('susie_cs_best_guess') >= 0).then(pl.col('susie_alpha_best_guess')).otherwise(0).alias('susie_CP_best_guess_genotypes'),
     pl.when(pl.col('susie_alpha_ratio').is_null()).then(None).when(pl.col('susie_cs_ratio') >= 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_CP_prior_snps_over_strs'),
     pl.col('finemap_pip').alias('finemap_CP'),
     pl.col('finemap_pip_p_thresh').alias('finemap_CP_pval_thresh_5e-4'),
@@ -336,8 +346,12 @@ finemapping_results = finemapping_results.with_columns([
 finemapping_results = finemapping_results.select([
     'phenotype',
     'chrom',
-    'start_pos',
-    'end_pos',
+    pl.col('start_pos').alias('start_pos (hg19)'),
+    pl.col('end_pos').alias('end_pos (hg19)'),
+    pl.col('pos_hg38').alias('start_pos (hg38)'),
+    pl.col('end_pos_hg38').alias('end_pos (hg38)'),
+    pl.when(~pl.col('pos_t2t').is_null()).then(pl.col('pos_t2t').cast(int).cast(str)).otherwise(pl.lit('Failed to lift to T2T reference')).alias('start_pos (T2T)'),
+    pl.when(~pl.col('end_pos_t2t').is_null()).then(pl.col('end_pos_t2t').cast(int).cast(str)).otherwise(pl.lit('Failed to lift to T2T reference')).alias('end_pos (T2T)'),
     pl.col('region').alias('finemapping_region'),
     pl.col('unit').alias('repeat_unit'),
     pl.col('white_brit_allele_dosages').apply(dosages_to_frequencies).alias('white_brit_allele_frequencies'),
@@ -380,24 +394,26 @@ finemapping_results = finemapping_results.select([
     'susie_CP_prior_snps_over_strs',
     'finemap_CP_prior_snps_over_strs',
     'finemap_CP_prior_effect_size_0.0025%',
-    pl.sum([
-        pl.col(f'{ethnicity}_p_val').cast(str) + pl.lit(', ') for ethnicity in other_ethnicities
-    ]).str.replace(', $', '').alias('other_ethnicity_association_p_values'),
-    pl.sum([
-        pl.when(pl.col(f'{ethnicity}_p_val') > .05).then('NA').when(pl.col('coeff') > 0).then('+').otherwise('-') + pl.lit(', ')
-        for ethnicity in other_ethnicities
-    ]).str.replace(', $', '').alias('other_ethnicity_effect_directions'),
+    sum(
+        [pl.col(f'{ethnicity}_p_val').cast(str) + pl.lit(', ') for ethnicity in other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('other_ethnicity_association_p_values'),
+    sum(
+        [pl.when(pl.col(f'{ethnicity}_p_val') > .05).then('NA').when(pl.col('coeff') > 0).then('+').otherwise('-') + pl.lit(', ')
+        for ethnicity in other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('other_ethnicity_effect_directions'),
     *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_allele_frequencies') for ethnicity in other_ethnicities],
 ])
 
 #finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
 #finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
 finemapping_results.write_csv(f'{args.outdir}/singly_finemapped_strs_for_paper.tab', sep='\t')
-finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{args.outdir}/singly_finemapped_strs_sorted.tab', sep='\t')
+finemapping_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir}/singly_finemapped_strs_sorted.tab', sep='\t')
 
 confident_results = finemapping_results.filter(
-    (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos']) &
+    (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos (hg19)']) &
     (pl.col('association_p_value') <= 1e-10)
 )
 confident_results.write_csv(f'{args.outdir}/confidently_finemapped_strs_for_paper.tab', sep='\t')
-confident_results.sort(['chrom', 'start_pos']).write_csv(f'{args.outdir}/confidently_finemapped_strs_sorted.tab', sep='\t')
+confident_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir}/confidently_finemapped_strs_sorted.tab', sep='\t')

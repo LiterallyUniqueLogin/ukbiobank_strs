@@ -7,3 +7,4 @@ for i in $(seq 1 22) ; do bcftools query -i ID=@str_ids.txt -f '%CHROM\t%INFO/ST
 # then used https://genome.ucsc.edu/cgi-bin/hgLiftOver on 03/09/2023 for lifting over to hg38 and T2T CHM13v2.0/hs1
 # liftover to hg38 using INFO/START and INFO/END produces the same exact coordinates as HipSTR's hg38 reference
 # https://github.com/HipSTR-Tool/HipSTR-references/ aside from an off by one representation difference
+# this seems to preserve locus order

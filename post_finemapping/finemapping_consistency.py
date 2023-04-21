@@ -999,20 +999,21 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
                 text=f'# {var_type}s: {n_both}, avg {other_label}: {avg_both_other_pip:.2}', align='right',
                 text_font_size=min_text_size
             ), 'above')
-            fig.quad(
-                left=[1-thresh],
-                right=[1],
-                bottom=[0],
-                top=[thresh],
-                color='orange',
-                alpha=box_alpha
-            )
-            fig.add_layout(bokeh.models.Title(
-                text=f'# {var_type}s: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
-                text_font_size=min_text_size
-            ), 'right')
+            if n_not_rep > 0:
+                fig.quad(
+                    left=[1-thresh],
+                    right=[1],
+                    bottom=[0],
+                    top=[thresh],
+                    color='orange',
+                    alpha=box_alpha
+                )
+                fig.add_layout(bokeh.models.Title(
+                    text=f'# {var_type}s: {n_not_rep}, avg {other_label}: {avg_not_rep_other_pip:.2}', align='right',
+                    text_font_size=min_text_size
+                ), 'right')
 
-            if n_new > 5:
+            if n_new > 0:
                 fig.quad(
                     left=[0],
                     right=[thresh],

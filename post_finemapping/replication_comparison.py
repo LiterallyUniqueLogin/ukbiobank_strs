@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os
+import argparse
 
 import bokeh.embed
 import bokeh.io
@@ -16,12 +16,14 @@ import scipy.stats
 import statsmodels.formula.api
 from statsmodels.stats.proportion import proportions_ztest
 
-import phenotypes
-
-ukb = os.environ['UKB']
-
 other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 other_ethnicities_w_counts = ['black\nn=7,562', 'south_asian\nn=7,397', 'chinese\nn=1,525', 'irish\nn=11,978', 'white_other\nn=15,838']
+
+parser = argparse.ArgumentParser()
+parser.add_argument('outdir')
+parser.add_argument('confidently_finemapped_STRs_df')
+parser.add_argument('first_pass_dfs', nargs='+')
+args = parser.parse_args()
 
 # from https://stackoverflow.com/a/45846841
 def human_format(num):
@@ -35,7 +37,7 @@ def human_format(num):
 print('loading data', flush=True)
 
 causal_STR_candidates = pl.read_csv(
-    f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab',
+    args.confidently_finemapped_STRs_df,
     sep='\t'
 ).select([
     'phenotype',
@@ -46,14 +48,14 @@ causal_STR_candidates = pl.read_csv(
 
 associations_df = pl.concat([
     pl.scan_csv(
-        f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
+        first_pass_df,
         sep='\t',
         dtypes={
             **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
             **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
             **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
         }
-    ).filter('is_STR') for phenotype in phenotypes.phenotypes_in_use
+    ).filter('is_STR') for first_pass_df in args.first_pass_dfs
 ]).select([
     'phenotype',
     'chrom',
@@ -228,7 +230,8 @@ for fig_n in 1,2,4:
     figs[fig_n].yaxis.axis_label = None
     figs[fig_n].yaxis.major_label_text_font_size = '0px'
 
-bokeh.io.export_png(bokeh.layouts.row(figs[:3]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_non_white.png')
-bokeh.io.export_svg(bokeh.layouts.row(figs[:3]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_non_white.svg')
-bokeh.io.export_png(bokeh.layouts.row(figs[3:]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_white.png')
-bokeh.io.export_svg(bokeh.layouts.row(figs[3:]), filename=f'{ukb}/post_finemapping/results/replication_by_pval_white.svg')
+# {ukb}/post_finemapping/results
+bokeh.io.export_png(bokeh.layouts.row(figs[:3]), filename=f'{args.outdir}/replication_by_pval_non_white.png')
+bokeh.io.export_svg(bokeh.layouts.row(figs[:3]), filename=f'{args.outdir}/replication_by_pval_non_white.svg')
+bokeh.io.export_png(bokeh.layouts.row(figs[3:]), filename=f'{args.outdir}/replication_by_pval_white.png')
+bokeh.io.export_svg(bokeh.layouts.row(figs[3:]), filename=f'{args.outdir}/replication_by_pval_white.svg')

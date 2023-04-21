@@ -1,5 +1,3 @@
-import os
-
 import pandas as pd
 
 import python_array_utils as utils
@@ -28,7 +26,7 @@ def distance(start1, end1, start2, end2):
         return '0'
     return str(min(abs(start1 - end2), abs(end1 - start2)))
 
-def get_merged_annotations(signals, annotation_dir, distance=False, bp_overlap=False, how='inner'):
+def get_merged_annotations(signals, annotation_files, distance=False, bp_overlap=False, how='inner'):
     dfs = []
     names=[
         'chrom',
@@ -45,10 +43,7 @@ def get_merged_annotations(signals, annotation_dir, distance=False, bp_overlap=F
         names.append('annotation_distance')
     if bp_overlap:
         names.append('bp_overlap')
-    for f in os.listdir(annotation_dir):
-        if f[-4:] != '.tab':
-            continue
-        fname = f'{annotation_dir}/{f}'
+    for fname in annotation_files:
         dfs.append(pd.read_csv(
             fname,
             delimiter='\t',

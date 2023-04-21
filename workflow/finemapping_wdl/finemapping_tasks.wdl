@@ -21,24 +21,17 @@ import "../gwas_wdl/gwas_tasks.wdl"
 # first line is 'ID' (case insensitive)
 # every successive line is a sample ID
 
-struct FINEMAP_output {
-  serializable_FINEMAP_output subset
-  Array[File] creds
-}
-
-# remove creds
 struct serializable_FINEMAP_output {
   File snp_file
   File log_sss
   File config
 }
 
-struct SuSiE_output {
-  serializable_SuSiE_output subset 
-  Array[File] CSs
+struct FINEMAP_output {
+  serializable_FINEMAP_output subset
+  Array[File] creds
 }
 
-# remove CSs, add colnames
 struct serializable_SuSiE_output {
   File lbf
   File lbf_variable
@@ -49,6 +42,11 @@ struct serializable_SuSiE_output {
   File requested_coverage
   File alpha
   File colnames
+}
+
+struct SuSiE_output {
+  serializable_SuSiE_output subset 
+  Array[File] CSs
 }
 
 ####################### Extracting association signals #########################
@@ -224,7 +222,7 @@ task finemap_run {
 
   output {
     FINEMAP_output finemap_output = object {
-      serializable_FINEMAP_output subset = object {
+      subset: object {
         snp_file: "finemap_output.snp",
         log_sss: "finemap_output.log_sss",
         config: "finemap_output.config",
@@ -374,7 +372,7 @@ task susie_run {
 
   output {
     SuSiE_output? susie_output = object {
-      serializable_SuSiE_output subset = object {
+      subset: object {
         lbf: "lbf.tab",
         lbf_variable: "lbf_variable.tab",
         sigma2: "sigma2.txt",
@@ -508,6 +506,34 @@ task first_pass_comparison {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
     mem: "50g"
+  }
+}
+
+task susie_finemap_venn_diagram {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/venn_diagram.py"
+
+    Array[File] first_pass_dfs
+  }
+
+  output {
+    File str_png = "all_susie_finemap_venn_STR.png"
+    File str_svg = "all_susie_finemap_venn_STR.svg"
+    File snp_png = "all_susie_finemap_venn_SNP.png"
+    File snp_svg = "all_susie_finemap_venn_SNP.svg"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      all_susie_finemap_venn \
+      ~{sep=" " first_pass_dfs}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10"
+    mem: "8g"
   }
 }
 
@@ -714,21 +740,21 @@ task str_tables_for_paper {
     File python_array_utils = "~{script_dir}/post_finemapping/python_array_utils.py"
 
     File str_pos_table
-    File repeat_units_table
     File str_pos_table_2
     File str_hg38_pos_table
     File str_t2t_pos_table
+    File repeat_units_table
 
     #annotations
-    File intersects_gene
-    File intersects_exon
-    File intersects_CDS
-    File intersects_five_prime_UTR
-    File intersects_three_prime_UTR
-    File intersects_UTR
+    Array[File] intersects_gene
+    Array[File] intersects_exon
+    Array[File] intersects_CDS
+    Array[File] intersects_five_prime_UTR
+    Array[File] intersects_three_prime_UTR
+    Array[File] intersects_UTR
 
     # only str assocs
-    Array[File] phenotype_names # same order as all the assoc files
+    Array[String] phenotype_names # same order as all the assoc files
     Array[File] assocs
     Array[File] black_assocs
     Array[File] south_asian_assocs
@@ -757,12 +783,12 @@ task str_tables_for_paper {
       --str-hg38-pos-table ~{str_hg38_pos_table} \
       --str-t2t-pos-table ~{str_t2t_pos_table} \
       --repeat-units-table ~{repeat_units_table} \
-      --intersects-gene-annotation ~{intersects_gene} \
-      --intersects-exon-annotation ~{intersects_exon} \
-      --intersects-CDS-annotation ~{intersects_CDS} \
-      --intersects-five-prime-UTR-annotation ~{intersects_five_prime_UTR} \
-      --intersects-three-prime-UTR-annotation ~{intersects_three_prime_UTR} \
-      --intersects-UTR-annotation ~{intersects_UTR} \
+      --intersects-gene-annotation ~{sep=" " intersects_gene} \
+      --intersects-exon-annotation ~{sep=" " intersects_exon} \
+      --intersects-CDS-annotation ~{sep=" " intersects_CDS} \
+      --intersects-five-prime-UTR-annotation ~{sep=" " intersects_five_prime_UTR} \
+      --intersects-three-prime-UTR-annotation ~{sep=" " intersects_three_prime_UTR} \
+      --intersects-UTR-annotation ~{sep=" " intersects_UTR} \
       --assoc-phenotypes ~{sep=" " phenotype_names} \
       --assocs ~{sep=" " assocs} \
       --black-assocs ~{sep=" " black_assocs} \
@@ -781,6 +807,158 @@ task str_tables_for_paper {
   }
 }
 
+task graph_main_hits {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/graph_main_hits_all_assocs.py"
+    File annotation_utils = "~{script_dir}/post_finemapping/annotation_utils.py"
+    File python_array_utils = "~{script_dir}/post_finemapping/python_array_utils.py"
+
+    File hits_table # singly_finemapped_strs from str_tables_for_paper
+    File eQTL_table # post_finemapping/gtex_STR2/blessed_qtl_STRs.tab
+    Array[File] closest_gene_annotations
+  }
+
+  output {
+    File png = "results_graph.png"
+    File svg = "results_graph.svg"
+  }
+
+  command <<<
+    ls ~{annotation_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} \
+      results_graph.png \
+      ~{hits_table} \
+      ~{eQTL_table} \
+      ~{sep=" " closest_gene_annotations}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+  }
+}
+
+task concordance_in_other_ethnicities {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/replication_comparison.py"
+
+    File confidently_finemapped_STRs_df
+    Array[File] first_pass_dfs
+  }
+
+  output {
+    File nonwhite_replication_png = "replication_by_pval_non_white.png"
+    File nonwhite_replication_svg = "replication_by_pval_non_white.svg"
+    File white_replication_png = "replication_by_pval_white.png"
+    File white_replication_svg = "replication_by_pval_white.svg"
+    File stats = stdout()
+  }
+
+  command <<<
+    envsetup ~{script} \
+      . \
+      ~{confidently_finemapped_STRs_df} \
+      ~{sep=" " first_pass_dfs}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: ""
+  }
+}
+
+task generate_enrichments_table {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/enrichments_load.py"
+    File annotation_utils = "~{script_dir}/post_finemapping/annotation_utils.py"
+    File python_array_utils = "~{script_dir}/post_finemapping/python_array_utils.py"
+
+    File str_pos_table
+    File str_loci
+    File repeat_units_table
+    File estr_table
+    File gencode
+    Array[String] phenotypes
+    Array[File] str_assocs
+    File condifently_finemapped_STRs_df
+
+    #annotations
+    Array[File] intersects_transcript_support_2
+    Array[File] intersects_protein_coding_CDS_support_2
+    Array[File] intersects_protein_coding_five_prime_UTR_support_2
+    Array[File] intersects_protein_coding_three_prime_UTR_support_2
+    Array[File] intersects_protein_coding_UTR_support_2
+    Array[File] closest_downstream_protein_coding_exon_support_2
+    Array[File] closest_upstream_protein_coding_exon_support_2
+    Array[File] closest_downstream_protein_coding_gene_support_2
+    Array[File] closest_upstream_protein_coding_gene_support_2
+  }
+
+  output {
+    File table = "enrichments_df.tab"
+  }
+
+  command <<<
+    ls ~{annotation_utils} # necessary for dxCompiler to bother to localize this file
+    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
+    envsetup ~{script} \
+      --outdir . \
+      --str-pos-table ~{str_pos_table} \
+      --str-loci ~{str_loci} \
+      --repeat-units ~{repeat_units_table} \
+      --estr-table ~{estr_table} \
+      --gencode ~{gencode} \
+      --phenotypes ~{sep=" " phenotypes} \
+      --assocs ~{sep=" " str_assocs} \
+      --confidently-finemapped-STRs-df ~{confidently_finemapped_STRs_df} \
+      --intersects-protein-coding-CDS-support-2 ~{sep=" " intersects_protein_coding_CDS_support_2} \
+      --intersects-protein-coding-UTR-support-2 ~{sep=" " intersects_protein_coding_UTR_support_2} \
+      --intersects-protein-coding-five-prime-UTR-support-2 ~{sep=" " intersects_protein_coding_five-prime-UTR_support_2} \
+      --intersects-protein-coding-three-prime-UTR-support-2 ~{sep=" " intersects_protein_coding_three-prime-UTR_support_2} \
+      --intersects-transcript-support-2 ~{sep=" " intersects-transcript_support_2} \
+      --closest-downstream-protein-coding-exon-support-2 ~{sep=" " closest_downstream_protein_coding_exon_support_2} \
+      --closest-upstream-protein-coding-exon-support-2 ~{sep=" " closest_upstream_protein_coding_exon_support_2} \
+      --closest-downstream-protein-coding-gene ~{sep=" " closest_downstream_protein_coding_gene} \
+      --closest-upstream-protein-coding-gene ~{sep=" " closest_upstream_protein_coding_gene}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "3h"
+    mem: "50g"
+  }
+}
+
+task graph_enrichments {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/enrichments_plot.py"
+
+    File enrichment_stats
+  }
+
+  output {
+    File regions_svg = "enrichments_barplots_regions.svg"
+    File regions_png = "enrichments_barplots_regions.png"
+    File repeats_svg = "enrichments_barplots_repeats.svg"
+    File repeats_png = "enrichments_barplots_repeats.png"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      . \
+      ~{enrichment_stats}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: ""
+  }
+}
 
 task todo {
   input {

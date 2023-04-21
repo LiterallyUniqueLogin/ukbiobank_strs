@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 
 import bokeh.io
 import bokeh.models
@@ -11,15 +10,13 @@ import numpy as np
 import polars as pl
 
 import annotation_utils
-import phenotypes
-
-ukb = os.environ['UKB']
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outfile')
     parser.add_argument('hits_table')
     parser.add_argument('qtl_STRs_table')
+    parser.add_argument('closest_gene_annotations', nargs=22)
 
     args = parser.parse_args()
 
@@ -30,7 +27,7 @@ def main():
 
     closest_gene_merge = annotation_utils.get_merged_annotations(
         df.with_column(pl.col('start_pos').alias('pos')).to_pandas(),
-        f'{ukb}/side_analyses/str_annotations/closest_gene',
+        args.closest_gene_annotations,
         distance=True
     )
     closest_gene = [None]*df.shape[0]
@@ -120,10 +117,6 @@ def main():
     shaded_phenos = sum([pheno_blocks[key] for key in list(pheno_blocks.keys())[1::2]], [])
 
     pheno_indices = np.where(df['phenotype'].to_numpy()[:, None] == np.array(pheno_order)[None, :])[1]
-    for phenotype in pheno_order:
-        if not phenotype in phenotypes.phenotypes_in_use:
-            print(phenotype)
-            assert False
 
     df = df.with_column(
         pl.Series(pheno_indices).alias('pheno_indices')
@@ -318,8 +311,7 @@ def main():
     )
 
     qtl_STRs = pl.read_csv(args.qtl_STRs_table, sep='\t')
-
-    eqtl_STR_locs = qtl_STRs.filter(~pl.col('p_vals_expression').is_null())['chrom_pos']
+    eqtl_STR_locs = qtl_STRs['chrom_pos']
     eqtl_STRs = df[
         ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(eqtl_STR_locs)
     ].to_numpy().flatten()
@@ -352,7 +344,7 @@ def main():
         replicates = df.select((
             (pl.col('finemapping') == 'confidently') &
             (pl.col('other_ethnicity_effect_directions').str.split_exact(",", ethnicity_num+1).struct.field(f'field_{ethnicity_num}').str.strip() == pl.col('direction_of_association')) &
-            (pl.col('other_ethnicity_association_p_values').str.split_exact(",", ethnicity_num+1).struct.field(f'field_{ethnicity_num}').str.strip().cast(float)*pl.col('n_confident_assocs') <= 0.05)
+            (pl.col('other_ethnicity_association_p_values').str.split_exact(",", ethnicity_num+1).struct.field(f'field_{ethnicity_num}').str.strip().cast(float)*pl.col('n_confident_assocs') < 0.05)
         ).alias('out'))['out'].to_numpy()
         replication_topper.circle(
             [f'{ethnicity} replication'.replace('Other', 'other')]*np.sum(replicates),
