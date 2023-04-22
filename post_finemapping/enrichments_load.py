@@ -14,7 +14,7 @@ parser.add_argument('--outdir')
 parser.add_argument('--str-pos-table')
 parser.add_argument('--str-loci')
 parser.add_argument('--repeat-units')
-parser.add_argument('--estr-table')
+parser.add_argument('--eSTR-table')
 parser.add_argument('--gencode')
 parser.add_argument('--phenotypes', nargs='+')
 parser.add_argument('--assocs', nargs='+')
@@ -229,7 +229,7 @@ for key in ('intronic', 'transcribed_non_protein'):
     print(f'n {key} STRS: {np.sum(all_STRs[key])}')
 
 causal_STR_candidates = pl.read_csv(
-    args.confidently_finemapped_strs_df,
+    args.confidently_finemapped_STRs_df,
     #f'{ukb}/post_finemapping/intermediate_results/concordant_causal_STR_candidates.tab',
     sep='\t'
 ).select([

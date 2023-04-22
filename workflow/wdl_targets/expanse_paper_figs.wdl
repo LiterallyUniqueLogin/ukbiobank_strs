@@ -19,13 +19,18 @@ workflow expanse_figures {
     File str_pos_table = "snpstr/flank_trimmed_vcf/vars.tab"
     File repeat_units_table = "snpstr/repeat_units.tab"
     File str_pos_table_2 = "snpstr/str_loci.bed"
+    File str_loci = "snpstr/str_loci.txt"
     File str_hg38_pos_table = "snpstr/str_loci.hg38.bed"
     File str_t2t_pos_table = "snpstr/str_loci.t2tv2.bed"
+
+    File gencode = "misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gene.gff3"
 
     File specific_alleles = "association/specific_alleles.tab"
 
     # TODO this file MUST be regenerated with WDL
     File eQTL_table = "post_finemapping/gtex_STR2/blessed_qtl_STRs.tab"
+
+    File eSTR_table = "misc_data/eSTR/eSTRs.csv" # could regenerate with WDL
 
     # Files from Yang
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
@@ -65,6 +70,15 @@ workflow expanse_figures {
     File intersects_three_prime_UTR_annotation = "side_analyses/str_annotations/intersects_three_prime_UTR/chr~{chrom+1}.tab"
     File intersects_UTR_annotation = "side_analyses/str_annotations/intersects_UTR/chr~{chrom+1}.tab"
     File closest_gene_annotation = "side_analyses/str_annotations/closest_gene/chr~{chrom+1}.tab"
+    File intersects_transcript_support_2_annotation = "side_analyses/str_annotations/intersects_transcript_support_2/chr~{chrom+1}.tab"
+    File intersects_protein_coding_CDS_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_CDS_support_2/chr~{chrom+1}.tab"
+    File intersects_protein_coding_five_prime_UTR_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_five_prime_UTR_support_2/chr~{chrom+1}.tab"
+    File intersects_protein_coding_three_prime_UTR_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_three_prime_UTR_support_2/chr~{chrom+1}.tab"
+    File intersects_protein_coding_UTR_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_UTR_support_2/chr~{chrom+1}.tab"
+    File closest_downstream_protein_coding_exon_support_2_annotation = "side_analyses/str_annotations/closest_downstream_protein_coding_exon_support_2/chr~{chrom+1}.tab"
+    File closest_upstream_protein_coding_exon_support_2_annotation = "side_analyses/str_annotations/closest_upstream_protein_coding_exon_support_2/chr~{chrom+1}.tab"
+    File closest_downstream_protein_coding_gene_annotation = "side_analyses/str_annotations/closest_downstream_protein_coding_gene/chr~{chrom+1}.tab"
+    File closest_upstream_protein_coding_gene_annotation = "side_analyses/str_annotations/closest_upstream_protein_coding_gene/chr~{chrom+1}.tab"
   }
 
 
@@ -370,8 +384,36 @@ workflow expanse_figures {
   }
 
   ######## generate supp fig 14
-  call finemapping_tasks.enrichments { input :
+  call finemapping_tasks.generate_enrichments_table { input :
+    script_dir = script_dir,
+    str_pos_table = str_pos_table,
+    str_loci = str_loci,
+    repeat_units_table = repeat_units_table,
+    eSTR_table = eSTR_table,
+    gencode = gencode,
+    phenotypes = phenotype_names.n,
+    str_assocs = str_gwas_results,
+    confidently_finemapped_STRs_df = post_finemapping.confidently_finemapped_STRs,
 
+    intersects_transcript_support_2 = intersects_transcript_support_2_annotation,
+    intersects_protein_coding_CDS_support_2 = intersects_protein_coding_CDS_support_2_annotation,
+    intersects_protein_coding_five_prime_UTR_support_2 = intersects_protein_coding_five_prime_UTR_support_2_annotation,
+    intersects_protein_coding_three_prime_UTR_support_2 = intersects_protein_coding_three_prime_UTR_support_2_annotation,
+    intersects_protein_coding_UTR_support_2 = intersects_protein_coding_UTR_support_2_annotation,
+    closest_downstream_protein_coding_exon_support_2 = closest_downstream_protein_coding_exon_support_2_annotation,
+    closest_upstream_protein_coding_exon_support_2 = closest_upstream_protein_coding_exon_support_2_annotation,
+    closest_downstream_protein_coding_gene = closest_downstream_protein_coding_gene_annotation,
+    closest_upstream_protein_coding_gene = closest_upstream_protein_coding_gene_annotation,
+  }
+
+  call finemapping_tasks.calc_enrichments { input :
+    script_dir = script_dir,
+    enrichment_df = generate_enrichments_table.table
+  }
+
+  call finemapping_tasks.graph_enrichments { input :
+    script_dir = script_dir,
+    enrichment_stats = calc_enrichments.enrichment_stats
   }
 
   ####### generate figure 4 (missing manhattans)
@@ -631,16 +673,20 @@ workflow expanse_figures {
     File supp_fig_13_png = concordance_in_other_ethnicities.white_replication_png
     File supp_fig_13_svg = concordance_in_other_ethnicities.white_replication_svg
 
+    File supp_fig_14ab_svg = graph_enrichments.regions_svg
+    File supp_fig_14ab_png = graph_enrichments.regions_png
+    File supp_fig_14cd_svg = graph_enrichments.repeats_svg
+    File supp_fig_14cd_png = graph_enrichments.repeats_png
+
     File supp_fig_15a_svg_out = supp_fig_15a.svg
     File supp_fig_15a_png_out = supp_fig_15a.png
     File supp_fig_15b_svg_out = supp_fig_15b.svg
     File supp_fig_15b_png_out = supp_fig_15b.png
 
-   File supp_table_3 = str_tables_for_paper.singly_finemapped_strs_for_paper
-   File singly_finemapped_strs_sorted = str_tables_for_paper.singly_finemapped_strs_sorted
-   File supp_table_4 = str_tables_for_paper.confidently_finemapped_strs_for_paper
-   File confidently_finemapped_strs_sorted = str_tables_for_paper.confidently_finemapped_strs_sorted
-   File supp_table_6 = concordance_in_other_ethnicities.stats
-
+    File supp_table_3 = str_tables_for_paper.singly_finemapped_strs_for_paper
+    File singly_finemapped_strs_sorted = str_tables_for_paper.singly_finemapped_strs_sorted
+    File supp_table_4 = str_tables_for_paper.confidently_finemapped_strs_for_paper
+    File confidently_finemapped_strs_sorted = str_tables_for_paper.confidently_finemapped_strs_sorted
+    File supp_table_6 = concordance_in_other_ethnicities.stats
   }
 }

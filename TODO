@@ -6,13 +6,18 @@ check that new plink gwas is accurate - no incorrect transformations
 * transform traits is quite similar - the non-phenotype traits are is_close, the phenotype traits never differ by more than .11, and some small difference is expected due to using different samples before the ranking step
 original HDL finemapping FINEMAP regions 1_219976499_220226499 and 20_55711040_55961040 seem to have the wrong p_val threshold (using variants with p_val >= 0.05). Others for HDL?
 Check difference in first pass susie alpha v pip - PIPs have changed for some reason (but files are identical otherwise). Fix.
-Check difference in followup pass graphs
+Check difference in followup pass graphs - different definition of regions. Still worth debugging, or do I assume this is working?
+Very small numeric difference in supp fig 8b only FINEMAP. This is okay I presume?
 add susie mpv graphs?
 Mention to M&A that RHOT1 and TAOK1 didn't map properly to T2T
 How do we document changes to the figs and supplementary tables that won't be tracked with track changes?
 Confirm that removing some info from tables 3 and 4 (because we're using more strict followup finemapping sets)
-is okay - or alternatively, confirm that we can have data in the table we shouldn't have calculated.
-Fig 3 and supp fig 13 Change discovery p-value to -log10(discovery p-value) Try filter on confidently finemapped in fig 3 and fig 14
+  is okay - or alternatively, confirm that we can have data in the table we shouldn't have calculated.
+Fig 3 and supp fig 13 Change discovery p-value to -log10(discovery p-value)
+* Also, confidently fine-mapped shared effect directions are off by one in a few places for each other ethnicity. Don't care?
+* look at supp table logistic
 generate finemapped results table with support 2+ gene annotations instead of all gene annotations? Or if not, then need to say in methods.
+Confidently fine-mapped STRs is missing apolipoprotein b assoc
+Need to follow up on supp talbe 6
 
-Images that still need to be WDL for new fine-mapping : 1c, include LDL in table 1!, supp figs 2, 14
+Images that still need to be WDL for new fine-mapping : 1c, include LDL in table 1!, supp figs 2

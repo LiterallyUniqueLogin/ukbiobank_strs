@@ -23,7 +23,12 @@ def main():
     df = pl.read_csv(
         args.hits_table,
         sep='\t',
-    ).filter(pl.col('association_p_value') <= 1e-10)
+    ).filter(
+        pl.col('association_p_value') <= 1e-10
+    ).rename({
+        'start_pos (hg19)': 'start_pos',
+        'end_pos (hg19)': 'end_pos'
+    })
 
     closest_gene_merge = annotation_utils.get_merged_annotations(
         df.with_column(pl.col('start_pos').alias('pos')).to_pandas(),
@@ -118,10 +123,11 @@ def main():
 
     pheno_indices = np.where(df['phenotype'].to_numpy()[:, None] == np.array(pheno_order)[None, :])[1]
 
-    df = df.with_column(
-        pl.Series(pheno_indices).alias('pheno_indices')
-    ).with_row_count().with_column(
-        (pl.col('pheno_indices') + pl.col('row_nr')/1e5 + pl.when(pl.col('finemapping') != 'confidently').then(100000).otherwise(0)).min().over(['chrom', 'start_pos']).alias('min_assoc_pheno_index')
+    df = df.with_columns([
+        pl.Series(pheno_indices).alias('pheno_indices'),
+        pl.when(pl.col('finemapping') != 'confidently').then(100000).otherwise(0).alias('temp') # don't know why this is needed, but it avoids a warning
+    ]).with_row_count().with_column(
+        (pl.col('pheno_indices') + pl.col('row_nr')/1e5 + pl.col('temp')).min().over(['chrom', 'start_pos']).alias('min_assoc_pheno_index')
     ).with_columns([
         pl.when(
             pl.col('association_p_value') == 0
@@ -133,6 +139,8 @@ def main():
             lambda dosage_dict_str: sum(float(part.split(' ')[-1]) >= 1 for part in dosage_dict_str.split('%')[:-1])
         ).alias('n_common_alleles')
     ])
+    print(list(zip(df.columns, df.dtypes)))
+    df.write_csv(f'{args.outfile}.temp_tab', sep='\t')
 
     mapi = df['min_assoc_pheno_index'].to_numpy().copy()
     old_mapi = mapi.copy()
@@ -147,7 +155,7 @@ def main():
             y_coords[mapi == i] += num_dups
     for i in range(max(y_coords) + 1):
         if i not in y_coords:
-            print(i)
+            print(i, "failed in assoc pheno index loop")
             exit()
 
     for pair in [(21, 23), (23, 24), (25, 28), (26, 30), (27, 31), (25, 27), (35, 39), (36, 39), (37, 38), (40, 42), (40, 41), (43, 45), (56, 57), (59, 60), (48, 53), (49, 55), (50, 54), (49, 51), (68, 71), (84, 85),(85, 87), (87, 88)]:

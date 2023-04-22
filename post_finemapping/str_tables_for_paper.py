@@ -63,8 +63,6 @@ def dosages_to_frequencies(dosage_dict_str):
 finemapping_dfs = []
 # f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
 for count, fname in enumerate(args.first_pass_finemapping_dfs):
-    if count > 1:
-        break
     print(f'Loading finemapping df {count+1}/{len(args.first_pass_finemapping_dfs)}', flush=True)
     df = pl.DataFrame(pd.read_csv(
         fname,

@@ -866,7 +866,8 @@ task concordance_in_other_ethnicities {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: "1h"
+    mem: "20g"
   }
 }
 
@@ -880,11 +881,11 @@ task generate_enrichments_table {
     File str_pos_table
     File str_loci
     File repeat_units_table
-    File estr_table
+    File eSTR_table
     File gencode
     Array[String] phenotypes
     Array[File] str_assocs
-    File condifently_finemapped_STRs_df
+    File confidently_finemapped_STRs_df
 
     #annotations
     Array[File] intersects_transcript_support_2
@@ -894,8 +895,8 @@ task generate_enrichments_table {
     Array[File] intersects_protein_coding_UTR_support_2
     Array[File] closest_downstream_protein_coding_exon_support_2
     Array[File] closest_upstream_protein_coding_exon_support_2
-    Array[File] closest_downstream_protein_coding_gene_support_2
-    Array[File] closest_upstream_protein_coding_gene_support_2
+    Array[File] closest_downstream_protein_coding_gene
+    Array[File] closest_upstream_protein_coding_gene
   }
 
   output {
@@ -910,16 +911,16 @@ task generate_enrichments_table {
       --str-pos-table ~{str_pos_table} \
       --str-loci ~{str_loci} \
       --repeat-units ~{repeat_units_table} \
-      --estr-table ~{estr_table} \
+      --eSTR-table ~{eSTR_table} \
       --gencode ~{gencode} \
       --phenotypes ~{sep=" " phenotypes} \
       --assocs ~{sep=" " str_assocs} \
       --confidently-finemapped-STRs-df ~{confidently_finemapped_STRs_df} \
       --intersects-protein-coding-CDS-support-2 ~{sep=" " intersects_protein_coding_CDS_support_2} \
       --intersects-protein-coding-UTR-support-2 ~{sep=" " intersects_protein_coding_UTR_support_2} \
-      --intersects-protein-coding-five-prime-UTR-support-2 ~{sep=" " intersects_protein_coding_five-prime-UTR_support_2} \
-      --intersects-protein-coding-three-prime-UTR-support-2 ~{sep=" " intersects_protein_coding_three-prime-UTR_support_2} \
-      --intersects-transcript-support-2 ~{sep=" " intersects-transcript_support_2} \
+      --intersects-protein-coding-five-prime-UTR-support-2 ~{sep=" " intersects_protein_coding_five_prime_UTR_support_2} \
+      --intersects-protein-coding-three-prime-UTR-support-2 ~{sep=" " intersects_protein_coding_three_prime_UTR_support_2} \
+      --intersects-transcript-support-2 ~{sep=" " intersects_transcript_support_2} \
       --closest-downstream-protein-coding-exon-support-2 ~{sep=" " closest_downstream_protein_coding_exon_support_2} \
       --closest-upstream-protein-coding-exon-support-2 ~{sep=" " closest_upstream_protein_coding_exon_support_2} \
       --closest-downstream-protein-coding-gene ~{sep=" " closest_downstream_protein_coding_gene} \
@@ -932,6 +933,32 @@ task generate_enrichments_table {
     mem: "50g"
   }
 }
+
+task calc_enrichments {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/enrichments_calc.py"
+
+    File enrichment_df
+  }
+
+  output {
+    File enrichment_stats = "enrichments.tab"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      . \
+      ~{enrichment_df}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    mem: "10g"
+  }
+}
+
 
 task graph_enrichments {
   input {
@@ -956,7 +983,8 @@ task graph_enrichments {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
+    dx_timeout: "1h"
+    mem: "10g"
   }
 }
 
