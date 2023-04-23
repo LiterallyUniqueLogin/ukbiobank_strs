@@ -325,22 +325,6 @@ finemapping_results['relation_to_gene'] = relation_to_gene
 # done with gene annotations, move back to polars
 finemapping_results = pl.DataFrame(finemapping_results)
 
-def apob_locus(phenotype):
-    return (pl.col('start_pos') == 21266752) & (pl.col('phenotype') == phenotype)
-
-finemapping_results = finemapping_results.with_columns([
-    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('susie_CP')).otherwise(0.994568),
-    pl.when(
-        ~apob_locus('apolipoprotein_b') & ~apob_locus('ldl_cholesterol_direct')
-    ).then(
-        pl.col('susie_CP_best_guess_genotypes')
-    ).when(apob_locus('apolipoprotein_b')).then(0.9765144).otherwise(0.9751951),
-    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('finemap_CP_prior_4_signals')).otherwise(0.884233 + 0.0728702),
-    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('susie_CP_prior_snps_over_strs')).otherwise(0.9779266),
-    pl.when(~apob_locus('ldl_cholesterol_direct')).then(pl.col('finemap_CP_prior_snps_over_strs')).otherwise(1),
-    pl.when(~apob_locus('apolipoprotein_b')).then(pl.col('finemap_CP_prior_effect_size_0.0025%')).otherwise(0.347805 + 0.652195),
-])
-
 finemapping_results = finemapping_results.select([
     'phenotype',
     'chrom',

@@ -808,6 +808,24 @@ def followup_finemapping_conditions_df(
     ]).filter(
         pl.col('p_val') < 0.05 #FINEMAP MAP>=100 run  included exactly <= 0.05 , not just < 0.05, in the run. Exclude those from followup calculations.
     )
+
+    # manually fix the APOB locus results
+    def apob_locus():
+        return pl.col('pos') == 21266752
+    if phenotype == 'apolipoprotein_b':
+        pheno_df = pheno_df.with_columns([
+            pl.when(~apob_locus()).then(pl.col('susie_alpha')).otherwise(0.994568),
+            pl.when(~apob_locus()).then(pl.col('susie_alpha_best_guess')).otherwise(0.9765144),
+            pl.when(~apob_locus()).then(pl.col('finemap_pip_total_prob')).otherwise(0.884233 + 0.0728702),
+            pl.when(~apob_locus()).then(pl.col('susie_alpha_ratio')).otherwise(0.9779266),
+            pl.when(~apob_locus()).then(pl.col('finemap_pip_prior_std_low')).otherwise(0.347805 + 0.652195),
+        ])
+    elif phenotype == 'ldl_cholesterol_direct':
+        pheno_df = pheno_df.with_columns([
+            pl.when(~apob_locus()).then(pl.col('susie_alpha_best_guess')).otherwise(0.9751951),
+            pl.when(~apob_locus()).then(pl.col('finemap_pip_ratio')).otherwise(1),
+        ])
+
     pheno_df.write_csv(f'{outdir}/finemapping_followup_concordance_{phenotype}.tab', sep='\t')
     if should_assert:
         assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False

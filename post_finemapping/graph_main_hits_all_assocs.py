@@ -127,6 +127,8 @@ def main():
         pl.Series(pheno_indices).alias('pheno_indices'),
         pl.when(pl.col('finemapping') != 'confidently').then(100000).otherwise(0).alias('temp') # don't know why this is needed, but it avoids a warning
     ]).with_row_count().with_column(
+        # ordering: (is confident, pheno index, row number)
+        # take min (so of those that are confident, lowest row number and lowest pheno index, with row number arbitrarily breaking ties between distinct loci)
         (pl.col('pheno_indices') + pl.col('row_nr')/1e5 + pl.col('temp')).min().over(['chrom', 'start_pos']).alias('min_assoc_pheno_index')
     ).with_columns([
         pl.when(
@@ -138,21 +140,25 @@ def main():
         pl.col('white_brit_allele_frequencies').apply(
             lambda dosage_dict_str: sum(float(part.split(' ')[-1]) >= 1 for part in dosage_dict_str.split('%')[:-1])
         ).alias('n_common_alleles')
-    ])
-    print(list(zip(df.columns, df.dtypes)))
-    df.write_csv(f'{args.outfile}.temp_tab', sep='\t')
+    ]).filter(
+        pl.col('n_confident_assocs') > 0
+    )
 
     mapi = df['min_assoc_pheno_index'].to_numpy().copy()
     old_mapi = mapi.copy()
+    # phenotypes with no confidently mapped assocs get shrunk out
     for i in range(len(pheno_order)):
         if i not in np.floor(old_mapi):
             mapi[old_mapi > i] -= 1
+
+    # get y coords from mapi
     y_coords = np.floor(mapi).astype(int)
     for i in np.unique(mapi):
         num_dups = np.unique(mapi[(mapi < i) & (np.floor(i) == np.floor(mapi))]).shape[0]
         if num_dups > 0:
             y_coords[np.floor(mapi) > np.floor(i)] += 1
             y_coords[mapi == i] += num_dups
+
     for i in range(max(y_coords) + 1):
         if i not in y_coords:
             print(i, "failed in assoc pheno index loop")
@@ -163,7 +169,7 @@ def main():
         y_coords[y_coords == pair[1]] = pair[0]
         y_coords[y_coords == 1000000] = pair[1]
 
-    strs = df[
+    strs = df.select(
         pl.col('chrom').cast(str) + ':' + pl.col('start_pos').cast(str) + '_' + pl.when(
             pl.col('relation_to_gene').str.contains('protein_coding.*protein_coding')
         ).then(
@@ -185,7 +191,7 @@ def main():
         ).otherwise(
             pl.col('relation_to_gene').str.extract(r"\w[^{:]*:([^:]*):", 1)
         )
-    ].to_numpy()[np.argsort(y_coords)]
+    ).to_numpy()[np.argsort(y_coords)]
     _, idxs = np.unique(strs, return_index=True)
     unique_stable_strs = strs[np.sort(idxs)].flatten()
     unique_stable_strs = list(np.char.partition(np.array(unique_stable_strs, dtype=str), '_')[:, 2])
@@ -201,9 +207,9 @@ def main():
         height=plot_height,
         x_axis_label='phenotypes',
         y_axis_label='STRs (containing gene, or position and nearest gene if intergenic)',
-        #y_range=bokeh.models.FactorRange(*[(group, pheno) for group in pheno_blocks for pheno in pheno_blocks[group]][::-1]),
         x_range=[pheno.replace('_', ' ') for pheno in pheno_order[::-1]],
         y_range=unique_stable_strs,#(0,94),
+        x_axis_location="above",
         toolbar_location=None,
         outline_line_color='black',
         output_backend='svg'
@@ -231,39 +237,15 @@ def main():
     )
     results_plot.ygrid.ticker = []
 
-    '''
-    with open(args.e_splice_STRs_table) as table:
-        e_splice_lines = table.readlines()
-
-    for loc, gene_rels in zip(
-        df[pl.col('chrom').cast(str)+'_'+pl.col('start_pos').cast(str)].to_numpy().flatten(),
-        df['relation_to_gene'].to_numpy().flatten()
-    ):
-        gene_rel_list = gene_rels.split(';')
-        color = 'blue'
-        for gene_rel in gene_rel_list:
-            if gene_rel == 'intergenic':
-                break
-            if gene_rel == 'multigene':
-                continue
-            for line in e_splice_lines:
-                if re.search(loc + '.*' + gene_rel.split(':')[1], line):
-                    color = 'red'
-
-        str_colors.append(color)
-    str_colors = np.array(str_colors)
-    '''
-
     def pheno_to_ycoords(phenos):
         return [pheno.replace('_', ' ') for pheno in phenos]
-        #return [(group, pheno) for pheno in phenos for group in pheno_blocks if pheno in pheno_blocks[group]]
 
     fill_colors = np.array(['           ']*len(y_coords))
 
     confidently_color = '#401E1D'
-    partially_color = '#A13D34' 
+    partially_color = '#A13D34'
     not_color = '#BF9E9A'
-    fill_colors[:] = '#A13D34' 
+    fill_colors[:] = '#A13D34'
     fill_colors[df['finemapping'].to_numpy() == 'confidently'] = confidently_color
     fill_colors[df['finemapping'].to_numpy() == 'not'] = not_color
 
@@ -292,6 +274,7 @@ def main():
             height=plot_height,
             x_range=bokeh.models.FactorRange(*factors),
             y_range=results_plot.y_range,
+            x_axis_location="above",
             toolbar_location=None,
             outline_line_color='black',
             output_backend='svg'
@@ -313,36 +296,22 @@ def main():
                 x='x', y='y', width='width', height='height', color='color', alpha='alpha', line_color='line_color', source=cds
             )
         return topper
-    
+
     qtl_topper = get_topper(
         30, ['expression QTL'], True#, 'splice or isoform QTL'], True
     )
 
     qtl_STRs = pl.read_csv(args.qtl_STRs_table, sep='\t')
     eqtl_STR_locs = qtl_STRs['chrom_pos']
-    eqtl_STRs = df[
+    eqtl_STRs = df.select(
         ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(eqtl_STR_locs)
-    ].to_numpy().flatten()
+    ).to_numpy().flatten()
     qtl_topper.circle(
         ['expression QTL']*np.sum(eqtl_STRs),
         (y_coords + 0.5)[eqtl_STRs],
         color='black',
         size=topper_circle_size
     )
-
-    '''
-    splice_iso_STR_locs = qtl_STRs.filter(~pl.col('p_vals_splice').is_null() | ~pl.col('p_vals_isoform').is_null())['chrom_pos']
-    splice_iso_STRs = df[
-        ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(splice_iso_STR_locs)
-    ].to_numpy().flatten()
-    qtl_topper.circle(
-        (y_coords + 0.5)[splice_iso_STRs],
-        ['splice or isoform QTL']*np.sum(splice_iso_STRs),
-        color='black',
-        size=topper_circle_size
-    )
-    '''
-
 
     replication_topper = get_topper(
         150, [f'{ethnicity} replication'.replace('Other', 'other') for ethnicity in other_ethnicities], True
@@ -370,7 +339,6 @@ def main():
             color='black',
             size=topper_circle_size
         )
-
 
     indices = []
     for index, coord in enumerate(y_coords):
