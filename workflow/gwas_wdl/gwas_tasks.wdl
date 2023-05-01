@@ -333,7 +333,7 @@ task load_continuous_phenotype {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
-    dx_timeout: "5m"
+    dx_timeout: "1h"
   }
 }
 
@@ -754,6 +754,41 @@ task regional_my_str_gwas {
   }
 }
 
+task reformat_my_str_gwas_table_for_publication {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/reformat_my_str_gwas_for_publication.py"
+
+    String phenotype
+    File my_str_gwas
+    File flank_start_to_start_and_end_pos
+    File str_hg19_pos_bed
+    File str_hg38_pos_bed
+    File repeat_units_table
+  }
+
+  output {
+    File out = "out.tab"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      out.tab \
+      ~{phenotype} \
+      ~{my_str_gwas} \
+      ~{flank_start_to_start_and_end_pos} \
+      ~{str_hg19_pos_bed} \
+      ~{str_hg38_pos_bed} \
+      ~{repeat_units_table}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    mem: "5g"
+  }
+}
+
 task locus_plot {
   input {
     String script_dir
@@ -1002,27 +1037,6 @@ task summarize_peaks {
   }
 }
 
-
-task todo {
-  input {
-    String script_dir
-    File script = "~{script_dir}/"
-  }
-
-  output {
-
-  }
-
-  command <<<
-    envsetup ~{script}
-  >>>
-
-  runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: ""
-  }
-}
-
 ####################### Tasks to determine finemapping regions #########################
 
 # these are here because they are used to prioritize STRs for follow up ethnic GWAS
@@ -1108,6 +1122,26 @@ task get_strs_in_finemapping_regions {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
     mem: "4g"
+  }
+}
+
+task placeholder {
+  input {
+    String script_dir
+    File script = "~{script_dir}/"
+  }
+
+  output {
+
+  }
+
+  command <<<
+    envsetup ~{script}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: ""
   }
 }
 

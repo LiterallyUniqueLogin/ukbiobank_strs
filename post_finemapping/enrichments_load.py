@@ -11,7 +11,7 @@ other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--outdir')
-parser.add_argument('--str-pos-table')
+parser.add_argument('--flank-start-to-start-and-end-pos')
 parser.add_argument('--str-loci')
 parser.add_argument('--repeat-units')
 parser.add_argument('--eSTR-table')
@@ -34,7 +34,7 @@ args = parser.parse_args()
 # pos (start), snpstr_pos (hipstr)
 all_STRs = pl.read_csv(
     #f'{ukb}/snpstr/flank_trimmed_vcf/vars.tab',
-    args.str_pos_table,
+    args.flank_start_to_start_and_end_pos,
     sep='\t'
 )
 # pos (hisptr)

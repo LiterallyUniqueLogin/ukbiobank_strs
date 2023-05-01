@@ -21,10 +21,9 @@ parser.add_argument('--south-asian-assocs', nargs='+')
 parser.add_argument('--chinese-assocs', nargs='+')
 parser.add_argument('--irish-assocs', nargs='+')
 parser.add_argument('--white-other-assocs', nargs='+')
-parser.add_argument('--str-pos-table')
-parser.add_argument('--str-pos-table-2')
-parser.add_argument('--str-hg38-pos-table')
-parser.add_argument('--str-t2t-pos-table')
+parser.add_argument('--flank-start-to-start-and-end-pos')
+parser.add_argument('--str-hg19-pos-bed')
+parser.add_argument('--str-hg38-pos-bed')
 parser.add_argument('--repeat-units-table')
 parser.add_argument('--intersects-gene-annotation', nargs=22)
 parser.add_argument('--intersects-exon-annotation', nargs=22)
@@ -115,14 +114,14 @@ finemapping_results = finemapping_results.filter(
     ).any().over(['chrom', 'snpstr_pos'])
 )
 
-pos_table = pl.read_csv(
-    args.str_pos_table, sep='\t'
+flank_start_to_start_and_pos_table = pl.read_csv(
+    args.flank_start_to_start_and_end_pos, sep='\t'
 ).groupby(
     ['chrom', 'pos', 'end_pos']
 ).agg([pl.col('snpstr_pos').first()]) # drop duplicate snpstr poses
 
-pos_table_2 = pl.read_csv(
-    args.str_pos_table_2,
+hg19_pos_bed = pl.read_csv(
+    args.str_hg19_pos_bed,
     sep='\t',
     has_header=False,
     new_columns=['chrom', 'pos', 'end_pos', 'ID']
@@ -130,16 +129,8 @@ pos_table_2 = pl.read_csv(
     pl.col('pos') + 1, # transform from bed to vcf coords
     pl.col('chrom').str.replace('chr', '').cast(int),
 ])
-hg38_pos_table = pl.read_csv(
-    args.str_hg38_pos_table,
-    sep='\t',
-    has_header=False,
-    new_columns=['chrom', 'pos', 'end_pos', 'ID', 'drop']
-).with_columns([
-    pl.col('pos') + 1, # transform from bed to vcf coords
-]).drop(['drop', 'chrom'])
-t2t_pos_table = pl.read_csv(
-    args.str_t2t_pos_table,
+hg38_pos_bed = pl.read_csv(
+    args.str_hg38_pos_bed,
     sep='\t',
     has_header=False,
     new_columns=['chrom', 'pos', 'end_pos', 'ID', 'drop']
@@ -147,25 +138,20 @@ t2t_pos_table = pl.read_csv(
     pl.col('pos') + 1, # transform from bed to vcf coords
 ]).drop(['drop', 'chrom'])
 
-pos_table_2 = pos_table_2.join(
-    hg38_pos_table,
+hg19_pos_bed = hg19_pos_bed.join(
+    hg38_pos_bed,
     how = 'left',
     on=['ID'],
     suffix='_hg38',
-).join(
-    t2t_pos_table,
-    how = 'left',
-    on=['ID'],
-    suffix='_t2t'
 )
 
-pos_table = pos_table_2.join(
-    pos_table,
+flank_start_to_start_and_pos_table = hg19_pos_bed.join(
+    flank_start_to_start_and_pos_table,
     on=['chrom', 'pos', 'end_pos']
 ).drop(['ID'])
 
 finemapping_results = finemapping_results.join(
-    pos_table,
+    flank_start_to_start_and_pos_table,
     how='left',
     on=['chrom', 'snpstr_pos']
 )
@@ -332,8 +318,6 @@ finemapping_results = finemapping_results.select([
     pl.col('end_pos').alias('end_pos (hg19)'),
     pl.col('pos_hg38').alias('start_pos (hg38)'),
     pl.col('end_pos_hg38').alias('end_pos (hg38)'),
-    pl.when(~pl.col('pos_t2t').is_null()).then(pl.col('pos_t2t').cast(int).cast(str)).otherwise(pl.lit('Failed to lift to T2T reference')).alias('start_pos (T2T)'),
-    pl.when(~pl.col('end_pos_t2t').is_null()).then(pl.col('end_pos_t2t').cast(int).cast(str)).otherwise(pl.lit('Failed to lift to T2T reference')).alias('end_pos (T2T)'),
     pl.col('region').alias('finemapping_region'),
     pl.col('unit').alias('repeat_unit'),
     pl.col('white_brit_allele_dosages').apply(dosages_to_frequencies).alias('white_brit_allele_frequencies'),

@@ -739,10 +739,9 @@ task str_tables_for_paper {
     File annotation_utils = "~{script_dir}/post_finemapping/annotation_utils.py"
     File python_array_utils = "~{script_dir}/post_finemapping/python_array_utils.py"
 
-    File str_pos_table
-    File str_pos_table_2
-    File str_hg38_pos_table
-    File str_t2t_pos_table
+    File flank_start_to_start_and_end_pos
+    File str_hg19_pos_bed
+    File str_hg38_pos_bed
     File repeat_units_table
 
     #annotations
@@ -778,10 +777,9 @@ task str_tables_for_paper {
     ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       --outdir . \
-      --str-pos-table ~{str_pos_table} \
-      --str-pos-table-2 ~{str_pos_table_2} \
-      --str-hg38-pos-table ~{str_hg38_pos_table} \
-      --str-t2t-pos-table ~{str_t2t_pos_table} \
+      --flank-start-to-start-and-end-pos ~{flank_start_to_start_and_end_pos} \
+      --str-hg19-pos-bed ~{str_hg19_pos_bed} \
+      --str-hg38-pos-bed ~{str_hg38_pos_bed} \
       --repeat-units-table ~{repeat_units_table} \
       --intersects-gene-annotation ~{sep=" " intersects_gene} \
       --intersects-exon-annotation ~{sep=" " intersects_exon} \
@@ -878,7 +876,7 @@ task generate_enrichments_table {
     File annotation_utils = "~{script_dir}/post_finemapping/annotation_utils.py"
     File python_array_utils = "~{script_dir}/post_finemapping/python_array_utils.py"
 
-    File str_pos_table
+    File flank_start_to_start_and_end_pos
     File str_loci
     File repeat_units_table
     File eSTR_table
@@ -908,7 +906,7 @@ task generate_enrichments_table {
     ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       --outdir . \
-      --str-pos-table ~{str_pos_table} \
+      --flank-start-to-start-and-end-pos ~{flank_start_to_start_and_end_pos} \
       --str-loci ~{str_loci} \
       --repeat-units ~{repeat_units_table} \
       --eSTR-table ~{eSTR_table} \

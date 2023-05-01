@@ -11,7 +11,6 @@ parser.add_argument('outreadme')
 parser.add_argument('start_samples_fname')
 parser.add_argument('remove_fnames', nargs='+')
 parser.add_argument('--subpop')
-parser.add_argument('--pheno-file')
 
 args = parser.parse_args()
 subpop = args.subpop

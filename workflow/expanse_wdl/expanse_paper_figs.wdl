@@ -1,6 +1,6 @@
 version 1.0
 
-import "../platform_wdl/expanse_tasks.wdl"
+import "expanse_tasks.wdl"
 import "../gwas_wdl/gwas_tasks.wdl"
 import "../finemapping_wdl/finemapping_tasks.wdl"
 import "../finemapping_wdl/post_finemapping_workflow.wdl"
@@ -16,12 +16,12 @@ workflow expanse_figures {
     File chr_lens = "misc_data/genome/chr_lens.txt"
 
     # TODO this group of files could be generated through WDL instead of cached
-    File str_pos_table = "snpstr/flank_trimmed_vcf/vars.tab"
+    File flank_start_to_start_and_end_pos = "snpstr/flank_trimmed_vcf/vars.tab"
     File repeat_units_table = "snpstr/repeat_units.tab"
-    File str_pos_table_2 = "snpstr/str_loci.bed"
     File str_loci = "snpstr/str_loci.txt"
-    File str_hg38_pos_table = "snpstr/str_loci.hg38.bed"
-    File str_t2t_pos_table = "snpstr/str_loci.t2tv2.bed"
+    File str_hg19_pos_bed = "snpstr/str_loci.bed"
+    File str_hg38_pos_bed = "snpstr/str_loci.hg38.bed"
+    File str_t2t_pos_bed = "snpstr/str_loci.t2tv2.bed"
 
     File gencode = "misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gene.gff3"
 
@@ -80,8 +80,6 @@ workflow expanse_figures {
     File closest_downstream_protein_coding_gene_annotation = "side_analyses/str_annotations/closest_downstream_protein_coding_gene/chr~{chrom+1}.tab"
     File closest_upstream_protein_coding_gene_annotation = "side_analyses/str_annotations/closest_upstream_protein_coding_gene/chr~{chrom+1}.tab"
   }
-
-
 
   # input, but written as a task for reusability
   call gwas_tasks.phenotype_names
@@ -346,10 +344,10 @@ workflow expanse_figures {
   ######### generate supplementary tables 3 and 4
   call finemapping_tasks.str_tables_for_paper { input :
     script_dir = script_dir,
-    str_pos_table = str_pos_table,
-    str_pos_table_2 = str_pos_table_2,
-    str_hg38_pos_table = str_hg38_pos_table,
-    str_t2t_pos_table = str_t2t_pos_table,
+    flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
+    str_hg19_pos_bed = str_hg19_pos_bed,
+    str_hg38_pos_bed = str_hg38_pos_bed,
+    str_t2t_pos_bed = str_t2t_pos_bed,
     repeat_units_table = repeat_units_table,
     intersects_gene = intersects_gene_annotation,
     intersects_exon = intersects_exon_annotation,
@@ -386,7 +384,7 @@ workflow expanse_figures {
   ######## generate supp fig 14
   call finemapping_tasks.generate_enrichments_table { input :
     script_dir = script_dir,
-    str_pos_table = str_pos_table,
+    flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
     str_loci = str_loci,
     repeat_units_table = repeat_units_table,
     eSTR_table = eSTR_table,

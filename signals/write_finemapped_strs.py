@@ -12,7 +12,7 @@ args = parser.parse_args()
 
 loci = pl.read_csv(
     args.str_loci, sep='\t', has_header=False
-).distinct().rename({'column_1': 'chrom', 'column_2': 'pos'})
+).unique().rename({'column_1': 'chrom', 'column_2': 'pos'})
 
 for chrom in range(1, 23):
     dfs = [
@@ -28,6 +28,6 @@ for chrom in range(1, 23):
         ) if region_chrom == chrom
     ]
     if len(dfs) > 0:
-        pl.concat(dfs).sort('pos').to_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')
+        pl.concat(dfs).sort('pos').write_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')
     else:
-        pl.DataFrame({'chrom': [], 'pos': []}).to_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')
+        pl.DataFrame({'chrom': [], 'pos': []}).write_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')

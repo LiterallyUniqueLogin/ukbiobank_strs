@@ -1,6 +1,6 @@
 version 1.0
 
-import "../platform_wdl/expanse_tasks.wdl"
+import "expanse_tasks.wdl"
 import "../gwas_wdl/gwas_workflow.wdl"
 
 workflow expanse_gwas_and_finemapping {
@@ -10,6 +10,13 @@ workflow expanse_gwas_and_finemapping {
 
     File chr_lens = "misc_data/genome/chr_lens.txt"
     File str_loci = "snpstr/str_loci.txt"
+
+    # TODO could generate this set of files
+    File flank_start_to_start_and_end_pos = "snpstr/flank_trimmed_vcf/vars.tab"
+    File repeat_units_table = "snpstr/repeat_units.tab"
+    File str_loci = "snpstr/str_loci.txt"
+    File str_hg19_pos_bed = "snpstr/str_loci.bed"
+    File str_hg38_pos_bed = "snpstr/str_loci.hg38.bed"
 
 #    String phenotype_name = "platelet_count"
 #    Int phenotype_id = 30080
@@ -28,6 +35,8 @@ workflow expanse_gwas_and_finemapping {
     File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
     File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat" # could create a task for downloading this with ukbgene
 
+    Array[File]? cached_unrelated_samples_for_phenotype =
+    File cached_shared_covars
 #    Array[File]? cached_unrelated_samples_for_phenotype = [
 #      "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample",
 #      "sample_qc/runs/black/platelet_count/combined_unrelated.sample",
@@ -136,6 +145,10 @@ workflow expanse_gwas_and_finemapping {
     imputed_snp_p_files = imputed_snp_p_files,
 
     str_loci = str_loci,
+    flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
+    str_hg19_pos_bed = str_hg19_pos_bed,
+    str_hg38_pos_bed = str_hg38_pos_bed,
+    repeat_units_table = repeat_units_table,
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
@@ -162,7 +175,7 @@ workflow expanse_gwas_and_finemapping {
     sc_date_of_death = date_of_death.data,
     sc_phenotype = phenotype.data,
 
-#    cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
-#    cached_shared_covars = cached_shared_covars,
+    cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
+    cached_shared_covars = cached_shared_covars,
   }
 }

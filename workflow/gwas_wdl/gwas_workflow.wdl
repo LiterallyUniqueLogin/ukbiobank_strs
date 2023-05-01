@@ -16,6 +16,10 @@ workflow gwas {
     Array[PFiles]+ imputed_snp_p_files
 
     File str_loci
+    File flank_start_to_start_and_end_pos
+    File str_hg19_pos_bed
+    File str_hg38_pos_bed
+    File repeat_units_table
 
     String phenotype_name
     Array[String] categorical_covariate_names
@@ -43,8 +47,14 @@ workflow gwas {
     File sc_date_of_death
     File sc_phenotype
 
-    # as this involves randomness, can put in a skip for regenerating this file
-    # could also cache unrelated samples per ethnicity
+    # If specified, must contain all samples of all ethnicities that you want included
+    # (so any samples not included will be omitted)
+    # samples that fail QC will still be removed
+    # analyses will still be split per ethnicity
+    # each ethnicity's sample list will still be shrunk to remove related participants
+    File? subpop_sample_list
+
+    # Shortcuts for rerunning the STR paper analyses without redoing the randomness of subsetting
     Array[File]? cached_unrelated_samples_for_phenotype
     File? cached_shared_covars # not sure why this cached version has different samples
   }
@@ -91,7 +101,8 @@ workflow gwas {
       withdrawn_sample_list = withdrawn_sample_list,
       sex_aneuploidy_sample_list = sex_aneuploidy_sample_list.data,
       sex_mismatch_sample_list = sex_mismatch_sample_list.data,
-      low_genotyping_quality_sample_list = low_genotyping_quality_sample_list.data
+      low_genotyping_quality_sample_list = low_genotyping_quality_sample_list.data,
+      subpop_sample_list = subpop_sample_list
     }
   }
 
@@ -221,36 +232,24 @@ workflow gwas {
       bounds = bounds,
       phenotype_name = phenotype_name,
     }
+
+    call gwas_tasks.reformat_my_str_gwas_table_for_publication { input :
+      script_dir = script_dir,
+      phenotype = phenotype_name,
+      my_str_gwas = regional_my_str_gwas.data,
+      flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
+      str_hg19_pos_bed = str_hg19_pos_bed,
+      str_hg38_pos_bed = str_hg38_pos_bed,
+      repeat_units_table = repeat_units_table,
+    }
   }
 
   call gwas_tasks.concatenate_tsvs as my_str_gwas_ { input :
     tsvs = regional_my_str_gwas.data
   }
 
-#  call gwas_tasks.str_spot_test as spot_test_1 { input:
-#    script_dir = script_dir,
-#    str_vcf = str_vcfs[0],
-#    shared_covars = shared_covars_,
-#    untransformed_phenotype = pheno_data_[0],
-#    transformed_phenotype = transform_trait_values.data[0],
-#    all_samples_list = all_samples_list,
-#    is_binary = is_binary,
-#    chrom = 1,
-#    pos = 204527033,
-#    phenotype_name = "platelet_count"
-#  }
-#
-#  call gwas_tasks.str_spot_test as spot_test_2 { input:
-#    script_dir = script_dir,
-#    str_vcf = str_vcfs[0],
-#    shared_covars = shared_covars_,
-#    untransformed_phenotype = pheno_data_[0],
-#    transformed_phenotype = transform_trait_values.data[0],
-#    all_samples_list = all_samples_list,
-#    is_binary = is_binary,
-#    chrom = 1,
-#    pos = 205255034,
-#    phenotype_name = "platelet_count"
+#  call gwas_tasks.concatenate_tsvs as publishable_my_str_gwas_ { input :
+#    tsvs = reformat_my_str_gwas_table_for_publication.out
 #  }
 
   call gwas_tasks.prep_plink_input { input :
@@ -345,8 +344,10 @@ workflow gwas {
   output {
     # arrays are one per the six ethnicities, starting with white brits
     Array[String] all_ethnicities = all_ethnicities_
-    Array[File] all_sample_lists = all_sample_lists_ # unqced
-    Array[File] sample_lists = ethnicity_unrelated_samples.data # unrelated and qced
+    Array[File] all_sample_lists = all_sample_lists_ # unqced, and this doesn't take into account the subpop
+    Array[File] sample_lists = ethnicity_unrelated_samples.data # unrelated, qced and takes into account the subpop if specified
+
+    File? subpop_sample_list_input = subpop_sample_list
 
     File shared_covars = shared_covars_
     File shared_covar_names = load_shared_covars.covar_names
@@ -359,9 +360,8 @@ workflow gwas {
     Array[File] pheno_covar_names = pheno_covar_names_
     Array[File] pheno_readme = pheno_readme_
 
-#    File sp1 = spot_test_1.data
-#    File sp2 = spot_test_2.data
     File my_str_gwas = my_str_gwas_.tsv
+    #File publishable_my_str_gwas = publishable_my_str_gwas_.tsv
     File plink_snp_gwas = plink_snp_association.tsv
     File peaks = generate_peaks.peaks
     File peaks_readme = generate_peaks.readme
