@@ -94,6 +94,98 @@ task phenotype_names {
 			"vitamin_d",
 			"white_blood_cell_count",
 		]
+    Array[String] units = [
+      "U/L",
+			"g/L",
+			"U/L",
+			"g/L",
+			"g/L",
+			"U/L",
+			"mg/L",
+			"mmol/L",
+			"mmol/L",
+			"umol/L",
+			"mg/L",
+			"10^9 cells/L",
+			"%",
+			"U/L",
+			"mmol/L",
+			"mmol/mol",
+			"%",
+			"g/dL",
+			"mmol/L",
+			"nmol/L",
+			"mmol/L",
+			"10^9 cells/L",
+			"%",
+			"10^-12 g",
+			"g/dL",
+			"10^-15 L",
+			"10^-15 L",
+			"10^-15 L",
+			"10^9 cells/L",
+			"%",
+			"mmol/L",
+			"10^9 cells/L",
+			"%",
+			"%",
+			"10^12 cells/L",
+			"%",
+			"nmol/L",
+			"umol/L",
+			"g/L",
+			"mmol/L",
+			"umol/L",
+			"mmol/L",
+			"nmol/L",
+			"10^9 cells/L",
+    ]
+    Array[Int] ID = [
+			30620,
+			30600,
+			30610,
+			30630,
+			30640,
+			30650,
+			30710,
+			30680,
+			30690,
+			30700,
+			30720,
+			30150,
+			30210,
+			30730,
+			30740,
+			30750,
+			30030,
+			30020,
+			30760,
+			30770,
+			30780,
+			30120,
+			30180,
+			30050,
+			30060,
+			30040,
+			30100,
+			30270,
+			30140,
+			30200,
+			30810,
+			30080,
+			30090,
+			30110,
+			30010,
+			30070,
+			30830,
+			30840,
+			30860,
+			30870,
+			30880,
+			30670,
+			30890,
+			30000,
+		]
   }
 
   command <<< >>>
@@ -717,7 +809,6 @@ task regional_my_str_gwas {
     Boolean is_binary
     String binary_type # linear or logistic, ignored if not binary
     region? bounds
-    # TODO get vars_file to work
     File? vars_file
     String phenotype_name
   }
@@ -797,6 +888,8 @@ task locus_plot {
     Int chrom
     Int pos
     String phenotype_name
+    # exactly one of the following two must be non empty
+    # either results from my STR GWAS, or a tsv specifically formatted to work with this task
     Array[File] assoc_results = []
     Array[File] data_tsvs = []
     Array[String] group_names = []
@@ -808,13 +901,13 @@ task locus_plot {
   }
 
   output {
-    File svg = "out.svg"
-    File png =  "out.png"
+    File svg = "~{phenotype_name}_~{chrom}_~{pos}.svg"
+    File png = "~{phenotype_name}_~{chrom}_~{pos}.png"
   }
 
   command <<<
     envsetup ~{script} \
-      out \
+      ~{phenotype_name}_~{chrom}_~{pos} \
       ~{chrom} \
       ~{pos} \
       '~{phenotype_name}' \

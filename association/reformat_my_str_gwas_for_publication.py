@@ -50,7 +50,9 @@ hg19_pos_bed = hg19_pos_bed.join(
 pos_table = hg19_pos_bed.join(
     flank_start_to_start_and_pos_table,
     on=['chrom', 'pos', 'end_pos']
-).drop(['ID'])
+).drop(['ID']).with_column(
+    pl.col('chrom').str.replace('chr', '').cast(int)
+)
 
 repeat_units = pl.read_csv(args.repeat_units, sep='\t')
 

@@ -3,7 +3,7 @@ version 1.0
 import "expanse_tasks.wdl"
 import "../gwas_wdl/gwas_workflow.wdl"
 
-workflow expanse_gwas_and_finemapping {
+workflow gwas {
 
   input {
     String script_dir  = "."
@@ -18,14 +18,10 @@ workflow expanse_gwas_and_finemapping {
     File str_hg19_pos_bed = "snpstr/str_loci.bed"
     File str_hg38_pos_bed = "snpstr/str_loci.hg38.bed"
 
-#    String phenotype_name = "platelet_count"
-#    Int phenotype_id = 30080
-#    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
-#    Array[Int] categorical_covariate_ids = [30083]
-    String phenotype_name
     Int phenotype_id
     Array[String] categorical_covariate_names
     Array[Int] categorical_covariate_ids
+    String phenotype_name
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
     String date_of_most_recent_first_occurrence_update = "2021-04-01" # only needed for binary phenotypes
@@ -35,17 +31,21 @@ workflow expanse_gwas_and_finemapping {
     File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
     File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat" # could create a task for downloading this with ukbgene
 
-    Array[File]? cached_unrelated_samples_for_phenotype =
-    File cached_shared_covars
-#    Array[File]? cached_unrelated_samples_for_phenotype = [
-#      "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample",
-#      "sample_qc/runs/black/platelet_count/combined_unrelated.sample",
-#      "sample_qc/runs/south_asian/platelet_count/combined_unrelated.sample",
-#      "sample_qc/runs/chinese/platelet_count/combined_unrelated.sample",
-#      "sample_qc/runs/irish/platelet_count/combined_unrelated.sample",
-#      "sample_qc/runs/white_other/platelet_count/combined_unrelated.sample",
-#    ]
-#    File cached_shared_covars = "traits/shared_covars/shared_covars.npy"
+    # If specified, must contain all samples of all ethnicities that you want included
+    # (so any samples not included will be omitted)
+    # samples that fail QC will still be removed
+    # analyses will still be split per ethnicity
+    # each ethnicity's sample list will still be shrunk to remove related participants
+    File? subpop_sample_list
+
+    Array[File]? cached_unrelated_samples_for_phenotype
+    File? cached_shared_covars
+
+    # example inputs:
+#    String phenotype_name = "platelet_count"
+#    Int phenotype_id = 30080
+#    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
+#    Array[Int] categorical_covariate_ids = [30083]
   }
 
   call expanse_tasks.extract_field as white_brits { input:
@@ -125,14 +125,6 @@ workflow expanse_gwas_and_finemapping {
       "pvar": "array_imputed/pfile_converted/chr~{chrom+1}.pvar",
       "psam": "array_imputed/pfile_converted/chr~{chrom+1}.psam",
     }
-    bgen imputed_snp_bgens = {
-      "bgen": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen",
-      "index": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.bgi",
-      "bgen_reader_metadata" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata",
-      "bgen_reader_metadata2" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata2.mmm",
-      "bgen_reader_complex_metadata2" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.complex.metadata2.mmm"
-    }
-    File snp_vars_to_filter_from_finemapping = "finemapping/str_imp_snp_overlaps/chr~{chrom+1}_to_filter.tab'"
   }
 
   call gwas_workflow.gwas { input:
@@ -174,6 +166,8 @@ workflow expanse_gwas_and_finemapping {
     sc_month_of_birth = month_of_birth.data,
     sc_date_of_death = date_of_death.data,
     sc_phenotype = phenotype.data,
+
+    subpop_sample_list = subpop_sample_list,
 
     cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
     cached_shared_covars = cached_shared_covars,

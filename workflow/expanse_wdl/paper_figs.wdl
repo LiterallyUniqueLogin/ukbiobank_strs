@@ -6,7 +6,7 @@ import "../finemapping_wdl/finemapping_tasks.wdl"
 import "../finemapping_wdl/post_finemapping_workflow.wdl"
 
 # also includes tables
-workflow expanse_figures {
+workflow figures {
 
   input {
     String script_dir = "."

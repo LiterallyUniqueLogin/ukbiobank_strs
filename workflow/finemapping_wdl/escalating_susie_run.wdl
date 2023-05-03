@@ -65,7 +65,7 @@ workflow escalating_susie_run {
     File gts_h5
     File pheno_residuals_h5
 
-    File colnames,
+    File colnames
 
     Float? tol
     Float? snp_p_over_str_p

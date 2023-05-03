@@ -69,7 +69,7 @@ workflow susie_one_region {
     snp_p_over_str_p = snp_p_over_str_p,
     res_var = res_var,
     prior_var = prior_var,
-    colnames = susie_choosee_vars.colnames
+    colnames = susie_choose_vars.colnames
   }
 
   output {

@@ -5,12 +5,12 @@
 # subprocesses
 for file in \
 	association/*py \
-	export_scripts/*py \
 	finemapping/*py \
 	post_finemapping/*py \
 	sample_qc/scripts/*py \
 	signals/*py \
 	traits/*py \
+	wgs/*py \
 ; do
 	{ dx rm -a imputed_strs_paper/"$file" ;
 	dx upload --path imputed_strs_paper/"$file" "$file" ; } &

@@ -28,6 +28,6 @@ for chrom in range(1, 23):
         ) if region_chrom == chrom
     ]
     if len(dfs) > 0:
-        pl.concat(dfs).sort('pos').write_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')
+        pl.concat(dfs).sort('pos').write_csv(f'{args.outprefix}_chr{chrom}.tab', sep='\t')
     else:
-        pl.DataFrame({'chrom': [], 'pos': []}).write_csv(f'{args.outfname}_chr{chrom}.tab', sep='\t')
+        pl.DataFrame({'chrom': [], 'pos': []}).write_csv(f'{args.outprefix}_chr{chrom}.tab', sep='\t')

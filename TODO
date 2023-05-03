@@ -1,28 +1,13 @@
-check that new plink gwas is accurate - no incorrect transformations
-* prep plink input is producing different results - something seems wrong in this function
-  * nvm - prep plink is producing similar results
-* loading pcs is producing same results
-* loading shared covars is producing same results to is_close precision
-* transform traits is quite similar - the non-phenotype traits are is_close, the phenotype traits never differ by more than .11, and some small difference is expected due to using different samples before the ranking step
 original HDL finemapping FINEMAP regions 1_219976499_220226499 and 20_55711040_55961040 seem to have the wrong p_val threshold (using variants with p_val >= 0.05). Others for HDL?
 Check difference in first pass susie alpha v pip - PIPs have changed for some reason (but files are identical otherwise). Fix.
 Check difference in followup pass graphs - different definition of regions. Still worth debugging, or do I assume this is working?
-Very small numeric difference in supp fig 8b only FINEMAP. This is okay I presume?
 add susie mpv graphs?
-Mention to M&A that RHOT1 and TAOK1 didn't map properly to T2T
 How do we document changes to the figs and supplementary tables that won't be tracked with track changes?
-Confirm that removing some info from tables 3 and 4 (because we're using more strict followup finemapping sets)
-  is okay - or alternatively, confirm that we can have data in the table we shouldn't have calculated.
 Fig 3 and supp fig 13 Change discovery p-value to -log10(discovery p-value)
-* Also, confidently fine-mapped shared effect directions are off by one in a few places for each other ethnicity. Don't care?
 generate finemapped results table with support 2+ gene annotations instead of all gene annotations? Or if not, then need to say in methods.
-Need to follow up on supp talbe 6
+Need to follow up on supp table 6
 
 Images that still need to be WDL for new fine-mapping : 1c, supp figs 2
 RHOT1 manhattan?
 SLC2A2 association and manhattan?
 
-mention somewhere that RHOT1 doesn't show up in eQTLs in fig.2 because it was discovered in Geuvadis and not GTEx.
-GTEx has near 200 LCLs. Why doesn't RHOT1 appear there if it has such a strong correlation in Geuvadis?
-AFAIK it doesn't appear in the table and so must've not passed filtering - the STR didn't pass callrate with only a 55.1% call rate
-TODO - try multistep liftover to T2T

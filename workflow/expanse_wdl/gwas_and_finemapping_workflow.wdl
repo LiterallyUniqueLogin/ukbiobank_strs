@@ -2,8 +2,9 @@ version 1.0
 
 import "expanse_tasks.wdl"
 import "../gwas_wdl/gwas_workflow.wdl"
+import "../finemapping_wdl/finemapping_workflow.wdl"
 
-workflow expanse_gwas {
+workflow gwas_and_finemapping {
 
   input {
     String script_dir  = "."
@@ -18,10 +19,6 @@ workflow expanse_gwas {
     File str_hg19_pos_bed = "snpstr/str_loci.bed"
     File str_hg38_pos_bed = "snpstr/str_loci.hg38.bed"
 
-#    String phenotype_name = "platelet_count"
-#    Int phenotype_id = 30080
-#    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
-#    Array[Int] categorical_covariate_ids = [30083]
     String phenotype_name
     Int phenotype_id
     Array[String] categorical_covariate_names
@@ -42,8 +39,14 @@ workflow expanse_gwas {
     # each ethnicity's sample list will still be shrunk to remove related participants
     File? subpop_sample_list
 
-    Array[File]? cached_unrelated_samples_for_phenotype =
-    File cached_shared_covars
+    Array[File]? cached_unrelated_samples_for_phenotype
+    File? cached_shared_covars
+
+    # example inputs:
+#    String phenotype_name = "platelet_count"
+#    Int phenotype_id = 30080
+#    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
+#    Array[Int] categorical_covariate_ids = [30083]
 #    Array[File]? cached_unrelated_samples_for_phenotype = [
 #      "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample",
 #      "sample_qc/runs/black/platelet_count/combined_unrelated.sample",
@@ -139,6 +142,7 @@ workflow expanse_gwas {
       "bgen_reader_metadata2" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata2.mmm",
       "bgen_reader_complex_metadata2" : "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.complex.metadata2.mmm"
     }
+    File snp_vars_to_filter_from_finemapping = "finemapping/str_imp_snp_overlaps/chr~{chrom+1}_to_filter.tab"
   }
 
   call gwas_workflow.gwas { input:
@@ -185,5 +189,29 @@ workflow expanse_gwas {
 
     cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
     cached_shared_covars = cached_shared_covars,
+  }
+
+  call finemapping_workflow.finemapping { input :
+    script_dir = script_dir,
+    finemap_command = "finemap",
+
+    chr_lens = chr_lens,
+
+    str_vcfs = str_vcfs,
+    imputed_snp_bgens = imputed_snp_bgens,
+    snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping,
+
+    shared_covars = gwas.shared_covars,
+    phenotype_samples = gwas.samples_for_phenotype[0],
+    transformed_phenotype_data = gwas.transformed_trait_values[0],
+    
+    my_str_gwas = gwas.my_str_gwas,
+    ethnic_my_str_gwass = gwas.ethnic_my_str_gwas,
+    plink_snp_gwas = gwas.plink_snp_gwas,
+
+    phenotype_name = phenotype_name,
+    is_binary = is_binary,
+
+    all_samples_list = all_samples_list
   }
 }

@@ -2,24 +2,11 @@ version 1.0
 
 import "gwas_tasks.wdl"
 
-workflow gwas {
+workflow prep_samples_and_phenotype {
 
   input {
     String script_dir
     String PRIMUS_command
-    String plink_command = "plink2"
-
-    File chr_lens
-  
-    # one per chrom
-    Array[VCF]+ str_vcfs
-    Array[PFiles]+ imputed_snp_p_files
-
-    File str_loci
-    File flank_start_to_start_and_end_pos
-    File str_hg19_pos_bed
-    File str_hg38_pos_bed
-    File repeat_units_table
 
     String phenotype_name
     Array[String] categorical_covariate_names
@@ -29,7 +16,6 @@ workflow gwas {
     String date_of_most_recent_first_occurrence_update
 
     File fam_file # task for generating this?
-    File all_samples_list
     File withdrawn_sample_list
     File kinship
 
@@ -201,146 +187,6 @@ workflow gwas {
     }
   }
 
-   call gwas_tasks.association_regions as str_association_regions { input :
-    chr_lens = chr_lens,
-    region_len = 10000000
-  } 
-
-  scatter (association_region in str_association_regions.out_tsv) {
-
-    Int chrom = association_region[0]
-    Int start = association_region[1]
-    Int end = association_region[2]
-
-    Int chrom_minus_one = chrom - 1
-
-    region bounds = {
-        "chrom": chrom,
-        "start": start,
-        "end": end
-    }
-
-    call gwas_tasks.regional_my_str_gwas { input :
-      script_dir = script_dir,
-      str_vcf = str_vcfs[chrom_minus_one],
-      shared_covars = shared_covars_,
-      untransformed_phenotype = pheno_data_[0],
-      transformed_phenotype = transform_trait_values.data[0],
-      all_samples_list = all_samples_list,
-      is_binary = is_binary,
-      binary_type = "linear", # won't be used if not binary
-      bounds = bounds,
-      phenotype_name = phenotype_name,
-    }
-
-#    call gwas_tasks.reformat_my_str_gwas_table_for_publication { input :
-#      script_dir = script_dir,
-#      phenotype = phenotype_name,
-#      my_str_gwas = regional_my_str_gwas.data,
-#      flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
-#      str_hg19_pos_bed = str_hg19_pos_bed,
-#      str_hg38_pos_bed = str_hg38_pos_bed,
-#      repeat_units_table = repeat_units_table,
-#    }
-  }
-
-  call gwas_tasks.concatenate_tsvs as my_str_gwas_ { input :
-    tsvs = regional_my_str_gwas.data
-  }
-
-#  call gwas_tasks.concatenate_tsvs as publishable_my_str_gwas_ { input :
-#    tsvs = reformat_my_str_gwas_table_for_publication.out
-#  }
-
-  call gwas_tasks.prep_plink_input { input :
-    script_dir = script_dir,
-    shared_covars = shared_covars_,
-    shared_covar_names = load_shared_covars.covar_names,
-    transformed_phenotype = transform_trait_values.data[0],
-    pheno_covar_names = pheno_covar_names_[0],
-    is_binary = is_binary,
-    binary_type = "linear", # only used if is_binary
-    phenotype_name = phenotype_name
-  }
-
-  scatter (chrom in range(22)) {
-    call gwas_tasks.chromosomal_plink_snp_association { input :
-      script_dir = script_dir,
-      plink_command = plink_command,
-      imputed_snp_p_file = imputed_snp_p_files[chrom],
-      pheno_data = prep_plink_input.data,
-      chrom = chrom+1,
-      phenotype_name = phenotype_name,
-      binary_type = if !is_binary then "linear" else "linear_binary",
-    }
-  }
-
-  call gwas_tasks.concatenate_tsvs as plink_snp_association { input :
-    tsvs = chromosomal_plink_snp_association.data
-  }
-
-  # TODO second round for binary
-  # TODO do ethnic STR subset differently for binary?
-
-  # TODO interactive manhattan
-
-  call gwas_tasks.generate_peaks { input :
-    script_dir = script_dir,
-    snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_.tsv,
-    phenotype = phenotype_name,
-    spacing = "250000",
-    thresh = "5e-8"
-  }
-
-  call gwas_tasks.generate_peaks as overview_manhattan_peaks { input :
-    script_dir = script_dir,
-    snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_.tsv,
-    phenotype = phenotype_name,
-    spacing = "20000000",
-    thresh = "5e-8"
-  }
-
-  # TODO overview manhattan
-
-  call gwas_tasks.generate_finemapping_regions { input :
-    script_dir = script_dir,
-    chr_lens = chr_lens,
-    phenotype = phenotype_name,
-    snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_.tsv
-  }
-  
-  call gwas_tasks.get_strs_in_finemapping_regions { input :
-    script_dir = script_dir,
-    str_loci = str_loci,
-    finemapping_regions_for_pheno = generate_finemapping_regions.data
-  }
-  
-  scatter (ethnicity_enumeration in range(length(pheno_data_) -1)) {
-    scatter (pair in zip(range(22), get_strs_in_finemapping_regions.str_loci)) {
-      Int ethnicity_idx = ethnicity_enumeration + 1
-      call gwas_tasks.regional_my_str_gwas as ethnic_regional_my_str_gwas { input :
-        script_dir = script_dir,
-        str_vcf = str_vcfs[pair.left],
-        vars_file = pair.right,
-        shared_covars = shared_covars_,
-        untransformed_phenotype = pheno_data_[ethnicity_idx],
-        transformed_phenotype = transform_trait_values.data[ethnicity_idx],
-        all_samples_list = all_samples_list,
-        is_binary = is_binary,
-        binary_type = "linear", # won't be used if not binary
-        phenotype_name = phenotype_name,
-      }
-    }
-    call gwas_tasks.concatenate_tsvs as ethnic_my_str_gwas_ { input :
-      tsvs = ethnic_regional_my_str_gwas.data
-    }
-
-    #TODO logistic if binary?
-  }
-
   output {
     # arrays are one per the six ethnicities, starting with white brits
     Array[String] all_ethnicities = all_ethnicities_
@@ -362,14 +208,5 @@ workflow gwas {
     Array[File] transformed_trait_values = transform_trait_values.data
     Array[File] pheno_covar_names = pheno_covar_names_
     Array[File] pheno_readme = pheno_readme_
-
-    File my_str_gwas = my_str_gwas_.tsv
-    #File publishable_my_str_gwas = publishable_my_str_gwas_.tsv
-    File plink_snp_gwas = plink_snp_association.tsv
-    File peaks = generate_peaks.peaks
-    File peaks_readme = generate_peaks.readme
-    File finemapping_regions = generate_finemapping_regions.data
-    File finemapping_regions_readme = generate_finemapping_regions.readme
-	  Array[File] ethnic_my_str_gwas = ethnic_my_str_gwas_.tsv
   }
 }

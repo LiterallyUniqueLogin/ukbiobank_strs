@@ -150,7 +150,8 @@ def load_strs(vcf_fname: str,
             # properly, this identifies and removes them
             continue
 
-        if var_subset is not None and record.POS not in var_subset:
+        # some records will be indexed with VCF pos, some will be with actual repeat start pos, either is fine
+        if var_subset is not None and record.POS not in var_subset and record.INFO.get('START') not in var_subset:
             continue
 
         trrecord = trh.HarmonizeRecord(vcfrecord=record, vcftype='hipstr')
