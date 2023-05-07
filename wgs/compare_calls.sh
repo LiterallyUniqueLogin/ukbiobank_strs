@@ -47,6 +47,7 @@ bcftools annotate -h <( echo "##command=HipSTR" ) -o imputed_strs.reheadered.vcf
 tabix -f imputed_strs.reheadered.vcf.gz
 
 compareSTR --ignore-phasing --balanced-accuracy --fraction-concordant-len-sum --vcf2-beagle-probabilities \
+	$(if [ -n "$SAMPLES_FILE" ] ; then echo "--samples ${SAMPLES_FILE}" ; fi) \
 	--vcf1 merged.hg19.vcf.gz \
 	--vcf2 imputed_strs.reheadered.vcf.gz \
 	--out out \

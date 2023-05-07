@@ -100,7 +100,7 @@ task finemap_write_input_variants {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
-    mem: "6g"
+    memory: "6GB"
   }
 }
 
@@ -149,7 +149,7 @@ task finemap_load_gts {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "23h30m"
-    mem: "6g"
+    memory: "6GB"
   }
 }
 
@@ -174,7 +174,7 @@ task finemap_calc_corrs {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
-    mem: "4g"
+    memory: "4GB"
   }
 }
 
@@ -200,7 +200,7 @@ task finemap_write_corrs {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
     cpu: 4
-    mem: "8g"
+    memory: "8GB"
   }
 }
 
@@ -246,7 +246,7 @@ task finemap_run {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    mem: "8gb"
+    memory: "8GB"
   }
 }
 
@@ -344,7 +344,7 @@ task susie_load_gts {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
-    mem: "4g"
+    memory: "4GB"
   }
 }
 
@@ -404,7 +404,7 @@ task susie_run {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
-    mem: mem
+    memory: mem
   }
 }
 
@@ -461,7 +461,7 @@ task first_pass_finemapping_df {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "3h"
-    mem: "50g"
+    memory: "50GB"
   }
 }
 
@@ -505,7 +505,7 @@ task first_pass_comparison {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
-    mem: "50g"
+    memory: "50GB"
   }
 }
 
@@ -533,7 +533,7 @@ task susie_finemap_venn_diagram {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "10"
-    mem: "8g"
+    memory: "8GB"
   }
 }
 
@@ -678,7 +678,7 @@ task followup_finemapping_conditions_df {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    mem: "50g"
+    memory: "50GB"
     dx_timeout: "1h"
   }
 }
@@ -728,7 +728,7 @@ task followup_finemapping_conditions_comparison {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    mem: "50g"
+    memory: "50GB"
   }
 }
 
@@ -801,7 +801,7 @@ task str_tables_for_paper {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "5h"
-    mem: "50g"
+    memory: "50GB"
   }
 }
 
@@ -865,7 +865,7 @@ task concordance_in_other_ethnicities {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    mem: "20g"
+    memory: "20GB"
   }
 }
 
@@ -928,7 +928,7 @@ task generate_enrichments_table {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "3h"
-    mem: "50g"
+    memory: "50GB"
   }
 }
 
@@ -953,7 +953,7 @@ task calc_enrichments {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    mem: "10g"
+    memory: "10GB"
   }
 }
 
@@ -982,7 +982,7 @@ task graph_enrichments {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    mem: "10g"
+    memory: "10GB"
   }
 }
 

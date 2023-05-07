@@ -94,7 +94,7 @@ task phenotype_names {
 			"vitamin_d",
 			"white_blood_cell_count",
 		]
-    Array[String] units = [
+    Array[String] unit = [
       "U/L",
 			"g/L",
 			"U/L",
@@ -385,7 +385,7 @@ task load_shared_covars {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    mem: "10g"
+    memory: "10GB"
 
     dx_timeout: "15m"
   }
@@ -518,7 +518,7 @@ task unrelated_samples {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "24h"
-    mem: "4g"
+    memory: "4GB"
   }
 }
 
@@ -573,7 +573,7 @@ task imputed_str_locus_summary {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "24h"
-    mem: "5g"
+    memory: "5GB"
   }
 }
 
@@ -717,11 +717,11 @@ task prep_conditional_input {
       out \
       ~{all_samples} \
       ~{chrom} \
-      ~{if defined(str_vcf) then "--str-vcf ~{str_vcf.vcf}" else "" } \
+      ~{if defined(str_vcf) then "--str-vcf ~{select_first([str_vcf]).vcf}" else "" } \
       ~{if length(strs) > 0 then "--STRs ~{sep=" " strs}" else "" } \
       ~{if length(snps) > 0 then "--imputed-SNPs ~{sep=" " snps}" else "" } \
       ~{"--snp-mfi " + snp_mfi} \
-      ~{if defined(snp_bgen) then "--snp-bgen ~{snp_bgen.bgen}" else ""}
+      ~{if defined(snp_bgen) then "--snp-bgen ~{select_first([snp_bgen]).bgen}" else ""}
   >>>
 
   runtime {
@@ -785,7 +785,7 @@ task str_spot_test {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "20m"
-    mem: "10g"
+    memory: "10GB"
   }
 }
 
@@ -841,7 +841,7 @@ task regional_my_str_gwas {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "18h"
-    mem: if binary_type == "logistic" then "40g" else "8g" # 4g works for all but a few jobs
+    memory: if binary_type == "logistic" then "40GB" else "8GB" # 4g works for all but a few jobs
   }
 }
 
@@ -876,7 +876,7 @@ task reformat_my_str_gwas_table_for_publication {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    mem: "5g"
+    memory: "5GB"
   }
 }
 
@@ -898,6 +898,7 @@ task locus_plot {
     Float? dosage_fraction_threshold
     String? unit # if not speciied, then binary
     Boolean residual = false
+    String total_column_name = "total_subset_dosage_per_summed_gt"
   }
 
   output {
@@ -918,7 +919,7 @@ task locus_plot {
       ~{"--dosage-fraction-threshold " + dosage_fraction_threshold} \
       ~{if defined(unit) then "--unit '~{unit}'" else "--binary"} \
       ~{if residual then "--residual-phenos" else ""} \
-      --publication
+      --total-column-name ~{total_column_name}
   >>>
 
   runtime {
@@ -1030,7 +1031,7 @@ task chromosomal_plink_snp_association {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    mem: "56g"
+    memory: "56GB"
     cpus: "28"
 
     dx_timeout: "24h"
@@ -1093,7 +1094,7 @@ task generate_peaks {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "4h"
-    mem: "20g"
+    memory: "20GB"
   }
 }
 
@@ -1126,7 +1127,7 @@ task summarize_peaks {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
     shortTask: true
-    mem: "5g"
+    memory: "5GB"
   }
 }
 
@@ -1164,7 +1165,7 @@ task generate_finemapping_regions {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
-    mem: "10g"
+    memory: "10GB"
   }
 }
 
@@ -1178,7 +1179,7 @@ task get_strs_in_finemapping_regions {
   }
 
   output {
-    Array[File] str_loci = [
+    Array[File] strs_in_finemapping_reigons = [
       "out_chr1.tab",
       "out_chr2.tab",
       "out_chr3.tab",
@@ -1214,7 +1215,7 @@ task get_strs_in_finemapping_regions {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
-    mem: "4g"
+    memory: "4GB"
   }
 }
 

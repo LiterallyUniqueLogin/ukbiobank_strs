@@ -24,7 +24,7 @@ workflow retryable_susie_run {
   call finemapping_tasks.susie_run as try_zero { input :
     script_dir = script_dir,
     time = "1h",
-    mem = "16g",
+    mem = "16GB",
     gts_h5 = gts_h5,
     pheno_residuals_h5 = pheno_residuals_h5,
     L = L,
@@ -41,7 +41,7 @@ workflow retryable_susie_run {
     call finemapping_tasks.susie_run as try_one { input :
       script_dir = script_dir,
       time = "47h30m",
-      mem = "32g",
+      mem = "32GB",
       gts_h5 = gts_h5,
       pheno_residuals_h5 = pheno_residuals_h5,
       L = L,
@@ -59,7 +59,7 @@ workflow retryable_susie_run {
       call finemapping_tasks.susie_run as try_two { input :
         script_dir = script_dir,
         time = "47h30m",
-        mem = "64g",
+        mem = "64GB",
         gts_h5 = gts_h5,
         pheno_residuals_h5 = pheno_residuals_h5,
         L = L,
@@ -77,7 +77,7 @@ workflow retryable_susie_run {
         call finemapping_tasks.susie_run as try_three { input :
           script_dir = script_dir,
           time = "47h30m",
-          mem = "128g",
+          mem = "128GB",
           gts_h5 = gts_h5,
           pheno_residuals_h5 = pheno_residuals_h5,
           L = L,

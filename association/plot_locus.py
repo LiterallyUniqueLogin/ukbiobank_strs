@@ -58,7 +58,11 @@ def main():
     parser.add_argument('--unit')
     parser.add_argument('--binary', action='store_true', default=False)
     parser.add_argument('--residual-phenos', default=False, action='store_true')
-    parser.add_argument('--publication', default=False, action='store_true')
+
+    # UKB script convention : total_subset_dosage_per_summed_gt
+    # associaTR dosages: total_dosage_per_summed_length
+    # associaTR hardcalls: sample_count_per_summed_length
+    parser.add_argument('--total-column-name')
     args = parser.parse_args()
    
     assert bool(args.datas_per_length_sum) != bool(args.assoc_results)
@@ -83,12 +87,29 @@ def main():
         else:
             stat_name = 'fraction'
 
+        cols = pl.read_csv(
+            args.assoc_results[0],
+            sep='\t',
+            dtypes={'locus_filtered': str},
+            n_rows=1
+        ).columns
+
         if not args.residual_phenos:
+            # UKB script naming convention
             small_ci_col = 'summed_0.05_significance_CI'
             pheno_col = f'{stat_name}_{args.phenotype}_per_summed_gt'
+            if small_ci_col not in cols:
+                # associaTR convention
+                small_ci_col = 'summed_length_0.05_alpha_CI'
+                pheno_col = f'{stat_name}_{args.phenotype}_per_summed_length'
         else:
+            # UKB script convention
             small_ci_col = 'res_per_sum_0.05_significance_CI'
             pheno_col = f'{stat_name}_{args.phenotype}_residual_per_summed_gt'
+            if small_ci_col not in cols:
+                # associaTR convention
+                small_ci_col = 'summed_length_0.05_alpha_CI'
+                pheno_col = f'{stat_name}_residual_{args.phenotype}_per_summed_length'
 
         for assoc_results_fname in args.assoc_results:
             result = pl.scan_csv(
@@ -100,13 +121,13 @@ def main():
             ).collect().select([ # have to collect first due to some sort of bug
                 small_ci_col,
                 pheno_col,
-                'total_subset_dosage_per_summed_gt'
+                args.total_column_name
             ])
             assert result.shape[0] == 1
 
             dosage_dicts.append({
                 float(allele): val for allele, val in
-                ast.literal_eval(result['total_subset_dosage_per_summed_gt'].to_numpy()[0]).items()
+                ast.literal_eval(result[args.total_column_name].to_numpy()[0]).items()
             })
             mean_per_dosages.append({float(allele): val for allele, val in ast.literal_eval(result[pheno_col].to_numpy()[0]).items()})
             ci5e_2s.append({float(allele): val for allele, val in ast.literal_eval(result[small_ci_col].to_numpy()[0]).items()})
@@ -130,7 +151,6 @@ def main():
         args.unit,
         args.binary,
         args.residual_phenos,
-        args.publication,
     )
 
     bokeh.io.export_svg(figure, filename=f'{args.outloc}.svg')
@@ -149,7 +169,6 @@ def generate_figure(
     unit,
     binary,
     use_residual_phenos,
-    publication,
 ):
     assert bool(unit) or binary
 
@@ -274,19 +293,6 @@ def generate_figure(
     y_min = min(y_mins)
     y_max = max(y_maxs)
     figure.y_range = bokeh.models.Range1d(y_min - 0.05*(y_max-y_min), y_max + 0.05*(y_max-y_min))
-
-    if not publication:
-        figure.add_layout(
-            bokeh.models.Title(text=f'STR {chrom}:{pos}', align="center", text_font_size='18px'), "above"
-        )
-        figure.add_layout(
-            bokeh.models.Title(text=phenotype.replace('_', ' ').capitalize() + " vs genotype", align="center", text_font_size='18px'), "above"
-        )
-
-        figure.add_layout(bokeh.models.Title(text="Phenotype values are unadjusted for covariates", align="center"), "below")
-        figure.add_layout(bokeh.models.Title(text="People contribute to each genotype based on their prob. of having that genotype", align="center"), "below")
-        figure.add_layout(bokeh.models.Title(text="Only considers tested individuals", align="center"), "below")
-        figure.add_layout(bokeh.models.Title(text=f"Genotypes with dosages less than {100*dosage_fraction_threshold}% of the population are omitted", align="center"), "below")
 
     return figure
 

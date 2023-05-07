@@ -1,4 +1,5 @@
 import io
+import sys
 
 import numpy as np
 import polars as pl
@@ -17,7 +18,9 @@ def merge_arrays(a, b):
     '''
 
     assert len(a.shape) == 2 and len(b.shape) == 2
-    assert len(set(a[:, 0]).intersection(b[:,0])) >= 700
+    intersection_size = len(set(a[:, 0]).intersection(b[:,0]))
+    if intersection_size <= 1000:
+        print(f"Working with a sample intersection of only {intersection_size} samples. Is this intentional, or possibly a coding bug?", file=sys.stderr)
     assert len(set(a[:, 0])) == a.shape[0]
     assert len(set(b[:, 0])) == b.shape[0]
 
