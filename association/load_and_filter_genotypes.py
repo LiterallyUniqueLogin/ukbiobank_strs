@@ -146,8 +146,12 @@ def load_strs(vcf_fname: str,
             # should be considered part of the pervious region and not returned here
             continue
         if record.INFO.get('PERIOD') is None:
-            # there are a few duplicate loci which I didn't handle
-            # properly, this identifies and removes them
+            # there are a few duplicate loci which I didn't identify for removal before doing the imputation
+            # this identifies and removes the first duplication which has the same exact coordinate but is present twice
+            continue
+        if (record.CHROM, record.POS) in [('17', 80520458), ('1', 247747217), ('1', 247848392), ('21', 47741815), ('8', 145231731)]:
+            # there are a few duplicate loci which I didn't identify for removal before doing the imputation
+            # this identifies and removes the second and third duplications which have some difference in flanking bps but are otherwise the same
             continue
 
         # some records will be indexed with VCF pos, some will be with actual repeat start pos, either is fine

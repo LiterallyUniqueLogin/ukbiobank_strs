@@ -13,7 +13,7 @@ task compare_calls {
   }
 
   output {
-    File omitted_samples_hipstr = "out-vcf1-omitted-samples.tab"
+    File? omitted_samples_hipstr = "out-vcf1-omitted-samples.tab"
     File omitted_samples_imputed = "out-vcf2-omitted-samples.tab"
     File locuscompare = "out-locuscompare.tab"
     File samplecompare = "out-samplecompare.tab"
@@ -21,8 +21,8 @@ task compare_calls {
   }
 
   command <<<
-    export MERGED_FILE=~{hipstr_strs}
-    export FINEMAPPED_STRS=~{imputed_strs}
+    export WGS_STRS=~{hipstr_strs}
+    export IMPUTED_STRS=~{imputed_strs}
     export SAMPLES_FILE=~{samples_file}
     envsetup ~{script}
   >>>
@@ -33,6 +33,26 @@ task compare_calls {
     dx_instance_type: "mem3_ssd1_v2_x16"
   }
 }
+
+task double_samples {
+  input {
+    File in_samples_file
+  }
+
+  output {
+    File out_samples_file = "doubled_samples.txt"
+  }
+
+  command <<<
+    awk '{ print $1 "_" $1 }' ~{in_samples_file} > doubled_samples.txt
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+  }
+}
+
 
 workflow compare_calls_w {
 
@@ -96,15 +116,17 @@ workflow compare_calls_w {
       sex_mismatch_sample_list = sex_mismatch_sample_list.data,
       low_genotyping_quality_sample_list = low_genotyping_quality_sample_list.data,
     }
+
+    call double_samples { input : in_samples_file = all_qced_sample_lists.data } 
   }
 
 	# run the comparison per ethnicity
-  scatter (sample_list in all_qced_sample_lists.data) {
-    call compare_calls  { input : samples_file = sample_list }
+  scatter (samples_file in double_samples.out_samples_file) {
+    call compare_calls { input : samples_file = samples_file  }
   }
 
   output {
-    Array[File] omitted_samples_hipstr = compare_calls.omitted_samples_hipstr
+    Array[File?] omitted_samples_hipstr = compare_calls.omitted_samples_hipstr
     Array[File] omitted_samples_imputed = compare_calls.omitted_samples_imputed
     Array[File] locuscompare = compare_calls.locuscompare
     Array[File] samplecompare = compare_calls.samplecompare

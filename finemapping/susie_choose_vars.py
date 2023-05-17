@@ -61,6 +61,13 @@ def choose_vars(readme_fname, outcols_fname, str_associations_fname, snp_associa
         (pl.col('pos') >= start_pos) &
         (pl.col('pos') <= end_pos) &
         (pl.col(f'p_{phenotype}') <= p_cutoff)
+    ).filter(
+        # STRs with duplicate loci that shouldn't have been in the reference panel
+        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
     ).select(pl.col('pos')).collect().to_numpy().flatten()
 
     if mac:

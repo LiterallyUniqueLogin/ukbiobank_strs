@@ -47,7 +47,7 @@ def fix_header(header):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outloc')
-    parser.add_argument('chrom', type=int)
+    parser.add_argument('chrom')
     parser.add_argument('pos', type=int)
     parser.add_argument('phenotype')
     parser.add_argument('--dosage-threshold', type=int)
@@ -143,8 +143,6 @@ def main():
         mean_per_dosages,
         ci5e_2s,
         args.group_names,
-        args.chrom,
-        args.pos,
         args.phenotype,
         args.dosage_fraction_threshold if args.dosage_fraction_threshold else args.dosage_threshold,
         bool(args.dosage_fraction_threshold),
@@ -161,8 +159,6 @@ def generate_figure(
     mean_per_dosages,
     ci5e_2s,
     group_names,
-    chrom,
-    pos,
     phenotype,
     threshold,
     is_fraction_threshold,
@@ -182,9 +178,9 @@ def generate_figure(
     if use_residual_phenos:
         y_axis_label = 'residual ' + y_axis_label
     if not binary:
-        y_axis_label='mean ' + y_axis_label + f' ({unit})'
+        y_axis_label = y_axis_label + f' ({unit})'
     else:
-        y_axis_label='fraction '+ y_axis_label + ' cases'
+        y_axis_label = 'fraction '+ y_axis_label + ' cases'
 
     y_axis_label = y_axis_label[0].upper() + y_axis_label[1:]
 

@@ -22,7 +22,7 @@ task should_escalate_susie_run {
       did_converge = next(converged).strip()
       if did_converge == 'FALSE':
         if ~{assert}:
-          assert False
+          assert False, 'Did not converge'
         print('true')
         exit()
       else:
@@ -30,14 +30,14 @@ task should_escalate_susie_run {
     if ~{length(CSs)} < ~{max_CSs}:
         print('false')
         exit()
-    assert ~{length(CSs)} == ~{max_CSs}
+    assert ~{length(CSs)} == ~{max_CSs}, 'Not the maximum number of CSs'
     CSs = '~{sep=' ' CSs}'.split()
     found_count = 0
     done = False
     redo = False
-    for num in range(~{max_CSs}):
-      assert CSs[num].split('/')[-1] == f'cs{num}.txt'
-      with open(CSs[num]) as cs:
+    for idx, num in enumerate(sorted(str(num) for num in range(1, 1+~{max_CSs}))):
+      assert CSs[idx].split('/')[-1] == f'cs{num}.txt', 'CSs in the wrong order'
+      with open(CSs[idx]) as cs:
         n_vars = len(next(cs).split())
         next(cs)
         min_ld = float(next(cs).split()[0])
@@ -45,7 +45,7 @@ task should_escalate_susie_run {
         print('false')
         exit()
     if ~{assert}:
-      assert False
+      assert False, 'Reached the end and failed'
     print('true')
     exit()
     "
@@ -54,6 +54,7 @@ task should_escalate_susie_run {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "10m"
+    memory: "2GB"
   }
 }
 

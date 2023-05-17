@@ -175,6 +175,7 @@ task finemap_calc_corrs {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
     memory: "4GB"
+    continueOnReturnCode: [0, 79] # allow for timeouts, this will be handled in the retry workflow
   }
 }
 
@@ -199,12 +200,12 @@ task finemap_write_corrs {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
-    cpu: 4
+    cpus: 4
     memory: "8GB"
+    continueOnReturnCode: [0, 79] # allow for timeouts, this will be handled in the retry workflow
   }
 }
 
-# TODO check that prior snps flag passing makes sense
 task finemap_run {
   input {
     String script_dir
@@ -215,6 +216,7 @@ task finemap_run {
     File zfile
     File all_variants_ld
 
+    Int causal_snps
     Boolean prior_snps = false
     Float? prior_std
     Float? prob_conv_sss_tol
@@ -240,6 +242,7 @@ task finemap_run {
     envsetup ~{script} \
       . \
       ~{finemap_command} \
+      --n-causal-snps ~{causal_snps} \
       ~{if prior_snps then "--prior-snps" else if defined(prior_std) then "--prior-std ~{prior_std}" else if defined(prob_conv_sss_tol) then "--prob-conv-sss-tol ~{prob_conv_sss_tol}" else ""}
   >>>
 
@@ -247,6 +250,10 @@ task finemap_run {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
     memory: "8GB"
+  }
+
+  meta {
+    volatile: true
   }
 }
 
@@ -286,6 +293,7 @@ task susie_choose_vars {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
+    memory: "2GB"
   }
 }
 
@@ -345,6 +353,7 @@ task susie_load_gts {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
     memory: "4GB"
+    continueOnReturnCode: [0, 79] # allow for timeouts, this will be handled in the retry workflow
   }
 }
 
@@ -371,20 +380,16 @@ task susie_run {
   }
 
   output {
-    SuSiE_output? susie_output = object {
-      subset: object {
-        lbf: "lbf.tab",
-        lbf_variable: "lbf_variable.tab",
-        sigma2: "sigma2.txt",
-        V: "V.tab",
-        converged: "converged.txt",
-        lfsr: "lfsr.tab",
-        requested_coverage: "requested_coverage.txt",
-        alpha: "alpha.tab",
-        colnames: colnames
-      },
-      CSs: glob("cs*.txt")
-    }
+    File? lbf = "lbf.tab"
+    File? lbf_variable = "lbf_variable.tab"
+    File? sigma2 = "sigma2.txt"
+    File? V = "V.tab"
+    File? converged = "converged.txt"
+    File? lfsr = "lfsr.tab"
+    File? requested_coverage = "requested_coverage.txt"
+    File? alpha = "alpha.tab"
+    File? colnames = colnames
+    Array[File] CSs = glob("cs*.txt")
   }
 
   command <<<
@@ -405,6 +410,7 @@ task susie_run {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: time
     memory: mem
+    continueOnReturnCode: [0, 79] # allow for timeouts, this will be handled in the retry workflow
   }
 }
 
@@ -558,6 +564,7 @@ task generate_followup_regions_tsv {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "10m"
     shortTask: true
+    memory: "2GB"
   } 
 }
 
@@ -835,6 +842,7 @@ task graph_main_hits {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
+    memory: "2GB"
   }
 }
 
@@ -1003,5 +1011,6 @@ task todo {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: ""
+    memory: "2GB"
   }
 }

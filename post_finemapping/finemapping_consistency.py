@@ -183,7 +183,7 @@ def load_finemap(finemap_outputs):
             sep=' '
         ).select([
             pl.col('rsid').alias('varname'),
-            pl.col('prob').alias('finemap_pip'),
+            pl.col('prob').cast(float).alias('finemap_pip'),
             pl.lit(finemap_output.region).alias('region'),
             pl.lit(finemap_output.chrom).alias('chrom').cast(int)
         ])
@@ -1150,10 +1150,6 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
 
     print('Collecting ... ', end='', flush=True)
     start = time.time()
-    print('finemap', list(zip(original_finemaps.columns, original_finemaps.dtypes)))
-    print('susie', list(zip(original_susies.columns, original_susies.dtypes)))
-    print('assoc', list(zip(assocs.columns, assocs.dtypes)))
-    print('ethnicity assoc', list(zip(other_ethnicity_assocs.columns, other_ethnicity_assocs.dtypes)))
     pheno_df = original_finemaps.join(
         original_susies,
         how='outer',
@@ -1169,8 +1165,7 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         on=['chrom', 'pos', 'is_STR']
     ).with_column(
         pl.lit(phenotype).alias('phenotype')
-    ).collect()
-    print(f'done. Time: {(time.time() - start)/60:.2f}m', flush=True)
+    )
 
     # choose col order
     total_df = pheno_df.select([
@@ -1190,7 +1185,8 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
         *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
         *[f'{ethnicity}_se' for ethnicity in other_ethnicities],
-    ])
+    ]).collect()
+    print(f'done. Time: {(time.time() - start)/60:.2f}m', flush=True)
     total_df.write_csv(f'{outdir}/finemapping_all_regions_concordance_{phenotype}.tab', sep='\t')
     np.save(f'{outdir}/susie_all_regions_min_abs_corrs_{phenotype}.npy', np.array(min_abs_corrs))
     if should_assert:

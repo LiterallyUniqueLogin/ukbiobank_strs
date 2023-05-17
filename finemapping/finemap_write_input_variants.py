@@ -78,16 +78,36 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
         (pl.col('pos') <= end) &
         (pl.col('locus_filtered') == 'False') &
         (pl.col(f'p_{phenotype}') < inclusion_threshold)
-    ).select([
-        ('STR_' + pl.col('pos').cast(str)).alias('rsid'),
-        ('0' + pl.col('chrom').cast(str)).str.slice(-2).alias('chromosome'),
-        pl.col('pos').alias('position'),
-        pl.lit('nan').alias('allele1'),
-        pl.lit('nan').alias('allele2'),
-        pl.lit('nan').alias('maf'),
-        pl.col(f'coeff_{phenotype}').alias('beta'),
-        pl.col(f'se_{phenotype}').alias('se'),
-    ]).collect()
+    ).filter(
+        # STRs with duplicate loci that shouldn't have been in the reference panel
+        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+    ).collect()
+    if strs.shape[0] > 0:
+        strs = strs.select([
+            ('STR_' + pl.col('pos').cast(str)).alias('rsid'),
+            ('0' + pl.col('chrom').cast(str)).str.slice(-2).alias('chromosome'),
+            pl.col('pos').alias('position'),
+            pl.lit('nan').alias('allele1'),
+            pl.lit('nan').alias('allele2'),
+            pl.lit('nan').alias('maf'),
+            pl.col(f'coeff_{phenotype}').alias('beta'),
+            pl.col(f'se_{phenotype}').alias('se')
+        ])
+    else:
+        strs = strs.select([
+            pl.lit('empty').alias('rsid'),
+            pl.lit('empty').alias('chromosome'),
+            pl.col('pos').alias('position'),
+            pl.lit('nan').alias('allele1'),
+            pl.lit('nan').alias('allele2'),
+            pl.lit('nan').alias('maf'),
+            pl.col(f'coeff_{phenotype}').alias('beta'),
+            pl.col(f'se_{phenotype}').alias('se')
+        ])
 
     if mac:
         strs = strs.filter(~pl.col('position').is_in(strs_exclude_mac))
@@ -112,7 +132,7 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             pl.col(f'se_{phenotype}').alias('se'),
         ])
         strs = pl.concat([strs, pacsin2_strs])
-
+    print(strs, flush=True)
     assert strs.unique(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
 
     n_strs = strs.shape[0]

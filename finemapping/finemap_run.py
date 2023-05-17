@@ -40,7 +40,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outdir')
     parser.add_argument('finemap_command')
-    parser.add_argument('--n-causal-snps', default=20)
+    parser.add_argument('--n-causal-snps', default=20, type=int)
     parser.add_argument('--prob-conv-sss-tol', default=0.001, type=float)
     parser.add_argument('--prior-std', default=0.05, type=float)
     parser.add_argument('--prior-snps', default=False, action='store_true')

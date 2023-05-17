@@ -3,11 +3,6 @@ version 1.0
 import "../gwas_wdl/gwas_tasks.wdl"
 import "../gwas_wdl/prep_samples_and_phenotype_workflow.wdl"
 
-#struct locus {
-#  Int chrom
-#  Int pos
-#}
-
 task any_results_for_phenotype {
   input {
     String phenotype
@@ -36,15 +31,6 @@ print(df.shape[0] > 0)
   }
 }
 
-#print(
-#  df.filter(
-#    pl.col("phenotype") == "~{phenotype}"
-#  ).select([
-#    "chrom",
-#    pl.col("start_pos (hg19)").alias("pos")
-#  ]).write_csv(sep="\t")
-#)
-
 task results_tsv_to_loci {
   input {
     String phenotype
@@ -62,7 +48,7 @@ df = pl.read_csv(
 
 print("[", end="")
 start = True
-for chrom, pos in list(zip(df["chrom"], df["start_pos (hg19)"])):
+for chrom, pos in list(zip(df["chrom"], df["start_pos (hg38)"])):
   if not start:
     print(", ", end="")
   start = False
@@ -73,7 +59,6 @@ print("]", end="")
 
   output {
     Array[Array[Int]] loci = read_json(stdout())
-    #Array[locus] loci = read_objects(stdout())
   }
 
   runtime {
@@ -91,7 +76,7 @@ task associaTR_my_str_gwas {
   input {
     VCF str_vcf
     File untransformed_phenotype
-    Int chrom
+    String chrom
     Int pos
     String phenotype_name
   }
@@ -202,15 +187,15 @@ workflow plot_wgs_assocs_for_finemapped_loci {
         call associaTR_my_str_gwas { input :
           str_vcf = wgs_vcf,
           untransformed_phenotype = prep_samples_and_phenotype.pheno_data[0],
-          chrom = locus[0], #locus.chrom,
-          pos = locus[1], #locus.pos,
+          chrom = "chr~{locus[0]}",
+          pos = locus[1],
           phenotype_name = phenotype
         }
 
         call gwas_tasks.locus_plot { input :
           script_dir = script_dir,
-          chrom = locus[0], #locus.chrom,
-          pos = locus[1], #locus.pos,
+          chrom = "chr~{locus[0]}",
+          pos = locus[1],
           phenotype_name = phenotype,
           assoc_results = [associaTR_my_str_gwas.data],
           dosage_fraction_threshold = 0.001,

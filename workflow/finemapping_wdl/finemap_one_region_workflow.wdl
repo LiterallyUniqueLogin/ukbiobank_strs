@@ -1,6 +1,7 @@
 version 1.0
 
 import "finemapping_tasks.wdl"
+import "escalating_finemap_run.wdl"
 import "retryable_finemap_calc_corrs.wdl"
 import "retryable_finemap_write_corrs.wdl"
 
@@ -73,19 +74,18 @@ workflow finemap_one_region {
     lds_h5 = retryable_finemap_calc_corrs.lds_h5
   }
 
-  call finemapping_tasks.finemap_run { input :
+  call escalating_finemap_run.escalating_finemap { input :
     script_dir = script_dir,
     finemap_command = finemap_command,
     master = finemap_write_input_variants.master,
     zfile = finemap_write_input_variants.zfile,
     all_variants_ld = retryable_finemap_write_corrs.all_variants_ld,
+    prior_snps = defined(snp_str_ratio),
     prior_std = prior_std,
-    prob_conv_sss_tol = prob_conv_sss_tol
+    prob_conv_sss_tol = prob_conv_sss_tol,
   }
 
-  # TODO need to rerun places where finemapping suggests 20+ causal snps
-
   output {
-    FINEMAP_output finemap_output = finemap_run.finemap_output
+    FINEMAP_output finemap_output = escalating_finemap.finemap_output
   }
 }

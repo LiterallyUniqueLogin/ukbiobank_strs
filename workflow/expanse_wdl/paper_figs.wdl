@@ -61,6 +61,13 @@ workflow figures {
 #      "pvar": "array_imputed/pfile_converted/chr~{chrom+1}.pvar",
 #      "psam": "array_imputed/pfile_converted/chr~{chrom+1}.psam",
 #    }
+    bgen bgens = {
+      "bgen": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen",
+      "index": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.bgi",
+      "bgen_reader_metadata": "array_imputed/ukb_imp_chr~{chrom+1}_v3.metadata",
+      "bgen_reader_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.metadata2.mmm",
+      "bgen_reader_complex_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.complex.metadata2.mmm",
+    }
 
     # TODO could generate these with WDL
     File intersects_gene_annotation = "side_analyses/str_annotations/intersects_gene/chr~{chrom+1}.tab"
@@ -415,6 +422,13 @@ workflow figures {
   }
 
   ####### generate figure 4 (missing manhattans)
+  call gwas_tasks.cbl_imperfection_ld { input :
+    script_dir = script_dir,
+    bgen_chr11 = bgens[10],
+    all_samples_file = all_samples_list,
+    phenotype_samples_file = platelet_count_sample_list
+  }
+
   call expanse_tasks.extract_field as pcs { input :
     script_dir = script_dir,
     id = 22009
@@ -599,6 +613,8 @@ workflow figures {
   }
 
   output {
+    Int cbl_imperfection_ld_r2 = cbl_imperfection_ld.r2
+
 #    File fig_1b_svg_out = fig_1b.svg
 #    File fig_1b_png_out = fig_1b.png
     File fig_1e_svg_out = fig_1ef.barplot_svg

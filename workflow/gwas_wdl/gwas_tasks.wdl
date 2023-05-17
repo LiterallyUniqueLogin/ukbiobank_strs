@@ -194,6 +194,7 @@ task phenotype_names {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "10m"
 		shortTask: true
+    memory: "2GB"
   }
 }
 
@@ -229,6 +230,7 @@ task concatenate_tsvs {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "4h"
+    memory: "2GB"
   }
 }
 
@@ -255,6 +257,7 @@ task write_sample_list {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -294,6 +297,7 @@ task ethnic_sample_lists {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -318,6 +322,7 @@ task sex_mismatch_sample_list {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -357,6 +362,7 @@ task qced_sample_list {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -426,6 +432,7 @@ task load_continuous_phenotype {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "1h"
+    memory: "2GB"
   }
 }
 
@@ -466,6 +473,7 @@ task load_binary_phenotype {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -489,6 +497,7 @@ task write_sample_list_for_phenotype {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -546,6 +555,7 @@ task transform_trait_values {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -599,6 +609,35 @@ task str_multiallelicness_distro {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "5m"
     shortTask: true
+    memory: "2GB"
+  }
+}
+
+task cbl_imperfection_ld {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/CBL_imperfection_LD.py"
+
+    bgen bgen_chr11 
+    File all_samples_file
+    File phenotype_samples_file
+  }
+
+  output {
+    Int r2 = read_int(stdout())
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{bgen_chr11.bgen} \
+      ~{all_samples_file} \
+      ~{phenotype_samples_file}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+    memory: "2GB"
   }
 }
 
@@ -636,6 +675,7 @@ task fig_4a {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "10m"
+    memory: "2GB"
   }
 }
 
@@ -683,6 +723,7 @@ task association_regions {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
   }
 }
 
@@ -727,6 +768,7 @@ task prep_conditional_input {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
+    memory: "2GB"
   }
 }
 
@@ -885,7 +927,7 @@ task locus_plot {
     String script_dir
     File script = "~{script_dir}/association/plot_locus.py"
 
-    Int chrom
+    String chrom
     Int pos
     String phenotype_name
     # exactly one of the following two must be non empty
@@ -925,6 +967,7 @@ task locus_plot {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30:00"
+    memory: "2GB"
   }
 }
 
@@ -951,6 +994,7 @@ task summarize_individual_data_for_plotting {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "10m"
     shortTask: true
+    memory: "2GB"
   }
 }
 
@@ -994,6 +1038,7 @@ task prep_plink_input {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
+    memory: "2GB"
   }
 }
 
@@ -1032,8 +1077,7 @@ task chromosomal_plink_snp_association {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     memory: "56GB"
-    cpus: "28"
-
+    cpus: 28
     dx_timeout: "24h"
   }
 }
@@ -1043,25 +1087,6 @@ task chromosomal_plink_snp_association {
 
 # TODO , also many variants
 # and conditional and peaks
-#task manhattan {
-#  input {
-#    String script_dir
-#    File script = "~{script_dir}/interactive_manhattan_plot.py"
-#  }
-#
-#  output {
-#
-#  }
-#
-#  command <<<
-#    envsetup ~{script}
-#  >>>
-#
-#  runtime {
-#    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-#    dx_timeout: ""
-#  }
-#}
 
 task generate_peaks {
   input {
@@ -1179,7 +1204,7 @@ task get_strs_in_finemapping_regions {
   }
 
   output {
-    Array[File] strs_in_finemapping_reigons = [
+    Array[File] strs_in_finemapping_regions = [
       "out_chr1.tab",
       "out_chr2.tab",
       "out_chr3.tab",
@@ -1236,6 +1261,7 @@ task placeholder {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: ""
+    memory: "2GB"
   }
 }
 

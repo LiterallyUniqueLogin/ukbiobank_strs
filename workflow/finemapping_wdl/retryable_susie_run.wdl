@@ -37,7 +37,24 @@ workflow retryable_susie_run {
     colnames = colnames,
   }
 
-  if (!defined(try_zero.susie_output)) {
+  if (defined(try_zero.alpha)) {
+    SuSiE_output output_zero = object {
+      subset: object {
+        lbf: select_first([try_zero.lbf]),
+        lbf_variable: select_first([try_zero.lbf_variable]),
+        sigma2: select_first([try_zero.sigma2]),
+        V: select_first([try_zero.V]),
+        converged: select_first([try_zero.converged]),
+        lfsr: select_first([try_zero.lfsr]),
+        requested_coverage: select_first([try_zero.requested_coverage]),
+        alpha: select_first([try_zero.alpha]),
+        colnames: select_first([try_zero.colnames]),
+      },
+      CSs: try_zero.CSs
+    }
+  }
+
+  if (!defined(try_zero.alpha)) {
     call finemapping_tasks.susie_run as try_one { input :
       script_dir = script_dir,
       time = "47h30m",
@@ -54,8 +71,24 @@ workflow retryable_susie_run {
       colnames = colnames,
     }
 
-    #if (!defined(try_one.alpha)) {
-    if (!defined(try_one.susie_output)) {
+    if (defined(try_one.alpha)) {
+      SuSiE_output output_one = object {
+        subset: object {
+          lbf: select_first([try_one.lbf]),
+          lbf_variable: select_first([try_one.lbf_variable]),
+          sigma2: select_first([try_one.sigma2]),
+          V: select_first([try_one.V]),
+          converged: select_first([try_one.converged]),
+          lfsr: select_first([try_one.lfsr]),
+          requested_coverage: select_first([try_one.requested_coverage]),
+          alpha: select_first([try_one.alpha]),
+          colnames: select_first([try_one.colnames]),
+        },
+        CSs: try_one.CSs
+      }
+    }
+
+    if (!defined(try_one.alpha)) {
       call finemapping_tasks.susie_run as try_two { input :
         script_dir = script_dir,
         time = "47h30m",
@@ -71,9 +104,25 @@ workflow retryable_susie_run {
         varnames_file = varnames_file,
         colnames = colnames,
       }
-    
-      #if (!defined(try_two.alpha)) {
-      if (!defined(try_two.susie_output)) {
+
+      if (defined(try_two.alpha)) {
+        SuSiE_output output_two = object {
+          subset: object {
+            lbf: select_first([try_two.lbf]),
+            lbf_variable: select_first([try_two.lbf_variable]),
+            sigma2: select_first([try_two.sigma2]),
+            V: select_first([try_two.V]),
+            converged: select_first([try_two.converged]),
+            lfsr: select_first([try_two.lfsr]),
+            requested_coverage: select_first([try_two.requested_coverage]),
+            alpha: select_first([try_two.alpha]),
+            colnames: select_first([try_two.colnames]),
+          },
+          CSs: try_two.CSs
+        }
+      }
+   
+      if (!defined(try_two.alpha)) {
         call finemapping_tasks.susie_run as try_three { input :
           script_dir = script_dir,
           time = "47h30m",
@@ -89,11 +138,27 @@ workflow retryable_susie_run {
           varnames_file = varnames_file,
           colnames = colnames,
         }
+
+        SuSiE_output output_three = object {
+          subset: object {
+            lbf: select_first([try_three.lbf]),
+            lbf_variable: select_first([try_three.lbf_variable]),
+            sigma2: select_first([try_three.sigma2]),
+            V: select_first([try_three.V]),
+            converged: select_first([try_three.converged]),
+            lfsr: select_first([try_three.lfsr]),
+            requested_coverage: select_first([try_three.requested_coverage]),
+            alpha: select_first([try_three.alpha]),
+            colnames: select_first([try_three.colnames]),
+          },
+          CSs: try_three.CSs
+        }
       }
     }
   }
 
   output {
-    SuSiE_output susie_output = select_first([try_three.susie_output, try_two.susie_output, try_one.susie_output, try_zero.susie_output])
+    SuSiE_output susie_output = select_first([output_zero, output_one, output_two, output_three])
+    #SuSiE_output susie_output = select_first([try_three.susie_output, try_two.susie_output, try_one.susie_output, try_zero.susie_output])
   }
 }
