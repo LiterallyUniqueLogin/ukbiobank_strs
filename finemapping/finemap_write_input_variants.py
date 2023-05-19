@@ -132,7 +132,6 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             pl.col(f'se_{phenotype}').alias('se'),
         ])
         strs = pl.concat([strs, pacsin2_strs])
-    print(strs, flush=True)
     assert strs.unique(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
 
     n_strs = strs.shape[0]

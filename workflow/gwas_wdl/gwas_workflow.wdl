@@ -233,24 +233,24 @@ workflow gwas {
       phenotype_name = phenotype_name,
     }
 
-#    call gwas_tasks.reformat_my_str_gwas_table_for_publication { input :
-#      script_dir = script_dir,
-#      phenotype = phenotype_name,
-#      my_str_gwas = regional_my_str_gwas.data,
-#      flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
-#      str_hg19_pos_bed = str_hg19_pos_bed,
-#      str_hg38_pos_bed = str_hg38_pos_bed,
-#      repeat_units_table = repeat_units_table,
-#    }
+    call gwas_tasks.reformat_my_str_gwas_table_for_publication { input :
+      script_dir = script_dir,
+      phenotype = phenotype_name,
+      my_str_gwas = regional_my_str_gwas.data,
+      flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
+      str_hg19_pos_bed = str_hg19_pos_bed,
+      str_hg38_pos_bed = str_hg38_pos_bed,
+      repeat_units_table = repeat_units_table,
+    }
   }
 
   call gwas_tasks.concatenate_tsvs as my_str_gwas_ { input :
     tsvs = regional_my_str_gwas.data
   }
 
-#  call gwas_tasks.concatenate_tsvs as publishable_my_str_gwas_ { input :
-#    tsvs = reformat_my_str_gwas_table_for_publication.out
-#  }
+  call gwas_tasks.concatenate_tsvs as publishable_my_str_gwas_ { input :
+    tsvs = reformat_my_str_gwas_table_for_publication.out
+  }
 
   call gwas_tasks.prep_plink_input { input :
     script_dir = script_dir,

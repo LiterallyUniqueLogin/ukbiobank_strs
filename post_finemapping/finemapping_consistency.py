@@ -120,6 +120,8 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
                 next(cs_file) # skip cs credibility
                 min_abs_corr, _, _ = [float(idx) for idx in next(cs_file).strip().split()]
             min_abs_corrs.append(min_abs_corr)
+            if min_abs_corr < corr_cutoff:
+                continue
             df = df.with_column(
                 pl.when(pl.col('susie_idx').is_in(cs_susie_idx))
                   .then(pl.when(pl.col(f'alpha_{cs_id-1}') > pl.col('susie_alpha'))
@@ -128,8 +130,6 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
                   .otherwise(pl.col('susie_alpha'))
                   .alias('susie_alpha')
             )
-            if min_abs_corr < corr_cutoff:
-                continue
             if estimated_signal_vars[cs_id-1] <= 1e-9:
                 print(f'CS {cs_id} in region {susie_output.region} has a pure CS with negligible signal, exiting')
                 assert False

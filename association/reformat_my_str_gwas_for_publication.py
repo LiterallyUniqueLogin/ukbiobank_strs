@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+import ast
+import json
 
 import numpy as np
 import polars as pl
 
 parser = argparse.ArgumentParser()
-parser.add_argument('outdir')
+parser.add_argument('out')
 parser.add_argument('phenotype')
 parser.add_argument('my_str_gwas')
 parser.add_argument('flank_start_to_start_and_end_pos')
@@ -50,50 +52,111 @@ hg19_pos_bed = hg19_pos_bed.join(
 pos_table = hg19_pos_bed.join(
     flank_start_to_start_and_pos_table,
     on=['chrom', 'pos', 'end_pos']
-).drop(['ID']).with_column(
-    pl.col('chrom').str.replace('chr', '').cast(int)
-)
+).drop(['ID'])
 
 repeat_units = pl.read_csv(args.repeat_units, sep='\t')
 
+def to_frequencies(d_str):
+    d = ast.literal_eval(d_str)
+    total_dosage = sum(d.values())
+    # strip braces
+    return json.dumps({k: f'{v/total_dosage*100:.2f}%' for (k, v) in d.items()}).replace('"', "").replace(".0:", ":")[1:-1]
+
+def to_number_of_common_alleles(d_str):
+    d = ast.literal_eval(d_str)
+    total_dosage = sum(d.values())
+    return sum(v/total_dosage >= 0.01 for v in d.values())
+
+def cleaned_dict_str(d_str):
+    return d_str[1:-1].replace('"', '').replace('.0:', ':').replace('.0,', ',').replace('.0]', ']')
+
 df = pl.read_csv(
-    args.my_str_gwas, sep='\t'
-).rename({'pos': 'snpstr_pos'}).join(
-    pos_table,
-    how='left',
-    on=['chrom', 'snpstr_pos']
-).join(
+    args.my_str_gwas,
+    sep='\t',
+    dtypes={'locus_filtered': str}
+).filter(
+    ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+    ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+    ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+    ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+    ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+)
+
+if 'subset_total_hardcall_alleles' in df.columns:
+    df = df.rename({'subset_total_hardcall_alleles': 'subset_total_best_guess_alleles'})
+
+if f'mean_{phenotype}_per_single_dosage' in df.columns:
+    df = df.rename({
+        f'mean_{phenotype}_per_single_dosage': f'mean_{phenotype}_per_summed_gt',
+        '0.05_significance_CI': 'summed_0.05_significance_CI',
+        '5e-8_significance_CI': 'summed_5e-8_significance_CI',
+        f'mean_{phenotype}_per_paired_dosage': f'mean_{phenotype}_per_paired_gt',
+        '0.05_significance_CI_duplicated_0': 'paired_0.05_significance_CI',
+        '5e-8_significance_CI_duplicated_0': 'paired_5e-8_significance_CI',
+    })
+
+if df.filter((pl.col('pos') == 929697) & (pl.col('chrom') == 1)).shape[0] > 0:
+    df = df.rename({'pos': 'snpstr_pos'}).join(
+        pos_table,
+        how='left',
+        on=['chrom', 'snpstr_pos']
+    )
+else:
+    assert df.filter((pl.col('pos') == 929702) & (pl.col('chrom') == 1)).shape[0] > 0
+    df = df.join(
+        pos_table,
+        how='left',
+        on=['chrom', 'pos']
+    )
+
+df = df.join(
     repeat_units,
     how='left',
     on=['chrom', 'snpstr_pos']
 ).select([
     'chrom',
-    pl.col('pos').alias('start_pos (hg19)'),
+    pl.col('pos').alias('base_pair_location'), # start_pos (hg19)
+    pl.col('alleles').apply(lambda s: s.replace(".0", "")),
+    pl.col(f'coeff_{phenotype}').alias('beta'),
+    pl.col(f'se_{phenotype}').alias('standard_error'),
+    pl.col('subset_total_per_allele_dosages').alias('allele_frequencies').apply(to_frequencies),
+    pl.col(f'p_{phenotype}').alias('p_value'),
+    'locus_filtered',
+    #'imputation_quality_per_allele_r2', or maybe just correlation? alias info
+    pl.col('ref_len').cast(str).alias('ref_allele').apply(lambda s: s.replace(".0", "")),
+    pl.col('unit').alias('repeat_unit'), # use repeat unit as calculated in the paper instead of the trharmonizer way
+    'period',
     pl.col('end_pos').alias('end_pos (hg19)'),
     pl.col('pos_hg38').alias('start_pos (hg38)'),
     pl.col('end_pos_hg38').alias('end_pos (hg38)'),
-    'alleles',
-    'locus_filtered',
-    f'p_{phenotype}',
-    f'coeff_{phenotype}', # todo is this and next on the wrong axis?
-    f'se_{phenotype}',
-    'R^2',
-    pl.col('unit').alias('repeat_unit'), # use repeat unit as calculated in the paper instead of the trharmonizer way
-    'period',
-    'ref_len',
-    # total / subset? - pref just subset
-    # dosages sums, best guesses, best guess pairs? - pref all
-    # het? entropy?
+    pl.col('subset_total_best_guess_alleles').alias('n').apply(lambda d: sum(ast.literal_eval(d).values())//2),
     # total dosage per summed gt
     # mean value per single dosgae
     # mean per paired dosage?
-    pl.col('subset_HWEP').alias('hardy_weinberg_equilibrium_p_value'),
-    'imputation_quality_per_allele_r2',
+    pl.col('subset_total_per_allele_dosages').alias('number_of_common_alleles').apply(to_number_of_common_alleles),
+    pl.col(f'mean_{phenotype}_per_summed_gt').apply(cleaned_dict_str),
+    pl.col('summed_0.05_significance_CI').apply(cleaned_dict_str),
+    pl.col('summed_5e-8_significance_CI').apply(cleaned_dict_str),
+    pl.col(f'mean_{phenotype}_per_paired_gt').apply(cleaned_dict_str),
+    pl.col('paired_0.05_significance_CI').apply(cleaned_dict_str),
+    pl.col('paired_5e-8_significance_CI').apply(cleaned_dict_str)
+    # not including: model R^2, per allele r2, all sample pop values (just tested samples), single or paired best guesses (just single dosages)
 ])
 
-assert np.all(~df['start_pos (hg19)'].is_null().to_numpy())
+assert np.all(~df['base_pair_location'].is_null().to_numpy())
 assert np.all(~df['repeat_unit'].is_null().to_numpy())
 
-df.write_csv(
-    args.out, sep='\t'
+unfiltered = df.filter(
+    pl.col('locus_filtered') == 'False'
+).drop('locus_filtered')
+
+filtered = df.filter(
+    pl.col('locus_filtered') != 'False'
+)
+
+unfiltered.write_csv(
+    f'{args.out}.tab', sep='\t'
+)
+filtered.write_csv(
+    f'{args.out}.filtered.tab', sep='\t'
 )

@@ -91,9 +91,9 @@ task finemap_write_input_variants {
       ~{bounds.chrom} \
       ~{bounds.start} \
       ~{bounds.end} \
-      ~{if defined(snp_str_ratio) then "--snp-str-ratio ~{snp_str_ratio}" else ""}
-      ~{if defined(total_prob) then "--total-prob ~{total_prob}" else ""}
-      ~{if defined(mac) then "--mac ~{mac}" else ""}
+      ~{if defined(snp_str_ratio) then "--snp-str-ratio ~{snp_str_ratio}" else ""} \
+      ~{if defined(total_prob) then "--total-prob ~{total_prob}" else ""} \
+      ~{if defined(mac) then "--mac ~{mac}" else ""} \
       ~{if defined(inclusion_threshold) then "--inclusion-threshold ~{inclusion_threshold}" else ""}
   >>>
 
@@ -248,7 +248,7 @@ task finemap_run {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "1h"
+    dx_timeout: "4h"
     memory: "8GB"
   }
 

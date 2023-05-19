@@ -901,12 +901,13 @@ task reformat_my_str_gwas_table_for_publication {
   }
 
   output {
-    File out = "out.tab"
+    File unfiltered = "out.tab"
+    File filtered = "out.filtered.tab"
   }
 
   command <<<
     envsetup ~{script} \
-      out.tab \
+      out \
       ~{phenotype} \
       ~{my_str_gwas} \
       ~{flank_start_to_start_and_end_pos} \
@@ -918,7 +919,7 @@ task reformat_my_str_gwas_table_for_publication {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
-    memory: "5GB"
+    memory: "20GB"
   }
 }
 

@@ -12,12 +12,11 @@ def run_finemap(outdir, finemap_command, *, n_causal_snps, prob_conv_sss_tol, pr
     causal_snps_flag = min(n_causal_snps, n_vars)
 
     out = sp.run(
-        #f'{ukb}/utilities/finemap/finemap_v1.4_x86_64 --sss '
         finemap_command +
         ' --sss '
         f'--in-files {outdir}/finemap_input.master '
         '--log '
-        '--n-configs-top 100 '
+        #'--n-configs-top 100 ' This was an error
         '--n-threads 2 '
         f'--n-causal-snps {causal_snps_flag} '
         f'--prob-conv-sss-tol {prob_conv_sss_tol} '

@@ -7,6 +7,8 @@ Fig 3 and supp fig 13 Change discovery p-value to -log10(discovery p-value)
 generate finemapped results table with support 2+ gene annotations instead of all gene annotations? Or if not, then need to say in methods.
 Need to follow up on supp table 6
 
+Regenerate supp fig 4 with only alphas from pure CSes
+
 Images that still need to be WDL for new fine-mapping : 1c, supp figs 2
 RHOT1 conditional manhattan?
 CBL mean sphered cell volume association to conditional manhattan?
@@ -23,15 +25,10 @@ Discuss unrelatedness, standard GWAS practices and LMM methods in associaTR's do
 
 Swap all association images for WGS images and change captions accordingly
 
-Shai noted that the following reference is a review. Does that matter?
-Genetic Alterations of the Thrombopoietin/MPL/JAK2 Axis Impacting Megakaryopoiesis.
-
 CBL Shai's suggestion:
 In megakaryocytes, CBL encodes c-CBL a RING finger E3 ubiquitin ligase that negatively regulates thrombopoietin (TPO) signaling43 by targeting the TPO receptor and additional downstream components of the signaling pathway to proteasomal degradation [PMID 19880496].  Thrombopoietin (TPO) is the primary regulator of megakaryocyte progenitor expansion and differentiation [PMID: 8578518] **I use a different citation by the same author here**. CBL mutations are rarely implicated in myeloproliferative disorders including essential thrombocythemia [PMID: 26182311 PMID: 24325359]. **I didn't think this was compelling and so removed this sentence** In mice, tissue specific loss of c-CBL function in megakaryocytes was associated with increased platelet count [PMID: 32954656].
 
-References:
-TODO check references in CBL section outside of the big paragraph I edited.
-
+References - done checking all!:
 p1 par. 1 ref 2 - can we use something more recent than 13 years ago?
 Most recent GWAS for height explains all of heritability, admittedly using hundreds of thousands of SNPs
 What about something which still doesn't?
@@ -55,7 +52,20 @@ as a citation: https://www.nature.com/articles/ncomms9111#MOESM1094
 
 I assert that STRs are often ignored even in GWAS from WGS data sets - need to back this up with citation
 
+Change citation 35 (apo B is backbone of LDL C) - this shows it is backbone of VLDL particles, and in a way that's buried. Find
+a better reference.
+
 CBL - add new STR methylation paper as a citation?
 
-Finished intro and GWAS/finemapping results and CBL and Discussion. Need to read results "Fine-mapped STRs capture known associations" on, except CBL.
+The following statement needs a citation:
+BCL2L11 in particular is pro-apoptotic and is required in the tightly regulated lifespan of myeloid lineage cells
+Should we remove ref 48 increasing granulocyte counts?
+
+Ref 52 - 17β-Estradiol decreases hypoxic induction  of erythropoietin gene expression - suggests that 
+17beta-estradiol is involved with red blood cell counts. However, it never specifically mentions or looks at its binding to 
+ESR2. Can that be presumed, or should this citation be cut?
+
+Ref 53 - Best practices for benchmarking germline small-variant calls in human genomes - this shows that results 
+are substantially worse in homopolymer regions, but doesn't make the claim that this one of the most difficult regions to genotype.
+Do we care? Better reference, or smaller claim?
 
