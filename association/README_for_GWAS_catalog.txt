@@ -10,8 +10,8 @@ beta:
   p-values are more appropriate for comparison across studies.
 standard_error: See caveats for beta
 allele_frequencies
-p_value
-ref_allele
+p_value: p-values less than 1e-300 exceeded our software's numeric precision and are listed as 0
+ref_allele: measured in number of repeat units
 repeat_unit: the standardized repeat unit of this STR, or none if there was no one clear repeat unit
 period: the length of the repeat unit
 end_pos (hg19): end of the repeat (inclusive)
@@ -26,6 +26,7 @@ mean_{phenotype}_per_summed_gt:
   the mean phenotype value for each sum of allele lengths, where each participant's contribution to the
   phenotype mean for each length-sum is weighted by the imputed probability of their true genotype sum being
   equal to that length-sum. Can be used for plotting graphs of mean phenotype value vs summed-length.
+  Summed gts are measured in number of summed repeat units.
 summed_0.05_significance_CI:
   The 95% symmetric confidence interval for each of the means above
 summed_5e-8_significance_CI:
@@ -34,6 +35,7 @@ mean_{phenotype}_per_paired_gt:
   the mean phenotype value for each unordered pair of allele lengths, where each participant's contribution to the
   phenotype mean for each pair  is weighted by the imputed probability of their true genotype pair being
   equal to that pair. Can be used for plotting graphs of mean phenotype value vs length pair.
+  Each gt in each pair is measured in number of repeat units.
 paired_0.05_significance_CI:
   The 95% symmetric confidence interval for each of the means above
 paired_5e-8_significance_CI:

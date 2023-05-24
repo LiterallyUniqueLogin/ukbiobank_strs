@@ -559,7 +559,95 @@ task transform_trait_values {
   }
 }
 
-######## STR calling and QC ###########
+######## STR calling and QC, SNP QC ###########
+
+task imputed_snp_frequencies {
+  input {
+    String script_dir
+    File script = "~{script_dir}/side_analyses/freqs/snp_allele_freqs.sh"
+
+    String plink_command
+    PFiles pfiles
+    File samples
+  }
+
+  output {
+    File counts = "plink2.acount"
+  }
+
+  #~{sub(pfiles.pgen, ".pgen", "")} \
+  command <<<
+    PLINK_COMMAND=~{plink_command} \
+    PFILE=$(echo ~{pfiles.pgen} | sed -e 's/\.pgen$//') \
+    SAMPLE_FILE=<(paste ~{samples} ~{samples}) \
+    envsetup ~{script}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "47h"
+    memory: "8GB" # this is tied to the memory and threads hardcoded in the plink command
+  }
+}
+
+task STR_frequencies {
+  input {
+    String script_dir
+    File script = "~{script_dir}/side_analyses/freqs/str_allele_freqs.py"
+    File sample_utils = "~{script_dir}/side_analyses/freqs/sample_utils.py"
+    File python_array_utils = "~{script_dir}/side_analyses/freqs/python_array_utils.py"
+
+    VCF vcf
+    File all_samples
+    File samples
+  }
+
+  output {
+    File counts = stdout()
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{vcf.vcf} \
+      ~{samples} \
+      ~{all_samples}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "47h"
+    memory: "4GB" 
+  }
+}
+
+task fraction_of_variation {
+  input {
+    String script_dir
+    File script = "~{script_dir}/side_analyses/freqs/fraction_of_variation.py"
+
+    File snp_counts
+    File str_counts
+    File snps_to_filter
+  }
+
+  output {
+    File nums = stdout()
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{str_counts} \
+      ~{snp_counts} \
+      ~{snps_to_filter}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "47h"
+    memory: "2GB"
+  }
+}
+
 
 # TODO could do length confusion, pre imputation allele freqs, calc macs
 
@@ -586,6 +674,8 @@ task imputed_str_locus_summary {
     memory: "5GB"
   }
 }
+
+
 
 task str_multiallelicness_distro {
   input {

@@ -1,7 +1,6 @@
 version 1.0
 
 import "expanse_tasks.wdl"
-import "../gwas_wdl/gwas_workflow.wdl"
 import "../finemapping_wdl/finemapping_workflow.wdl"
 
 workflow finemapping_from_cached {

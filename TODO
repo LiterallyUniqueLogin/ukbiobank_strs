@@ -1,4 +1,3 @@
-original HDL finemapping FINEMAP regions 1_219976499_220226499 and 20_55711040_55961040 seem to have the wrong p_val threshold (using variants with p_val >= 0.05). Others for HDL?
 Check difference in first pass susie alpha v pip - PIPs have changed for some reason (but files are identical otherwise). Fix.
 Check difference in followup pass graphs - different definition of regions. Still worth debugging, or do I assume this is working?
 add susie mpv graphs?
@@ -9,63 +8,51 @@ Need to follow up on supp table 6
 
 Regenerate supp fig 4 with only alphas from pure CSes
 
+fine-mapping mac uses MACs that I believe were calculated across the entire sample set, not just the current ethnicity/population
+Fix this?
+
 Images that still need to be WDL for new fine-mapping : 1c, supp figs 2
 RHOT1 conditional manhattan?
 CBL mean sphered cell volume association to conditional manhattan?
 SLC2A2 association and manhattan?
-
-Redo fine-mapping of regions containing duplicated STRs?:
-^17\t80520458|^1\t247747217|^1\t247848392|^21\t47741815|^8\t145231731
-
-TODO – uncovered 16287713 for mean corpuscular haemoglobin that has a low p-value and no fine-mapping from very old code and a high p-value and successful fine-mapping from new code. Worth double checking or nah? 
-
-CBL - do we put in a reference to the less than stellar imputation statistics?
-
-Discuss unrelatedness, standard GWAS practices and LMM methods in associaTR's docs.
 
 Swap all association images for WGS images and change captions accordingly
 
 CBL Shai's suggestion:
 In megakaryocytes, CBL encodes c-CBL a RING finger E3 ubiquitin ligase that negatively regulates thrombopoietin (TPO) signaling43 by targeting the TPO receptor and additional downstream components of the signaling pathway to proteasomal degradation [PMID 19880496].  Thrombopoietin (TPO) is the primary regulator of megakaryocyte progenitor expansion and differentiation [PMID: 8578518] **I use a different citation by the same author here**. CBL mutations are rarely implicated in myeloproliferative disorders including essential thrombocythemia [PMID: 26182311 PMID: 24325359]. **I didn't think this was compelling and so removed this sentence** In mice, tissue specific loss of c-CBL function in megakaryocytes was associated with increased platelet count [PMID: 32954656].
 
+Impact factor of journal - less than 2 or 3 might worry about citing
 References - done checking all!:
-p1 par. 1 ref 2 - can we use something more recent than 13 years ago?
-Most recent GWAS for height explains all of heritability, admittedly using hundreds of thousands of SNPs
-What about something which still doesn't?
-
-p1 par3 I would emove ref 8 - while its nice to have a reference
-that discusses mechanisms, it doesn't explain "undergo frequent mutations" - it focuses on a very narrow subset of 
-repeats and doesn't discuss frequency.
-
-p1 par3 Do we want to add a separate section
-here about methylation with the new paper Yang is working with? Could also use
-"Polymorphic tandem repeats within gene promoters act as modifiers of gene expression and DNA methylation in humans"
-in that section
 
 p1 par3 - no reference for noncanonical RNA secondary structures - need one or remove claim.
+R-loop/G-loop quadraplex RNA secondary structure
+Ask Xuan
 
 p2 par1 -  reference 19 to 1000 genomes doesn't include STRs, but that's not directly because they're not part of microarray,
 rather they tried and found lobstr insufficient.
 
-Is it reasonable to assume that INDEL calling doesn't sufficiently represent STRs? If so, shoudl include UK10K reference panel
-as a citation: https://www.nature.com/articles/ncomms9111#MOESM1094
+Need to reword p2 par 1
 
-I assert that STRs are often ignored even in GWAS from WGS data sets - need to back this up with citation
+* Is it reasonable to assume that INDEL calling doesn't sufficiently represent STRs? If so, shoudl include UK10K reference panel
+as a citation: https://www.nature.com/articles/ncomms9111#MOESM1094 - don'mt specifically incldue STRs is probably okay
+
+* I assert that STRs are often ignored even in GWAS from WGS data sets - need to back this up with citation
 
 Change citation 35 (apo B is backbone of LDL C) - this shows it is backbone of VLDL particles, and in a way that's buried. Find
 a better reference.
 
-CBL - add new STR methylation paper as a citation?
-
 The following statement needs a citation:
 BCL2L11 in particular is pro-apoptotic and is required in the tightly regulated lifespan of myeloid lineage cells
-Should we remove ref 48 increasing granulocyte counts?
 
-Ref 52 - 17β-Estradiol decreases hypoxic induction  of erythropoietin gene expression - suggests that 
-17beta-estradiol is involved with red blood cell counts. However, it never specifically mentions or looks at its binding to 
-ESR2. Can that be presumed, or should this citation be cut?
 
-Ref 53 - Best practices for benchmarking germline small-variant calls in human genomes - this shows that results 
-are substantially worse in homopolymer regions, but doesn't make the claim that this one of the most difficult regions to genotype.
-Do we care? Better reference, or smaller claim?
+
+
+---------------------------------------------
+
+Things to remember (not change):
+
+Fine-mapping was done with duplicated versions of these STRs:
+^17\t80520458|^1\t247747217|^1\t247848392|^21\t47741815|^8\t145231731
+
+uncovered 16287713 for mean corpuscular haemoglobin that has a low p-value and no fine-mapping from very old code and a high p-value and successful fine-mapping from new code. Worth double checking or nah? 
 

@@ -412,6 +412,10 @@ task susie_run {
     memory: mem
     continueOnReturnCode: [0, 79] # allow for timeouts, this will be handled in the retry workflow
   }
+
+  meta {
+    volatile: true
+  }
 }
 
 ####################### Summarize finemapping #########################

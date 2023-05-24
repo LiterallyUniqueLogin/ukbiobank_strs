@@ -32,7 +32,7 @@ def perform_regional_gwas_helper(
 ):
 
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
-                  f"p_{phenotype}\tcoeff_{phenotype}\t")
+                  f"p_{phenotype}\tt_stat\tcoeff_{phenotype}\t")
     if binary != 'logistic':
         outfile.write(f'se_{phenotype}\tR^2\t')
     else:
@@ -114,7 +114,7 @@ def perform_regional_gwas_helper(
         allele_names = ','.join(list(unique_alleles.astype(str)))
         outfile.write(f"{chrom}\t{pos}\t{allele_names}\t")
         if locus_filtered:
-            outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\t')
+            outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\tnan\t')
             outfile.write('\t'.join(locus_details))
             if runtype == 'strs':
                 outfile.write('\tnan'*14 + '\n')
@@ -143,10 +143,11 @@ def perform_regional_gwas_helper(
             )
             reg_result = model.fit()
             pval = reg_result.pvalues[0]
+            tval = reg_result.tvalues[0]
             coef = reg_result.params[0]
             se = reg_result.bse[0]
             rsquared = reg_result.rsquared
-            outfile.write(f"{pval:.2e}\t{coef/std}\t{se/std}\t{rsquared}\t")
+            outfile.write(f"{pval:.2e}\t{tval}\t{coef/std}\t{se/std}\t{rsquared}\t")
         else:
             model = sm.GLM(
                 outcome,
@@ -157,7 +158,7 @@ def perform_regional_gwas_helper(
             reg_result = model.fit()
             pval = reg_result.pvalues[0]
             coef = reg_result.params[0]
-            outfile.write(f'{pval:.2e}\t{coef/std}\tnan\tnan\t')
+            outfile.write(f'{pval:.2e}\t{coef/std}\tnan\tnan\tnan\t')
 
         outfile.write('\t'.join(locus_details))
 
