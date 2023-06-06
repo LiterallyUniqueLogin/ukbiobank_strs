@@ -14,11 +14,11 @@ workflow susie_one_region {
     Array[bgen]+ imputed_snp_bgens
     Array[File] snp_vars_to_filter_from_finemapping
 
-    File shared_covars
+    File? shared_covars
     File phenotype_samples
     File transformed_phenotype_data
 
-    File my_str_gwas
+    File? my_str_gwas
     File plink_snp_gwas
 
     String phenotype_name

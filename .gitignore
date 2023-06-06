@@ -71,3 +71,7 @@ out1.tab
 out2.tab
 *.jar
 liftover
+snakemake_logs
+cached_figures_run
+cached_frequencies_run
+my_file_sizes.txt

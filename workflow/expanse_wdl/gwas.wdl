@@ -1,6 +1,7 @@
 version 1.0
 
 import "expanse_tasks.wdl"
+import "expanse_files.wdl"
 import "../gwas_wdl/gwas_workflow.wdl"
 
 workflow gwas {
@@ -8,28 +9,12 @@ workflow gwas {
   input {
     String script_dir  = "."
 
-    File chr_lens = "misc_data/genome/chr_lens.txt"
-    File str_loci = "snpstr/str_loci.txt"
-
-    # TODO could generate this set of files
-    File flank_start_to_start_and_end_pos = "snpstr/flank_trimmed_vcf/vars.tab"
-    File repeat_units_table = "snpstr/repeat_units.tab"
-    File str_loci = "snpstr/str_loci.txt"
-    File str_hg19_pos_bed = "snpstr/str_loci.bed"
-    File str_hg38_pos_bed = "snpstr/str_loci.hg38.bed"
-
     Int phenotype_id
     Array[String] categorical_covariate_names
     Array[Int] categorical_covariate_ids
     String phenotype_name
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
-    String date_of_most_recent_first_occurrence_update = "2021-04-01" # only needed for binary phenotypes
-
-    File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam" # Could instead create a task for downloading this with ukbgene
-    File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample" # could instead create a task for downloading this with ukbgene
-    File withdrawn_sample_list = "sample_qc/common_filters/remove/withdrawn.sample"
-    File kinship = "misc_data/ukbgene/ukb46122_rel_s488282.dat" # could create a task for downloading this with ukbgene
 
     # If specified, must contain all samples of all ethnicities that you want included
     # (so any samples not included will be omitted)
@@ -47,6 +32,8 @@ workflow gwas {
 #    Array[String] categorical_covariate_names = ["platelet_count_device_id"]
 #    Array[Int] categorical_covariate_ids = [30083]
   }
+
+  call expanse_files.files
 
   call expanse_tasks.extract_field as white_brits { input:
     script_dir = script_dir,
@@ -115,44 +102,32 @@ workflow gwas {
     }
   }
 
-  scatter (chrom in range(22)) {
-    VCF str_vcfs = {
-      "vcf": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz",
-      "index": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz.tbi"
-    }
-    PFiles imputed_snp_p_files = {
-      "pgen": "array_imputed/pfile_converted/chr~{chrom+1}.pgen",
-      "pvar": "array_imputed/pfile_converted/chr~{chrom+1}.pvar",
-      "psam": "array_imputed/pfile_converted/chr~{chrom+1}.psam",
-    }
-  }
-
   call gwas_workflow.gwas { input:
     script_dir = script_dir,
     PRIMUS_command = "run_PRIMUS.pl",
 
-    chr_lens = chr_lens,
+    chr_lens = files.chr_lens,
 
-    str_vcfs = str_vcfs,
-    imputed_snp_p_files = imputed_snp_p_files,
+    str_vcfs = files.str_vcfs,
+    imputed_snp_p_files = files.imputed_snp_pfiles,
 
-    str_loci = str_loci,
-    flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
-    str_hg19_pos_bed = str_hg19_pos_bed,
-    str_hg38_pos_bed = str_hg38_pos_bed,
-    repeat_units_table = repeat_units_table,
+    str_loci = files.str_loci,
+    flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
+    str_hg19_pos_bed = files.str_hg19_pos_bed,
+    str_hg38_pos_bed = files.str_hg38_pos_bed,
+    repeat_units_table = files.repeat_units_table,
 
     phenotype_name = phenotype_name,
     categorical_covariate_names = categorical_covariate_names,
     categorical_covariate_scs = categorical_covariates.data,
     is_binary = is_binary,
     is_zero_one_neg_nan = is_zero_one_neg_nan,
-    date_of_most_recent_first_occurrence_update = date_of_most_recent_first_occurrence_update,
+    date_of_most_recent_first_occurrence_update = files.date_of_most_recent_first_occurrence_update,
 
-    fam_file = fam_file,
-    all_samples_list = all_samples_list,
-    withdrawn_sample_list = withdrawn_sample_list,
-    kinship = kinship, 
+    fam_file = files.fam_file,
+    all_samples_list = files.all_samples_list,
+    withdrawn_sample_list = files.withdrawn_sample_list,
+    kinship = files.kinship, 
 
     sc_white_brits = white_brits.data,
     sc_ethnicity_self_report = ethnicity_self_report.data,
@@ -171,5 +146,28 @@ workflow gwas {
 
     cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
     cached_shared_covars = cached_shared_covars,
+  }
+
+  output {
+    Array[File] sample_lists = gwas.sample_lists
+
+    File shared_covars = gwas.shared_covars
+    File shared_covar_names = gwas.shared_covar_names
+
+    Array[File] all_samples_for_phenotype = gwas.all_samples_for_phenotype
+    Array[File] samples_for_phenotype = gwas.samples_for_phenotype
+
+    Array[File] pheno_data = gwas.pheno_data
+    Array[File] transformed_trait_values = gwas.transformed_trait_values
+    Array[File] pheno_covar_names = gwas.pheno_covar_names
+    Array[File] pheno_readme = gwas.pheno_readme
+
+    File my_str_gwas = gwas.my_str_gwas
+    File plink_snp_gwas = gwas.plink_snp_gwas
+    File peaks = gwas.peaks
+    File peaks_readme = gwas.peaks_readme
+    File finemapping_regions = gwas.finemapping_regions
+    File finemapping_regions_readme = gwas.finemapping_regions_readme
+    Array[File] ethnic_my_str_gwas = gwas.ethnic_my_str_gwas
   }
 }

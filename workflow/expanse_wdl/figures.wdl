@@ -1,6 +1,7 @@
 version 1.0
 
 import "expanse_tasks.wdl"
+import "expanse_files.wdl"
 import "../gwas_wdl/gwas_tasks.wdl"
 import "../finemapping_wdl/finemapping_tasks.wdl"
 import "../finemapping_wdl/post_finemapping_workflow.wdl"
@@ -8,87 +9,10 @@ import "../finemapping_wdl/post_finemapping_workflow.wdl"
 # also includes tables
 workflow figures {
 
-  input {
-    String script_dir = "."
-    File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
-    File fam_file = "microarray/ukb46122_cal_chr1_v2_s488176.fam"
+  String script_dir = "."
 
-    File chr_lens = "misc_data/genome/chr_lens.txt"
-
-    # TODO this group of files could be generated through WDL instead of cached
-    File flank_start_to_start_and_end_pos = "snpstr/flank_trimmed_vcf/vars.tab"
-    File repeat_units_table = "snpstr/repeat_units.tab"
-    File str_loci = "snpstr/str_loci.txt"
-    File str_hg19_pos_bed = "snpstr/str_loci.bed"
-    File str_hg38_pos_bed = "snpstr/str_loci.hg38.bed"
-    File str_t2t_pos_bed = "snpstr/str_loci.t2tv2.bed"
-
-    File gencode = "misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gene.gff3"
-
-    File specific_alleles = "association/specific_alleles.tab"
-
-    # TODO this file MUST be regenerated with WDL
-    File eQTL_table = "post_finemapping/gtex_STR2/blessed_qtl_STRs.tab"
-
-    File eSTR_table = "misc_data/eSTR/eSTRs.csv" # could regenerate with WDL
-
-    # Files from Yang
-    File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
-    File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
-    File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
-
-    # sample files which include randomness, so need to be reused for consistency
-    File unrelated_white_brits_sample_list = "sample_qc/runs/white_brits/no_phenotype/combined_unrelated.sample"
-    File unrelated_black_sample_list = "sample_qc/runs/black/no_phenotype/combined_unrelated.sample"
-    File unrelated_south_asian_sample_list = "sample_qc/runs/south_asian/no_phenotype/combined_unrelated.sample"
-    File unrelated_chinese_sample_list = "sample_qc/runs/chinese/no_phenotype/combined_unrelated.sample"
-    File unrelated_samples_CBL_hom_not_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_not_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
-    File unrelated_samples_CBL_hom_begin_C_T_snp = "sample_qc/subpop_runs/CBL_hom_begin_C_T_snp/white_brits/platelet_count/combined_unrelated.sample"
-    File platelet_count_sample_list = "sample_qc/runs/white_brits/platelet_count/combined_unrelated.sample"
-
-    # other cached inputs are found directly in the workflow because they need scatters or depend on other logic
-    # >_<
-  }
-
-  # inputs, would like to be in the inputs block but are arrays and so need scatter statements to make
-  scatter (chrom in range(22)) {
-    VCF str_vcfs = {
-      "vcf": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz",
-      "index": "str_imputed/runs/first_pass/vcfs/annotated_strs/chr~{chrom+1}.vcf.gz.tbi"
-    }
-#    PFiles imputed_snp_p_files = {
-#      "pgen": "array_imputed/pfile_converted/chr~{chrom+1}.pgen",
-#      "pvar": "array_imputed/pfile_converted/chr~{chrom+1}.pvar",
-#      "psam": "array_imputed/pfile_converted/chr~{chrom+1}.psam",
-#    }
-    bgen bgens = {
-      "bgen": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen",
-      "index": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.bgi",
-      "bgen_reader_metadata": "array_imputed/ukb_imp_chr~{chrom+1}_v3.metadata",
-      "bgen_reader_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.metadata2.mmm",
-      "bgen_reader_complex_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.complex.metadata2.mmm",
-    }
-
-    # TODO could generate these with WDL
-    File intersects_gene_annotation = "side_analyses/str_annotations/intersects_gene/chr~{chrom+1}.tab"
-    File intersects_exon_annotation = "side_analyses/str_annotations/intersects_exon/chr~{chrom+1}.tab"
-    File intersects_CDS_annotation = "side_analyses/str_annotations/intersects_CDS/chr~{chrom+1}.tab"
-    File intersects_five_prime_UTR_annotation = "side_analyses/str_annotations/intersects_five_prime_UTR/chr~{chrom+1}.tab"
-    File intersects_three_prime_UTR_annotation = "side_analyses/str_annotations/intersects_three_prime_UTR/chr~{chrom+1}.tab"
-    File intersects_UTR_annotation = "side_analyses/str_annotations/intersects_UTR/chr~{chrom+1}.tab"
-    File closest_gene_annotation = "side_analyses/str_annotations/closest_gene/chr~{chrom+1}.tab"
-    File intersects_transcript_support_2_annotation = "side_analyses/str_annotations/intersects_transcript_support_2/chr~{chrom+1}.tab"
-    File intersects_protein_coding_CDS_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_CDS_support_2/chr~{chrom+1}.tab"
-    File intersects_protein_coding_five_prime_UTR_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_five_prime_UTR_support_2/chr~{chrom+1}.tab"
-    File intersects_protein_coding_three_prime_UTR_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_three_prime_UTR_support_2/chr~{chrom+1}.tab"
-    File intersects_protein_coding_UTR_support_2_annotation = "side_analyses/str_annotations/intersects_protein_coding_UTR_support_2/chr~{chrom+1}.tab"
-    File closest_downstream_protein_coding_exon_support_2_annotation = "side_analyses/str_annotations/closest_downstream_protein_coding_exon_support_2/chr~{chrom+1}.tab"
-    File closest_upstream_protein_coding_exon_support_2_annotation = "side_analyses/str_annotations/closest_upstream_protein_coding_exon_support_2/chr~{chrom+1}.tab"
-    File closest_downstream_protein_coding_gene_annotation = "side_analyses/str_annotations/closest_downstream_protein_coding_gene/chr~{chrom+1}.tab"
-    File closest_upstream_protein_coding_gene_annotation = "side_analyses/str_annotations/closest_upstream_protein_coding_gene/chr~{chrom+1}.tab"
-  }
-
-  # input, but written as a task for reusability
+  # inputs, but written as a task for reusability
+  call expanse_files.files
   call gwas_tasks.phenotype_names
 
   ##### some common task inputs
@@ -100,21 +24,6 @@ workflow figures {
   call gwas_tasks.write_sample_list as white_brits_sample_list { input:
     script_dir = script_dir,
     sc = sc_white_brits.data
-  }
-
-  scatter (phenotype in phenotype_names.n) {
-    # GWAS results, cached for efficiency
-    File str_gwas_results = "association/results/~{phenotype}/my_str/results.tab"
-    File snp_gwas_results = "association/results/~{phenotype}/plink_snp/results.tab"
-    scatter (ethnicity in ["black", "south_asian", "chinese", "irish", "white_other"]) {
-      File pheno_to_ethnic_to_str_gwas_results = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
-    }
-  }
-
-  scatter (ethnicity in ["black", "south_asian", "chinese", "irish", "white_other"]) {
-    scatter (phenotype in phenotype_names.n) {
-      File ethnic_to_pheno_to_str_gwas_results = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
-    }
   }
 
   ##### generate figure 1 (unfinished)
@@ -141,8 +50,8 @@ workflow figures {
   scatter (phenotype_idx in range(length(phenotype_names.n))) {
     call gwas_tasks.generate_peaks { input :
       script_dir = script_dir,
-      snp_assoc_results = snp_gwas_results[phenotype_idx],
-      str_assoc_results = str_gwas_results[phenotype_idx],
+      snp_assoc_results = files.snp_gwas_results[phenotype_idx],
+      str_assoc_results = files.str_gwas_results[phenotype_idx],
       phenotype = phenotype_names.n[phenotype_idx],
       spacing = "250000",
       thresh = "5e-8"
@@ -160,10 +69,10 @@ workflow figures {
   scatter (phenotype_idx in range(length(phenotype_names.n))) {
     call gwas_tasks.generate_finemapping_regions { input :
       script_dir = script_dir,
-      chr_lens = chr_lens,
+      chr_lens = files.chr_lens,
       phenotype = phenotype_names.n[phenotype_idx],
-      snp_assoc_results = snp_gwas_results[phenotype_idx],
-      str_assoc_results = str_gwas_results[phenotype_idx],
+      snp_assoc_results = files.snp_gwas_results[phenotype_idx],
+      str_assoc_results = files.str_gwas_results[phenotype_idx],
       remove_skips = true
     }
 
@@ -206,9 +115,9 @@ workflow figures {
     call finemapping_tasks.first_pass_finemapping_df { input :
       script_dir = script_dir,
       phenotype_name = phenotype_names.n[phenotype_idx],
-      snp_assoc_results = snp_gwas_results[phenotype_idx],
-      str_assoc_results = str_gwas_results[phenotype_idx],
-      ethnic_str_assoc_results = pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
+      snp_assoc_results = files.snp_gwas_results[phenotype_idx],
+      str_assoc_results = files.str_gwas_results[phenotype_idx],
+      ethnic_str_assoc_results = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
       original_finemap_outputs = original_finemap,
       original_finemap_creds = original_finemap_creds,
       original_susie_outputs = original_susie,
@@ -296,8 +205,8 @@ workflow figures {
       call finemapping_tasks.followup_finemapping_conditions_df { input :
         script_dir = script_dir,
         phenotype_name = phenotype_names.n[phenotype_idx],
-        snp_assoc_results = snp_gwas_results[phenotype_idx],
-        str_assoc_results = str_gwas_results[phenotype_idx],
+        snp_assoc_results = files.snp_gwas_results[phenotype_idx],
+        str_assoc_results = files.str_gwas_results[phenotype_idx],
         ethnic_str_assoc_results = pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
         original_finemap_outputs = original_finemap,
         original_finemap_creds = original_finemap_creds,
@@ -351,24 +260,23 @@ workflow figures {
   ######### generate supplementary tables 3 and 4
   call finemapping_tasks.str_tables_for_paper { input :
     script_dir = script_dir,
-    flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
-    str_hg19_pos_bed = str_hg19_pos_bed,
-    str_hg38_pos_bed = str_hg38_pos_bed,
-    str_t2t_pos_bed = str_t2t_pos_bed,
-    repeat_units_table = repeat_units_table,
-    intersects_gene = intersects_gene_annotation,
-    intersects_exon = intersects_exon_annotation,
-    intersects_CDS = intersects_CDS_annotation,
-    intersects_five_prime_UTR = intersects_five_prime_UTR_annotation,
-    intersects_three_prime_UTR = intersects_three_prime_UTR_annotation,
-    intersects_UTR = intersects_UTR_annotation,
+    flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
+    str_hg19_pos_bed = files.str_hg19_pos_bed,
+    str_hg38_pos_bed = files.str_hg38_pos_bed,
+    repeat_units_table = files.repeat_units_table,
+    intersects_gene = files.intersects_gene_annotation,
+    intersects_exon = files.intersects_exon_annotation,
+    intersects_CDS = files.intersects_CDS_annotation,
+    intersects_five_prime_UTR = files.intersects_five_prime_UTR_annotation,
+    intersects_three_prime_UTR = files.intersects_three_prime_UTR_annotation,
+    intersects_UTR = files.intersects_UTR_annotation,
     phenotype_names = phenotype_names.n,
-    assocs = str_gwas_results,
-    black_assocs = ethnic_to_pheno_to_str_gwas_results[0],
-    south_asian_assocs = ethnic_to_pheno_to_str_gwas_results[1],
-    chinese_assocs = ethnic_to_pheno_to_str_gwas_results[2],
-    irish_assocs = ethnic_to_pheno_to_str_gwas_results[3],
-    white_other_assocs = ethnic_to_pheno_to_str_gwas_results[4],
+    assocs = files.str_gwas_results,
+    black_assocs = files.ethnic_to_pheno_to_str_gwas_results[0],
+    south_asian_assocs = files.ethnic_to_pheno_to_str_gwas_results[1],
+    chinese_assocs = files.ethnic_to_pheno_to_str_gwas_results[2],
+    irish_assocs = files.ethnic_to_pheno_to_str_gwas_results[3],
+    white_other_assocs = files.ethnic_to_pheno_to_str_gwas_results[4],
     first_pass_finemapping_dfs = first_pass_finemapping_df.all_regions_concordance,
     followup_finemapping_dfs = select_all(followup_finemapping_conditions_df.df),
   }
@@ -377,8 +285,9 @@ workflow figures {
   call finemapping_tasks.graph_main_hits { input :
     script_dir = script_dir,
     hits_table = str_tables_for_paper.singly_finemapped_strs_for_paper,
-    eQTL_table = eQTL_table,
-    closest_gene_annotations = closest_gene_annotation
+    # TODO this file MUST be regenerated with WDL
+    eQTL_table = files.eQTL_table,
+    closest_gene_annotations = files.closest_gene_annotation
   }
 
   ######## generate figure 3, supp figure 13 and supp table 6
@@ -391,24 +300,24 @@ workflow figures {
   ######## generate supp fig 14
   call finemapping_tasks.generate_enrichments_table { input :
     script_dir = script_dir,
-    flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos,
-    str_loci = str_loci,
-    repeat_units_table = repeat_units_table,
-    eSTR_table = eSTR_table,
-    gencode = gencode,
+    flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
+    str_loci = files.str_loci,
+    repeat_units_table = files.repeat_units_table,
+    eSTR_table = files.eSTR_table,
+    gencode = files.gencode,
     phenotypes = phenotype_names.n,
-    str_assocs = str_gwas_results,
+    str_assocs = files.str_gwas_results,
     confidently_finemapped_STRs_df = post_finemapping.confidently_finemapped_STRs,
 
-    intersects_transcript_support_2 = intersects_transcript_support_2_annotation,
-    intersects_protein_coding_CDS_support_2 = intersects_protein_coding_CDS_support_2_annotation,
-    intersects_protein_coding_five_prime_UTR_support_2 = intersects_protein_coding_five_prime_UTR_support_2_annotation,
-    intersects_protein_coding_three_prime_UTR_support_2 = intersects_protein_coding_three_prime_UTR_support_2_annotation,
-    intersects_protein_coding_UTR_support_2 = intersects_protein_coding_UTR_support_2_annotation,
-    closest_downstream_protein_coding_exon_support_2 = closest_downstream_protein_coding_exon_support_2_annotation,
-    closest_upstream_protein_coding_exon_support_2 = closest_upstream_protein_coding_exon_support_2_annotation,
-    closest_downstream_protein_coding_gene = closest_downstream_protein_coding_gene_annotation,
-    closest_upstream_protein_coding_gene = closest_upstream_protein_coding_gene_annotation,
+    intersects_transcript_support_2 = files.intersects_transcript_support_2_annotation,
+    intersects_protein_coding_CDS_support_2 = files.intersects_protein_coding_CDS_support_2_annotation,
+    intersects_protein_coding_five_prime_UTR_support_2 = files.intersects_protein_coding_five_prime_UTR_support_2_annotation,
+    intersects_protein_coding_three_prime_UTR_support_2 = files.intersects_protein_coding_three_prime_UTR_support_2_annotation,
+    intersects_protein_coding_UTR_support_2 = files.intersects_protein_coding_UTR_support_2_annotation,
+    closest_downstream_protein_coding_exon_support_2 = files.closest_downstream_protein_coding_exon_support_2_annotation,
+    closest_upstream_protein_coding_exon_support_2 = files.closest_upstream_protein_coding_exon_support_2_annotation,
+    closest_downstream_protein_coding_gene = files.closest_downstream_protein_coding_gene_annotation,
+    closest_upstream_protein_coding_gene = files.closest_upstream_protein_coding_gene_annotation,
   }
 
   call finemapping_tasks.calc_enrichments { input :
@@ -424,9 +333,9 @@ workflow figures {
   ####### generate figure 4 (missing manhattans)
   call gwas_tasks.cbl_imperfection_ld { input :
     script_dir = script_dir,
-    bgen_chr11 = bgens[10],
-    all_samples_file = all_samples_list,
-    phenotype_samples_file = platelet_count_sample_list
+    bgen_chr11 = files.bgens[10],
+    all_samples_file = files.all_samples_list,
+    phenotype_samples_file = files.unrelated_samples_for_pheno_for_ethnicity[phenotype_names.idxs["platelet_count"]]
   }
 
   call expanse_tasks.extract_field as pcs { input :
@@ -441,20 +350,20 @@ workflow figures {
 
   call gwas_tasks.load_shared_covars { input:
     script_dir = script_dir,
-    fam_file = fam_file,
+    fam_file = files.fam_file,
     sc_pcs = pcs.data,
     sc_assessment_ages = assessment_ages.data
   }
 
   call gwas_tasks.fig_4a { input :
     script_dir = script_dir,
-    all_samples_list = all_samples_list,
+    all_samples_list = files.all_samples_list,
     white_brits_sample_list = white_brits_sample_list.data,
-    black_sample_list = unrelated_black_sample_list,
-    south_asian_sample_list = unrelated_south_asian_sample_list,
-    chinese_sample_list = unrelated_chinese_sample_list,
-    str_vcf_chr_11 = str_vcfs[10],
-    specific_alleles = specific_alleles,
+    black_sample_list = files.qced_samples_for_ethnicity[1],
+    south_asian_sample_list = files.qced_samples_for_ethnicity[2],
+    chinese_sample_list =  files.qced_samples_for_ethnicity[3],
+    str_vcf_chr_11 = files.str_vcfs[10],
+    specific_alleles = files.specific_alleles,
   }
 
   call expanse_tasks.extract_field as platelet_count_sc { input :
@@ -480,17 +389,17 @@ workflow figures {
   call gwas_tasks.transform_trait_values as transformed_platelet_count { input:
     script_dir = script_dir,
     pheno_data = platelet_count_all_white_brits.data,
-    samples_for_phenotype = platelet_count_sample_list,
+    samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[phenotype_names.idxs["platelet_count"]]
     is_binary = false
   }
 
   call gwas_tasks.str_spot_test as CBL_assoc { input:
     script_dir = script_dir,
-    str_vcf = str_vcfs[10],
+    str_vcf = files.str_vcfs[10],
     shared_covars = load_shared_covars.shared_covars, 
     untransformed_phenotype = platelet_count_all_white_brits.data,
     transformed_phenotype = transformed_platelet_count.data,
-    all_samples_list = all_samples_list,
+    all_samples_list = files.all_samples_list,
     is_binary = false,
     chrom = 11,
     pos = 119077000,
@@ -507,21 +416,59 @@ workflow figures {
     dosage_fraction_threshold = 0.001
   }
 
+  call gwas_tasks.manhattan as fig_4ce { input:
+    script_dir = script_dir,
+    phenotype_name = "platelet_cri",
+    unit = phenotype_names.unit[phenotype_names.idx["platelet_crit"]],
+    chr_lens = files.chr_lens,
+    str_gwas_results = files.str_gwas_results[phenotype_names.idx["platelet_crit"]],
+    snp_gwas_results = files.snp_gwas_results[phenotype_names.idx["platelet_crit"]],
+    bounds = {
+      "chrom": 11,
+      "start": 118447267,
+      "end": 119339135
+    },
+    conditioned_STRs = [19077000],
+    conditioned_imputed_SNPs = ["119080037_A_G"],
+    conditional_str_results = files.CBL_conditioned_STR_19077000_SNP_119080037_A_G_str_results,
+    conditional_snp_results = files.CBL_conditioned_STR_19077000_SNP_119080037_A_G_snp_results,
+    ext = "png"
+  }
+
+  call gwas_tasks.manhattan as fig_4d { input:
+    script_dir = script_dir,
+    phenotype_name = "platelet_cri",
+    unit = phenotype_names.unit[phenotype_names.idx["platelet_crit"]],
+    chr_lens = files.chr_lens,
+    str_gwas_results = files.str_gwas_results[phenotype_names.idx["platelet_crit"]],
+    snp_gwas_results = files.snp_gwas_results[phenotype_names.idx["platelet_crit"]],
+    bounds = {
+      "chrom": 11,
+      "start": 118447267,
+      "end": 119339135
+    },
+    conditioned_STRs = [19077000],
+    conditioned_imputed_SNPs = ["119080037_A_G"],
+    conditional_str_results = files.CBL_conditioned_SNP_119080037_A_G_str_results,
+    conditional_snp_results = files.CBL_conditioned_SNP_119080037_A_G_snp_results,
+    ext = "png"
+  }
+
   # use precomputed sample lists
   call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_not_SNP_samples { input:
     script_dir = script_dir,
     pheno_data = platelet_count_all_white_brits.data,
-    samples_for_phenotype = unrelated_samples_CBL_hom_not_begin_C_T_snp,
+    samples_for_phenotype = files.unrelated_samples_CBL_hom_not_begin_C_T_snp,
     is_binary = false
   }
 
   call gwas_tasks.str_spot_test as CBL_hom_not_SNP_assoc { input:
     script_dir = script_dir,
-    str_vcf = str_vcfs[10],
+    str_vcf = files.str_vcfs[10],
     shared_covars = load_shared_covars.shared_covars, 
     untransformed_phenotype = platelet_count_all_white_brits.data,
     transformed_phenotype = platelet_count_transformed_CBL_hom_not_SNP_samples.data, 
-    all_samples_list = all_samples_list,
+    all_samples_list = files.all_samples_list,
     is_binary = false,
     chrom = 11,
     pos = 119077000,
@@ -531,17 +478,17 @@ workflow figures {
   call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_SNP_samples { input:
     script_dir = script_dir,
     pheno_data = platelet_count_all_white_brits.data,
-    samples_for_phenotype = unrelated_samples_CBL_hom_begin_C_T_snp,
+    samples_for_phenotype = file.sunrelated_samples_CBL_hom_begin_C_T_snp,
     is_binary = false
   }
    
   call gwas_tasks.str_spot_test as CBL_hom_SNP_assoc { input:
     script_dir = script_dir,
-    str_vcf = str_vcfs[10],
+    str_vcf = files.str_vcfs[10],
     shared_covars = load_shared_covars.shared_covars, 
     untransformed_phenotype = platelet_count_all_white_brits.data, 
     transformed_phenotype = platelet_count_transformed_CBL_hom_SNP_samples.data,
-    all_samples_list = all_samples_list,
+    all_samples_list = files.all_samples_list,
     is_binary = false,
     chrom = 11,
     pos = 119077000,
@@ -563,7 +510,7 @@ workflow figures {
 
   call gwas_tasks.summarize_individual_data_for_plotting as summarized_CBL_gtex_expression { input :
     script_dir = script_dir,
-    individual_tsv = CBL_gtex_expression,
+    individual_tsv = files.CBL_gtex_expression,
     length_sum_column_name = "Sum_of_allele",
     trait_column_name = "TPM(expression)"
   }
@@ -580,7 +527,7 @@ workflow figures {
 
   call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon4 { input :
     script_dir = script_dir,
-    individual_tsv = Liver_SLC2A2_exon4_psi,
+    individual_tsv = files.Liver_SLC2A2_exon4_psi,
     length_sum_column_name = "Sum_of_allele",
     trait_column_name = "PSI"
   }
@@ -597,7 +544,7 @@ workflow figures {
 
   call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon6 { input :
     script_dir = script_dir,
-    individual_tsv = Liver_SLC2A2_exon6_psi,
+    individual_tsv = files.Liver_SLC2A2_exon6_psi,
     length_sum_column_name = "Sum_of_allele",
     trait_column_name = "PSI"
   }
@@ -632,6 +579,8 @@ workflow figures {
     File fig_4a_png_out = fig_4a.png
     File fig_4b_svg_out = fig_4b.svg
     File fig_4b_png_out = fig_4b.png
+    File fig_4ce_out = fig_4ce.plot
+    File fig_4d_out = fig_4d.plot
     File fig_4f_svg_out = fig_4f.svg
     File fig_4f_png_out = fig_4f.png
     File fig_4g_svg_out = fig_4g.svg

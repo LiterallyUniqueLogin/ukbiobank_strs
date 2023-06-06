@@ -19,8 +19,8 @@ def run_finemap(outdir, finemap_command, *, n_causal_snps, prob_conv_sss_tol, pr
         '--n-threads 2 '
         f'--n-causal-snps {causal_snps_flag} '
         # f'--prob-conv-sss-tol {prob_conv_sss_tol} '
-        '--n-conv-sss 1000 '
-        '--prob-conv-sss-tol 0.0001 '
+        # '--n-conv-sss 1000 '
+        # '--prob-conv-sss-tol 0.0001 '
         f'--prior-std {prior_std} ' +
         ('' if not prior_snps else '--prior-snps '),
         shell=True,

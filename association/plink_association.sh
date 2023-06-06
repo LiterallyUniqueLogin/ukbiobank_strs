@@ -23,16 +23,9 @@ if [[ ( $BINARY_TYPE != linear ) && ( $BINARY_TYPE != linear_binary ) && ( $BINA
 	exit 1
 fi
 
-#if [ -z "$START" ] ; then
-#	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"/chrs/chr"$CHROM"
-#elif [ -z "$CONDITIONAL" ] ; then
-#	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"/batches/chr"$CHROM"_"$START"_"$END"
-#else
-#	OUT_DIR="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"_conditional
-#	OUT_DIR="$OUT_DIR"/chr"$CHROM"_"$START"_"$END"_"$CONDITIONAL"
-#fi
-
+start_dir=$(pwd)
 mkdir -p "$OUT_DIR"
+cd "$OUT_DIR"
 
 temp_name="$PROJECT_TEMP"/plink_snp"$SUFFIX"/phenotype_"$PHENOTYPE"_chr_"$CHROM"_start_"$START"_end_"$END"
 mkdir -p "$temp_name"
@@ -40,12 +33,6 @@ cd "$temp_name" || {
 	echo "Failed to move to $temp_name"
 	exit 1 ;
 }
-
-#if [ -z "$CONDITIONAL" ] ; then
-#	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/plink_snp"$SUFFIX"/input/transformed_phenotype_and_covars.tab 
-#else
-#	PHENO_FILE="$UKB"/association/results/"$PHENOTYPE"/conditional_inputs/chr"$CHROM"_"$CONDITIONAL"_plink"$SUFFIX".tab
-#fi
 
 if [ -z "$START" ] ; then
 	BED_FILE_COMMAND=" "
@@ -62,42 +49,26 @@ else
 	COLS="cols=+a1countcc,-tz,-nobs,-test"
 fi
 
-#$UKB"/utilities/plink2 \
-#    --pfile "$UKB"/array_imputed/pfile_converted/chr"$CHROM" \
+covar_names=$(head -n 1 "$PHENO_FILE" | cut -f 4-)
 "$PLINK_EXECUTABLE" \
     --pheno "$PHENO_FILE" \
     --no-psam-pheno \
     --pheno-name "$PHENO_NAME" \
-    --covar-name $(head -n 1 "$PHENO_FILE" | cut -f 4-) \
     --pfile "$P_FILE" \
     --chr "$CHROM" \
     $BED_FILE_COMMAND \
     --mac 20 \
     --glm omit-ref pheno-ids hide-covar $COLS \
+    $(if [[ -n "$covar_names" ]] ; then echo "--covar-name $covar_names" ; else echo "allow-no-covars" ; fi) \
     --ci 0.99999995 \
     --memory 56000 \
     --threads 28 \
     > plink.stdout \
     2> plink.stderr
 
-mv "$temp_name"/* "$OUT_DIR"
-
-if [[ "$BINARY_TYPE" == linear ]] ;  then
-	RIN=rin_
-else
-	RIN=''
-fi
-
-if [[ "$BINARY_TYPE" == logistic ]] ; then
-	RUNTYPE="logistic.hybrid"
-else
-	RUNTYPE="linear"
-fi
-
 cd -
 
-mv "$temp_name"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE" \
-   "$OUT_DIR"/plink2."$RIN""$PHENOTYPE".glm."$RUNTYPE"
+mv "$temp_name"/* .
 
-mv "$temp_name"/plink2.log \
-   "$OUT_DIR"/plink2.log
+cd "$start_dir"
+

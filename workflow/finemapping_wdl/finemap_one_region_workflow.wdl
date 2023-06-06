@@ -16,10 +16,9 @@ workflow finemap_one_region {
     Array[bgen]+ imputed_snp_bgens
     Array[File] snp_vars_to_filter_from_finemapping
 
-    File shared_covars
     File phenotype_samples
 
-    File my_str_gwas
+    File? my_str_gwas
     File plink_snp_gwas
 
     String phenotype_name
@@ -86,6 +85,7 @@ workflow finemap_one_region {
   }
 
   output {
+    File finemap_input_z = finemap_write_input_variants.zfile
     FINEMAP_output finemap_output = escalating_finemap.finemap_output
   }
 }

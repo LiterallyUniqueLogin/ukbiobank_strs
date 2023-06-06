@@ -28,7 +28,8 @@ def perform_regional_gwas_helper(
     binary,
     region,
     runtype,
-    conditional_covars_fname = None
+    conditional_covars_fname = None,
+    no_details = False
 ):
 
     outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
@@ -45,8 +46,11 @@ def perform_regional_gwas_helper(
     total_time = 0
 
     pheno_specific_covars = np.load(pheno_and_covars_fname)
-    shared_covars = np.load(shared_covars_fname)
-    covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
+    if shared_covars_fname is not None:
+        shared_covars = np.load(shared_covars_fname)
+        covars = utils.merge_arrays(pheno_specific_covars, shared_covars)
+    else:
+        covars = pheno_specific_covars
 
     if conditional_covars_fname:
         gt_covars = np.load(conditional_covars_fname)
@@ -67,15 +71,17 @@ def perform_regional_gwas_helper(
     covars = (covars - np.mean(covars, axis=0))/stds
     covars[:, 1] = 1 # reuse the column that was the outcome as the intercept
     covars = covars[:, stds != 0] # drop the covariates that were constant for this sample set
-    
-    ori_phenotypes = np.load(untransformed_phenotypes_fname)
-    ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
-    ori_phenotypes = ori_phenotypes[unfiltered_samples]
+   
+    if not no_details:
+        ori_phenotypes = np.load(untransformed_phenotypes_fname)
+        ori_phenotypes = utils.merge_arrays(samples_array, ori_phenotypes)[:, 1]
+        ori_phenotypes = ori_phenotypes[unfiltered_samples]
 
     # first yield is special
     genotype_iter = get_genotype_iter(unfiltered_samples)
-    extra_detail_fields = next(genotype_iter)
-    outfile.write('\t'.join(extra_detail_fields) + '\t')
+    if not no_details:
+        extra_detail_fields = next(genotype_iter)
+        outfile.write('\t'.join(extra_detail_fields) + '\t')
 
     if not binary:
         stat = 'mean'
@@ -84,7 +90,7 @@ def perform_regional_gwas_helper(
 
     # TODO maybe only do these calculations if there's a flag on
     # TODO what to do if runtype isn't STRs? currently will crash from here forward
-    if runtype == 'strs':
+    if runtype == 'strs' and not no_details:
         outfile.write(
             'total_subset_dosage_per_summed_gt\t'
             f'{stat}_{phenotype}_per_summed_gt\t'
@@ -106,7 +112,8 @@ def perform_regional_gwas_helper(
 
     start_time = time.time()
     for dosage_gts, unique_alleles, chrom, pos, locus_filtered, locus_details in genotype_iter:
-        assert len(locus_details) == len(extra_detail_fields)
+        if not no_details:
+            assert len(locus_details) == len(extra_detail_fields)
 
         covars[:, 0] = np.nan # reuse the column that was the ids as the genotypes
 
@@ -114,12 +121,16 @@ def perform_regional_gwas_helper(
         allele_names = ','.join(list(unique_alleles.astype(str)))
         outfile.write(f"{chrom}\t{pos}\t{allele_names}\t")
         if locus_filtered:
-            outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\tnan\t')
-            outfile.write('\t'.join(locus_details))
-            if runtype == 'strs':
-                outfile.write('\tnan'*14 + '\n')
+            outfile.write(f'{locus_filtered}\t1\tnan\tnan\tnan\tnan')
+            if not no_details:
+                outfile.write('\t')
+                outfile.write('\t'.join(locus_details))
+                if runtype == 'strs':
+                    outfile.write('\tnan'*14 + '\n')
+                else:
+                    outfile.write('\tnan'*3 + '\n') # TODO not sure what the number of nans will be when this is fixed
             else:
-                outfile.write('\tnan'*3 + '\n') # TODO not sure what the number of nans will be when this is fixed
+                outfile.write('\n')
             outfile.flush()
             continue
         else:
@@ -160,9 +171,10 @@ def perform_regional_gwas_helper(
             coef = reg_result.params[0]
             outfile.write(f'{pval:.2e}\t{coef/std}\tnan\tnan\tnan\t')
 
-        outfile.write('\t'.join(locus_details))
+        if not no_details:
+            outfile.write('\t'.join(locus_details))
 
-        if runtype == 'strs':
+        if runtype == 'strs' and not no_details:
             dosages_per_summed_gt = {}
 
             dosages_per_paired_gt = {}
@@ -323,11 +335,11 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
         yield next(itr)
 
 
-def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir):
+def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir, no_details):
     if runtype == 'strs':
         if region is not None:
             get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
-                str_vcf, region, samples
+                str_vcf, region, samples, details = not no_details
             )
         else:
             assert vars_file is not None
@@ -343,7 +355,7 @@ def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, 
     with tempfile.NamedTemporaryFile(dir=temp_dir, mode='w+') as temp_outfile:
         print(f"Writing output to temp file {temp_outfile.name}", flush=True)
         perform_regional_gwas_helper(
-            temp_outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, get_genotype_iter, phenotype, binary, region, runtype, conditional_covars_fname
+            temp_outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, get_genotype_iter, phenotype, binary, region, runtype, conditional_covars_fname, no_details
         )
 
         print(f"Copying {temp_outfile.name} to {outfile}")
@@ -410,8 +422,11 @@ def main():
     parser.add_argument('--str-vcf')
     parser.add_argument('--snp-bgen')
     parser.add_argument('--snp-mfi')
+    parser.add_argument('--no-details', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     args = parser.parse_args()
+
+    assert not (args.no_details and bool(args.vars_file))
 
     assert args.readme == (args.region is None and args.vars_file is None)
     assert (args.str_vcf is not None) == (args.runtype == 'strs')
@@ -422,14 +437,18 @@ def main():
     # this would require firth regression which I've removed
     assert not ((args.runtype == 'imputed-snps') and (args.binary == 'logistic'))
 
+    if args.shared_covars is None:
+        print("Warning: running without shared covars")
+
     assert (
         args.readme ==
         (args.pheno_and_covars is None) ==
-        (args.shared_covars is None) ==
-        (args.untransformed_phenotypes is None) ==
         (args.all_samples_fname is None) ==
         (args.temp_dir is None)
     )
+
+    if not args.no_details:
+        assert args.untransformed_phenotypes is not None
 
     if args.conditional_covars is not None:
         assert args.region is not None
@@ -458,7 +477,8 @@ def main():
             args.snp_bgen,
             args.snp_mfi,
             args.conditional_covars,
-            args.temp_dir
+            args.temp_dir,
+            args.no_details,
         )
 
 

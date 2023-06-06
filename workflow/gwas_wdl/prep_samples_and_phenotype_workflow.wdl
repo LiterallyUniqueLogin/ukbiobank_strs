@@ -57,7 +57,7 @@ workflow prep_samples_and_phenotype {
   }
 
   Array[String] ethnicities = ethnic_sample_lists_task.ethnicities
-  Array[String] all_ethnicities_ = flatten([['white_british'], ethnicities])
+  Array[String] all_ethnicities_ = flatten([["white_brits"], ethnicities])
   Array[File] ethnic_sample_lists = ethnic_sample_lists_task.sample_lists
   Array[File] all_sample_lists_ = flatten([
     [white_brits_sample_list.data], ethnic_sample_lists

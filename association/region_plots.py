@@ -1,7 +1,5 @@
 import ast
 import copy
-import os
-import os.path
 import time
 from typing import Dict, Tuple, Optional, Set
 
@@ -22,17 +20,6 @@ import pandas as pd
 import polars as pl
 
 import python_array_utils as utils
-
-from graphing_utils import export
-
-ukb = os.environ['UKB']
-
-chr_lens = np.genfromtxt(
-    f'{ukb}/misc_data/genome/chr_lens.txt',
-    skip_header=1,
-    usecols=(1),
-    dtype=int
-)
 
 max_p_val = 300 # in -log10
 
@@ -186,10 +173,11 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return results
 
-def load_my_snp_results(phenotype, binary, chrom, start, end):
-    print(f"Loading my {phenotype} snp results chrom={chrom} start={start} end={end} ... ", end='', flush=True)
+def load_my_snp_results(snp_results_fname, phenotype, binary):
+    print(f"Loading my {phenotype} snp results ... ", end='', flush=True)
     start_time = time.time()
 
+    """
     snp_results_fname = f'{ukb}/association/plots/input/{phenotype}/my_imputed_snp'
     if binary:
         snp_results_fname += '_' + binary
@@ -197,6 +185,7 @@ def load_my_snp_results(phenotype, binary, chrom, start, end):
     if start:
         snp_results_fname += f'_{start}_{end}'
     snp_results_fname += '_results.tab'
+    """
 
     type_overrides = {
         'locus_filtered': str,
@@ -337,14 +326,15 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return results
 
-def load_gwas_catalog(phenotype):
+def load_gwas_catalog(gwas_catalog_fname, phenotype):
     if phenotype not in {'height', 'total_bilirubin'}:
         return None, None
     # Load the NHGRI-EBI GWAS catalog
     print("Loading GWAS catalog results ... ", end='', flush=True)
     start_time = time.time()
     catalog = np.loadtxt(
-        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
+        #f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
+        gwas_catalog_fname,
         usecols=[11, 12, 27],
         delimiter='\t',
         skiprows=1,
@@ -352,7 +342,8 @@ def load_gwas_catalog(phenotype):
     ) # chrom, pos, pvalue
     # omit results that are not mapped to a recognizable chromosome
     catalog_names = np.loadtxt(
-        f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
+        #f'{ukb}/misc_data/snp_summary_stats/catalog/catalog_hg19.tsv',
+        gwas_catalog_fname,
         usecols=[7, 21, 34],
         delimiter='\t',
         skiprows=1,
@@ -504,7 +495,7 @@ def load_and_merge_peaks_into_dfs(peaks_fname, my_str_results,  plink_snp_result
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_str_results, plink_snp_results
 
-def full_genome_x_axis(plot):
+def full_genome_x_axis(plot, chr_lens):
     pre_chr_sums = np.cumsum([0, *chr_lens[:-1]])
     mid_points = [int(num) for num in pre_chr_sums + (chr_lens//2)]
     plot.xaxis.ticker = mid_points
@@ -512,12 +503,12 @@ def full_genome_x_axis(plot):
         mid_points[chrom - 1]: str(chrom) for chrom in range(1, 23)
     }
 
-def full_genome_pandas_df(df):
+def full_genome_pandas_df(df, chr_lens):
     df['plot_pos'] = df['pos']
     for chrom in range(2, 23):
         df['plot_pos'][df['chr'] >= chrom] += chr_lens[chrom - 2]
 
-def full_genome_polars_df(df):
+def full_genome_polars_df(df, chr_lens):
     df = df.with_column(
         pl.col('pos').alias('plot_pos')
     )

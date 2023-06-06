@@ -58,7 +58,7 @@ task finemap_write_input_variants {
     File python_array_utils = "~{script_dir}/finemapping/python_array_utils.py"
     File sample_utils = "~{script_dir}/finemapping/sample_utils.py"    
 
-    File str_assoc_results
+    File? str_assoc_results
     File snp_assoc_results
     File variants_to_filter
     File phenotype_samples_list
@@ -84,7 +84,7 @@ task finemap_write_input_variants {
       . \
       . \
       ~{snp_assoc_results} \
-      ~{str_assoc_results} \
+      ~{if defined(str_assoc_results) then select_first([str_assoc_results]) else "None"} \
       ~{variants_to_filter} \
       ~{phenotype_samples_list} \
       ~{phenotype} \
@@ -247,7 +247,7 @@ task finemap_run {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.4"
     dx_timeout: "4h"
     memory: "8GB"
   }
@@ -262,7 +262,7 @@ task susie_choose_vars {
     String script_dir
     File script = "~{script_dir}/finemapping/susie_choose_vars.py"
 
-    File str_assoc_results
+    File? str_assoc_results
     File snp_assoc_results
     File variants_to_filter
 
@@ -281,7 +281,7 @@ task susie_choose_vars {
     envsetup ~{script} \
       readme.txt \
       colnames.txt \
-      ~{str_assoc_results} \
+      ~{if defined(str_assoc_results) then select_first([str_assoc_results]) else "None"} \
       ~{snp_assoc_results} \
       ~{variants_to_filter} \
       ~{phenotype_name} \
@@ -298,6 +298,8 @@ task susie_choose_vars {
 }
 
 task susie_load_gts {
+  # TODO won't work properly if there are no shared covars
+  # but there are covars in the pheno file
   input {
     String script_dir
     File script = "~{script_dir}/finemapping/finemapping_load_gts.py"
@@ -310,7 +312,7 @@ task susie_load_gts {
     File all_samples
     File phenotype_samples
     File pheno_data
-    File shared_covars
+    File? shared_covars
     
     File colnames # from prev finemapping step
     String phenotype_name
@@ -343,8 +345,8 @@ task susie_load_gts {
       ~{bounds.start} \
       ~{bounds.end} \
       --pheno-fname ~{pheno_data} \
-      --shared-covars-fname ~{shared_covars} \
       --pheno-out pheno_residual.h5 \
+      ~{"--shared-covars-fname " + shared_covars} \
       ~{if best_guess then "--best-guess" else ""}
     exit 0 # ignore the previous return code
   >>>
@@ -412,9 +414,153 @@ task susie_run {
     memory: mem
     continueOnReturnCode: [0, 79] # allow for timeouts, this will be handled in the retry workflow
   }
+}
 
-  meta {
-    volatile: true
+####################### Simulations ###################################
+
+task simulate_phenotype {
+  input {
+    String script_dir
+    File script = "~{script_dir}/finemapping/simulate_phenotype.py"
+    File load_and_filter_genotypes = "~{script_dir}/finemapping/load_and_filter_genotypes.py"
+    File python_array_utils = "~{script_dir}/finemapping/python_array_utils.py"
+    File sample_utils = "~{script_dir}/finemapping/sample_utils.py"    
+
+    VCF str_vcf
+    bgen snp_bgen
+    File all_samples_list
+    File samples_list
+    Int chrom
+    Int seed
+    Array[String] causal_vars
+    Array[String] causal_betas # should be floats, but cannot cast
+  }
+
+  output {
+    File phenotype = "out.npy"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      out.npy \
+      ~{str_vcf.vcf} \
+      ~{snp_bgen.bgen} \
+      ~{all_samples_list} \
+      ~{samples_list} \
+      ~{chrom} \
+      ~{seed} \
+      --causal-vars ~{sep=" " causal_vars} \
+      --causal-betas ~{sep=" " causal_betas} \
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "20m"
+    memory: "4GB"
+    shortTask: true
+  }
+}
+
+task select_causal_variants_from_finemap_output {
+  input {
+    String script_dir
+    File script = "~{script_dir}/finemapping/select_causal_variants_from_finemap_output.py"
+
+    File finemap_output_log
+    File finemap_input_z
+    Array[File]+ finemap_output_creds
+  }
+
+  output {
+    Array[Array[String]] vars_and_betas = read_tsv(stdout())
+  }
+
+  command <<<
+    envsetup ~{script} \
+       out \
+       ~{finemap_output_log} \
+       ~{finemap_input_z} \
+       ~{sep=" " finemap_output_creds}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "20m"
+    memory: "2GB"
+    shortTask: true
+  }
+}
+
+task select_causal_variants_from_susie_output {
+  input {
+    String script_dir
+    File script = "~{script_dir}/finemapping/select_causal_variants_from_susie_output.py"
+
+    File colnames
+    File finemap_input_z
+    Array[File]+ CSes
+  }
+
+  output {
+    Array[Array[String]] vars_and_betas = read_tsv(stdout())
+  }
+
+  command <<<
+    envsetup ~{script} \
+       out \
+       ~{colnames} \
+       ~{finemap_input_z} \
+       ~{sep=" " CSes}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "20m"
+    memory: "2GB"
+    shortTask: true
+  }
+}
+
+task any_causal_strs {
+  input {
+    Array[Array[String]] vars_and_betas
+  }
+
+  output {
+    Boolean b = read_boolean(stdout())
+  }
+
+  command <<<
+    python -c 'print("STR" in "~{sep=" " vars_and_betas[0]}")'
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+    memory: "2GB"
+    shortTask: true
+  }
+}
+
+task select_random_causal_variants {
+  input {
+    String script_dir
+    File script = "~{script_dir}/"
+  }
+
+  output {
+
+  }
+
+  command <<<
+    envsetup ~{script}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "20m"
+    memory: "2GB"
+    shortTask: true
   }
 }
 
@@ -998,7 +1144,7 @@ task graph_enrichments {
   }
 }
 
-task todo {
+task placeholder {
   input {
     String script_dir
     File script = "~{script_dir}/"

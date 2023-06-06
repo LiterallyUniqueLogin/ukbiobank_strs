@@ -6,10 +6,7 @@ import datetime
 import numpy as np
 import polars as pl
 
-def choose_vars(readme_fname, outcols_fname, str_associations_fname, snp_associations_fname, filter_set_fname, phenotype, chrom, start_pos, end_pos, p_cutoff, mac, use_PACSIN2):
-    if use_PACSIN2:
-        assert int(chrom) == 22
-
+def choose_vars(readme_fname, outcols_fname, str_associations_fname, snp_associations_fname, filter_set_fname, phenotype, chrom, start_pos, end_pos, p_cutoff, mac):
     if mac:
         mac_threshold = int(mac[0])
         snp_mac_fname = mac[1]
@@ -53,25 +50,26 @@ def choose_vars(readme_fname, outcols_fname, str_associations_fname, snp_associa
     strs_to_include = set()
     snps_to_include = set()
 
-    strs_to_include = pl.scan_csv(
-        str_associations_fname,
-        sep='\t'
-    ).filter(
-        (pl.col('chrom') == chrom) &
-        (pl.col('pos') >= start_pos) &
-        (pl.col('pos') <= end_pos) &
-        (pl.col(f'p_{phenotype}') <= p_cutoff)
-    ).filter(
-        # STRs with duplicate loci that shouldn't have been in the reference panel
-        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
-        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
-        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
-        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
-        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
-    ).select(pl.col('pos')).collect().to_numpy().flatten()
+    if str_associations_fname != "None":
+        strs_to_include = pl.scan_csv(
+            str_associations_fname,
+            sep='\t'
+        ).filter(
+            (pl.col('chrom') == chrom) &
+            (pl.col('pos') >= start_pos) &
+            (pl.col('pos') <= end_pos) &
+            (pl.col(f'p_{phenotype}') <= p_cutoff)
+        ).filter(
+            # STRs with duplicate loci that shouldn't have been in the reference panel
+            ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+            ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+            ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+            ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+            ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+        ).select(pl.col('pos')).collect().to_numpy().flatten()
 
-    if mac:
-        strs_to_include = strs_to_include[~np.isin(strs_to_include, strs_exclude_mac)]
+        if mac:
+            strs_to_include = strs_to_include[~np.isin(strs_to_include, strs_exclude_mac)]
 
     snps_to_filter = set()
     snps_to_filter = pl.scan_csv(
@@ -113,25 +111,27 @@ def choose_vars(readme_fname, outcols_fname, str_associations_fname, snp_associa
         snps_to_include = [snps_to_include[idx] for idx in np.where(~np.isin(snps_to_include, snps_exclude_mac))[0]]
 
     snp_sort_tuples = set((pos, 'SNP', ref, alt) for (pos, ref, alt) in snps_to_include)
-    str_sort_tuples = set((pos, 'STR') for pos in strs_to_include)
 
-    vars_ = snp_sort_tuples.union(str_sort_tuples)
-    if use_PACSIN2:
-        vars_.remove((43385872, 'STR'))
-        vars_.add((43385866, 'PACSIN2_STR'))
-        vars_.add((43385875, 'PACSIN2_STR'))
-        vars_.add((43385893, 'PACSIN2_STR'))
+    if str_associations_fname != "None":
+        str_sort_tuples = set((pos, 'STR') for pos in strs_to_include)
+        vars_ = snp_sort_tuples.union(str_sort_tuples)
+
+    else:
+        vars_ = snp_sort_tuples
+
     sorted_vars = sorted(vars_)
     sorted_var_names =  [
         f'STR_{tuple[0]}' if tuple[1] == 'STR'
         else f'SNP_{tuple[0]}_{tuple[2]}_{tuple[3]}' if tuple[1] == 'SNP'
-        else f'PACSIN2_STR_{tuple[0]}' if tuple[1] == 'PACSIN2_STR'
         else None # break the sort
         for tuple in sorted_vars
     ]
     assert len(set(sorted_var_names)) == len(sorted_var_names) # make sure is unique
 
-    print(f'# STRs: {len(strs_to_include)} # SNPs: {len(snps_to_include)}', flush=True)
+    if str_associations_fname != "None":
+        print(f'# STRs: {len(strs_to_include)} # SNPs: {len(snps_to_include)}', flush=True)
+    else:
+        print(f'Not including STRs. # SNPs: {len(snps_to_include)}', flush=True)
 
     with open(outcols_fname, 'w') as colfile:
         for var_name in sorted_var_names:
@@ -150,7 +150,6 @@ if __name__ == '__main__':
     parser.add_argument('end', type=int)
     parser.add_argument('--threshold', default=5e-4, type=float)
     parser.add_argument('--mac', nargs=3, default=None)
-    parser.add_argument('--three-PACSIN2-STRs', action='store_true', default=False)
     args = parser.parse_args()
 
-    choose_vars(args.readme, args.outcols, args.str_associations, args.snp_associations, args.filter_set_fname, args.phenotype, args.chrom, args.start, args.end, args.threshold, args.mac, args.three_PACSIN2_STRs)
+    choose_vars(args.readme, args.outcols, args.str_associations, args.snp_associations, args.filter_set_fname, args.phenotype, args.chrom, args.start, args.end, args.threshold, args.mac)

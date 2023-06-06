@@ -14,7 +14,6 @@ import sklearn.linear_model
 import load_and_filter_genotypes as lfg
 import python_array_utils as utils
 import sample_utils
-#import load_PACSIN2
 
 def get_str_dosages(str_dosages_dict):
     return np.sum([_len*np.sum(dosages, axis=1) for
@@ -22,6 +21,7 @@ def get_str_dosages(str_dosages_dict):
 
 def store_values(gts_dset, stored_indexes, gt_temp, covars, take_residuals):
     assert not np.any(np.isnan(gt_temp))
+    take_residuals = take_residuals and covars.shape[1] > 0
     if take_residuals:
         residuals = gt_temp - sklearn.linear_model.LinearRegression().fit(covars, gt_temp).predict(covars)
         for count, idx in enumerate(stored_indexes):
@@ -47,9 +47,10 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
     n_samples = np.sum(sample_idx)
 
     if pheno_fname:
-        pheno_covars = np.load(pheno_fname)#f'{ukb}/traits/subset_transformed_phenotypes/white_brits/{phenotype}.npy')
-        shared_covars = np.load(shared_covars_fname)#f'{ukb}/traits/shared_covars/shared_covars.npy')
-        covars = utils.merge_arrays(pheno_covars, shared_covars)
+        covars = np.load(pheno_fname)
+        if shared_covars_fname:
+            shared_covars = np.load(shared_covars_fname)
+            covars = utils.merge_arrays(covars, shared_covars)
 
         # reorder samples to the proper order
         ordered_samples = sample_utils.get_ordered_samples(all_samples_fname, phenotype_samples_fname)
@@ -57,13 +58,17 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
         pheno_vals = covars[:, 1]
         covars = covars[:, 2:]
 
-        # standardize covars for numerical stability
-        stds = covars.std(axis = 0)
-        stds[stds == 0] = 1 # for covariates which are constant, simply ignore them
-        covars = (covars - covars.mean(axis = 0))/stds
+        if covars.shape[1] > 0:
+            # standardize covars for numerical stability
+            stds = covars.std(axis = 0)
+            stds[stds == 0] = 1 # for covariates which are constant, simply ignore them
+            covars = (covars - covars.mean(axis = 0))/stds
 
-        print("Regressing phentoypes ... ",  flush=True)
-        pheno_residuals = pheno_vals - sklearn.linear_model.LinearRegression().fit(covars, pheno_vals).predict(covars)
+            print("Regressing phentoypes ... ",  flush=True)
+            pheno_residuals = pheno_vals - sklearn.linear_model.LinearRegression().fit(covars, pheno_vals).predict(covars)
+        else:
+            pheno_residuals = pheno_vals
+
         with h5py.File(pheno_out, 'w') as pheno_residuals_file:
             pheno_residuals_dset = pheno_residuals_file.create_dataset(
                 'pheno_residuals', pheno_residuals.shape, dtype='f'
@@ -82,7 +87,6 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
     
     strs_to_include = set()
     snps_to_include = set()
-    pacsin2_vars = set()
     for varname in varnames:
         if varname[:3] == 'STR':
             strs_to_include.add(int(varname.split('_', 1)[1]))
@@ -90,9 +94,6 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
             splits = varname.split('_')
             assert len(splits) == 4
             snps_to_include.add((int(splits[1]), splits[2], splits[3]))
-        else:
-            assert varname[:7] == 'PACSIN2'
-            pacsin2_vars.add(int(varname.split('_', 2)[2]))
     print(f'# STRs: {len(strs_to_include)} # SNPs: {len(snps_to_include)}', flush=True)
 
     var_inclusion = { var_name : False for var_name in varnames }
@@ -117,37 +118,6 @@ def load_gts(readme_fname, gts_fname, str_vcf, snp_bgen, varname_fname, all_samp
         n_temp = 10
         gt_temp = np.full((n_samples, n_temp), np.nan)
         stored_indexes = []
-
-        if len(pacsin2_vars) > 0:
-            if not pheno_fname:
-                print('loading PACSIN2 STRs ... ', flush=True)
-            else:
-                print('loading and regressing PACSIN2 STRs ... ', flush=True)
-            PACSIN2_count = 0
-            PACSIN2_itr = load_PACSIN2.get_gt_itr(sample_idx)
-            next(PACSIN2_itr) # skip details
-            for (PACSIN2_dosages_or_best_guess, _, _, PACSIN2_pos, _, _) in PACSIN2_itr:
-                if PACSIN2_pos not in pacsin2_vars:
-                    continue
-                PACSIN2_count += 1
-                PACSIN2_name = f'PACSIN2_STR_{PACSIN2_pos}'
-                assert PACSIN2_name in varnames
-                del var_inclusion[PACSIN2_name]
-                idx = varnames.index(PACSIN2_name)
-                stored_indexes.append(idx)
-                if not best_guess:
-                    gts = get_str_dosages(PACSIN2_dosages_or_best_guess)
-                else:
-                    gts = np.sum(PACSIN2_dosages_or_best_guess, axis=1)
-
-                gt_temp[:, (PACSIN2_count - 1) % n_temp] = gts
-
-            assert np.all(np.isnan(gt_temp[:, len(stored_indexes):]))
-            gt_temp = gt_temp[:, :len(stored_indexes)]
-            store_values(gts_dset, stored_indexes, gt_temp, covars, pheno_fname)
-            print('done!', flush=True)
-            gt_temp = np.full((n_samples, n_temp), np.nan)
-            stored_indexes = []
 
         if pheno_fname:
             print('loading and regressing STRs... ', flush=True)
@@ -282,7 +252,9 @@ if __name__ == '__main__':
     parser.add_argument('--best-guess', action='store_true')
     args = parser.parse_args()
 
-    assert bool(args.pheno_fname) == bool(args.shared_covars_fname) == bool(args.pheno_out)
+    assert bool(args.pheno_fname) == bool(args.pheno_out)
+    if bool(args.shared_covars_fname):
+        assert bool(args.pheno_fname)
 
     with tempfile.TemporaryDirectory(prefix='finemapping_load_gts', dir='.') as tempdir:
         print(f'tempdir name: {tempdir}', flush=True)

@@ -94,6 +94,52 @@ task phenotype_names {
 			"vitamin_d",
 			"white_blood_cell_count",
 		]
+    Map[String, Int] idxs = [
+			"alanine_aminotransferase": 0,
+			"albumin": 1,
+			"alkaline_phosphatase": 2,
+			"apolipoprotein_a": 3,
+			"apolipoprotein_b": 4,
+			"aspartate_aminotransferase": 5,
+			"c_reactive_protein": 6,
+			"calcium": 7,
+			"cholesterol": 8,
+			"creatinine": 9,
+			"cystatin_c": 10,
+			"eosinophil_count": 11,
+			"eosinophil_percent": 12,
+			"gamma_glutamyltransferase": 13,
+			"glucose": 14,
+			"glycated_haemoglobin": 15,
+			"haematocrit": 16,
+			"haemoglobin_concentration": 17,
+			"hdl_cholesterol": 18,
+			"igf_1": 19,
+			"ldl_cholesterol_direct": 20,
+			"lymphocyte_count": 21,
+			"lymphocyte_percent": 22,
+			"mean_corpuscular_haemoglobin": 23,
+			"mean_corpuscular_haemoglobin_concentration": 24,
+			"mean_corpuscular_volume": 25,
+			"mean_platelet_volume": 26,
+			"mean_sphered_cell_volume": 27,
+			"neutrophil_count": 28,
+			"neutrophil_percent": 29,
+			"phosphate": 30,
+			"platelet_count": 31,
+			"platelet_crit": 32,
+			"platelet_distribution_width": 33,
+			"red_blood_cell_count": 34,
+			"red_blood_cell_distribution_width": 35,
+			"shbg": 36,
+			"total_bilirubin": 37,
+			"total_protein": 38,
+			"triglycerides": 39,
+			"urate": 40,
+			"urea": 41,
+			"vitamin_d": 42,
+			"white_blood_cell_count": 43,
+		]
     Array[String] unit = [
       "U/L",
 			"g/L",
@@ -197,8 +243,6 @@ task phenotype_names {
     memory: "2GB"
   }
 }
-
-# TODO struct for phenotypes?
 
 ####################### Helper tasks ###########################
 
@@ -933,8 +977,8 @@ task regional_my_str_gwas {
     File sample_utils = "~{script_dir}/association/sample_utils.py"
 
     VCF str_vcf
-    File shared_covars # from task
-    File untransformed_phenotype # from task
+    File? shared_covars # from task
+    File? untransformed_phenotype # from task
     File transformed_phenotype # from task
     File? conditional_covars # from task
     File all_samples_list
@@ -943,6 +987,7 @@ task regional_my_str_gwas {
     region? bounds
     File? vars_file
     String phenotype_name
+    Boolean no_details = false
   }
 
   output {
@@ -961,13 +1006,14 @@ task regional_my_str_gwas {
       ~{if defined(bounds) then "--region ~{select_first([bounds]).chrom}:~{select_first([bounds]).start}-~{select_first([bounds]).end}" else ""} \
       ~{"--vars-file " + vars_file} \
       --pheno-and-covars ~{transformed_phenotype} \
-      --shared-covars ~{shared_covars} \
-      --untransformed-phenotypes ~{untransformed_phenotype} \
+      ~{"--shared-covars" + shared_covars} \
+      ~{if no_details then "" else "--untransformed-phenotypes ~{select_first([untransformed_phenotype])}"} \
       ~{"--conditional-covars " + conditional_covars} \
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
       --temp-dir . \
-      ~{if is_binary then "--binary " + binary_type else ""}
+      ~{if is_binary then "--binary " + binary_type else ""} \
+      ~{if no_details then "--no-details" else ""}
   >>>
 
   runtime {
@@ -1097,8 +1143,8 @@ task prep_plink_input {
     File script = "~{script_dir}/association/prep_plink_input.py"
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
 
-    File shared_covars # from task
-    File shared_covar_names # from task
+    File? shared_covars # from task
+    File? shared_covar_names # from task
     File transformed_phenotype # from task
     File pheno_covar_names # from task
     File? conditional_genotypes # npy from task prep conditional input
@@ -1120,7 +1166,7 @@ task prep_plink_input {
       ~{transformed_phenotype} \
       ~{pheno_covar_names} \
       ~{shared_covars} \
-      ~{shared_covar_names}
+      ~{shared_covar_names} \
       ~{"--conditional-genotypes " + conditional_genotypes} \
       ~{"--conditional-covar-names " + conditional_covar_names} \
       ~{if is_binary then "--binary " + binary_type else ""}
@@ -1133,8 +1179,7 @@ task prep_plink_input {
   }
 }
 
-# TODO regional plink snp association
-task chromosomal_plink_snp_association {
+task plink_snp_association {
   input {
     String script_dir
     File script = "~{script_dir}/association/plink_association.sh"
@@ -1144,6 +1189,8 @@ task chromosomal_plink_snp_association {
     File pheno_data # from task
 
     Int chrom
+    Int? start
+    Int? end
     String phenotype_name
     String binary_type # linear or linear_binary or logistic
   }
@@ -1162,6 +1209,8 @@ task chromosomal_plink_snp_association {
     P_FILE=$(echo ~{imputed_snp_p_file.pgen} | sed -e 's/\.pgen$//') \
     PLINK_EXECUTABLE=~{plink_command} \
     PROJECT_TEMP=. \
+    ~{"START=" + start} \
+    ~{"END=" + end} \
     envsetup ~{script}
   >>>
 
@@ -1176,8 +1225,56 @@ task chromosomal_plink_snp_association {
 ## TODO append mfi to plink logistic run
 ## TODO compare my to plink GWAS
 
-# TODO , also many variants
-# and conditional and peaks
+task manhattan {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/interactive_manhattan_plot.py"
+    File region_plots = "~{script_dir}/association/region_plots.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
+
+    String phenotype_name
+    String unit
+    File chr_lens
+    File str_gwas_results
+    File snp_gwas_results
+    region? bounds
+    Array[Int] conditioned_STRs
+    Array[String] conditioned_imputed_SNPs
+    File? conditional_str_results
+    File? conditional_snp_results
+    File? peaks
+    String ext
+  }
+
+  output {
+    File plot = "manhattan.~{ext}"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      "manhattan.~{ext}" \
+      ~{phenotype_name} \
+      ~{unit} \
+      ~{chr_lens} \
+      ~{str_gwas_results} \
+      ~{snp_gwas_results} \
+      ~{ext} \
+      ~{if defined(bounds) then "--chrom ~{select_first([bounds]).chrom}" else ""} \
+      ~{if defined(bounds) then "--start ~{select_first([bounds]).start}" else ""} \
+      ~{if defined(bounds) then "--end ~{select_first([bounds]).end}" else ""} \
+      ~{if length(conditioned_STRs) > 0 then "--conditioned-STRs ~{sep=" " conditioned_STRs}" else ""} \
+      ~{if length(conditioned_imputed_SNPs) > 0 then "--conditioned-imputed-SNPs ~{sep=" " conditioned_imputed_SNPs}" else ""} \
+      ~{"--conditional-STR-results " + conditional_str_results} \
+      ~{"--conditional-SNP-results " + conditional_snp_results} \
+      ~{"--peaks-fname" + peaks} \
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    memory: "50GB"
+  }
+}
 
 task generate_peaks {
   input {

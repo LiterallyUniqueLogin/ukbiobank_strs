@@ -11,8 +11,8 @@ parser.add_argument('outloc')
 parser.add_argument('phenotype')
 parser.add_argument('transformed_phenotype_file')
 parser.add_argument('pheno_covar_names')
-parser.add_argument('shared_covar_file')
-parser.add_argument('shared_covar_names')
+parser.add_argument('shared_covar_file', nargs='?')
+parser.add_argument('shared_covar_names', nargs='?')
 parser.add_argument('--conditional-genotypes')
 parser.add_argument('--conditional-covar-names')
 parser.add_argument('--binary', default=False, choices={'logistic', 'linear'})
@@ -22,14 +22,17 @@ assert bool(args.conditional_genotypes) == bool(args.conditional_covar_names)
 
 phenotype = args.phenotype
 
-shared_covars = np.load(args.shared_covar_file)
-
 subset_transformed_phenotype = np.load(args.transformed_phenotype_file)
 
-data = utils.merge_arrays(
-    subset_transformed_phenotype,
-    shared_covars
-)
+if args.shared_covar_file:
+    shared_covars = np.load(args.shared_covar_file)
+    data = utils.merge_arrays(
+        subset_transformed_phenotype,
+        shared_covars
+    )
+else:
+    data = subset_transformed_phenotype
+
 data = data[np.all(~np.isnan(data), axis=1), :]
 data = np.concatenate((data[:, 0:1], data), axis=1)
 
@@ -58,12 +61,13 @@ with open(args.pheno_covar_names) as pheno_names_file:
             continue
         col_names.append(line)
 
-with open(args.shared_covar_names) as covar_names_file:
-    for line in covar_names_file:
-        line = line.strip()
-        if line == '':
-            continue
-        col_names.append(line)
+if args.shared_covar_names:
+    with open(args.shared_covar_names) as covar_names_file:
+        for line in covar_names_file:
+            line = line.strip()
+            if line == '':
+                continue
+            col_names.append(line)
 
 if not args.binary:
     suffix = ''

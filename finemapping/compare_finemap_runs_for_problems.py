@@ -13,6 +13,8 @@ paths = [
     'n_configs_100_rep2',
     'n_configs_fixed_rep1',
     'n_configs_fixed_rep2',
+    'stable_attempt_rep1',
+    'stable_attempt_rep2',
 ]
 paths = [f'{ukb}/temp/finemap_probs/first_pass_df_{path}.tab' for path in paths]
 
@@ -20,7 +22,9 @@ for comp, path_idx1, path_idx2, in [
     ('old v new', 0, 1),
     ('two reps 100', 1, 2),
     ('100 vs fixed', 2, 3),
-    ('two reps fixed', 3, 4)
+    ('two reps fixed', 3, 4),
+    ('stable attempt vs fixed', 4, 5),
+    ('two reps stable attempt', 5, 6)
 ]:
     print(f'\n---------{comp}----------')
     dfs = []

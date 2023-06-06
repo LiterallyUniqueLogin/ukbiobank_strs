@@ -7,15 +7,13 @@ import polars as pl
 
 import sample_utils
 
-def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_results_fname, filter_set_fname, samples_fname, readme, phenotype, chrom, start, end, inclusion_threshold, mac, snp_str_ratio, total_prob, use_PACSIN2):
+def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_results_fname, filter_set_fname, samples_fname, readme, phenotype, chrom, start, end, inclusion_threshold, mac, snp_str_ratio, total_prob):
     '''
     write README.txt
     write finemap_input.z
     write finemap_input.master
     '''
 
-    #sample_idx = sample_utils.get_samples_idx_phenotype('white_brits', phenotype)
-    #n_samples = np.sum(sample_idx)
     n_samples = sample_utils.n_samples(samples_fname)
 
     if mac:
@@ -42,10 +40,6 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             'pos'
         ).collect()['pos'].to_list()
 
-    #plink_results_fname = f'{ukb}/association/results/{phenotype}/plink_snp/results.tab'
-    #str_results_fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    #filter_set_fname = f'{ukb}/finemapping/str_imp_snp_overlaps/chr{chrom}_to_filter.tab'
-
     with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
         finemap_master.write(
             'z;ld;snp;config;cred;log;n_samples\n'
@@ -70,71 +64,52 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
     )
 
     # load STRs
-    strs = pl.scan_csv(
-        str_results_fname, sep='\t', dtypes={'locus_filtered': str}
-    ).filter(
-        (pl.col('chrom') == chrom) &
-        (pl.col('pos') >= start) &
-        (pl.col('pos') <= end) &
-        (pl.col('locus_filtered') == 'False') &
-        (pl.col(f'p_{phenotype}') < inclusion_threshold)
-    ).filter(
-        # STRs with duplicate loci that shouldn't have been in the reference panel
-        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
-        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
-        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
-        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
-        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
-    ).collect()
-    if strs.shape[0] > 0:
-        strs = strs.select([
-            ('STR_' + pl.col('pos').cast(str)).alias('rsid'),
-            ('0' + pl.col('chrom').cast(str)).str.slice(-2).alias('chromosome'),
-            pl.col('pos').alias('position'),
-            pl.lit('nan').alias('allele1'),
-            pl.lit('nan').alias('allele2'),
-            pl.lit('nan').alias('maf'),
-            pl.col(f'coeff_{phenotype}').alias('beta'),
-            pl.col(f'se_{phenotype}').alias('se')
-        ])
-    else:
-        strs = strs.select([
-            pl.lit('empty').alias('rsid'),
-            pl.lit('empty').alias('chromosome'),
-            pl.col('pos').alias('position'),
-            pl.lit('nan').alias('allele1'),
-            pl.lit('nan').alias('allele2'),
-            pl.lit('nan').alias('maf'),
-            pl.col(f'coeff_{phenotype}').alias('beta'),
-            pl.col(f'se_{phenotype}').alias('se')
-        ])
-
-    if mac:
-        strs = strs.filter(~pl.col('position').is_in(strs_exclude_mac))
-
-    if use_PACSIN2:
-        strs = strs.filter(
-            pl.col('pos') != 43385872
-        )
-        pacsin2_strs = pl.read_csv(
-            f'{ukb}/association/spot_test/white_brits/{phenotype}/PACSIN2.tab',
-            sep='\t'
+    if str_results_fname != "None":
+        strs = pl.scan_csv(
+            str_results_fname, sep='\t', dtypes={'locus_filtered': str}
         ).filter(
-            pl.col('pos').is_in([43385866, 43385875, 43385893])
-        ).select([
-            ('PACSIN2_STR_' + pl.col('pos').cast(str)).alias('rsid'),
-            ('0' + pl.col('chrom').cast(str)).str.slice(-2).alias('chromosome'),
-            pl.col('pos').alias('position'),
-            pl.lit('nan').alias('allele1'),
-            pl.lit('nan').alias('allele2'),
-            pl.lit('nan').alias('maf'),
-            pl.col(f'coeff_{phenotype}').alias('beta'),
-            pl.col(f'se_{phenotype}').alias('se'),
-        ])
-        strs = pl.concat([strs, pacsin2_strs])
-    assert strs.unique(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
+            (pl.col('chrom') == chrom) &
+            (pl.col('pos') >= start) &
+            (pl.col('pos') <= end) &
+            (pl.col('locus_filtered') == 'False') &
+            (pl.col(f'p_{phenotype}') < inclusion_threshold)
+        ).filter(
+            # STRs with duplicate loci that shouldn't have been in the reference panel
+            ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+            ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+            ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+            ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+            ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+        ).collect()
+        if strs.shape[0] > 0:
+            strs = strs.select([
+                ('STR_' + pl.col('pos').cast(str)).alias('rsid'),
+                ('0' + pl.col('chrom').cast(str)).str.slice(-2).alias('chromosome'),
+                pl.col('pos').alias('position'),
+                pl.lit('nan').alias('allele1'),
+                pl.lit('nan').alias('allele2'),
+                pl.lit('nan').alias('maf'),
+                pl.col(f'coeff_{phenotype}').alias('beta'),
+                pl.col(f'se_{phenotype}').alias('se')
+            ])
+        else:
+            strs = strs.select([
+                pl.lit('empty').alias('rsid'),
+                pl.lit('empty').alias('chromosome'),
+                pl.col('pos').alias('position'),
+                pl.lit('nan').alias('allele1'),
+                pl.lit('nan').alias('allele2'),
+                pl.lit('nan').alias('maf'),
+                pl.col(f'coeff_{phenotype}').alias('beta'),
+                pl.col(f'se_{phenotype}').alias('se')
+            ])
 
-    n_strs = strs.shape[0]
+        if mac:
+            strs = strs.filter(~pl.col('position').is_in(strs_exclude_mac))
+
+        assert strs.unique(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
+
+        n_strs = strs.shape[0]
 
     # load SNPs
     snps_to_filter = set()
@@ -177,7 +152,10 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             pl.lit(snp_str_ratio/(n_strs + snp_str_ratio*n_snps)).alias('prob')
         )
 
-    vars_df = pl.concat([strs, snps])
+    if str_results_fname != "None":
+        vars_df = pl.concat([strs, snps])
+    else:
+        vars_df = snps
 
     if total_prob is not None:
         vars_df = vars_df.with_column(
@@ -200,7 +178,6 @@ def main():
     parser.add_argument('end_pos', type=int)
     parser.add_argument('--snp-str-ratio', type=float, default=None)
     parser.add_argument('--total-prob', type=float, default=None)
-    parser.add_argument('--three-PACSIN2-STRs', action='store_true', default=False)
     parser.add_argument('--inclusion-threshold', type=float, default=0.05)
     parser.add_argument('--mac', nargs=3, default=None)
     args = parser.parse_args()
@@ -216,7 +193,7 @@ def main():
     outdir = args.outdir
     gts_dir= args.gts_dir
     with open(f'{outdir}/README.txt', 'w') as readme:
-        write_input_variants(outdir, outdir, gts_dir, args.plink_results, args.str_results, args.variants_to_filter, args.samples_fname, readme, phenotype, chrom, start_pos, end_pos, args.inclusion_threshold, args.mac, args.snp_str_ratio, args.total_prob, args.three_PACSIN2_STRs)
+        write_input_variants(outdir, outdir, gts_dir, args.plink_results, args.str_results, args.variants_to_filter, args.samples_fname, readme, phenotype, chrom, start_pos, end_pos, args.inclusion_threshold, args.mac, args.snp_str_ratio, args.total_prob)
 
 if __name__ == '__main__':
     main()

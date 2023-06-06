@@ -32,5 +32,6 @@ task extract_field {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "5h"
+    memory: "2GB"
   }
 }

@@ -11,7 +11,7 @@ workflow retryable_susie_load_gts {
     File all_samples
     File phenotype_samples
     File pheno_data
-    File shared_covars
+    File? shared_covars
 
     File colnames
     String phenotype_name
@@ -54,11 +54,8 @@ workflow retryable_susie_load_gts {
   }
 
   output {
-#    File gts_h5 = select_first([try_zero.gts_h5])
-#    File pheno_residuals_h5 = select_first([try_zero.pheno_residuals_h5])
-#    File readme = select_first([try_zero.readme])
     File gts_h5 = select_first([try_zero.gts_h5, try_one.gts_h5])
-    File pheno_residuals_h5 = select_first([try_zero.pheno_residuals_h5, try_one.pheno_residuals_h5])
     File readme = select_first([try_zero.readme, try_one.readme])
+    File pheno_residuals_h5 = select_first([try_zero.pheno_residuals_h5, try_one.pheno_residuals_h5])
   }
 }
