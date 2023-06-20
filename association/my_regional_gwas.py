@@ -447,7 +447,7 @@ def main():
         (args.temp_dir is None)
     )
 
-    if not args.no_details:
+    if not args.no_details and not args.readme:
         assert args.untransformed_phenotypes is not None
 
     if args.conditional_covars is not None:

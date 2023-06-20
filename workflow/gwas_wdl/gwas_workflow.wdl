@@ -195,7 +195,15 @@ workflow gwas {
     thresh = "5e-8"
   }
 
-  # TODO overview manhattan
+  call gwas_tasks.overview_manhattan as overivew_manhattan_ { input :
+    script_dir = script_dir,
+    phenotype_name = phenotype_name,
+    chr_lens = chr_lens,
+    str_gwas_results = my_str_gwas_.tsv,
+    snp_gwas_results = plink_snp_association.tsv,
+    peaks = overview_manhattan_peaks.peaks,
+    ext = "png"
+  }
 
   call gwas_tasks.generate_finemapping_regions { input :
     script_dir = script_dir,
@@ -258,6 +266,7 @@ workflow gwas {
     File plink_snp_gwas = plink_snp_association.tsv
     File peaks = generate_peaks.peaks
     File peaks_readme = generate_peaks.readme
+    File overview_manhattan = overview_manhattan_.plot
     File finemapping_regions = generate_finemapping_regions.data
     File finemapping_regions_readme = generate_finemapping_regions.readme
 	  Array[File] ethnic_my_str_gwas = ethnic_my_str_gwas_.tsv

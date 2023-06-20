@@ -117,7 +117,7 @@ def main():
                 sep='\t',
                 dtypes={'locus_filtered': str},
             ).filter(
-                (pl.col('chrom') == args.chrom) & (pl.col('pos') == args.pos)
+                (pl.col('chrom').cast(str) == args.chrom) & (pl.col('pos') == args.pos)
             ).collect().select([ # have to collect first due to some sort of bug
                 small_ci_col,
                 pheno_col,

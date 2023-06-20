@@ -6,7 +6,6 @@ import numpy as np
 
 import load_and_filter_genotypes as lfg
 import sample_utils
-#import load_PACSIN2
 
 def process_STR(itr, pos):
     try:
@@ -14,7 +13,6 @@ def process_STR(itr, pos):
     except StopIteration as si:
         raise ValueError(f"Did not find a STR at position {pos}") from si
 
-    assert int(pos) == int(found_pos)
     if locus_filtered:
         raise ValueError(f"STR at position {pos} was filtered for reason {locus_filtered}")
 
@@ -32,14 +30,6 @@ def process_STR(itr, pos):
     this_var_gts = (this_var_gts - np.mean(this_var_gts))/np.std(this_var_gts)
     return (this_var_gts, f"STR_{pos}")
 
-def PACSIN2_itr(pos):
-    itr = load_PACSIN2.get_gt_itr(slice(None))
-    next(itr)
-    for dosage_dict, unique_alleles, chrom, found_pos, locus_filtered, locus_details in itr:
-        if found_pos != pos:
-            continue
-        yield (dosage_dict, unique_alleles, chrom,  found_pos, locus_filtered, locus_details)
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outprefix')
@@ -48,13 +38,12 @@ def main():
     parser.add_argument('--str-vcf')
     parser.add_argument('--snp-bgen')
     parser.add_argument('--snp-mfi')
-    parser.add_argument('--STRs', default=[]) # will be ignored if empty
-    parser.add_argument('--imputed-SNPs', default=[]) # will be ignored if empty
-    parser.add_argument('--PACSIN2-STRs', nargs='+', default=[])
+    parser.add_argument('--STRs', nargs='*', default=[]) # will be ignored if empty
+    parser.add_argument('--imputed-SNPs', nargs='*', default=[]) # will be ignored if empty
 
     args = parser.parse_args()
 
-    assert len(args.STRs) + len(args.imputed_SNPs) + len(args.PACSIN2_STRs) > 0
+    assert len(args.STRs) + len(args.imputed_SNPs)
 
     if len(args.STRs) > 0:
         assert args.str_vcf
@@ -62,9 +51,6 @@ def main():
     if len(args.imputed_SNPs) > 0:
         assert args.snp_bgen
         assert args.snp_mfi
-
-    if len(args.PACSIN2_STRs) > 0:
-        assert args.chr == '22'
 
     samples_array = sample_utils.get_samples(args.all_samples).reshape(-1).astype(float)
     assert len(samples_array) == 487409
@@ -76,12 +62,6 @@ def main():
     for STR in args.STRs:
         itr = lfg.load_strs(args.str_vcf, f'{args.chr}:{STR}-{STR}', slice(None))
         next(itr) # ignore names of locus_details
-        this_gts, this_var_name = process_STR(itr, STR)
-        variant_names.append(this_var_name)
-        gts.append(this_gts)
-
-    for STR in args.PACSIN2_STRs:
-        itr = PACSIN2_itr(STR)
         this_gts, this_var_name = process_STR(itr, STR)
         variant_names.append(this_var_name)
         gts.append(this_gts)

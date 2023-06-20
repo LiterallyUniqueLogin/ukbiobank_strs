@@ -627,6 +627,7 @@ def followup_finemapping_conditions_df(
     ethnic_str_gwas_fnames,
     original_FINEMAP_outputs,
     original_SuSiE_outputs,
+    repeat_FINEMAP_outputs,
     total_prob_FINEMAP_outputs,
     derived_prior_std_FINEMAP_outputs,
     conv_tol_FINEMAP_outputs,
@@ -699,6 +700,8 @@ def followup_finemapping_conditions_df(
         for original_FINEMAP_output in original_FINEMAP_outputs
         if any([original_FINEMAP_output.region == mac_FINEMAP_output.region for mac_FINEMAP_output in mac_FINEMAP_outputs])
     ])
+    print('repeat FINEMAP')
+    repeat_finemaps            = load_finemap(repeat_FINEMAP_outputs)
     print('ratio FINEMAP')
     ratio_finemaps             = load_finemap(ratio_FINEMAP_outputs)
     print('total prob FINEMAP')
@@ -717,6 +720,11 @@ def followup_finemapping_conditions_df(
     print('Collecting ... ', end='', flush=True)
     start = time.time()
     pheno_df = original_finemaps.join(
+        repeat_finemaps,
+        how='outer',
+        on=['chrom', 'varname'],
+        suffix='_repeat'
+    ).drop('region_repeat').join(
         ratio_finemaps,
         how='outer',
         on=['chrom', 'varname'],
@@ -797,6 +805,7 @@ def followup_finemapping_conditions_df(
         'susie_alpha_ratio',
         'susie_pip_ratio',
         'finemap_pip',
+        'finemap_pip_repeat',
         'finemap_pip_ratio',
         'finemap_pip_total_prob',
         'finemap_pip_prior_std_derived',
@@ -810,20 +819,12 @@ def followup_finemapping_conditions_df(
     )
 
     # manually fix the APOB locus results
-    def apob_locus():
-        return pl.col('pos') == 21266752
-    if phenotype == 'apolipoprotein_b':
+    if phenotype == 'apolipoprotein_b' or phenotype == 'ldl_cholesterol_direct':
+        snp_rec = pheno_df.filter(pl.col('varname') == 'SNP_21266774_GGCAGCGCCA_G')
+        fix_columns = [column for column in pheno_df.columns if 'susie_alpha' in column or 'finemap_pip' in column]
         pheno_df = pheno_df.with_columns([
-            pl.when(~apob_locus()).then(pl.col('susie_alpha')).otherwise(0.994568),
-            pl.when(~apob_locus()).then(pl.col('susie_alpha_best_guess')).otherwise(0.9765144),
-            pl.when(~apob_locus()).then(pl.col('finemap_pip_total_prob')).otherwise(0.884233 + 0.0728702),
-            pl.when(~apob_locus()).then(pl.col('susie_alpha_ratio')).otherwise(0.9779266),
-            pl.when(~apob_locus()).then(pl.col('finemap_pip_prior_std_low')).otherwise(0.347805 + 0.652195),
-        ])
-    elif phenotype == 'ldl_cholesterol_direct':
-        pheno_df = pheno_df.with_columns([
-            pl.when(~apob_locus()).then(pl.col('susie_alpha_best_guess')).otherwise(0.9751951),
-            pl.when(~apob_locus()).then(pl.col('finemap_pip_ratio')).otherwise(1),
+            pl.when(pl.col('pos') != 21266752).then(pl.col(column)).otherwise(pl.col(column) + snp_rec[0, column])
+            for column in fix_columns
         ])
 
     pheno_df.write_csv(f'{outdir}/finemapping_followup_concordance_{phenotype}.tab', sep='\t')
@@ -876,6 +877,10 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
     finemap_cols = total_df.select([
         pl.col('^finemap_pip.*$')
     ]).columns
+    check_cols = [col for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]
+    check_all_cols = susie_cols + finemap_cols
+    assert len(check_cols) == 9, check_cols
+    assert len(check_all_cols) == 12, check_all_cols
 
     total_df.filter(
         pl.col('is_STR') &
@@ -883,30 +888,26 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
         (pl.col('susie_alpha') >= .8) &
         (pl.col('finemap_pip') >= .8)
     ).drop('is_STR').write_csv(f'{intermediate_dir}/doubly_finemapped_STRs.tab', sep='\t')
-    # was original_causal_STR_candidates.tab
 
     pass_all_threshes = total_df.filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
-        (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols if 'ratio' not in col and 'prior_std_low' not in col]) == 8)
+        (pl.sum([(pl.col(col) >= .8).cast(int) for col in check_cols]) == len(check_cols))
     ).drop([
         'susie_cs', 'susie_cs_best_guess', 'susie_cs_ratio', 'is_STR', 'varname'
     ]).write_csv(f'{intermediate_dir}/confidently_finemapped_STRs.tab', sep='\t')
-    # was concordant_causal_STR_candidates.tab
 
     total_df.filter(
         pl.col('is_STR') &
         (pl.col('p_val') <= 1e-10) &
-        (pl.sum([(pl.col(col) >= .8).cast(int) for col in susie_cols + finemap_cols]) == 11)
+        (pl.sum([(pl.col(col) >= .8).cast(int) for col in check_all_cols]) == len(check_all_cols))
     ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{intermediate_dir}/overconfidently_finemapped_STRs.tab', sep='\t')
-    # was strictly_concordant_causal_STR_candidates
 
     # concordance graphs
     for mapper, meas, suffix, y_label in [
         ('SuSiE', 'alpha', 'ratio', '4x prior on SNPs/Indels'),
         ('SuSiE', 'alpha', 'best_guess', 'best guess genotyping'),
-        ('SuSiE', 'pip', 'ratio', '4x prior on SNPs/Indels'),
-        ('SuSiE', 'pip', 'best_guess', 'best guess genotyping'),
+        ('FINEMAP', 'pip', 'repeat', 'repeated run'),
         ('FINEMAP', 'pip', 'ratio', '4x prior on SNPs/Indels'),
         ('FINEMAP', 'pip', 'conv_tol', '10x stricter convergence tolerance'),
         ('FINEMAP', 'pip', 'total_prob', 'assumption of 4 causal variants per region'),
@@ -1168,7 +1169,7 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
     )
 
     # choose col order
-    total_df = pheno_df.select([
+    pheno_df = pheno_df.select([
         'phenotype',
         'chrom',
         'region',
@@ -1186,14 +1187,24 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
         *[f'{ethnicity}_se' for ethnicity in other_ethnicities],
     ]).collect()
+
+    # manually fix the APOB locus results
+    if phenotype == 'apolipoprotein_b' or phenotype == 'ldl_cholesterol_direct':
+        snp_rec = pheno_df.filter(pl.col('varname') == 'SNP_21266774_GGCAGCGCCA_G')
+        fix_columns = [column for column in pheno_df.columns if 'susie_alpha' in column or 'finemap_pip' in column]
+        pheno_df = pheno_df.with_columns([
+            pl.when(pl.col('pos') != 21266752).then(pl.col(column)).otherwise(pl.col(column) + snp_rec[0, column])
+            for column in fix_columns
+        ])
+
     print(f'done. Time: {(time.time() - start)/60:.2f}m', flush=True)
-    total_df.write_csv(f'{outdir}/finemapping_all_regions_concordance_{phenotype}.tab', sep='\t')
+    pheno_df.write_csv(f'{outdir}/finemapping_all_regions_concordance_{phenotype}.tab', sep='\t')
     np.save(f'{outdir}/susie_all_regions_min_abs_corrs_{phenotype}.npy', np.array(min_abs_corrs))
     if should_assert:
-        assert total_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
-        assert np.all(~np.isnan(total_df['p_val'].to_numpy()))
-        # assert np.all(~np.isnan(total_df['finemap_pip'].to_numpy())) disable for the time being, only 5 snps dropped this way in hematocrit, none in the other phenotypes
-        assert np.all(1 == total_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
+        assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
+        assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
+        # assert np.all(~np.isnan(pheno_df['finemap_pip'].to_numpy())) disable for the time being, only 5 snps dropped this way in hematocrit, none in the other phenotypes
+        assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
 
 def generate_followup_regions_tsv(outdir, first_pass_df):
     pl.read_csv(
@@ -1840,6 +1851,7 @@ if __name__ == '__main__':
 
     followup_df_parser.add_argument('original_FINEMAP_outputs_tsv')
     followup_df_parser.add_argument('original_SuSiE_outputs_tsv')
+    followup_df_parser.add_argument('repeat_FINEMAP_outputs_tsv')
     followup_df_parser.add_argument('total_prob_FINEMAP_outputs_tsv')
     followup_df_parser.add_argument('derived_prior_std_FINEMAP_outputs_tsv')
     followup_df_parser.add_argument('conv_tol_FINEMAP_outputs_tsv')
@@ -1859,6 +1871,7 @@ if __name__ == '__main__':
             args.ethnic_str_gwas_results,
             tsv_to_finemap_outputs(args.original_FINEMAP_outputs_tsv),
             tsv_to_susie_outputs(args.original_SuSiE_outputs_tsv),
+            tsv_to_finemap_outputs(args.repeat_FINEMAP_outputs_tsv),
             tsv_to_finemap_outputs(args.total_prob_FINEMAP_outputs_tsv),
             tsv_to_finemap_outputs(args.derived_prior_std_FINEMAP_outputs_tsv),
             tsv_to_finemap_outputs(args.conv_tol_FINEMAP_outputs_tsv),

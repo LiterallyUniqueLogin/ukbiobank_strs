@@ -36,7 +36,8 @@ def create_source_dict(
         cols_to_skip: Set[str] = set(),
         cols_to_include: Set[str] = set(),
         chrs_to_var_signals = None,
-        start_p_val_cap = None
+        start_display_cap = None,
+        use_tstat = False
     ) -> Tuple[bokeh.models.ColumnDataSource, Dict[int, bokeh.models.ColumnDataSource]]:
     if not start_chrom:
         cds_range = range(1, 23)
@@ -50,6 +51,10 @@ def create_source_dict(
         if field not in data.dtype.names:
             print(field, flush=True)
             assert False
+    if use_tstat:
+        if 't_stat' not in data.dtype.names:
+            print('t_stat', flush=True)
+            assert False
     for chrom in cds_range:
         chrom_dict = {}
         idx = data['chr'] == chrom
@@ -62,12 +67,20 @@ def create_source_dict(
                     continue
             chrom_dict[name] = data[name][idx]
         sources[chrom] = bokeh.models.ColumnDataSource(chrom_dict)
-        if start_p_val_cap is not None:
-            sources[chrom].data['display_p_val'] = np.minimum(
-                sources[chrom].data['p_val'], start_p_val_cap
-            )
+        if start_display_cap is not None:
+            if not use_tstat:
+                sources[chrom].data['display_val'] = np.minimum(
+                    sources[chrom].data['p_val'], start_display_cap
+                )
+            else:
+                sources[chrom].data['display_val'] = np.minimum(
+                    sources[chrom].data['t_stat'], start_display_cap
+                )
         else:
-            sources[chrom].data['display_p_val'] = sources[chrom].data['p_val'].copy()
+            if not use_tstat:
+                sources[chrom].data['display_val'] = sources[chrom].data['p_val'].copy()
+            else:
+                sources[chrom].data['display_val'] = sources[chrom].data['t_stat'].copy()
 
         if chrs_to_var_signals:
             colnames_to_merge_on = list(chrs_to_var_signals[chrom].columns)[:-1]
@@ -107,7 +120,8 @@ def make_manhattan_plots(
         *,
         return_figure = False,
         legend=True,
-        chr_lens):
+        chr_lens,
+        use_tstat):
     ext = outfname.split('.')[-1]
 
     if not binary:
@@ -140,16 +154,20 @@ def make_manhattan_plots(
         'coeff_intercept',
         'R^2',
         'total_hardcall_genotypes',
-        'subset_total_hardcall_genotypes'
+        'total_best_guess_genotypes',
+        'subset_total_best_guess_genotypes'
     }
 
     sources = []
     source_dicts = []
 
     if not conditioning and not start:
-        start_p_val_cap = 30
+        if not use_tstat:
+            start_display_cap = 30
+        else:
+            start_display_cap = 10 # TODO
     else:
-        start_p_val_cap = None
+        start_display_cap = None
 
     if plot_my_str_data:
         my_str_source, my_str_sources = create_source_dict(
@@ -157,7 +175,8 @@ def make_manhattan_plots(
             chrom,
             cols_to_skip = cols_to_skip,
             chrs_to_var_signals = str_finemap_signals,
-            start_p_val_cap = start_p_val_cap
+            start_display_cap = start_display_cap,
+            use_tstat = use_tstat,
         )
         sources.append(my_str_source)
         source_dicts.append(my_str_sources)
@@ -171,7 +190,7 @@ def make_manhattan_plots(
             my_snp_data,
             chrom,
             cols_to_skip = cols_to_skip,
-            start_p_val_cap = start_p_val_cap
+            start_display_cap = start_display_cap,
         )
         sources.append(my_snp_source)
         source_dicts.append(my_snp_sources)
@@ -188,7 +207,8 @@ def make_manhattan_plots(
         plink_snp_source, plink_snp_sources = create_source_dict(
             plink_snp_data,
             chrom,
-            chrs_to_var_signals = snp_finemap_signals
+            chrs_to_var_signals = snp_finemap_signals,
+            use_tstat = use_tstat
         )
         sources.append(plink_snp_source)
         source_dicts.append(plink_snp_sources)
@@ -268,18 +288,18 @@ def make_manhattan_plots(
         assert ext == 'png'
         output_backend = 'canvas'
 
-    if start_p_val_cap is not None:
-        start_height_cap = start_p_val_cap
+    if start_display_cap is not None:
+        start_height_cap = start_display_cap
     else:
         if plot_plink_snp_data:
             plink_data = plink_snp_source.data
             start_height_cap = np.max(
-                plink_data['p_val'][(start <= plink_data['pos']) & (plink_data['pos'] <= end)]
+                plink_data['display_val'][(start <= plink_data['pos']) & (plink_data['pos'] <= end)]
             )
 
         if plot_my_str_data:
             str_data = my_str_source.data
-            included_strs = str_data['p_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]
+            included_strs = str_data['display_val'][(start <= str_data['pos']) & (str_data['pos'] <= end)]
             if included_strs.shape[0] > 0:
                 start_height_cap = max(start_height_cap, np.max(included_strs))
 
@@ -379,7 +399,7 @@ def make_manhattan_plots(
         )
         plink_snp_manhattan = manhattan_plot.circle(
             'pos',
-            'display_p_val',
+            'display_val',
             source=plink_snp_source,
             legend_label='SNPs and indels',
             color=plink_snp_color,
@@ -397,7 +417,7 @@ def make_manhattan_plots(
         )
         my_str_manhattan = manhattan_plot.square_pin(
             'pos',
-            'display_p_val',
+            'display_val',
             source=my_str_source,
             legend_label='STRs',
             color=my_str_color,
@@ -407,7 +427,7 @@ def make_manhattan_plots(
     if plot_my_snp_data:
         my_snp_manhattan = manhattan_plot.circle(
             'pos',
-            'display_p_val',
+            'display_val',
             source=my_snp_source,
             legend_label='SNPs my code',
             color=(204, 121, 167),
@@ -417,7 +437,7 @@ def make_manhattan_plots(
 #    if plot_gwas_catalog:
 #        catalog_manhattan = manhattan_plot.square(
 #            'pos',
-#            'display_p_val',
+#            'display_val',
 #            source=catalog_source,
 #            legend_label='GWAS Catalog Hits',
 #            color=(213, 94, 0),
@@ -425,44 +445,31 @@ def make_manhattan_plots(
 #            muted_alpha=0.1
 #        )
     condition_color='#CD00E0'
+    field_name = "p_val" if not use_tstat else "t_stat"
     if conditioned_isnps:
         manhattan_plot.circle(
             [snp[0] for snp in conditioned_isnps],
-            [plink_snp_data[(plink_snp_data['pos'] == snp[0]) & (plink_snp_data['ref'] == snp[1]) & (plink_snp_data['alt'] == snp[2])][0]['p_val'] for snp in conditioned_isnps],
+            [plink_snp_data[(plink_snp_data['pos'] == snp[0]) & (plink_snp_data['ref'] == snp[1]) & (plink_snp_data['alt'] == snp[2])][0][field_name] for snp in conditioned_isnps],
             legend_label='Conditioned-on variants',
             line_color='black',
             fill_color=None,
             size=20,
             line_width=3
         )
-        '''
-        manhattan_plot.circle(
-            [snp[0] for snp in conditioned_isnps],
-            [plink_snp_data[(plink_snp_data['pos'] == snp[0]) & (plink_snp_data['ref'] == snp[1]) & (plink_snp_data['alt'] == snp[2])][0]['p_val'] for snp in conditioned_isnps],
-            legend_label='Conditioned-on SNPs',
-            color=condition_color,
-            size=20
-        )
-        '''
     if conditioned_strs:
+        # window to account for flanking bps issue
+        temp_datas = [my_str_data[(my_str_data['pos'] >= str_ - 10) & (my_str_data['pos'] <= str_ + 10)] for str_ in conditioned_strs]
+        for temp_data, str_ in zip(temp_datas, conditioned_strs):
+            assert temp_data.shape[0] == 1, (my_str_data['pos'], str_, temp_data)
         manhattan_plot.circle(
             conditioned_strs,
-            [my_str_data[my_str_data['pos'] == str_][0]['p_val'] for str_ in conditioned_strs],
+            [temp_data[0][field_name] for temp_data in temp_datas],
             legend_label='Conditioned-on variants',
             line_color='black',
             fill_color=None,
             size=20,
             line_width=3
         )
-        '''
-        manhattan_plot.square_pin(
-            conditioned_strs,
-            [my_str_data[my_str_data['pos'] == str_][0]['p_val'] for str_ in conditioned_strs],
-            legend_label='Conditioned-on STRs',
-            color=condition_color,
-            size=20
-        )
-        '''
 
     if ext == 'html':
         # add hover tooltips for each manhattan plot
@@ -476,6 +483,10 @@ def make_manhattan_plots(
                 ('pos', '@pos'),
                 ('-log10(p_val) my code', '@p_val')
             ]
+            if use_tstat:
+                my_str_hover.tooltips.append(
+                    ('t_stat', '@t_stat')
+                )
             if binary:
                 my_str_hover.tooltips.append(
                     ('Using Firth penalization during regression?', '@firth')
@@ -484,6 +495,10 @@ def make_manhattan_plots(
                 my_str_hover.tooltips.append(
                     ('-log10(unconditioned_p_val) my code', '@unconditioned_p')
                 )
+                if use_tstat:
+                    my_str_hover.tooltips.append(
+                        ('unconditioned_t_stat', '@unconditioned_t_stat')
+                    )
             if str_finemap_signals:
                 my_str_hover.tooltips.append(('FINEMAP_pcausal', '@FINEMAP_pcausal{safe}'))
             str_stats_start_idx = list(my_str_data.dtype.names).index(
@@ -523,6 +538,10 @@ def make_manhattan_plots(
                 ('ID', '@id'),
                 ('-log10(p_val) Plink', '@p_val')
             ]
+            if use_tstat:
+                my_str_hover.tooltips.append(
+                    ('t_stat', '@t_stat')
+                )
             if binary == 'logistic':
                 plink_snp_hover.tooltips.append(
                     ('alt_case_count', '@alt_case_count')
@@ -537,9 +556,13 @@ def make_manhattan_plots(
                 plink_snp_hover.tooltips.append(
                     ('-log10(unconditioned_p_val) Plink', '@unconditioned_p')
                 )
-                plink_snp_hover.tooltips.append(
-                    ('plink error code', '@error')
-                )
+                if use_tstat:
+                    my_str_hover.tooltips.append(
+                        ('unconditioned_t_stat', '@unconditioned_t_stat')
+                    )
+            plink_snp_hover.tooltips.append(
+                ('plink error code', '@error')
+            )
             plink_snp_hover.tooltips.extend([
                 ('Minor allele frequency', '@maf'),
                 ('Imputation INFO', '@info')
@@ -643,22 +666,26 @@ def make_manhattan_plots(
 
     height_slider = bokeh.models.Slider(
         start = 8,
-        end=max_p_val,
+        end=max_p_val if not use_tstat else 100, #TODO
         value=start_height_cap,
         step=1,
-        title="p-value cap",
+        title="p-value cap" if not use_tstat else "t_stat cap",
         sizing_mode = 'stretch_width'
     )
     for source in sources:
         height_callback = bokeh.models.CustomJS(
-            args=dict(source=source, height_slider=height_slider),
+            args=dict(source=source, height_slider=height_slider, use_tstat = use_tstat),
             code="""
                 const data = source.data;
-                const display_p_val = data['display_p_val'];
-                const p_val= data['p_val'];
+                const display_val = data['display_val'];
+                if (!use_tstat) {
+                    const display_source= data['p_val'];
+                } else {
+                    const display_source = data['t_stat'];
+                }
                 const new_max = height_slider.value;
-                for (var i = 0; i < display_p_val.length; i++) {
-                    display_p_val[i] = Math.min(p_val[i], new_max);
+                for (var i = 0; i < display_val.length; i++) {
+                    display_val[i] = Math.min(display_source[i], new_max);
                 }
                 source.change.emit();
             """
@@ -688,16 +715,21 @@ def make_manhattan_plots(
                     height_slider = height_slider,
                     line_source = line_source,
                     chr_lens = chr_lens,
-                    range=manhattan_plot.x_range
+                    range=manhattan_plot.x_range,
+                    use_tstat = use_tstat,
                 ),
                 code = """
                     source.data = source_dict[this.value].data;
                     const data = source.data;
-                    const display_p_val = data['display_p_val'];
-                    const p_val= data['p_val'];
+                    const display_val = data['display_val'];
+                    if (!use_tstat) {
+                        const display_source= data['p_val'];
+                    } else {
+                        const display_source = data['t_stat'];
+                    }
                     const new_max = height_slider.value;
-                    for (var i = 0; i < display_p_val.length; i++) {
-                        display_p_val[i] = Math.min(p_val[i], new_max);
+                    for (var i = 0; i < display_val.length; i++) {
+                        display_val[i] = Math.min(display_source[i], new_max);
                     }
                     source.change.emit();
                     line_source.data['x'] = [0, chr_lens[this.value-1]];
@@ -848,6 +880,7 @@ def main():
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
     #parser.add_argument('--plink-snp-fname')
     parser.add_argument('--peaks-fname')
+    parser.add_argument('--use-tstat', action='store_true', default=False)
     args = parser.parse_args()
 
     phenotype = args.phenotype
@@ -1015,7 +1048,8 @@ def main():
             finemap_regions = finemap_regions,
             conditioned_isnps = conditioned_isnps,
             conditioned_strs = conditioned_strs,
-            chr_lens = chr_lens
+            chr_lens = chr_lens,
+            use_tstat = args.use_tstat,
         )
     else:
         conditioned_man = make_manhattan_plots(
@@ -1038,7 +1072,8 @@ def main():
             conditioned_strs = None,
             return_figure = True,
             legend=False,
-            chr_lens = chr_lens
+            chr_lens = chr_lens,
+            use_tstat = args.use_tstat,
         )
         unconditioned_man = make_manhattan_plots(
             f'.{args.ext}',
@@ -1059,7 +1094,8 @@ def main():
             conditioned_isnps = conditioned_isnps,
             conditioned_strs = conditioned_strs,
             return_figure = True,
-            chr_lens = chr_lens
+            chr_lens = chr_lens,
+            use_tstat = args.use_tstat,
         )
         layout = bokeh.layouts.grid([unconditioned_man, conditioned_man])
         conditioned_man.x_range = unconditioned_man.x_range

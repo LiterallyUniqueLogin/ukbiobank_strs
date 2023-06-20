@@ -94,7 +94,7 @@ task phenotype_names {
 			"vitamin_d",
 			"white_blood_cell_count",
 		]
-    Map[String, Int] idxs = [
+    Map[String, Int] idxs = {
 			"alanine_aminotransferase": 0,
 			"albumin": 1,
 			"alkaline_phosphatase": 2,
@@ -139,7 +139,7 @@ task phenotype_names {
 			"urea": 41,
 			"vitamin_d": 42,
 			"white_blood_cell_count": 43,
-		]
+		}
     Array[String] unit = [
       "U/L",
 			"g/L",
@@ -248,6 +248,9 @@ task phenotype_names {
 
 task concatenate_tsvs {
   input {
+    # this can be a large enough array that its more than the max number of arguments
+    # for a command on the command line. But its not too long for a string variable
+    # or an array
     Array[File]+ tsvs
   }
 
@@ -257,16 +260,17 @@ task concatenate_tsvs {
 
   command <<<
     envsetup bash -c '
-      if (( $(for file in ~{sep=" " tsvs} ; do 
-        head -1 $file
+      tsvs=(~{sep=" " tsvs})
+      if (( $(for (( i=0; i<${#tsvs[@]}; i++ )); do
+        head -1 "${tsvs[$i]}"
       done | uniq -c | wc -l) != 1 )) ; then
         echo "Different headers" 2>&1
         exit 1
       fi
       
       head -1 ~{tsvs[0]} > out.tab
-      for file in ~{sep=" " tsvs} ; do
-        tail -n +2 $file >> out.tab
+      for (( i=0; i<${#tsvs[@]}; i++ )); do
+        tail -n +2 "${tsvs[$i]}" >> out.tab
       done
     '
   >>>
@@ -751,6 +755,8 @@ task cbl_imperfection_ld {
   input {
     String script_dir
     File script = "~{script_dir}/association/CBL_imperfection_LD.py"
+    File sample_utils = "~{script_dir}/association/sample_utils.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
 
     bgen bgen_chr11 
     File all_samples_file
@@ -758,7 +764,7 @@ task cbl_imperfection_ld {
   }
 
   output {
-    Int r2 = read_int(stdout())
+    Float r2 = read_float(stdout())
   }
 
   command <<<
@@ -864,7 +870,7 @@ task association_regions {
 task prep_conditional_input {
   input {
     String script_dir
-    File script = "~{script_dir}/prep_conditional_inputs.py"
+    File script = "~{script_dir}/association/prep_conditional_inputs.py"
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
     File load_and_filter_genotypes = "~{script_dir}/association/load_and_filter_genotypes.py"
     File sample_utils = "~{script_dir}/association/sample_utils.py"
@@ -881,7 +887,7 @@ task prep_conditional_input {
   output {
     File data = "out.npy"
     File varnames = "out_varnames.txt"
-    File readme = "out_readme.txt"
+    File readme = "out_README.txt"
   }
 
   command <<<
@@ -893,8 +899,8 @@ task prep_conditional_input {
       ~{all_samples} \
       ~{chrom} \
       ~{if defined(str_vcf) then "--str-vcf ~{select_first([str_vcf]).vcf}" else "" } \
-      ~{if length(strs) > 0 then "--STRs ~{sep=" " strs}" else "" } \
-      ~{if length(snps) > 0 then "--imputed-SNPs ~{sep=" " snps}" else "" } \
+      --STRs ~{sep=" " strs} \
+      --imputed-SNPs ~{sep=" " snps} \
       ~{"--snp-mfi " + snp_mfi} \
       ~{if defined(snp_bgen) then "--snp-bgen ~{select_first([snp_bgen]).bgen}" else ""}
   >>>
@@ -1006,7 +1012,7 @@ task regional_my_str_gwas {
       ~{if defined(bounds) then "--region ~{select_first([bounds]).chrom}:~{select_first([bounds]).start}-~{select_first([bounds]).end}" else ""} \
       ~{"--vars-file " + vars_file} \
       --pheno-and-covars ~{transformed_phenotype} \
-      ~{"--shared-covars" + shared_covars} \
+      ~{"--shared-covars " + shared_covars} \
       ~{if no_details then "" else "--untransformed-phenotypes ~{select_first([untransformed_phenotype])}"} \
       ~{"--conditional-covars " + conditional_covars} \
       --all-samples-fname ~{all_samples_list} \
@@ -1018,7 +1024,7 @@ task regional_my_str_gwas {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "18h"
+    dx_timeout: "36h"
     memory: if binary_type == "logistic" then "40GB" else "8GB" # 4g works for all but a few jobs
   }
 }
@@ -1238,12 +1244,13 @@ task manhattan {
     File str_gwas_results
     File snp_gwas_results
     region? bounds
-    Array[Int] conditioned_STRs
-    Array[String] conditioned_imputed_SNPs
+    Array[Int] conditioned_STRs = []
+    Array[String] conditioned_imputed_SNPs = []
     File? conditional_str_results
     File? conditional_snp_results
     File? peaks
     String ext
+    Boolean use_tstat = false
   }
 
   output {
@@ -1254,7 +1261,7 @@ task manhattan {
     envsetup ~{script} \
       "manhattan.~{ext}" \
       ~{phenotype_name} \
-      ~{unit} \
+      '~{unit}' \
       ~{chr_lens} \
       ~{str_gwas_results} \
       ~{snp_gwas_results} \
@@ -1262,17 +1269,55 @@ task manhattan {
       ~{if defined(bounds) then "--chrom ~{select_first([bounds]).chrom}" else ""} \
       ~{if defined(bounds) then "--start ~{select_first([bounds]).start}" else ""} \
       ~{if defined(bounds) then "--end ~{select_first([bounds]).end}" else ""} \
-      ~{if length(conditioned_STRs) > 0 then "--conditioned-STRs ~{sep=" " conditioned_STRs}" else ""} \
-      ~{if length(conditioned_imputed_SNPs) > 0 then "--conditioned-imputed-SNPs ~{sep=" " conditioned_imputed_SNPs}" else ""} \
+      --conditioned-STRs ~{sep=" " conditioned_STRs} \
+      --conditioned-imputed-SNPs ~{sep=" " conditioned_imputed_SNPs} \
       ~{"--conditional-STR-results " + conditional_str_results} \
-      ~{"--conditional-SNP-results " + conditional_snp_results} \
+      ~{"--conditional-imputed-SNP-results " + conditional_snp_results} \
       ~{"--peaks-fname" + peaks} \
+      ~{if use_tstat then "--use-tstat " else ""}
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
     memory: "50GB"
+  }
+}
+
+task overview_manhattan {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/overview_manhattan_plot.py"
+    File region_plots = "~{script_dir}/association/region_plots.py"
+    File graphing_utils = "~{script_dir}/association/graphing_utils.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
+
+    String phenotype_name
+    File chr_lens
+    File str_gwas_results
+    File snp_gwas_results
+    File peaks
+    String ext
+  }
+
+  output {
+    File plot = "manhattan.~{ext}"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{phenotype_name} \
+      "manhattan.~{ext}" \
+      ~{str_gwas_results} \
+      ~{snp_gwas_results} \
+      ~{peaks} \
+      ~{chr_lens} \
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    memory: "75GB"
   }
 }
 

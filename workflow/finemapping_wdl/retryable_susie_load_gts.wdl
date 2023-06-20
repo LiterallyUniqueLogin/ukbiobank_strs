@@ -54,8 +54,8 @@ workflow retryable_susie_load_gts {
   }
 
   output {
-    File gts_h5 = select_first([try_zero.gts_h5, try_one.gts_h5])
-    File readme = select_first([try_zero.readme, try_one.readme])
-    File pheno_residuals_h5 = select_first([try_zero.pheno_residuals_h5, try_one.pheno_residuals_h5])
+    File gts_h5 = select_first([try_one.gts_h5, try_zero.gts_h5])
+    File readme = select_first([try_one.readme, try_zero.readme])
+    File pheno_residuals_h5 = select_first([try_one.pheno_residuals_h5, try_zero.pheno_residuals_h5])
   }
 }

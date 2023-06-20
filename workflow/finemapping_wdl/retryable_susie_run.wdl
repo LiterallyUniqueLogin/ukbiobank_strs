@@ -19,6 +19,7 @@ workflow retryable_susie_run {
     File? varnames_file
     Float? res_var
     Float? prior_var
+    String prefix
   }
 
   call finemapping_tasks.susie_run as try_zero { input :
@@ -35,6 +36,7 @@ workflow retryable_susie_run {
     prior_var = prior_var,
     varnames_file = varnames_file,
     colnames = colnames,
+    prefix=prefix,
   }
 
   if (defined(try_zero.alpha)) {
@@ -69,6 +71,7 @@ workflow retryable_susie_run {
       prior_var = prior_var,
       varnames_file = varnames_file,
       colnames = colnames,
+      prefix=prefix,
     }
 
     if (defined(try_one.alpha)) {
@@ -103,6 +106,7 @@ workflow retryable_susie_run {
         prior_var = prior_var,
         varnames_file = varnames_file,
         colnames = colnames,
+        prefix=prefix,
       }
 
       if (defined(try_two.alpha)) {
@@ -137,6 +141,7 @@ workflow retryable_susie_run {
           prior_var = prior_var,
           varnames_file = varnames_file,
           colnames = colnames,
+          prefix=prefix,
         }
 
         SuSiE_output output_three = object {
@@ -159,6 +164,5 @@ workflow retryable_susie_run {
 
   output {
     SuSiE_output susie_output = select_first([output_zero, output_one, output_two, output_three])
-    #SuSiE_output susie_output = select_first([try_three.susie_output, try_two.susie_output, try_one.susie_output, try_zero.susie_output])
   }
 }

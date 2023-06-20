@@ -40,8 +40,8 @@ workflow files {
     bgen imputed_snp_bgens_ = {
       "bgen": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen",
       "index": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.bgi",
-      "bgen_reader_metadata": "array_imputed/ukb_imp_chr~{chrom+1}_v3.metadata",
-      "bgen_reader_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.metadata2.mmm",
+      "bgen_reader_metadata": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata",
+      "bgen_reader_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.metadata2.mmm",
       "bgen_reader_complex_metadata2": "array_imputed/ukb_imp_chr~{chrom+1}_v3.bgen.complex.metadata2.mmm",
     }
     File snps_to_filter_ = "finemapping/str_imp_snp_overlaps/chr~{chrom+1}_to_filter.tab"
@@ -66,21 +66,58 @@ workflow files {
 
   call gwas_tasks.phenotype_names
 
-  scatter (ethnicity in ethnicities_) {
+  scatter (ethnicity in all_ethnicities_) {
     scatter (phenotype in phenotype_names.n) {
-      File ethnic_to_pheno_to_covar_names_ = "traits/phenotypes/~{ethnicity}/~{phenotype}_covar_names.txt"
-      File ethnic_to_pheno_to_transformed_phenotype_data_ = "traits/subset_transformed_phenotypes/~{ethnicity}/~{phenotype}.npy"
-      File ethnic_to_pheno_to_str_gwas_results_ = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+      if (phenotype == "ldl_cholesterol_direct" || phenotype == "total_bilirubin") {
+        File ethnic_to_pheno_to_covar_names_wdl = "wdl_cache/~{phenotype}_~{ethnicity}_covar_names.txt"
+        File ethnic_to_pheno_to_transformed_phenotype_data_wdl = "wdl_cache/~{phenotype}_~{ethnicity}_rank_inverse_normalized.npy"
+      }
+      if (phenotype != "ldl_cholesterol_direct" && phenotype != "total_bilirubin") {
+        File ethnic_to_pheno_to_covar_names_snakemake = "traits/phenotypes/~{ethnicity}/~{phenotype}_covar_names.txt"
+        File ethnic_to_pheno_to_transformed_phenotype_data_snakemake = "traits/subset_transformed_phenotypes/~{ethnicity}/~{phenotype}.npy"
+      }
+      File ethnic_to_pheno_to_covar_names_ = select_first([ethnic_to_pheno_to_covar_names_snakemake, ethnic_to_pheno_to_covar_names_wdl])
+      File ethnic_to_pheno_to_transformed_phenotype_data_ = select_first([ethnic_to_pheno_to_transformed_phenotype_data_snakemake, ethnic_to_pheno_to_transformed_phenotype_data_wdl])
     }
   }
 
-  scatter (phenotype in phenotype_names.n) {
-    File str_gwas_results_ = "association/results/~{phenotype}/my_str/results.tab"
-    File snp_gwas_results_ = "association/results/~{phenotype}/plink_snp/results.tab"
-    File peaks_for_1ef_ = "signals/peaks/~{phenotype}_250000_5e-8.tab"
-    scatter (ethnicity in ethnicities_) {
-      File pheno_to_ethnic_to_str_gwas_results_ = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+  scatter (ethnicity in ethnicities_) {
+    scatter (phenotype in phenotype_names.n) {
+      if (phenotype == "ldl_cholesterol_direct" || phenotype == "total_bilirubin") {
+        File ethnic_to_pheno_to_str_gwas_results_wdl = "wdl_cache/~{phenotype}_~{ethnicity}_str_gwas_results.tab"
+      }
+      if (phenotype != "ldl_cholesterol_direct" && phenotype != "total_bilirubin") {
+        File ethnic_to_pheno_to_str_gwas_results_snakemake = "association/results_finemapped_only/~{ethnicity}/~{phenotype}/my_str/results.tab"
+      }
+      File ethnic_to_pheno_to_str_gwas_results_ = select_first([ethnic_to_pheno_to_str_gwas_results_snakemake , ethnic_to_pheno_to_str_gwas_results_wdl])
     }
+  }
+
+
+  scatter (phenotype in phenotype_names.n) {
+    if (phenotype == "ldl_cholesterol_direct" || phenotype == "total_bilirubin") {
+      File str_gwas_results_wdl = "wdl_cache/~{phenotype}_str_gwas_results.tab"
+      File snp_gwas_results_wdl  = "wdl_cache/~{phenotype}_snp_gwas_results.tab"
+      File peaks_for_1ef_wdl  = "wdl_cache/~{phenotype}_peaks_250000_5e-8.tab"
+      File finemapping_regions_wdl = "wdl_cache/~{phenotype}_finemapping_regions.tab"
+      scatter (ethnicity in ethnicities_) {
+        File pheno_to_ethnic_to_str_gwas_results_wdl = "wdl_cache/~{phenotype}_~{ethnicity}_str_gwas_results.tab"
+      }
+    }
+    if (phenotype != "ldl_cholesterol_direct" && phenotype != "total_bilirubin") {
+      File str_gwas_results_snakemake = "association/results/~{phenotype}/my_str/results.tab"
+      File snp_gwas_results_snakemake = "association/results/~{phenotype}/plink_snp/results.tab"
+      File peaks_for_1ef_snakemake = "signals/peaks/~{phenotype}_250000_5e-8.tab"
+      File finemapping_regions_snakemake = "signals/regions/~{phenotype}.tab"
+      scatter (ethnicity in ethnicities_) {
+        File pheno_to_ethnic_to_str_gwas_results_snakemake = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+      }
+    }
+    File str_gwas_results_ = select_first([str_gwas_results_wdl, str_gwas_results_snakemake])
+    File snp_gwas_results_ = select_first([snp_gwas_results_wdl, snp_gwas_results_snakemake])
+    File peaks_for_1ef_ = select_first([peaks_for_1ef_wdl, peaks_for_1ef_snakemake])
+    File finemapping_regions_ = select_first([finemapping_regions_wdl, finemapping_regions_snakemake])
+    Array[File] pheno_to_ethnic_to_str_gwas_results_ = select_first([pheno_to_ethnic_to_str_gwas_results_wdl, pheno_to_ethnic_to_str_gwas_results_snakemake])
   }
 
   output {
@@ -150,8 +187,7 @@ workflow files {
     Array[Array[File]] unrelated_samples_for_pheno_for_ethnicity = unrelated_samples_for_pheno_for_ethnicity_
 
     File shared_covars = "traits/shared_covars/shared_covars.npy"
-    # indexed by phenotype
-    # TODO here and below need to be redone for bili and LDL
+    # indexed by all ethnicities, then by phenotype
     Array[Array[File]] ethnic_to_pheno_to_covar_names = ethnic_to_pheno_to_covar_names_
     Array[Array[File]] ethnic_to_pheno_to_transformed_phenotype_data = ethnic_to_pheno_to_transformed_phenotype_data_
 
@@ -162,7 +198,12 @@ workflow files {
     File CBL_conditioned_SNP_119080037_A_G_snp_results = "association/results/platelet_crit/plink_snp_conditional/chr11_118447267_119339135_STR__ISNP_119080037_A_G__ASNP/plink2.rin_platelet_crit.glm.linear.done"
     File CBL_conditioned_STR_19077000_SNP_119080037_A_G_str_results = "association/results/platelet_crit/my_str_conditional/chr11_118447267_119339135_STR_119077000__ISNP_119080037_A_G__ASNP.tab"
     File CBL_conditioned_STR_19077000_SNP_119080037_A_G_snp_results = "association/results/platelet_crit/plink_snp_conditional/chr11_118447267_119339135_STR_119077000__ISNP_119080037_A_G__ASNP/plink2.rin_platelet_crit.glm.linear.done"
+    # TODO must regenerate
+    #File SLC2A2_conditioned_STR_17100913_str_results = "association/results/total_bilirubin/my_str_conditional/chr11_118447267_119339135_STR_17100913__ISNP__ASNP.tab"
+    #File SLC2A2_conditioned_STR_17100913_snp_results = "association/results/total_bilirubin/plink_snp_conditional/chr11_118447267_119339135_STR_17100913__ISNP__ASNP/plink2.rin_platelet_crit.glm.linear.done"
+    File TAOK1_conditioned_STR_27842010_snp_results = "association/results/mean_platelet_volume/plink_snp_conditional/chr17_25885931_29975306_STR_27842010__ISNP__ASNP/plink2.rin_mean_platelet_volume.glm.linear.done"
     Array[File] peaks_for_1ef = peaks_for_1ef_
+    Array[File] finemapping_regions = finemapping_regions_
     # Indexed first by phenotype then ethnicity
     Array[Array[File]] pheno_to_ethnic_to_str_gwas_results = pheno_to_ethnic_to_str_gwas_results_
     # indexed first by ethnicity then phenotype

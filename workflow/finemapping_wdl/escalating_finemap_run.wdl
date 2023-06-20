@@ -48,6 +48,8 @@ workflow escalating_finemap {
     Boolean prior_snps
     Float? prior_std
     Float? prob_conv_sss_tol
+    String prefix
+    Int cache_breaker = 0
   }
 
   call finemapping_tasks.finemap_run as try_zero { input :
@@ -60,6 +62,8 @@ workflow escalating_finemap {
     prior_snps = prior_snps,
     prior_std = prior_std,
     prob_conv_sss_tol = prob_conv_sss_tol,
+    prefix=prefix,
+    cache_breaker = cache_breaker
   }
 
   call should_escalate_finemap_run as escalate { input :
@@ -79,6 +83,8 @@ workflow escalating_finemap {
       prior_snps = prior_snps,
       prior_std = prior_std,
       prob_conv_sss_tol = prob_conv_sss_tol,
+      prefix=prefix,
+      cache_breaker = cache_breaker
     }
 
     call should_escalate_finemap_run { input :
@@ -91,5 +97,6 @@ workflow escalating_finemap {
 
   output {
     FINEMAP_output finemap_output = select_first([try_one.finemap_output, try_zero.finemap_output])
+    File finemap_input_z = select_first([try_one.finemap_input_z, try_zero.finemap_input_z])
   }
 }  

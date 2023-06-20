@@ -36,7 +36,7 @@ task should_escalate_susie_run {
     done = False
     redo = False
     for idx, num in enumerate(sorted(str(num) for num in range(1, 1+~{max_CSs}))):
-      assert CSs[idx].split('/')[-1] == f'cs{num}.txt', 'CSs in the wrong order'
+      assert CSs[idx].split('_')[-1] == f'cs{num}.txt', ('CSs in the wrong order', CS)
       with open(CSs[idx]) as cs:
         n_vars = len(next(cs).split())
         next(cs)
@@ -73,6 +73,7 @@ workflow escalating_susie_run {
     File? varnames_file
     Float? res_var
     Float? prior_var
+    String prefix
   }
 
   call retryable_susie_run.retryable_susie_run as try_zero { input :
@@ -87,6 +88,7 @@ workflow escalating_susie_run {
     prior_var = prior_var,
     varnames_file = varnames_file,
     colnames = colnames,
+    prefix=prefix
   }
 
   call should_escalate_susie_run as escalate_zero { input :
@@ -108,6 +110,7 @@ workflow escalating_susie_run {
       prior_var = prior_var,
       varnames_file = varnames_file,
       colnames = colnames,
+      prefix=prefix
     }
   
     call should_escalate_susie_run as escalate_one { input :
@@ -129,6 +132,7 @@ workflow escalating_susie_run {
         prior_var = prior_var,
         varnames_file = varnames_file,
         colnames = colnames,
+        prefix=prefix
      }
   
       call should_escalate_susie_run { input :

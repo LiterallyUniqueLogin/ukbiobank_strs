@@ -33,6 +33,8 @@ workflow finemap_one_region {
     Float? inclusion_threshold
     Float? prior_std
     Float? prob_conv_sss_tol
+    String prefix = ""
+    Int cache_breaker = 0
   }
 
   # call FINEMAP
@@ -49,7 +51,7 @@ workflow finemap_one_region {
     snp_str_ratio = snp_str_ratio,
     total_prob = total_prob,
     mac = mac,
-    inclusion_threshold = inclusion_threshold
+    inclusion_threshold = inclusion_threshold,
   }
 
   call finemapping_tasks.finemap_load_gts { input :
@@ -82,10 +84,12 @@ workflow finemap_one_region {
     prior_snps = defined(snp_str_ratio),
     prior_std = prior_std,
     prob_conv_sss_tol = prob_conv_sss_tol,
+    prefix=prefix,
+    cache_breaker = cache_breaker
   }
 
   output {
-    File finemap_input_z = finemap_write_input_variants.zfile
+    File finemap_input_z = escalating_finemap.finemap_input_z
     FINEMAP_output finemap_output = escalating_finemap.finemap_output
   }
 }

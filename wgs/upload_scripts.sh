@@ -10,6 +10,7 @@ for file in \
 	sample_qc/scripts/*{py,sh} \
 	signals/*{py,sh} \
 	traits/*{py,sh} \
+	utilities/*{py,sh} \
 	wgs/*{py,sh} \
 ; do
 	{ dx rm -a imputed_strs_paper/"$file" ;

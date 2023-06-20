@@ -220,40 +220,48 @@ task finemap_run {
     Boolean prior_snps = false
     Float? prior_std
     Float? prob_conv_sss_tol
+    String prefix
+    Int cache_breaker = 0
   }
+
+  String snp_file_loc = "~{prefix}finemap_output.snp"
+  String log_sss_loc = "~{prefix}finemap_output.log_sss"
+  String config_loc = "~{prefix}finemap_output.config"
+  String creds_glob = "~{prefix}finemap_output.cred*"
+  String finemap_input_z_loc = "~{prefix}finemap_input.z"
 
   output {
     FINEMAP_output finemap_output = object {
       subset: object {
-        snp_file: "finemap_output.snp",
-        log_sss: "finemap_output.log_sss",
-        config: "finemap_output.config",
+        snp_file: snp_file_loc,
+        log_sss: log_sss_loc,
+        config: config_loc,
       },
-      creds: glob("finemap_output.cred*")
+      creds: glob(creds_glob)
     }
+    File finemap_input_z = finemap_input_z_loc
   }
 
   command <<<
     # need all files in the same directory for FINEMAP to work
     # also necessary for dxCompiler to bother to localize this file
     ln -s ~{master} .
-    ln -s ~{zfile} .
+    ln ~{zfile} .
     ln -s ~{all_variants_ld} .
     envsetup ~{script} \
       . \
       ~{finemap_command} \
       --n-causal-snps ~{causal_snps} \
       ~{if prior_snps then "--prior-snps" else if defined(prior_std) then "--prior-std ~{prior_std}" else if defined(prob_conv_sss_tol) then "--prob-conv-sss-tol ~{prob_conv_sss_tol}" else ""}
+    for file in finemap_input.z finemap_output.cred* finemap_output.config finemap_output.log_sss finemap_output.snp ; do
+      ln $file ~{prefix}$file
+    done
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.4"
     dx_timeout: "4h"
     memory: "8GB"
-  }
-
-  meta {
-    volatile: true
   }
 }
 
@@ -379,19 +387,21 @@ task susie_run {
 
     String mem
     String time
+
+    String prefix
   }
 
   output {
-    File? lbf = "lbf.tab"
-    File? lbf_variable = "lbf_variable.tab"
-    File? sigma2 = "sigma2.txt"
-    File? V = "V.tab"
-    File? converged = "converged.txt"
-    File? lfsr = "lfsr.tab"
-    File? requested_coverage = "requested_coverage.txt"
-    File? alpha = "alpha.tab"
-    File? colnames = colnames
-    Array[File] CSs = glob("cs*.txt")
+    File? lbf = "~{prefix}lbf.tab"
+    File? lbf_variable = "~{prefix}lbf_variable.tab"
+    File? sigma2 = "~{prefix}sigma2.txt"
+    File? V = "~{prefix}V.tab"
+    File? converged = "~{prefix}converged.txt"
+    File? lfsr = "~{prefix}lfsr.tab"
+    File? requested_coverage = "~{prefix}requested_coverage.txt"
+    File? alpha = "~{prefix}alpha.tab"
+    File? colnames = "~{prefix}colnames.txt"
+    Array[File] CSs = glob("~{prefix}cs*.txt")
   }
 
   command <<<
@@ -405,6 +415,10 @@ task susie_run {
       ~{"--snp-p-over-str-p " + snp_p_over_str_p + " --varnames-file " + varnames_file} \
       ~{"--residual-variance " + res_var} \
       ~{"--scaled-prior-variance " + prior_var}
+    for file in lbf.tab lbf_variable.tab sigma2.txt V.tab converged.txt lfsr.tab requested_coverage.txt alpha.tab cs*.txt ; do
+      ln $file ~{prefix}$file
+    done
+    ln ~{colnames} ~{prefix}colnames.txt
     exit 0 # ignore the previous return code
   >>>
 
@@ -700,10 +714,11 @@ task generate_followup_regions_tsv {
     File graphing_utils = "~{script_dir}/post_finemapping/graphing_utils.py"
 
     File first_pass_df
+    String phenotype
   }
 
   output {
-    File tsv = "followup_regions.tsv"
+    File tsv = "~{phenotype}_followup_finemapping_regions.tsv"
   }
 
   command <<<
@@ -734,6 +749,8 @@ task followup_finemapping_conditions_df {
     Array[serializable_SuSiE_output] original_susie_outputs
     Array[Array[File]] original_susie_CSs
 
+    Array[serializable_FINEMAP_output] repeat_finemap_outputs
+    Array[Array[File]] repeat_finemap_creds
     Array[serializable_FINEMAP_output] total_prob_finemap_outputs
     Array[Array[File]] total_prob_finemap_creds
     Array[serializable_FINEMAP_output] derived_prior_std_finemap_outputs
@@ -780,6 +797,8 @@ task followup_finemapping_conditions_df {
     original_susie_CSs=~{write_tsv(original_susie_CSs)}
     { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } >> "$original_susie_CSs".headered
 
+    repeat_finemap_creds=~{write_tsv(repeat_finemap_creds)}
+    { echo "creds" ; cat $repeat_finemap_creds | sed -e 's/\t/,/g' ; } >> "$repeat_finemap_creds".headered
     total_prob_finemap_creds=~{write_tsv(total_prob_finemap_creds)}
     { echo "creds" ; cat $total_prob_finemap_creds | sed -e 's/\t/,/g' ; } >> "$total_prob_finemap_creds".headered
     derived_prior_std_finemap_creds=~{write_tsv(derived_prior_std_finemap_creds)}
@@ -802,6 +821,7 @@ task followup_finemapping_conditions_df {
 
     paste ~{write_objects(original_finemap_outputs)} "$ORIGINAL_CHROMS".headered "$ORIGINAL_REGIONS".headered "$original_finemap_creds".headered > original_finemap_files.tsv
     paste ~{write_objects(original_susie_outputs)} "$ORIGINAL_CHROMS".headered "$ORIGINAL_REGIONS".headered "$original_susie_CSs".headered > original_susie_files.tsv
+    paste ~{write_objects(repeat_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$repeat_finemap_creds".headered > repeat_finemap_files.tsv
     paste ~{write_objects(total_prob_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$total_prob_finemap_creds".headered > total_prob_finemap_files.tsv
     paste ~{write_objects(derived_prior_std_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$derived_prior_std_finemap_creds".headered > derived_prior_std_finemap_files.tsv
     paste ~{write_objects(conv_tol_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$conv_tol_finemap_creds".headered > conv_tol_finemap_files.tsv
@@ -822,6 +842,7 @@ task followup_finemapping_conditions_df {
       followup_conditions \
       original_finemap_files.tsv \
       original_susie_files.tsv \
+      repeat_finemap_files.tsv \
       total_prob_finemap_files.tsv \
       derived_prior_std_finemap_files.tsv \
       conv_tol_finemap_files.tsv \
@@ -858,6 +879,8 @@ task followup_finemapping_conditions_comparison {
     # used for deciding confidently finemapped
     File susie_best_guess_png = "susie_consistency_alpha_best_guess.png"
     File susie_best_guess_svg = "susie_consistency_alpha_best_guess.svg"
+    File finemap_repeat_png = "finemap_consistency_pip_repeat.png"
+    File finemap_repeat_svg = "finemap_consistency_pip_repeat.svg"
     File finemap_conv_tol_png = "finemap_consistency_pip_conv_tol.png"
     File finemap_conv_tol_svg = "finemap_consistency_pip_conv_tol.svg"
     File finemap_total_prob_png = "finemap_consistency_pip_total_prob.png"

@@ -10,15 +10,19 @@ workflow bilirubin_and_ldl_gwas {
 
   call expanse_files.files
 
+  Int bili_idx = phenotype_names.idxs["total_bilirubin"]
+
   call gwas.gwas as bilirubin_gwas { input :
     phenotype_id = 30840,
     categorical_covariate_names = ["total_bilirubin_aliquot"],
     categorical_covariate_ids = [30842],
     phenotype_name = "total_bilirubin",
 
-    cached_unrelated_samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[phenotype_names.idxs["total_bilirubin"]],
+    cached_unrelated_samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[bili_idx],
     cached_shared_covars = files.shared_covars
   }
+
+  Int ldl_idx = phenotype_names.idxs["ldl_cholesterol_direct"]
 
   call gwas.gwas as ldl_gwas { input :
     phenotype_id = 30780,
@@ -26,7 +30,7 @@ workflow bilirubin_and_ldl_gwas {
     categorical_covariate_ids = [30782],
     phenotype_name = "ldl_cholesterol_direct",
 
-    cached_unrelated_samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[phenotype_names.idxs["ldl_cholesterol_direct"]],
+    cached_unrelated_samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[ldl_idx],
     cached_shared_covars = files.shared_covars
   }
 

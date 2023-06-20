@@ -35,3 +35,25 @@ task extract_field {
     memory: "2GB"
   }
 }
+
+task rename_file {
+  input {
+    File f
+    String name
+  }
+
+  output {
+    File out = name
+  }
+
+  command <<<
+    ln ~{f} ~{name}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    memory: "2GB"
+    shortTask: true
+  }
+}

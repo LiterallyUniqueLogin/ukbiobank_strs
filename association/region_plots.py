@@ -93,12 +93,14 @@ def create_source_dict(
 
     return copy_source, sources
 
-my_results_rename = {
-    0: 'chr',
-    3: 'filtered',
-    4: 'p_val',
-    5: 'coeff_phenotype'
-}
+def my_results_rename(phenotype):
+    return {
+        'chrom': 'chr',
+        'locus_filtered': 'filtered',
+        f'p_{phenotype}': 'p_val',
+        f'coeff_{phenotype}': 'coeff_phenotype'
+    }
+
 my_str_results_rename = {
     '0.05_significance_CI': 'CI5e_2SingleDosagePhenotype',
     '5e-8_significance_CI': 'CI5e_8SingleDosagePhenotype',
@@ -145,13 +147,13 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
     if binary == 'logistic':
         results.rename(columns={'firth?': 'firth'}, inplace=True)
 
-    rename_dict = {}
-    for idx, name in my_results_rename.items():
-        rename_dict[results.columns[idx]] = name
+    rename_dict = my_results_rename(phenotype)
     rename_dict.update(my_str_results_rename)
     for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',
                 'subset_total_per_allele_dosages', 'subset_total_hardcall_alleles',
-                'subset_allele_dosage_r2'):
+                'subset_allele_dosage_r2', 'total_best_guess_alleles', 'subset_total_best_guess_alleles'):
+        if colname not in results.columns:
+            continue
         # convert allele lens from strings to floats, in addition round allele lens and values, but not NaN values
         new_col = np.array(list(map(
             lambda dict_str: {round(float(allele_len), 2): (round(val, 2) if val != 'NaN' else val) for allele_len, val in ast.literal_eval(dict_str).items()},
@@ -167,9 +169,9 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
     results = utils.df_to_recarray(results)
     results['p_val'] = np.maximum(results['p_val'], 1 / 10**max_p_val)
     results['p_val'] = -np.log10(results['p_val'])
-    if conditional_results_fname:
-        for STR in get_conditioned_strs(conditional_results_fname):
-            results = results[results['pos'] != STR]
+#    if conditional_results_fname:
+#        for STR in get_conditioned_strs(conditional_results_fname):
+#            results = results[results['pos'] != STR]
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return results
 
@@ -210,6 +212,7 @@ def load_my_snp_results(snp_results_fname, phenotype, binary):
     ))
 
     names = list(my_snp_results.dtype.names)
+    # TODO this is now broken
     for idx, name in my_results_rename.items():
         names[idx] = name
     my_snp_results.dtype.names = names
@@ -247,11 +250,12 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
         'REF': 'ref',
         'ALT': 'alt',
         'P': 'p_val',
+        'T_STAT': 't_stat',
         'ERRCODE': 'error',
         # these last three only occur in logistic regression
         **binary_colnames
     }).select([
-        pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error', *binary_colnames.values()]
+        pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 't_stat', 'error', *binary_colnames.values()]
     ]).collect().to_pandas()
 
     if not conditional_results_fname:
@@ -268,20 +272,21 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
             'REF': 'ref',
             'ALT': 'alt',
             'P': 'p_val',
+            'T_STAT': 't_stat',
             'ERRCODE': 'error',
             # these last three only occur in logistic regression
             **binary_colnames
         }).select([
-            pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error', *binary_colnames.values()]
+            pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 't_stat', 'error', *binary_colnames.values()]
         ]).collect().to_pandas()
 
         unconditional_results['p_val'] = np.maximum(unconditional_results['p_val'], 1 / 10**max_p_val)
         unconditional_results['p_val'] = -np.log10(unconditional_results['p_val'])
         unconditional_results.rename(
-            columns={'p_val': 'unconditional_p'},
+            columns={'p_val': 'unconditional_p', 't_stat': 'unconditional_t_stat'},
             inplace=True
         )
-        unconditional_results = unconditional_results[['chr', 'pos', 'unconditional_p']]
+        unconditional_results = unconditional_results[['chr', 'pos', 'unconditional_p', 'unconditional_t_stat']]
 
         results = results.merge(
             unconditional_results,

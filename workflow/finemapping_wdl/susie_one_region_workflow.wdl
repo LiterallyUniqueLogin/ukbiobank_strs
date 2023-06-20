@@ -31,6 +31,7 @@ workflow susie_one_region {
     Float? res_var
     Float? prior_var
     Boolean best_guess = false
+    String prefix = ""
   }
 
   # call SuSiE 
@@ -69,7 +70,8 @@ workflow susie_one_region {
     snp_p_over_str_p = snp_p_over_str_p,
     res_var = res_var,
     prior_var = prior_var,
-    colnames = susie_choose_vars.colnames
+    colnames = susie_choose_vars.colnames,
+    prefix=prefix
   }
 
   output {

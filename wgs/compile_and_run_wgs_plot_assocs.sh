@@ -12,4 +12,4 @@ java -jar utilities/dxCompiler-2.10.7.jar compile \
 dx run \
 	/imputed_strs_paper/workflow/app/plot_wgs_assocs_for_finemapped_loci \
 	-y \
-	--folder /imputed_strs_paper/wgs/20230425_comparison
+	--folder /imputed_strs_paper/wgs/20230425_comparison_2

@@ -18,11 +18,9 @@ def make_overview_manhattan(
     outfname,
     phenotype,
     my_str_results,
-    my_str_run_date,
     plink_snp_results,
-    plink_snp_run_date,
-    publication,
-    legendless
+    legendless,
+    chr_lens
 ):
     print(f"Plotting overview of phenotype {phenotype} ... ", end='', flush=True)
     start_time = time.time()
@@ -74,10 +72,10 @@ def make_overview_manhattan(
     manhattan_plot.toolbar_location = None
 
     region_plots.full_genome_x_axis(
-        manhattan_plot,
+        manhattan_plot, chr_lens
     )
     for dict_ in [str_peak_dict, snp_peak_dict, str_locus_dict, snp_locus_dict, insignificant_locus_dict]:
-        region_plots.full_genome_pandas_df(dict_)
+        region_plots.full_genome_pandas_df(dict_, chr_lens)
 
     # from https://projects.susielu.com/viz-palette
     str_color = '#FF520D'
@@ -154,10 +152,6 @@ def make_overview_manhattan(
     if not legendless:
         manhattan_plot.legend.label_text_font_size = '22px'
 
-    if not publication:
-        region_plots.display_my_str_run_date(manhattan_plot, my_str_run_date)
-        region_plots.display_plink_snp_run_date(manhattan_plot, plink_snp_run_date)
-
     graphing_utils.resize(manhattan_plot, size_ratio, legend=not legendless)
 
     if outfname[-4:] == '.png':
@@ -172,25 +166,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
     parser.add_argument('outfile')
-    parser.add_argument('my_str_run_readme')
     parser.add_argument('my_str_results')
-    parser.add_argument('plink_snp_log_file')
     parser.add_argument('plink_snp_results')
     parser.add_argument('peaks_fname')
+    parser.add_argument('chr_lens')
     parser.add_argument('--legendless', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
-    parser.add_argument('--publication', default=False, action='store_true')
     args = parser.parse_args()
 
     phenotype = args.phenotype
     binary = args.binary
-
-    if not args.publication:
-        my_str_run_date = region_plots.get_my_str_run_date(args.my_str_run_readme)
-        plink_snp_run_date = region_plots.get_plink_snp_run_date(args.plink_snp_log_file)
-    else:
-        my_str_run_date = None
-        plink_snp_run_date = None
 
     my_str_results = region_plots.load_my_str_results(
         phenotype, binary, args.my_str_results
@@ -205,15 +190,20 @@ def main():
         plink_snp_results
     )
 
+    chr_lens = np.genfromtxt(
+        args.chr_lens,
+        usecols=[1],
+        skip_header=1,
+        dtype=int
+    )
+
     make_overview_manhattan(
         args.outfile,
         phenotype,
         my_str_results,
-        my_str_run_date,
         plink_snp_results,
-        plink_snp_run_date,
-        args.publication,
-        args.legendless
+        args.legendless,
+        chr_lens
     )
 
 if __name__ == "__main__":
