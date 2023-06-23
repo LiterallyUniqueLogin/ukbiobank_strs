@@ -134,6 +134,7 @@ workflow files {
     # -------------- for some of these, could replace caching with WDL download scripts
     File chr_lens = "misc_data/genome/chr_lens.txt"
     File gencode = "misc_data/gencode/gencode.v38lift37.annotation.without_chr.sorted.gene.gff3"
+    File pan_ukbb = "misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv"
     File specific_alleles = "association/specific_alleles.tab"
     File eSTR_table = "misc_data/eSTR/eSTRs.csv"
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"

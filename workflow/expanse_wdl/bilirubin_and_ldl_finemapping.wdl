@@ -25,8 +25,8 @@ workflow bilirubin_and_ldl_finemapping {
   call expanse_tasks.rename_file as ldl_finemapping_regions_readme { input : f = ldl_finemapping.first_pass_regions_readme, name = "ldl_cholesterol_direct_finemapping_regions_README.txt" }
 
   output {
-    File bilirubin_first_pass_regions_tsv = bilirubin_finemapping.first_pass_regions_tsv
-    File bilirubin_first_pass_regions_readme = bilirubin_finemapping.first_pass_regions_readme
+    File bilirubin_first_pass_regions_tsv = bilirubin_finemapping_regions.out
+    File bilirubin_first_pass_regions_readme = bilirubin_finemapping_regions_readme.out
 
     Array[serializable_SuSiE_output] bilirubin_original_susie = bilirubin_finemapping.original_susie
     Array[Array[File]] bilirubin_original_susie_CSs = bilirubin_finemapping.original_susie_CSs
@@ -60,8 +60,8 @@ workflow bilirubin_and_ldl_finemapping {
 
     File? bilirubin_followup_df = bilirubin_finemapping.followup_df
 
-    File ldl_first_pass_regions_tsv = ldl_finemapping.first_pass_regions_tsv
-    File ldl_first_pass_regions_readme = ldl_finemapping.first_pass_regions_readme
+    File ldl_first_pass_regions_tsv = ldl_finemapping_regions.out
+    File ldl_first_pass_regions_readme = ldl_finemapping_regions_readme.out
 
     Array[serializable_SuSiE_output] ldl_original_susie = ldl_finemapping.original_susie
     Array[Array[File]] ldl_original_susie_CSs = ldl_finemapping.original_susie_CSs

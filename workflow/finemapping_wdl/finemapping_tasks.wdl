@@ -68,6 +68,7 @@ task finemap_write_input_variants {
     Float? snp_str_ratio
     Float? total_prob
     Int? mac
+    File? snp_macs
     Float? inclusion_threshold
   }
 
@@ -93,7 +94,7 @@ task finemap_write_input_variants {
       ~{bounds.end} \
       ~{if defined(snp_str_ratio) then "--snp-str-ratio ~{snp_str_ratio}" else ""} \
       ~{if defined(total_prob) then "--total-prob ~{total_prob}" else ""} \
-      ~{if defined(mac) then "--mac ~{mac}" else ""} \
+      ~{if defined(mac) then "--mac ~{select_first([mac])} ~{select_first([snp_macs])} " else ""} \
       ~{if defined(inclusion_threshold) then "--inclusion-threshold ~{inclusion_threshold}" else ""}
   >>>
 
@@ -723,6 +724,7 @@ task generate_followup_regions_tsv {
 
   command <<<
     envsetup ~{script} . followup_regions ~{first_pass_df}
+    mv followup_regions.tsv ~{phenotype}_followup_finemapping_regions.tsv
   >>>
 
   runtime {

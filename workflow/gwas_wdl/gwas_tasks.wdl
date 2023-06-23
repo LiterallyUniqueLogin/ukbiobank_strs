@@ -612,28 +612,32 @@ task transform_trait_values {
 task imputed_snp_frequencies {
   input {
     String script_dir
-    File script = "~{script_dir}/side_analyses/freqs/snp_allele_freqs.sh"
+    File script = "~{script_dir}/association/calc_macs.py"
 
-    String plink_command
+    String plink_command = "plink2"
     PFiles pfiles
     File samples
+    region bounds
   }
 
   output {
     File counts = "plink2.acount"
   }
 
-  #~{sub(pfiles.pgen, ".pgen", "")} \
   command <<<
-    PLINK_COMMAND=~{plink_command} \
-    PFILE=$(echo ~{pfiles.pgen} | sed -e 's/\.pgen$//') \
-    SAMPLE_FILE=<(paste ~{samples} ~{samples}) \
-    envsetup ~{script}
+    envsetup ~{script} \
+      . \
+      ~{plink_command} \
+      $(echo ~{pfiles.pgen} | sed -e 's/\.pgen$//') \
+      ~{bounds.chrom} \
+      ~{bounds.start} \
+      ~{bounds.end} \
+      ~{samples}
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "47h"
+    dx_timeout: "12h"
     memory: "8GB" # this is tied to the memory and threads hardcoded in the plink command
   }
 }
@@ -1318,6 +1322,35 @@ task overview_manhattan {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
     memory: "75GB"
+  }
+}
+
+task compare_bili_to_UKBB {
+  input {
+    String script_dir
+    File script = "~{script_dir}/association/compare_to_UKBB.py"
+    
+    File pan_ukbb
+    File my_str
+  }
+
+  output {
+    File svg = "panukbb_scatter.svg"
+    File png = "panukbb_scatter.png"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      . \
+      ~{pan_ukbb} \
+      ~{my_str} 
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    memory: "2GB"
+    shortTask: true
   }
 }
 

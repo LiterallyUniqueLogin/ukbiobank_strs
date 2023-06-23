@@ -3,6 +3,9 @@ version 1.0
 import "../gwas_wdl/gwas_tasks.wdl"
 import "expanse_files.wdl"
 import "expanse_finemapping_files.wdl"
+import "../finemapping_wdl/finemapping_tasks.wdl"
+import "../finemapping_wdl/finemap_one_region_workflow.wdl"
+import "../finemapping_wdl/susie_one_region_workflow.wdl"
 
 workflow rerun_finemap_and_followup_for_pheno {
   input {
@@ -13,11 +16,11 @@ workflow rerun_finemap_and_followup_for_pheno {
   call expanse_files.files
   call expanse_finemapping_files.finemapping_files
 
-  Int phenotype_idx = phenotypes.idxs[phenotype]
-  Int ldl_idx = phenotypes.idxs["ldl_cholesterol_direct"]
-  Int bilirubin_idx = phenotypes.idxs["total_bilirubin_direct"]
+  Int phenotype_idx = phenotype_names.idxs[phenotype]
+  Int ldl_idx = phenotype_names.idxs["ldl_cholesterol_direct"]
+  Int bilirubin_idx = phenotype_names.idxs["total_bilirubin"]
   if (phenotype_idx > bilirubin_idx) {
-    Int phenotype_idx_minus = phenotype_idx_v1 - 1
+    Int phenotype_idx_minus = phenotype_idx - 1
   }
   Int phenotype_idx_temp = select_first([phenotype_idx_minus, phenotype_idx])
   if (phenotype_idx_temp > ldl_idx) {
@@ -52,13 +55,13 @@ workflow rerun_finemap_and_followup_for_pheno {
       phenotype_name = phenotype,
       bounds = first_pass_bounds,
       all_samples_list = files.all_samples_list,
-      prefix = "~{phenotype_name}_FINEMAP_first_pass_~{first_pass_regions}_"
+      prefix = "~{phenotype}_FINEMAP_first_pass_~{first_pass_regions}_"
     }
     serializable_FINEMAP_output original_finemap_output_ = original_finemap_.finemap_output.subset
     Array[File] original_finemap_creds_ = original_finemap_.finemap_output.creds
-	}
+  }
 
-	call finemapping_tasks.first_pass_finemapping_df { input :
+  call finemapping_tasks.first_pass_finemapping_df { input :
     script_dir = ".",
     phenotype_name = phenotype,
     snp_assoc_results = files.snp_gwas_results[phenotype_idx],
@@ -74,6 +77,7 @@ workflow rerun_finemap_and_followup_for_pheno {
 
   call finemapping_tasks.generate_followup_regions_tsv { input :
     script_dir = ".",
+    phenotype = phenotype,
     first_pass_df = first_pass_finemapping_df.all_regions_concordance
   }
 
@@ -90,6 +94,24 @@ workflow rerun_finemap_and_followup_for_pheno {
     String followup_regions = "~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}"
     Int followup_chroms = followup_bounds.chrom
 
+    call finemap_one_region_workflow.finemap_one_region as repeat_finemap_ { input :
+      script_dir = ".",
+      finemap_command = "finemap",
+      str_vcfs = files.str_vcfs,
+      imputed_snp_bgens = files.imputed_snp_bgens,
+      snp_vars_to_filter_from_finemapping = files.snps_to_filter,
+      phenotype_samples = files.unrelated_samples_for_pheno_for_ethnicity[phenotype_idx][0],
+      my_str_gwas = files.str_gwas_results[phenotype_idx],
+      plink_snp_gwas = files.snp_gwas_results[phenotype_idx],
+      phenotype_name = phenotype,
+      bounds = followup_bounds,
+      all_samples_list = files.all_samples_list,
+      prefix = "~{phenotype}_FINEMAP_first_pass_~{followup_regions}_",
+      cache_breaker = 1
+    }
+    serializable_FINEMAP_output repeat_finemap_output_ = repeat_finemap_.finemap_output.subset
+    Array[File] repeat_finemap_creds_ = repeat_finemap_.finemap_output.creds
+
     call finemap_one_region_workflow.finemap_one_region as ratio_finemap_ { input :
       script_dir = ".",
       finemap_command = "finemap",
@@ -103,7 +125,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       snp_str_ratio = 4,
-      prefix = "~{phenotype_name}_FINEMAP_prior_snps_over_strs_~{followup_regions}_"
+      prefix = "~{phenotype}_FINEMAP_prior_snps_over_strs_~{followup_regions}_"
     }
     serializable_FINEMAP_output ratio_finemap_output_ = ratio_finemap_.finemap_output.subset
     Array[File] ratio_finemap_creds_ = ratio_finemap_.finemap_output.creds
@@ -121,7 +143,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       total_prob = 4,
-      prefix = "~{phenotype_name}_FINEMAP_prior_4_signals_~{followup_regions}_"
+      prefix = "~{phenotype}_FINEMAP_prior_4_signals_~{followup_regions}_"
     }
     serializable_FINEMAP_output total_prob_finemap_output_ = total_prob_finemap_.finemap_output.subset
     Array[File] total_prob_finemap_creds_ = total_prob_finemap_.finemap_output.creds
@@ -139,7 +161,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       prior_std = 0.0224,
-      prefix = "~{phenotype_name}_FINEMAP_derived_effect_size_prior_~{followup_regions}_"
+      prefix = "~{phenotype}_FINEMAP_derived_effect_size_prior_~{followup_regions}_"
     }
     serializable_FINEMAP_output prior_std_derived_finemap_output_ = prior_std_derived_finemap_.finemap_output.subset
     Array[File] prior_std_derived_finemap_creds_ = prior_std_derived_finemap_.finemap_output.creds
@@ -157,7 +179,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       prior_std = 0.005,
-      prefix = "~{phenotype_name}_FINEMAP_low_effect_size_prior_~{followup_regions}_"
+      prefix = "~{phenotype}_FINEMAP_low_effect_size_prior_~{followup_regions}_"
     }
     serializable_FINEMAP_output prior_std_low_finemap_output_ = prior_std_low_finemap_.finemap_output.subset
     Array[File] prior_std_low_finemap_creds_ = prior_std_low_finemap_.finemap_output.creds
@@ -175,10 +197,18 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       prob_conv_sss_tol = 0.0001,
-      prefix = "~{phenotype_name}_FINEMAP_stricter_stopping_threshold_~{followup_regions}_"
+      prefix = "~{phenotype}_FINEMAP_stricter_stopping_threshold_~{followup_regions}_"
     }
     serializable_FINEMAP_output prob_conv_sss_tol_finemap_output_ = prob_conv_sss_tol_finemap_.finemap_output.subset
     Array[File] prob_conv_sss_tol_finemap_creds_ = prob_conv_sss_tol_finemap_.finemap_output.creds
+
+    Int followup_chroms_minus_one = followup_chroms - 1
+    call gwas_tasks.imputed_snp_frequencies { input :
+      script_dir = ".",
+      pfiles = files.imputed_snp_pfiles[followup_chroms_minus_one],
+      samples = files.unrelated_samples_for_pheno_for_ethnicity[phenotype_idx][0],
+      bounds = followup_bounds,
+    }
 
     call finemap_one_region_workflow.finemap_one_region as mac_finemap_ { input :
       script_dir = ".",
@@ -193,7 +223,8 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       mac = 100,
-      prefix = "~{phenotype_name}_FINEMAP_mac_threshold_100_~{followup_regions}_"
+      snp_macs = imputed_snp_frequencies.counts,
+      prefix = "~{phenotype}_FINEMAP_mac_threshold_100_~{followup_regions}_"
     }
     serializable_FINEMAP_output mac_finemap_output_ = mac_finemap_.finemap_output.subset
     Array[File] mac_finemap_creds_ = mac_finemap_.finemap_output.creds
@@ -211,7 +242,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       inclusion_threshold = 0.0005,
-      prefix = "~{phenotype_name}_FINEMAP_pval_threshold_1e4_~{followup_regions}_"
+      prefix = "~{phenotype}_FINEMAP_pval_threshold_1e4_~{followup_regions}_"
     }
     serializable_FINEMAP_output threshold_finemap_output_ = threshold_finemap_.finemap_output.subset
     Array[File] threshold_finemap_creds_ = threshold_finemap_.finemap_output.creds
@@ -230,7 +261,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       best_guess = true,
-      prefix = "~{phenotype_name}_SuSiE_best_guess_genotypes_~{followup_regions}_"
+      prefix = "~{phenotype}_SuSiE_best_guess_genotypes_~{followup_regions}_"
     }
     serializable_SuSiE_output best_guess_susie_output_ = best_guess_susie_.susie_output.subset
     Array[File] best_guess_susie_CSs_ = best_guess_susie_.susie_output.CSs
@@ -249,7 +280,7 @@ workflow rerun_finemap_and_followup_for_pheno {
       bounds = followup_bounds,
       all_samples_list = files.all_samples_list,
       snp_p_over_str_p = 4,
-      prefix = "~{phenotype_name}_SuSiE_prior_snps_over_strs_~{followup_regions}_"
+      prefix = "~{phenotype}_SuSiE_prior_snps_over_strs_~{followup_regions}_"
     }
     serializable_SuSiE_output ratio_susie_output_ = ratio_susie_.susie_output.subset
     Array[File] ratio_susie_CSs_ = ratio_susie_.susie_output.CSs
@@ -261,13 +292,15 @@ workflow rerun_finemap_and_followup_for_pheno {
       phenotype_name = phenotype,
       snp_assoc_results = files.snp_gwas_results[phenotype_idx],
       str_assoc_results = files.str_gwas_results[phenotype_idx],
-      ethnic_str_assoc_results = ethnic_files.str_gwas_results[phenotype_idx]s,
+      ethnic_str_assoc_results = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
       original_susie_outputs = finemapping_files.original_susie_snakemake[phenotype_idx_sans],
       original_susie_CSs = finemapping_files.original_susie_CSs_snakemake[phenotype_idx_sans],
       original_finemap_outputs = original_finemap_output_,
       original_finemap_creds = original_finemap_creds_,
       best_guess_susie_outputs = best_guess_susie_output_,
       best_guess_susie_CSs = best_guess_susie_CSs_,
+      repeat_finemap_outputs = repeat_finemap_output_,
+      repeat_finemap_creds = repeat_finemap_creds_,
       total_prob_finemap_outputs = total_prob_finemap_output_,
       total_prob_finemap_creds = total_prob_finemap_creds_,
       derived_prior_std_finemap_outputs = prior_std_derived_finemap_output_,
@@ -292,9 +325,6 @@ workflow rerun_finemap_and_followup_for_pheno {
   }
 
   output {
-    File first_pass_regions_tsv = generate_finemapping_regions.data
-    File first_pass_regions_readme = generate_finemapping_regions.readme
-
     Array[serializable_FINEMAP_output] original_finemap = original_finemap_output_
     Array[Array[File]] original_finemap_creds = original_finemap_creds_
 
@@ -305,6 +335,8 @@ workflow rerun_finemap_and_followup_for_pheno {
 
     Array[serializable_SuSiE_output] best_guess_susie = best_guess_susie_output_
     Array[Array[File]] best_guess_susie_CSs = best_guess_susie_CSs_
+    Array[serializable_FINEMAP_output] repeat_finemap = repeat_finemap_output_
+    Array[Array[File]] repeat_finemap_creds = repeat_finemap_creds_
     Array[serializable_FINEMAP_output] total_prob_finemap = total_prob_finemap_output_
     Array[Array[File]] total_prob_finemap_creds = total_prob_finemap_creds_
     Array[serializable_FINEMAP_output] derived_prior_std_finemap = prior_std_derived_finemap_output_

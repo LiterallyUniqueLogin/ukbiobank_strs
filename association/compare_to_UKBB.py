@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
+import argparse
 import gzip
-import os
 
 import bokeh.io
 import bokeh.models
@@ -17,75 +17,73 @@ import pandas as pd
 import polars as pl
 #from qqman import qqman
 
-ukb = os.environ['UKB']
-
-def validate_our_code():
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 12))
-
-    print('loading csvs ... ', flush=True)
-    my_df = pd.read_csv(
-        f'{ukb}/association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
-        header=0,
-        delimiter='\t',
-        usecols=['chrom', 'pos', 'alleles', 'p_eosinophil_count', 'locus_filtered'],
-        dtype={'chrom': int, 'pos': int, 'alleles': str, 'p_eosinophil_count': float, 'locus_filtered': str},
-    )
-    my_df.rename(columns={'chrom': 'CHR', 'pos': 'BP', 'p_eosinophil_count': 'P'}, inplace=True)
-    alleles = my_df['alleles'].str.split(',', 1, expand=True)
-    print(my_df.shape)
-    
-    my_df = my_df[my_df['locus_filtered'] == 'False']
-    print(my_df.shape)
-    my_df['REF'] = alleles.iloc[:, 0]
-    my_df['ALT'] = alleles.iloc[:, 1]
-
-    plink_df = pd.read_csv(
-        f'{ukb}/association/results/eosinophil_count/plink_snp/results.tab',
-        header=0,
-        delimiter='\t',
-        usecols=['#CHROM', 'POS', 'P', 'REF', 'ALT'],
-        dtype={'#CHROM': int, 'POS': int, 'P': float}
-    )
-    plink_df.rename(columns={'#CHROM': 'CHR', 'POS': 'BP'}, inplace=True)
-    plink_df = plink_df[plink_df['CHR'] == 21]
-    print(plink_df.shape)
-
-    plink_df = plink_df.merge(
-        my_df,
-        how='inner',
-        on=['BP', 'REF', 'ALT'],
-        suffixes=(None, '_mine')
-    )
-    plink_df = plink_df[['CHR', 'BP', 'P', 'REF', 'ALT']]
-    print(plink_df.shape)
-
-    my_df = my_df.merge(
-        plink_df,
-        how='inner',
-        on=['BP', 'REF', 'ALT'],
-        suffixes=(None, '_theirs')
-    )
-    my_df = my_df[['CHR', 'BP', 'P']]
-    print(my_df.shape)
-
-    print('plotting manhattans ... ', flush=True)
-    qqman.manhattan(
-        my_df,
-        cmap=matplotlib.cm.get_cmap('viridis'),
-        ax=ax1,
-        title="P-values from this study's code",
-        suggestiveline=False
-    )
-
-    qqman.manhattan(
-        plink_df,
-        cmap=matplotlib.cm.get_cmap('viridis'),
-        ax=ax2,
-        title='Plink p-values',
-        suggestiveline=False
-    )
-
-    plt.savefig(f'{ukb}/export_scripts/results/validate_our_code.png')
+#def validate_our_code():
+#    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 12))
+#
+#    print('loading csvs ... ', flush=True)
+#    my_df = pd.read_csv(
+#        f'{ukb}/association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
+#        header=0,
+#        delimiter='\t',
+#        usecols=['chrom', 'pos', 'alleles', 'p_eosinophil_count', 'locus_filtered'],
+#        dtype={'chrom': int, 'pos': int, 'alleles': str, 'p_eosinophil_count': float, 'locus_filtered': str},
+#    )
+#    my_df.rename(columns={'chrom': 'CHR', 'pos': 'BP', 'p_eosinophil_count': 'P'}, inplace=True)
+#    alleles = my_df['alleles'].str.split(',', 1, expand=True)
+#    print(my_df.shape)
+#    
+#    my_df = my_df[my_df['locus_filtered'] == 'False']
+#    print(my_df.shape)
+#    my_df['REF'] = alleles.iloc[:, 0]
+#    my_df['ALT'] = alleles.iloc[:, 1]
+#
+#    plink_df = pd.read_csv(
+#        f'{ukb}/association/results/eosinophil_count/plink_snp/results.tab',
+#        header=0,
+#        delimiter='\t',
+#        usecols=['#CHROM', 'POS', 'P', 'REF', 'ALT'],
+#        dtype={'#CHROM': int, 'POS': int, 'P': float}
+#    )
+#    plink_df.rename(columns={'#CHROM': 'CHR', 'POS': 'BP'}, inplace=True)
+#    plink_df = plink_df[plink_df['CHR'] == 21]
+#    print(plink_df.shape)
+#
+#    plink_df = plink_df.merge(
+#        my_df,
+#        how='inner',
+#        on=['BP', 'REF', 'ALT'],
+#        suffixes=(None, '_mine')
+#    )
+#    plink_df = plink_df[['CHR', 'BP', 'P', 'REF', 'ALT']]
+#    print(plink_df.shape)
+#
+#    my_df = my_df.merge(
+#        plink_df,
+#        how='inner',
+#        on=['BP', 'REF', 'ALT'],
+#        suffixes=(None, '_theirs')
+#    )
+#    my_df = my_df[['CHR', 'BP', 'P']]
+#    print(my_df.shape)
+#
+#    print('plotting manhattans ... ', flush=True)
+#    qqman.manhattan(
+#        my_df,
+#        cmap=matplotlib.cm.get_cmap('viridis'),
+#        ax=ax1,
+#        title="P-values from this study's code",
+#        suggestiveline=False
+#    )
+#
+#    qqman.manhattan(
+#        plink_df,
+#        cmap=matplotlib.cm.get_cmap('viridis'),
+#        ax=ax2,
+#        title='Plink p-values',
+#        suggestiveline=False
+#    )
+#
+#    plt.savefig(f'{ukb}/export_scripts/results/validate_our_code.png')
 
 def linear_int_interpolate(c1, c2, dist):
     c_new = []
@@ -93,12 +91,12 @@ def linear_int_interpolate(c1, c2, dist):
         c_new.append(coord1 + round((coord2 - coord1)*dist))
     return c_new
 
-def scatter_with_panukbb():
+def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_str_tsv):
     print('loading panukbb ... ', flush=True)
     panukbb_df = pl.scan_csv(
-        f'{ukb}/misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv',
+        #f'{ukb}/misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv',
+        pan_ukbb_tsv,
         sep='\t',
-        columns=['chr', 'pos', 'ref', 'alt', 'pval_EUR'],
         dtypes={'chr': str, 'pos': int, 'ref': str, 'alt': str, 'pval_EUR': float},
         null_values='NA'
     ).rename({'pval_EUR': 'p'}).filter(
@@ -109,9 +107,8 @@ def scatter_with_panukbb():
 
     print('loading plink ... ', flush=True)
     my_pipeline_df = pl.scan_csv(
-        f'{ukb}/association/results/total_bilirubin/plink_snp/results.tab',
+        my_str_tsv,
         sep='\t',
-        columns=['#CHROM', 'POS', 'P', 'REF', 'ALT'],
         dtypes={'#CHROM': int, 'POS': int, 'REF': str, 'ALT': str, 'P': float},
         null_values='NA'
     ).rename(
@@ -192,26 +189,14 @@ def scatter_with_panukbb():
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color=None
-    bokeh.io.export_svg(fig, filename=f'{ukb}/export_scripts/results/panukbb_scatter.svg')
-    bokeh.io.export_png(fig, filename=f'{ukb}/export_scripts/results/panukbb_scatter.png')
-
-    '''
-    figure, ax = plt.subplots(1, 1)
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_xlabel('-log10(p panukbb)')
-    ax.set_ylabel('-log10(p our pipeline)')
-    # From colorbrewer
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list(name='meh', colors=['#e5f5f9', '#99d8c9', '#2ca25f'])
-    hexbin = ax.hexbin(merged['p_panukbb'], merged['p_mine'], gridsize=100, cmap=cmap, bins='log')
-    cb = figure.colorbar(hexbin, ax=ax)
-    cb.set_label('counts')
-    figure.show()
-
-    # svg for later use in adobe illustrator, png for direct importing into google docs files
-    plt.savefig(f'{ukb}/export_scripts/results/panukbb_scatter.svg')
-    plt.savefig(f'{ukb}/export_scripts/results/panukbb_scatter.png')
-    '''
+    bokeh.io.export_svg(fig, filename=f'{outdir}/panukbb_scatter.svg')
+    bokeh.io.export_png(fig, filename=f'{outdir}/panukbb_scatter.png')
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('outdir')
+    parser.add_argument('pan_ukbb_tsv')
+    parser.add_argument('my_str_tsv')
+    args = parser.parse_args()
     #validate_our_code()
-    scatter_with_panukbb()
+    scatter_with_panukbb(args.outdir, args.pan_ukbb_tsv, args.my_str_tsv)

@@ -30,6 +30,7 @@ workflow finemap_one_region {
     Float? snp_str_ratio
     Float? total_prob
     Int? mac
+    File? snp_macs
     Float? inclusion_threshold
     Float? prior_std
     Float? prob_conv_sss_tol
@@ -51,6 +52,7 @@ workflow finemap_one_region {
     snp_str_ratio = snp_str_ratio,
     total_prob = total_prob,
     mac = mac,
+    snp_macs = snp_macs,
     inclusion_threshold = inclusion_threshold,
   }
 

@@ -15,6 +15,7 @@ workflow finemapping {
     # one per chrom
     Array[VCF]+ str_vcfs
     Array[bgen]+ imputed_snp_bgens
+    Array[PFiles] + imputed_snp_pfiles
     Array[File] snp_vars_to_filter_from_finemapping
 
     File shared_covars
@@ -229,6 +230,14 @@ workflow finemapping {
     serializable_FINEMAP_output prob_conv_sss_tol_finemap_output_ = prob_conv_sss_tol_finemap_.finemap_output.subset
     Array[File] prob_conv_sss_tol_finemap_creds_ = prob_conv_sss_tol_finemap_.finemap_output.creds
 
+    Int followup_chroms_minus_one = followup_chroms - 1
+    call gwas_tasks.imputed_snp_frequencies {
+      script_dir = script_dir,
+      pfiles = imputed_snp_pfiles[followup_chroms_minus_one],
+      samples = phenotype_samples,
+      bounds = followup_bounds,
+    }
+
     call finemap_one_region_workflow.finemap_one_region as mac_finemap_ { input :
       script_dir = script_dir,
       finemap_command = finemap_command,
@@ -242,6 +251,7 @@ workflow finemapping {
       bounds = followup_bounds,
       all_samples_list = all_samples_list,
       mac = 100,
+      snp_macs = imputed_snp_frequencies.counts,
       prefix = "~{phenotype_name}_FINEMAP_mac_threshold_100_~{followup_regions}_"
     }
     serializable_FINEMAP_output mac_finemap_output_ = mac_finemap_.finemap_output.subset

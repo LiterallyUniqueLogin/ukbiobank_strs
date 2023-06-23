@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 
 import argparse
+import ast
 import datetime
 
+import numpy as np
 import polars as pl
 
 import sample_utils
+
+def get_mac(dosage_dict_str):
+    dosages = list(ast.literal_eval(dosage_dict_str).values())
+    return np.sum(dosages) - np.max(dosages)
 
 def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_results_fname, filter_set_fname, samples_fname, readme, phenotype, chrom, start, end, inclusion_threshold, mac, snp_str_ratio, total_prob):
     '''
@@ -19,26 +25,16 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
     if mac:
         mac_threshold = int(mac[0])
         snp_mac_fname = mac[1]
-        str_mac_fname = mac[2]
         snps_exclude_mac = pl.scan_csv(
             snp_mac_fname,
             sep='\t'
         ).filter(
             pl.col('ALT_CTS') < mac_threshold
         ).select(
-            ('SNP_' + pl.col('#POS').cast(str) + '_' + pl.col('REF') + '_' + pl.col('ALT')).alias('varname')
+            ('SNP_' + pl.col('POS').cast(str) + '_' + pl.col('REF') + '_' + pl.col('ALT')).alias('varname')
         ).collect()['varname'].to_list()
         # need to make that look like a list of strings to polars b/c buggy, so add a single nonsense to it
         snps_exclude_mac.append('asdf')
-
-        strs_exclude_mac = pl.scan_csv(
-            str_mac_fname,
-            sep='\t'
-        ).filter(
-            pl.col('mac') < mac_threshold
-        ).select(
-            'pos'
-        ).collect()['pos'].to_list()
 
     with open(f'{workdir}/finemap_input.master', 'w') as finemap_master:
         finemap_master.write(
@@ -80,7 +76,16 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
             ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
             ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
-        ).collect()
+        )
+
+        if mac:
+            strs = strs.with_column(
+                pl.col('subset_total_per_allele_dosages').apply(get_mac).alias('mac')
+            ).filter(
+                pl.col('mac') >= mac_threshold
+            )
+        strs = strs.collect()
+
         if strs.shape[0] > 0:
             strs = strs.select([
                 ('STR_' + pl.col('pos').cast(str)).alias('rsid'),
@@ -103,9 +108,6 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
                 pl.col(f'coeff_{phenotype}').alias('beta'),
                 pl.col(f'se_{phenotype}').alias('se')
             ])
-
-        if mac:
-            strs = strs.filter(~pl.col('position').is_in(strs_exclude_mac))
 
         assert strs.unique(subset=['chromosome', 'position']).shape[0] == strs.shape[0]
 
@@ -179,7 +181,7 @@ def main():
     parser.add_argument('--snp-str-ratio', type=float, default=None)
     parser.add_argument('--total-prob', type=float, default=None)
     parser.add_argument('--inclusion-threshold', type=float, default=0.05)
-    parser.add_argument('--mac', nargs=3, default=None)
+    parser.add_argument('--mac', default=None, nargs=2)
     args = parser.parse_args()
 
     assert (args.snp_str_ratio is not None) + (args.total_prob is not None) <= 1

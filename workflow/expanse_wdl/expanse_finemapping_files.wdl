@@ -2,6 +2,7 @@ version 1.0
 
 import "../gwas_wdl/gwas_tasks.wdl"
 import "expanse_files.wdl"
+import "../finemapping_wdl/finemapping_tasks.wdl"
 
 workflow finemapping_files {
 
@@ -14,7 +15,7 @@ workflow finemapping_files {
     Array[Array[String]] finemapping_regions_tsv = read_tsv(finemapping_region)
 
     # first pass finemapping results
-    if (phenotype != "ldl_cholesterol_direct" && phenotype != "total_bilirubin") {
+    if (phenotype_names.n[phenotype_idx] != "ldl_cholesterol_direct" && phenotype_names.n[phenotype_idx] != "total_bilirubin") {
       scatter (first_pass_region_idx in range(length(finemapping_regions_tsv) - 1)) {
         Int first_pass_region_idx_plus_one = first_pass_region_idx + 1
         region first_pass_bounds = {
@@ -44,7 +45,7 @@ workflow finemapping_files {
 
   output {
     # indexed over snakemake-phenotype, then region
-    Array[Array[serializable_SuSiE_output]] original_susie_snakemake = select_all(original_susie_snakemake)
+    Array[Array[serializable_SuSiE_output]] original_susie_snakemake = select_all(original_susie_snakemake_)
     # indexed over snakemake-phenotype, then region, then particular CS
     Array[Array[Array[String]]] original_susie_CSs_snakemake = select_all(original_susie_CSs_snakemake_)
   }

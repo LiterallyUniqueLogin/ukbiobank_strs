@@ -27,7 +27,16 @@ workflow figures {
     sc = sc_white_brits.data
   }
 
+  Int total_bilirubin_idx = phenotype_names.idxs["total_bilirubin"]
+
+  call gwas_tasks.compare_bili_to_UKBB as supp_fig_2 { input :
+    script_dir = script_dir,
+    pan_ukbb = files.pan_ukbb,
+    my_str = files.str_gwas_results[total_bilirubin_idx]
+  }
+
   ##### generate figure 1 (unfinished)
+
 #  # TODO this crashes because of a missing header in the VCF ##command=Hipstr
 #  scatter (chrom in range(22)) {
 #    call gwas_tasks.imputed_str_locus_summary as imputed_str_locus_summaries { input :
@@ -54,7 +63,6 @@ workflow figures {
     }
   }
 
-  Int total_bilirubin_idx = phenotype_names.idxs["total_bilirubin"]
   call gwas_tasks.generate_peaks as bilirubin_overview_manhattan_peaks { input :
     script_dir = script_dir,
     snp_assoc_results = files.snp_gwas_results[total_bilirubin_idx],
@@ -805,6 +813,17 @@ workflow figures {
     use_tstat = true
   }
 
+  scatter (phenotype_idx in range(length(phenotype_names.n))) {
+    call gwas_tasks.reformat_my_str_gwas_table_for_publication { input :
+      script_dir = script_dir,
+      phenotype = phenotype_names.n[phenotype_idx],
+      my_str_gwas = files.str_gwas_results[phenotype_idx],
+      flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
+      str_hg19_pos_bed = files.str_hg19_pos_bed,
+      str_hg38_pos_bed = files.str_hg38_pos_bed,
+      repeat_units_table = files.repeat_units_table
+    }
+
   output {
     Float cbl_imperfection_ld_r2 = cbl_imperfection_ld.r2
 
@@ -833,6 +852,9 @@ workflow figures {
     File fig_4f_png = fig_4f.png
     File fig_4g_svg = fig_4g.svg
     File fig_4g_png = fig_4g.png
+
+    File supp_fig_2_png = supp_fig_2.png
+    File supp_fig_2_svg = supp_fig_2.svg
 
 #    File stat_statements = post_finemapping.stat_statements
 #    File supp_fig_3_png = post_finemapping.cs_min_abs_corrs_png
@@ -904,5 +926,8 @@ workflow figures {
 #    File supp_table_4 = str_tables_for_paper.confidently_finemapped_strs_for_paper
 #    File confidently_finemapped_strs_sorted = str_tables_for_paper.confidently_finemapped_strs_sorted
 #    File supp_table_6 = concordance_in_other_ethnicities.stats
+
+    Array[File] str_gwas_results_for_publication = reformat_my_str_gwas_table_for_publication.unfiltered
+    Array[File] filtered_str_gwas_results_for_publication = reformat_my_str_gwas_table_for_publication.filtered
   }
 }
