@@ -10,12 +10,19 @@ parser.add_argument('out')
 parser.add_argument('tab_file')
 parser.add_argument('length_sum_column')
 parser.add_argument('trait_column')
+parser.add_arguemnt('--sep', defulat='\t')
+parser.add_argument('--subset', nargs=2)
 args = parser.parse_args()
 
 out = pl.read_csv(
     args.tab_file,
-    sep='\t'
-).rename({
+    sep=args.sep
+)
+
+if args.subset:
+    out = out.filter(pl.col(args.subset[0]) == args.subset[1])
+
+out = out.rename({
     args.length_sum_column: 'length_sum'
 }).groupby(
     'length_sum'

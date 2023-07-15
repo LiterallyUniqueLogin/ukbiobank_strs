@@ -29,9 +29,9 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             snp_mac_fname,
             sep='\t'
         ).filter(
-            pl.col('ALT_CTS') < mac_threshold
+            pl.col('mac') < mac_threshold
         ).select(
-            ('SNP_' + pl.col('POS').cast(str) + '_' + pl.col('REF') + '_' + pl.col('ALT')).alias('varname')
+            ('SNP_' + pl.col('pos').cast(str) + '_' + pl.col('ref') + '_' + pl.col('alt')).alias('varname')
         ).collect()['varname'].to_list()
         # need to make that look like a list of strings to polars b/c buggy, so add a single nonsense to it
         snps_exclude_mac.append('asdf')
@@ -76,15 +76,14 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
             ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
             ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
-        )
+        ).collect()
 
-        if mac:
+        if mac and strs.shape[0] > 0:
             strs = strs.with_column(
                 pl.col('subset_total_per_allele_dosages').apply(get_mac).alias('mac')
             ).filter(
                 pl.col('mac') >= mac_threshold
             )
-        strs = strs.collect()
 
         if strs.shape[0] > 0:
             strs = strs.select([

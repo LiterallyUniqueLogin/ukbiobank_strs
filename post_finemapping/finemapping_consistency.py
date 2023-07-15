@@ -20,7 +20,6 @@ import graphing_utils
 other_ethnicities = ['black', 'south_asian', 'chinese', 'irish', 'white_other']
 
 corr_cutoff = .8
-p_val_thresh = 5e-8
 
 @dataclasses.dataclass
 class FINEMAP_output:
@@ -41,9 +40,6 @@ class SuSiE_output:
     chrom: int
 
 def load_susie(susie_outputs, return_corrs = False, only_L = None):
-    # results_regions_dir, colnames_regions_dir = None, regions = None, phenotype=None, original=False, return_corrs = False, only_L = None):
-    # assert (phenotype is not None) + (regions is not None) == 1
-    # assert (colnames_regions_dir is not None) + original <= 1
     dfs = []
     unconverged_regions = []
     underexplored_regions = []
@@ -58,16 +54,6 @@ def load_susie(susie_outputs, return_corrs = False, only_L = None):
                 unconverged_regions.append(susie_output.region)
                 continue
 
-#        if original:
-#            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt.normal_run'
-#            if not os.path.exists(colnames_fname):
-#                colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
-#        elif not colnames_regions_dir:
-#            colnames_fname = f'{results_regions_dir}/{region}/colnames.txt'
-#        else:
-#            colnames_fname = f'{colnames_regions_dir}/{region}/colnames.txt'
-#        if not os.path.exists(colnames_fname) and not original:
-#            colnames_fname = f'{colnames_fname}.normal_run'
         with open(susie_output.colnames) as var_file:
             susie_vars = [line.strip() for line in var_file if line.strip()]
 
@@ -173,6 +159,11 @@ def load_finemap(finemap_outputs):
                     continue
                 found_n_causal = True
                 n_causal = int(line.split()[-1])
+                with open(finemap_output.snp_file, 'rb') as f:
+                    n_vars = sum(1 for _ in f) - 1
+                if n_causal == n_vars:
+                    # not underexplored if there are no more variants to explore
+                    break
                 if any(cred.endswith(f'.cred{n_causal}') for cred in finemap_output.creds):
                     underexplored_regions.append(finemap_output.region)
                 break
@@ -209,7 +200,13 @@ def mpv_comparison():
         ('STR_' + pl.col('pos').cast(str)).alias('varname'),
         pl.lit(True).alias('is_STR'),
         pl.col(f'p_mean_platelet_volume').alias('p_val'),
-    ])
+    ]).filter(
+        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+    )
 
     snp_assocs = pl.scan_csv(
         f'{ukb}/association/results/mean_platelet_volume/plink_snp/results.tab',
@@ -424,7 +421,7 @@ def mpv_comparison():
                     pl.col('susie_pip_prior_var_02').alias('susie_alpha_prior_var_02'),
                 ])
             graph_df = graph_df.filter(
-                (pl.col('p_val') <= 5e-8) &
+                (pl.col('p_val') < 5e-8) &
                 ((pl.col('susie_alpha_prior_var_02') > 0) | (pl.col(f'susie_alpha{suffix}') > 0))
             )
 
@@ -536,7 +533,7 @@ def mpv_comparison():
         fig.axis.major_label_text_font_size = min_text_size
 
         graph_df = total_df.filter(
-            (pl.col('p_val') <= 5e-8) &
+            (pl.col('p_val') < 5e-8) &
             ((pl.col('finemap_pip') > 0) | (pl.col(f'finemap_pip_{suffix}') > 0))
         )
 
@@ -648,7 +645,13 @@ def followup_finemapping_conditions_df(
         ('STR_' + pl.col('pos').cast(str)).alias('varname'),
         pl.lit(True).alias('is_STR'),
         pl.col(f'p_{phenotype}').alias('p_val'),
-    ])
+    ]).filter(
+        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+    )
 
     other_ethnicity_assocs = None
     for ethnicity, ethnic_str_gwas_fname in zip(other_ethnicities, ethnic_str_gwas_fnames):
@@ -829,14 +832,14 @@ def followup_finemapping_conditions_df(
 
     pheno_df.write_csv(f'{outdir}/finemapping_followup_concordance_{phenotype}.tab', sep='\t')
     if should_assert:
-        assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
-        assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
-        assert np.all(~np.isnan(pheno_df['finemap_pip'].to_numpy()))
-        assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_best_guess'].to_numpy()))
-        assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_ratio'].to_numpy()))
-        assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
+        assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False, pheno_df.filter(pl.col('region') == '').select(['chrom', 'pos', 'region', 'varname'])
+        assert np.all(~np.isnan(pheno_df['p_val'].to_numpy())), pheno_df.filter(pl.col('p_val').is_null()).select(['chrom', 'pos', 'region', 'varname'])
+        assert np.all(~np.isnan(pheno_df['finemap_pip'].to_numpy())), pheno_df.filter(pl.col('finemap_pip').is_null()).select(['chrom', 'pos', 'region', 'varname'])
+#        assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_best_guess'].to_numpy())), pheno_df.filter((pl.col('susie_alpha').is_null().cast(int) + pl.col('susie_alpha_best_guess').is_null().cast(int)) == 1).select(['chrom', 'pos', 'region', 'varname'])
+#        assert np.all(np.isnan(pheno_df['susie_alpha'].to_numpy()) == np.isnan(pheno_df['susie_alpha_ratio'].to_numpy())), pheno_df.filter((pl.col('susie_alpha').is_null().cast(int) + pl.col('susie_alpha_ratio').is_null().cast(int)) == 1).select(['chrom', 'pos', 'region', 'varname'])
+        assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy()), pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count().alias('count')]).filter(pl.col('count') != 1)
         for ethnicity in other_ethnicities:
-            assert np.all(~np.isnan(pheno_df.filter('is_STR')[f'{ethnicity}_p_val'].to_numpy()))
+            assert np.all(~np.isnan(pheno_df.filter('is_STR')[f'{ethnicity}_p_val'].to_numpy())), pheno_df.filter(pl.col('is_STR') & pl.col(f'{ethnicity}_p_val').is_null()).select(['chrom', 'pos', 'region', 'varname'])
 
 def linear_int_interpolate(c1, c2, dist):
     c_new = []
@@ -884,14 +887,14 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
 
     total_df.filter(
         pl.col('is_STR') &
-        (pl.col('p_val') <= 1e-10) &
+        (pl.col('p_val') < 1e-10) &
         (pl.col('susie_alpha') >= .8) &
         (pl.col('finemap_pip') >= .8)
     ).drop('is_STR').write_csv(f'{intermediate_dir}/doubly_finemapped_STRs.tab', sep='\t')
 
     pass_all_threshes = total_df.filter(
         pl.col('is_STR') &
-        (pl.col('p_val') <= 1e-10) &
+        (pl.col('p_val') < 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in check_cols]) == len(check_cols))
     ).drop([
         'susie_cs', 'susie_cs_best_guess', 'susie_cs_ratio', 'is_STR', 'varname'
@@ -899,7 +902,7 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
 
     total_df.filter(
         pl.col('is_STR') &
-        (pl.col('p_val') <= 1e-10) &
+        (pl.col('p_val') < 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in check_all_cols]) == len(check_all_cols))
     ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{intermediate_dir}/overconfidently_finemapped_STRs.tab', sep='\t')
 
@@ -932,7 +935,7 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
 
             graph_df = total_df.filter(
                 var_cond &
-                (pl.col('p_val') <= 1e-10) &
+                (pl.col('p_val') < 1e-10) &
                 ((pl.col(pip_col) > 0) | (pl.col(f'{pip_col}_{suffix}') > 0))
             ).sort(pip_col).with_column(
                 pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
@@ -1105,7 +1108,13 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         pl.col(f'p_{phenotype}').alias('p_val'),
         pl.col(f'coeff_{phenotype}').alias('coeff'),
         pl.col(f'se_{phenotype}').alias('se')
-    ])
+    ]).filter(
+        ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
+        ((pl.col('chrom') != 1) | (pl.col('pos') != 247848392)) &
+        ((pl.col('chrom') != 21) | (pl.col('pos') != 47741815)) &
+        ((pl.col('chrom') != 8) | (pl.col('pos') != 145231731))
+    )
 
     snp_assocs = pl.scan_csv(
         snp_gwas_fname,
@@ -1146,6 +1155,15 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
 
     print('original SuSiE')
     original_susies, min_abs_corrs = load_susie(original_SuSiE_outputs, return_corrs=True)
+    original_susies = original_susies.filter(
+        ((pl.col('chrom') != 17) | (pl.col('varname') != 'STR_80520458')) &
+        ((pl.col('chrom') != 1) | (pl.col('varname') != 'STR_247747217')) &
+        ((pl.col('chrom') != 1) | (pl.col('varname') != 'STR_247848392')) &
+        ((pl.col('chrom') != 21) | (pl.col('varname') != 'STR_47741815')) &
+        ((pl.col('chrom') != 8) | (pl.col('varname') != 'STR_145231731'))
+    ) # Old SuSiE runs didn't handle this properly. This does remove variants that were actually
+    # present during fine-mapping, but helps handle a bunch of downstream problems
+
     print('original FINEMAP')
     original_finemaps = load_finemap(original_FINEMAP_outputs)
 
@@ -1201,10 +1219,10 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
     pheno_df.write_csv(f'{outdir}/finemapping_all_regions_concordance_{phenotype}.tab', sep='\t')
     np.save(f'{outdir}/susie_all_regions_min_abs_corrs_{phenotype}.npy', np.array(min_abs_corrs))
     if should_assert:
-        assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False
-        assert np.all(~np.isnan(pheno_df['p_val'].to_numpy()))
+        assert pheno_df.select((pl.col('region') == '').any().alias('region'))['region'].to_numpy()[0] == False, pheno_df.filter(pl.col('region') == '').select(['chrom', 'pos', 'region', 'varname'])
+        assert np.all(~np.isnan(pheno_df['p_val'].to_numpy())), pheno_df.filter(pl.col('p_val').is_null()).select(['chrom', 'pos', 'region', 'varname'])
         # assert np.all(~np.isnan(pheno_df['finemap_pip'].to_numpy())) disable for the time being, only 5 snps dropped this way in hematocrit, none in the other phenotypes
-        assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy())
+        assert np.all(1 == pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count()]).sort('count')['count'].to_numpy()), pheno_df.groupby(['phenotype', 'chrom', 'varname']).agg([pl.count().alias('count')]).filter(pl.col('count') != 1)
 
 def generate_followup_regions_tsv(outdir, first_pass_df):
     pl.read_csv(
@@ -1217,7 +1235,7 @@ def generate_followup_regions_tsv(outdir, first_pass_df):
         }
     ).filter(
         pl.col('is_STR') &
-        (pl.col('p_val') <= 1e-10) &
+        (pl.col('p_val') < 1e-10) &
         (pl.col('susie_alpha') >= .8) &
         (pl.col('finemap_pip') >= .8)
     ).filter(~(
@@ -1262,7 +1280,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
         total_df.filter(pl.col('susie_cs') >= 0).unique(subset = ['phenotype', 'region', 'susie_cs']).shape[0],
         np.sum(min_abs_corrs >= corr_cutoff)
     )
-    strong_susie_vars = (pl.col('p_val') <= 5e-8) & (pl.col('susie_cs') >= 0) & (pl.col('susie_alpha') >= 0.8)
+    strong_susie_vars = (pl.col('p_val') < 5e-8) & (pl.col('susie_cs') >= 0) & (pl.col('susie_alpha') >= 0.8)
     print(
         'Total GWsig SuSiE vars PIP >= 0.8, fraction of those that are STRs, (min, max fraction over phenotypes)',
         total_df.filter(strong_susie_vars).shape[0],
@@ -1278,7 +1296,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
             (pl.col('count')/pl.col('total')).max().alias('max')
         ])
     )
-    strong_finemap_vars = (pl.col('p_val') <= 5e-8) & (pl.col('finemap_pip') >= 0.8)
+    strong_finemap_vars = (pl.col('p_val') < 5e-8) & (pl.col('finemap_pip') >= 0.8)
     print(
         'Total GWsig FINEMAP vars PIP >= 0.8, fraction of those that are STRs, (min, max fraction over phenotypes)',
         total_df.filter(strong_finemap_vars).shape[0],
@@ -1314,7 +1332,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     print(
         'Total contribution of STRs in SuSiE (min, max fraction over phenotypes)',
         total_df.filter(
-            (pl.col('p_val') <= 5e-8)
+            (pl.col('p_val') < 5e-8)
             & (pl.col('susie_cs') >= 0)
         ).groupby('is_STR').agg(
             pl.col('susie_alpha').sum()
@@ -1324,7 +1342,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
             (pl.col('susie_alpha')/pl.col('total'))
         ),
         total_df.filter(
-            (pl.col('p_val') <= 5e-8)
+            (pl.col('p_val') < 5e-8)
             & (pl.col('susie_cs') >= 0)
         ).groupby(['phenotype', 'is_STR']).agg(
             pl.col('susie_alpha').sum()
@@ -1338,7 +1356,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     print(
         'Total contribution of STRs in FINEMAP (min, max fraction over phenotypes)',
         total_df.filter(
-            (pl.col('p_val') <= 5e-8)
+            (pl.col('p_val') < 5e-8)
             & ~pl.col('finemap_pip').is_null()
         ).groupby('is_STR').agg(
             pl.col('finemap_pip').sum()
@@ -1348,7 +1366,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
             (pl.col('finemap_pip')/pl.col('total'))
         ),
         total_df.filter(
-            (pl.col('p_val') <= 5e-8)
+            (pl.col('p_val') < 5e-8)
             & ~pl.col('finemap_pip').is_null()
         ).groupby(['phenotype', 'is_STR']).agg(
             pl.col('finemap_pip').sum()
@@ -1363,7 +1381,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     print(
         'Total SuSiE contribution of variants with PIP <= 0.1',
         total_df.filter(
-            (pl.col('p_val') <= 5e-8)
+            (pl.col('p_val') < 5e-8)
             & (pl.col('susie_cs') >= 0)
         ).groupby(
             (pl.col('susie_alpha') < 0.1).alias('low_alpha')
@@ -1377,7 +1395,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     print(
         'Total SuSiE contribution of variants with PIP <= 0.1',
         total_df.filter(
-            (pl.col('p_val') <= 5e-8)
+            (pl.col('p_val') < 5e-8)
             & ~pl.col('finemap_pip').is_null()
         ).groupby(
             (pl.col('finemap_pip') < 0.1).alias('low_alpha')
@@ -1534,7 +1552,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     total_susie_pip = total_df.filter(pl.col('susie_cs') >= 1)['susie_alpha'].sum()
     ys = [
         total_df.filter(
-            (pl.col('p_val') <= 5e-8) &
+            (pl.col('p_val') < 5e-8) &
             (pl.col('susie_cs') >= 1) &
             (float(left_edge) <= pl.col('susie_alpha')) &
             (pl.col('susie_alpha') < float(left_edge) + step)
@@ -1572,7 +1590,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     total_finemap_pip = total_df['finemap_pip'].sum()
     ys = [
         total_df.filter(
-            (pl.col('p_val') <= 5e-8) &
+            (pl.col('p_val') < 5e-8) &
             (float(left_edge) <= pl.col('finemap_pip')) &
             (pl.col('finemap_pip') < float(left_edge) + step)
         )['finemap_pip'].sum()/total_finemap_pip
@@ -1657,7 +1675,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
             ).alias('susie_pip'),
             pl.max([pl.col('p_val'), 1e-300]).alias('p_val')
         ]).filter(
-            (pl.col('p_val') <= 5e-8) &
+            (pl.col('p_val') < 5e-8) &
             filter_cond & (
                 (pl.col('finemap_pip') > 0.0) | (pl.col('susie_pip') > 0.0)
             )
@@ -1813,7 +1831,7 @@ def tsv_to_susie_outputs(tsv):
             colnames = df['colnames'][row],
             alpha = df['alpha'][row],
             V = df['V'][row],
-            CSes = df['CSes'][row].split(','),
+            CSes = df['CSes'][row].split(',') if df['CSes'][row] is not None else [],
             region = df['region'][row],
             chrom = df['chrom'][row],
         ))

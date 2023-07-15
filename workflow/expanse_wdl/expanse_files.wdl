@@ -118,6 +118,9 @@ workflow files {
     File peaks_for_1ef_ = select_first([peaks_for_1ef_wdl, peaks_for_1ef_snakemake])
     File finemapping_regions_ = select_first([finemapping_regions_wdl, finemapping_regions_snakemake])
     Array[File] pheno_to_ethnic_to_str_gwas_results_ = select_first([pheno_to_ethnic_to_str_gwas_results_wdl, pheno_to_ethnic_to_str_gwas_results_snakemake])
+    File finemapping_first_pass_dfs_ = "wdl_cache/finemapping/finemapping_all_regions_concordance_~{phenotype}.tab"
+    File susie_min_abs_corrs_ = "wdl_cache/finemapping/susie_all_regions_min_abs_corrs_~{phenotype}.tab"
+    File finemapping_followup_dfs_ = "wdl_cache/finemapping/finemapping_followup_concordance_~{phenotype}.tab" # bigger for mean platelet volume, so needs consistent filtering
   }
 
   output {
@@ -138,8 +141,10 @@ workflow files {
     File specific_alleles = "association/specific_alleles.tab"
     File eSTR_table = "misc_data/eSTR/eSTRs.csv"
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
+    File CBL_geuvadis_expression = "misc_data/geuvadis_melissa/CBL_Geuvadis_Exprdata.csv"
     File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
     File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
+    File RHOT1_geuvadis_expression = "misc_data/geuvadis_melissa/RHOT1_Geuvadis_Exprdata.csv"
     Array[String] ethnicities = ethnicities_
     Array[String] all_ethnicities = all_ethnicities_
 
@@ -209,5 +214,9 @@ workflow files {
     Array[Array[File]] pheno_to_ethnic_to_str_gwas_results = pheno_to_ethnic_to_str_gwas_results_
     # indexed first by ethnicity then phenotype
     Array[Array[File]] ethnic_to_pheno_to_str_gwas_results = ethnic_to_pheno_to_str_gwas_results_ 
+
+    Array[File] finemapping_first_pass_dfs = finemapping_first_pass_dfs_ 
+    Array[File] susie_min_abs_corrs = susie_min_abs_corrs_
+    Array[File] finemapping_followup_dfs = finemapping_first_pass_dfs_ # bigger for mean platelet volume, so needs consistent filtering
   }
 }

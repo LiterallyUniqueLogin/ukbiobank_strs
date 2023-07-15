@@ -7,9 +7,9 @@ import "../finemapping_wdl/finemapping_tasks.wdl"
 import "../finemapping_wdl/finemap_one_region_workflow.wdl"
 import "../finemapping_wdl/susie_one_region_workflow.wdl"
 
-workflow rerun_finemap_and_followup_for_pheno {
+workflow lots_of_followups_for_pheno {
   input {
-    String phenotype
+    String phenotype = "mean_platelet_volume"
   }
 
   call gwas_tasks.phenotype_names
@@ -98,16 +98,8 @@ workflow rerun_finemap_and_followup_for_pheno {
     first_pass_df = first_pass_finemapping_df.all_regions_concordance
   }
 
-  Array[Array[String]] followup_finemapping_regions_tsv = read_tsv(generate_followup_regions_tsv.tsv)
-
-  # followup finemapping
-  scatter (followup_region_idx in range(length(followup_finemapping_regions_tsv) - 1)) {
-    Int followup_region_idx_plus_one = followup_region_idx + 1
-    region followup_bounds = {
-      "chrom": followup_finemapping_regions_tsv[followup_region_idx_plus_one][1],
-      "start": sub(sub(followup_finemapping_regions_tsv[followup_region_idx_plus_one][2], "^[^_]*_", ""), "_[^_]*$", ""),
-      "end": sub(followup_finemapping_regions_tsv[followup_region_idx_plus_one][2], "^[^_]*_[^_]*_", ""),
-    }
+  # followup finemapping on all loci
+  scatter (followup_bounds in first_pass_bounds) {
     String followup_regions = "~{followup_bounds.chrom}_~{followup_bounds.start}_~{followup_bounds.end}"
     Int followup_chroms = followup_bounds.chrom
 
@@ -304,42 +296,45 @@ workflow rerun_finemap_and_followup_for_pheno {
     Array[File] ratio_susie_CSs_ = ratio_susie_.susie_output.CSs
   }
 
-  if (length(followup_finemapping_regions_tsv) > 1) {
-    call finemapping_tasks.followup_finemapping_conditions_df { input :
-      script_dir = ".",
-      phenotype_name = phenotype,
-      snp_assoc_results = files.snp_gwas_results[phenotype_idx],
-      str_assoc_results = files.str_gwas_results[phenotype_idx],
-      ethnic_str_assoc_results = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
-      original_susie_outputs = finemapping_files.original_susie_snakemake[phenotype_idx_sans],
-      original_susie_CSs = finemapping_files.original_susie_CSs_snakemake[phenotype_idx_sans],
-      original_finemap_outputs = select_all(original_finemap_output_),
-      original_finemap_creds = select_all(original_finemap_creds_),
-      best_guess_susie_outputs = best_guess_susie_output_,
-      best_guess_susie_CSs = best_guess_susie_CSs_,
-      repeat_finemap_outputs = repeat_finemap_output_,
-      repeat_finemap_creds = repeat_finemap_creds_,
-      total_prob_finemap_outputs = total_prob_finemap_output_,
-      total_prob_finemap_creds = total_prob_finemap_creds_,
-      derived_prior_std_finemap_outputs = prior_std_derived_finemap_output_,
-      derived_prior_std_finemap_creds = prior_std_derived_finemap_creds_,
-      conv_tol_finemap_outputs = prob_conv_sss_tol_finemap_output_,
-      conv_tol_finemap_creds = prob_conv_sss_tol_finemap_creds_,
-      mac_finemap_outputs = mac_finemap_output_,
-      mac_finemap_creds = mac_finemap_creds_,
-      threshold_finemap_outputs = threshold_finemap_output_,
-      threshold_finemap_creds = threshold_finemap_creds_,
-      ratio_susie_outputs = ratio_susie_output_,
-      ratio_susie_CSs = ratio_susie_CSs_,
-      ratio_finemap_outputs = ratio_finemap_output_,
-      ratio_finemap_creds = ratio_finemap_creds_,
-      low_prior_std_finemap_outputs = prior_std_low_finemap_output_,
-      low_prior_std_finemap_creds = prior_std_low_finemap_creds_,
-      original_regions = select_all(first_pass_regions),
-      original_chroms = select_all(first_pass_chroms),
-      followup_regions = followup_regions,
-      followup_chroms = followup_chroms
-    }
+  call finemapping_tasks.followup_finemapping_conditions_df as followup_on_all_regions_df { input :
+    script_dir = ".",
+    phenotype_name = phenotype,
+    snp_assoc_results = files.snp_gwas_results[phenotype_idx],
+    str_assoc_results = files.str_gwas_results[phenotype_idx],
+    ethnic_str_assoc_results = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx],
+    original_susie_outputs = finemapping_files.original_susie_snakemake[phenotype_idx_sans],
+    original_susie_CSs = finemapping_files.original_susie_CSs_snakemake[phenotype_idx_sans],
+    original_finemap_outputs = select_all(original_finemap_output_),
+    original_finemap_creds = select_all(original_finemap_creds_),
+    best_guess_susie_outputs = best_guess_susie_output_,
+    best_guess_susie_CSs = best_guess_susie_CSs_,
+    repeat_finemap_outputs = repeat_finemap_output_,
+    repeat_finemap_creds = repeat_finemap_creds_,
+    total_prob_finemap_outputs = total_prob_finemap_output_,
+    total_prob_finemap_creds = total_prob_finemap_creds_,
+    derived_prior_std_finemap_outputs = prior_std_derived_finemap_output_,
+    derived_prior_std_finemap_creds = prior_std_derived_finemap_creds_,
+    conv_tol_finemap_outputs = prob_conv_sss_tol_finemap_output_,
+    conv_tol_finemap_creds = prob_conv_sss_tol_finemap_creds_,
+    mac_finemap_outputs = mac_finemap_output_,
+    mac_finemap_creds = mac_finemap_creds_,
+    threshold_finemap_outputs = threshold_finemap_output_,
+    threshold_finemap_creds = threshold_finemap_creds_,
+    ratio_susie_outputs = ratio_susie_output_,
+    ratio_susie_CSs = ratio_susie_CSs_,
+    ratio_finemap_outputs = ratio_finemap_output_,
+    ratio_finemap_creds = ratio_finemap_creds_,
+    low_prior_std_finemap_outputs = prior_std_low_finemap_output_,
+    low_prior_std_finemap_creds = prior_std_low_finemap_creds_,
+    original_regions = select_all(first_pass_regions),
+    original_chroms = select_all(first_pass_chroms),
+    followup_regions = followup_regions,
+    followup_chroms = followup_chroms
+  }
+
+  call finemapping_tasks.followup_finemapping_conditions_comparison { input :
+    script_dir = ".",
+    followup_conditions_tsvs = [followup_on_all_regions_df.df]
   }
 
   output {
@@ -373,7 +368,28 @@ workflow rerun_finemap_and_followup_for_pheno {
     Array[serializable_FINEMAP_output] low_prior_std_finemap = prior_std_low_finemap_output_
     Array[Array[File]] low_prior_std_finemap_creds = prior_std_low_finemap_creds_
 
-    File? followup_df = followup_finemapping_conditions_df.df
+    File followup_df = followup_on_all_regions_df.df
+    
+    File susie_best_guess_png = followup_finemapping_conditions_comparison.susie_best_guess_png
+    File susie_best_guess_svg = followup_finemapping_conditions_comparison.susie_best_guess_svg
+    File finemap_conv_tol_png = followup_finemapping_conditions_comparison.finemap_conv_tol_png
+    File finemap_conv_tol_svg = followup_finemapping_conditions_comparison.finemap_conv_tol_svg
+    File finemap_total_prob_png = followup_finemapping_conditions_comparison.finemap_total_prob_png
+    File finemap_total_prob_svg = followup_finemapping_conditions_comparison.finemap_total_prob_svg
+    File finemap_prior_std_derived_png = followup_finemapping_conditions_comparison.finemap_prior_std_derived_png
+    File finemap_prior_std_derived_svg = followup_finemapping_conditions_comparison.finemap_prior_std_derived_svg
+    File finemap_mac_png = followup_finemapping_conditions_comparison.finemap_mac_png
+    File finemap_mac_svg = followup_finemapping_conditions_comparison.finemap_mac_svg
+    File finemap_p_thresh_png = followup_finemapping_conditions_comparison.finemap_p_thresh_png
+    File finemap_p_thresh_svg = followup_finemapping_conditions_comparison.finemap_p_thresh_svg
+
+    # too conservative
+    File finemap_ratio_png = followup_finemapping_conditions_comparison.finemap_ratio_png
+    File finemap_ratio_svg = followup_finemapping_conditions_comparison.finemap_ratio_svg
+    File susie_ratio_png = followup_finemapping_conditions_comparison.susie_ratio_png
+    File susie_ratio_svg = followup_finemapping_conditions_comparison.susie_ratio_svg
+    File finemap_prior_std_low_png = followup_finemapping_conditions_comparison.finemap_prior_std_low_png
+    File finemap_prior_std_low_svg = followup_finemapping_conditions_comparison.finemap_prior_std_low_svg
   }
 
 }

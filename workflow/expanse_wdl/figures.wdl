@@ -29,15 +29,12 @@ workflow figures {
 
   Int total_bilirubin_idx = phenotype_names.idxs["total_bilirubin"]
 
-  call gwas_tasks.compare_bili_to_UKBB as supp_fig_2 { input :
-    script_dir = script_dir,
-    pan_ukbb = files.pan_ukbb,
-    my_str = files.str_gwas_results[total_bilirubin_idx]
-  }
+  ##### generate figure 1 
 
-  ##### generate figure 1 (unfinished)
+  # 1a provided by Rahel
 
-#  # TODO this crashes because of a missing header in the VCF ##command=Hipstr
+  # 1b WDL not working
+#  this crashes because of a missing header in the VCF ##command=Hipstr
 #  scatter (chrom in range(22)) {
 #    call gwas_tasks.imputed_str_locus_summary as imputed_str_locus_summaries { input :
 #      script_dir = script_dir,
@@ -108,7 +105,23 @@ workflow figures {
     peak_files = generate_peaks.peaks
   }
 
-  ##### generate fine-mapping supplementary figures (3-12, missing 9)
+  ### haven't WDLed supp fig 1
+
+  ### supp table 1 is manual
+
+  ##### supp fig 2
+  call gwas_tasks.compare_bili_to_UKBB as supp_fig_2 { input :
+    script_dir = script_dir,
+    pan_ukbb = files.pan_ukbb,
+    my_str = files.str_gwas_results[total_bilirubin_idx]
+  }
+
+  ##### TODO supp table 2
+
+  ##### Supp table 3 not in WDL
+
+  ##### generate fine-mapping supplementary figures (3-13, missing 10, 6 below) and supp table 4, 5
+
   # take cached fine-mapping results and summarize them
 #  scatter (phenotype_idx in range(length(phenotype_names.n))) {
 #    call gwas_tasks.generate_finemapping_regions { input :
@@ -301,7 +314,7 @@ workflow figures {
 #    followup_dfs = select_all(followup_finemapping_conditions_df.df)
 #  }
 #
-#  ######### generate supplementary tables 3 and 4
+#  ######### generate supplementary tables 4 and 5
 #  call finemapping_tasks.str_tables_for_paper { input :
 #    script_dir = script_dir,
 #    flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
@@ -324,7 +337,9 @@ workflow figures {
 #    first_pass_finemapping_dfs = first_pass_finemapping_df.all_regions_concordance,
 #    followup_finemapping_dfs = select_all(followup_finemapping_conditions_df.df),
 #  }
-#
+
+  # Supp fig 6 TODO
+
 #  ######### generate figure 2
 #  call finemapping_tasks.graph_main_hits { input :
 #    script_dir = script_dir,
@@ -333,15 +348,18 @@ workflow figures {
 #    eQTL_table = files.eQTL_table,
 #    closest_gene_annotations = files.closest_gene_annotation
 #  }
-#
-#  ######## generate figure 3, supp figure 13 and supp table 6
+
+
+#  ######## generate figure 3, supp figure 14 and supp table 6
 #  call finemapping_tasks.concordance_in_other_ethnicities { input :
 #    script_dir = script_dir,
 #    confidently_finemapped_STRs_df = post_finemapping.confidently_finemapped_STRs,
 #    first_pass_dfs = first_pass_finemapping_df.all_regions_concordance
 #  }
-#
-#  ######## generate supp fig 14
+
+  ##### Supp fig 15 provided by Xuan
+
+#  ######## generate supp fig 16
 #  call finemapping_tasks.generate_enrichments_table { input :
 #    script_dir = script_dir,
 #    flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
@@ -374,12 +392,52 @@ workflow figures {
 #    enrichment_stats = calc_enrichments.enrichment_stats
 #  }
 
-  ####### generate figure 4
-  call gwas_tasks.cbl_imperfection_ld { input :
+  ###### supp fig 17 for Yan
+
+  ####### Supp fig 18 SLC2A2 
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon4 { input :
     script_dir = script_dir,
-    bgen_chr11 = files.imputed_snp_bgens[10],
-    all_samples_file = files.all_samples_list,
-    phenotype_samples_file = files.unrelated_samples_for_pheno_for_ethnicity[platelet_count_idx][0]
+    individual_tsv = files.Liver_SLC2A2_exon4_psi,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "PSI"
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_18a { input:
+    script_dir = script_dir,
+    chrom = 3,
+    pos = 17100913,
+    phenotype_name = "SCL2A2_exon_4",
+    unit = "percent spliced in",
+    data_tsvs = [summarized_SLC2A2_gtex_exon4.out],
+    dosage_threshold = 5
+  }
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon6 { input :
+    script_dir = script_dir,
+    individual_tsv = files.Liver_SLC2A2_exon6_psi,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "PSI"
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_18b { input:
+    script_dir = script_dir,
+    chrom = 3,
+    pos = 17100913,
+    phenotype_name = "SCL2A2_exon_6",
+    unit = "percent spliced in",
+    data_tsvs = [summarized_SLC2A2_gtex_exon6.out],
+    dosage_threshold = 5
+  }
+
+  call expanse_tasks.extract_field as bilirubin_sc { input :
+    script_dir = script_dir,
+    id = 30840,
+  }
+  
+  call expanse_tasks.extract_field as bilirubin_covariate_sc { input :
+    script_dir = script_dir,
+    id = 30842,
   }
 
   call expanse_tasks.extract_field as pcs { input :
@@ -399,66 +457,133 @@ workflow figures {
     sc_assessment_ages = assessment_ages.data
   }
 
-  call gwas_tasks.fig_4a { input :
+  call gwas_tasks.load_continuous_phenotype as bilirubin_all_white_brits { input:
     script_dir = script_dir,
-    all_samples_list = files.all_samples_list,
-    white_brits_sample_list = white_brits_sample_list.data,
-    black_sample_list = files.qced_samples_for_ethnicity[1],
-    south_asian_sample_list = files.qced_samples_for_ethnicity[2],
-    chinese_sample_list =  files.qced_samples_for_ethnicity[3],
-    str_vcf_chr_11 = files.str_vcfs[10],
-    specific_alleles = files.specific_alleles,
-  }
-
-  call expanse_tasks.extract_field as platelet_count_sc { input :
-    script_dir = script_dir,
-    id = 30080,
-  }
-  
-  call expanse_tasks.extract_field as platelet_count_covariate_sc { input :
-    script_dir = script_dir,
-    id = 30083,
-  }
-
-  # all, not qced or subset to unrelated, the sample list for this won't be used, only the data
-  call gwas_tasks.load_continuous_phenotype as platelet_count_all_white_brits { input:
-    script_dir = script_dir,
-    sc = platelet_count_sc.data,
+    sc = bilirubin_sc.data,
     qced_sample_list = white_brits_sample_list.data,
     assessment_ages_npy = load_shared_covars.assessment_ages,
-    categorical_covariate_names = ["platelet_count_device_id"],
-    categorical_covariate_scs = [platelet_count_covariate_sc.data],
+    categorical_covariate_names = ["total_bilirubin_aliquot"],
+    categorical_covariate_scs = [bilirubin_covariate_sc.data],
   }
 
-  call gwas_tasks.transform_trait_values as transformed_platelet_count { input:
+  call gwas_tasks.transform_trait_values as transformed_bilirubin { input:
     script_dir = script_dir,
-    pheno_data = platelet_count_all_white_brits.data,
-    samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[platelet_count_idx][0],
+    pheno_data = bilirubin_all_white_brits.data,
+    samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[total_bilirubin_idx][0],
     is_binary = false
   }
 
-  call gwas_tasks.str_spot_test as CBL_assoc { input:
+  call gwas_tasks.str_spot_test as SLC2A2_assoc { input:
     script_dir = script_dir,
-    str_vcf = files.str_vcfs[10],
+    str_vcf = files.str_vcfs[2],
     shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = platelet_count_all_white_brits.data,
-    transformed_phenotype = transformed_platelet_count.data,
+    untransformed_phenotype = bilirubin_all_white_brits.data,
+    transformed_phenotype = transformed_bilirubin.data,
     all_samples_list = files.all_samples_list,
     is_binary = false,
-    chrom = 11,
-    pos = 119077000,
-    phenotype_name = "platelet_count",
+    chrom = 3,
+    pos = 170727702,
+    phenotype_name = "total_bilirubin",
   }
 
-  call gwas_tasks.locus_plot as fig_4b { input:
+  call gwas_tasks.locus_plot as supp_fig_18ba { input :
     script_dir = script_dir,
-    chrom = 11,
-    pos = 119077000,
-    phenotype_name = "platelet_count",
-    unit = "10^9 cells/L",
-    assoc_results = [CBL_assoc.data],
+    chrom = 3,
+    pos = 170727702,
+    phenotype_name = "total_bilirubin",
+    unit = phenotype_names.unit[total_bilirubin_idx],
+    assoc_results = [SLC2A2_assoc.data],
     dosage_fraction_threshold = 0.001
   }
+
+#  call gwas_tasks.manhattan as supp_fig_18bb { input :
+#    script_dir = script_dir,
+#    phenotype_name = "total_bilirubin",
+#    unit = phenotype_names.unit[total_bilirubin_idx],
+#    chr_lens = files.chr_lens,
+#    str_gwas_results = files.str_gwas_results[total_bilirubin_idx],
+#    snp_gwas_results = files.snp_gwas_results[total_bilirubin_idx],
+#    bounds = {
+#      "chrom": 3,
+#      "start": 170424098,
+#      "end": 170886547
+#    },
+#    conditioned_STRs = [170727702],
+#    conditional_str_results = files.SLC2A2_conditioned_STR_17100913_str_results,
+#    conditional_snp_results = files.SLC2A2_conditioned_STR_17100913_snp_results,
+#    ext = "png"
+#  }
+
+  ####### generate figure 4 and supp figs 19 - 21 
+
+  call gwas_tasks.cbl_imperfection_ld { input :
+    script_dir = script_dir,
+    bgen_chr11 = files.imputed_snp_bgens[10],
+    all_samples_file = files.all_samples_list,
+    phenotype_samples_file = files.unrelated_samples_for_pheno_for_ethnicity[platelet_count_idx][0]
+  }
+
+  # fig 4a,b from WGS
+#  call gwas_tasks.fig_4a { input :
+#    script_dir = script_dir,
+#    all_samples_list = files.all_samples_list,
+#    white_brits_sample_list = white_brits_sample_list.data,
+#    black_sample_list = files.qced_samples_for_ethnicity[1],
+#    south_asian_sample_list = files.qced_samples_for_ethnicity[2],
+#    chinese_sample_list =  files.qced_samples_for_ethnicity[3],
+#    str_vcf_chr_11 = files.str_vcfs[10],
+#    specific_alleles = files.specific_alleles,
+#  }
+
+#  call expanse_tasks.extract_field as platelet_count_sc { input :
+#    script_dir = script_dir,
+#    id = 30080,
+#  }
+#  
+#  call expanse_tasks.extract_field as platelet_count_covariate_sc { input :
+#    script_dir = script_dir,
+#    id = 30083,
+#  }
+
+  # all, not qced or subset to unrelated, the sample list for this won't be used, only the data
+#  call gwas_tasks.load_continuous_phenotype as platelet_count_all_white_brits { input:
+#    script_dir = script_dir,
+#    sc = platelet_count_sc.data,
+#    qced_sample_list = white_brits_sample_list.data,
+#    assessment_ages_npy = load_shared_covars.assessment_ages,
+#    categorical_covariate_names = ["platelet_count_device_id"],
+#    categorical_covariate_scs = [platelet_count_covariate_sc.data],
+#  }
+#
+#  call gwas_tasks.transform_trait_values as transformed_platelet_count { input:
+#    script_dir = script_dir,
+#    pheno_data = platelet_count_all_white_brits.data,
+#    samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[platelet_count_idx][0],
+#    is_binary = false
+#  }
+#
+#  call gwas_tasks.str_spot_test as CBL_assoc { input:
+#    script_dir = script_dir,
+#    str_vcf = files.str_vcfs[10],
+#    shared_covars = load_shared_covars.shared_covars, 
+#    untransformed_phenotype = platelet_count_all_white_brits.data,
+#    transformed_phenotype = transformed_platelet_count.data,
+#    all_samples_list = files.all_samples_list,
+#    is_binary = false,
+#    chrom = 11,
+#    pos = 119077000,
+#    phenotype_name = "platelet_count",
+#  }
+#
+#  call gwas_tasks.locus_plot as fig_4b { input:
+#    script_dir = script_dir,
+#    chrom = 11,
+#    pos = 119077000,
+#    phenotype_name = "platelet_count",
+#    unit = "10^9 cells/L",
+#    assoc_results = [CBL_assoc.data],
+#    dosage_fraction_threshold = 0.001
+#  }
 
 
   Int platelet_crit_idx = phenotype_names.idxs["platelet_crit"]
@@ -500,57 +625,58 @@ workflow figures {
     ext = "png"
   }
 
+  # fig 4f from WGS
   # use precomputed sample lists
-  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_not_SNP_samples { input:
-    script_dir = script_dir,
-    pheno_data = platelet_count_all_white_brits.data,
-    samples_for_phenotype = files.unrelated_samples_CBL_hom_not_begin_C_T_snp,
-    is_binary = false
-  }
-
-  call gwas_tasks.str_spot_test as CBL_hom_not_SNP_assoc { input:
-    script_dir = script_dir,
-    str_vcf = files.str_vcfs[10],
-    shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = platelet_count_all_white_brits.data,
-    transformed_phenotype = platelet_count_transformed_CBL_hom_not_SNP_samples.data, 
-    all_samples_list = files.all_samples_list,
-    is_binary = false,
-    chrom = 11,
-    pos = 119077000,
-    phenotype_name = "platelet_count",
-  }
-
-  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_SNP_samples { input:
-    script_dir = script_dir,
-    pheno_data = platelet_count_all_white_brits.data,
-    samples_for_phenotype = files.unrelated_samples_CBL_hom_begin_C_T_snp,
-    is_binary = false
-  }
-   
-  call gwas_tasks.str_spot_test as CBL_hom_SNP_assoc { input:
-    script_dir = script_dir,
-    str_vcf = files.str_vcfs[10],
-    shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = platelet_count_all_white_brits.data, 
-    transformed_phenotype = platelet_count_transformed_CBL_hom_SNP_samples.data,
-    all_samples_list = files.all_samples_list,
-    is_binary = false,
-    chrom = 11,
-    pos = 119077000,
-    phenotype_name = "platelet_count",
-  }
-
-  call gwas_tasks.locus_plot as fig_4f { input:
-    script_dir = script_dir,
-    chrom = 11,
-    pos = 119077000,
-    phenotype_name = "platelet_count",
-    unit = "10^9 cells/L",
-    assoc_results = [CBL_hom_not_SNP_assoc.data, CBL_hom_SNP_assoc.data],
-    group_names = ["homozygous (CGG)n", "homozygous CGGTGG(CGG)m"],
-    dosage_threshold = 200,
-  }
+#  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_not_SNP_samples { input:
+#    script_dir = script_dir,
+#    pheno_data = platelet_count_all_white_brits.data,
+#    samples_for_phenotype = files.unrelated_samples_CBL_hom_not_begin_C_T_snp,
+#    is_binary = false
+#  }
+#
+#  call gwas_tasks.str_spot_test as CBL_hom_not_SNP_assoc { input:
+#    script_dir = script_dir,
+#    str_vcf = files.str_vcfs[10],
+#    shared_covars = load_shared_covars.shared_covars, 
+#    untransformed_phenotype = platelet_count_all_white_brits.data,
+#    transformed_phenotype = platelet_count_transformed_CBL_hom_not_SNP_samples.data, 
+#    all_samples_list = files.all_samples_list,
+#    is_binary = false,
+#    chrom = 11,
+#    pos = 119077000,
+#    phenotype_name = "platelet_count",
+#  }
+#
+#  call gwas_tasks.transform_trait_values as platelet_count_transformed_CBL_hom_SNP_samples { input:
+#    script_dir = script_dir,
+#    pheno_data = platelet_count_all_white_brits.data,
+#    samples_for_phenotype = files.unrelated_samples_CBL_hom_begin_C_T_snp,
+#    is_binary = false
+#  }
+#   
+#  call gwas_tasks.str_spot_test as CBL_hom_SNP_assoc { input:
+#    script_dir = script_dir,
+#    str_vcf = files.str_vcfs[10],
+#    shared_covars = load_shared_covars.shared_covars, 
+#    untransformed_phenotype = platelet_count_all_white_brits.data, 
+#    transformed_phenotype = platelet_count_transformed_CBL_hom_SNP_samples.data,
+#    all_samples_list = files.all_samples_list,
+#    is_binary = false,
+#    chrom = 11,
+#    pos = 119077000,
+#    phenotype_name = "platelet_count",
+#  }
+#
+#  call gwas_tasks.locus_plot as fig_4f { input:
+#    script_dir = script_dir,
+#    chrom = 11,
+#    pos = 119077000,
+#    phenotype_name = "platelet_count",
+#    unit = "10^9 cells/L",
+#    assoc_results = [CBL_hom_not_SNP_assoc.data, CBL_hom_SNP_assoc.data],
+#    group_names = ["homozygous (CGG)n", "homozygous CGGTGG(CGG)m"],
+#    dosage_threshold = 200,
+#  }
 
   ### plot with data from GTEx Yang
 
@@ -571,110 +697,47 @@ workflow figures {
     dosage_threshold = 5
   }
 
-  call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon4 { input :
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_CBL_geuvadis_european_expression { input :
     script_dir = script_dir,
-    individual_tsv = files.Liver_SLC2A2_exon4_psi,
-    length_sum_column_name = "Sum_of_allele",
-    trait_column_name = "PSI"
+    individual_tsv = files.CBL_geuvadis_expression,
+    length_sum_column_name = "strgt_sum",
+    trait_column_name = "Expr",
+    sep = ",",
+    subset_field = "superpop",
+    subset_value = "EUR"
   }
 
-  call gwas_tasks.locus_plot as supp_fig_15a { input:
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_CBL_geuvadis_african_expression { input :
     script_dir = script_dir,
-    chrom = 3,
-    pos = 17100913,
-    phenotype_name = "SCL2A2_exon_4",
-    unit = "percent spliced in",
-    data_tsvs = [summarized_SLC2A2_gtex_exon4.out],
+    individual_tsv = files.CBL_geuvadis_expression,
+    length_sum_column_name = "strgt_sum",
+    trait_column_name = "Expr",
+    sep = ",",
+    subset_field = "superpop",
+    subset_value = "AFR"
+  }
+
+  call gwas_tasks.locus_plot as fig_4h { input: 
+    script_dir = script_dir,
+    chrom = 11,
+    pos = 119077000,
+    phenotype_name = "CBL_expression",
+    unit = "RPKM",
+    data_tsvs = [summarized_CBL_geuvadis_european_expression.out, summarized_CBL_geuvadis_african_expression.out],
+    group_names = ["European", "African"],
     dosage_threshold = 5
   }
 
-  call gwas_tasks.summarize_individual_data_for_plotting as summarized_SLC2A2_gtex_exon6 { input :
-    script_dir = script_dir,
-    individual_tsv = files.Liver_SLC2A2_exon6_psi,
-    length_sum_column_name = "Sum_of_allele",
-    trait_column_name = "PSI"
-  }
+  ### Supp fig 19a-b from WGS
+  ### Supp fig 20a from WGS
+  ### Supp fig 20b not in WDL
+  ### Supp fig 21 from Melissa
 
-  call gwas_tasks.locus_plot as supp_fig_15b { input:
-    script_dir = script_dir,
-    chrom = 3,
-    pos = 17100913,
-    phenotype_name = "SCL2A2_exon_6",
-    unit = "percent spliced in",
-    data_tsvs = [summarized_SLC2A2_gtex_exon6.out],
-    dosage_threshold = 5
-  }
+  ### TODO supp fig 22a
+  #### Supp fig 22b from WGS
 
-  ### manhattan plots for supp figs 15bb and on
-
-  call expanse_tasks.extract_field as bilirubin_sc { input :
-    script_dir = script_dir,
-    id = 30840,
-  }
-  
-  call expanse_tasks.extract_field as bilirubin_covariate_sc { input :
-    script_dir = script_dir,
-    id = 30842,
-  }
-
-  call gwas_tasks.load_continuous_phenotype as bilirubin_all_white_brits { input:
-    script_dir = script_dir,
-    sc = bilirubin_sc.data,
-    qced_sample_list = white_brits_sample_list.data,
-    assessment_ages_npy = load_shared_covars.assessment_ages,
-    categorical_covariate_names = ["total_bilirubin_aliquot"],
-    categorical_covariate_scs = [bilirubin_covariate_sc.data],
-  }
-
-  call gwas_tasks.transform_trait_values as transformed_bilirubin { input:
-    script_dir = script_dir,
-    pheno_data = bilirubin_all_white_brits.data,
-    samples_for_phenotype = files.unrelated_samples_for_pheno_for_ethnicity[total_bilirubin_idx][0],
-    is_binary = false
-  }
-
-  call gwas_tasks.str_spot_test as SLC2A2_assoc { input:
-    script_dir = script_dir,
-    str_vcf = files.str_vcfs[2],
-    shared_covars = load_shared_covars.shared_covars, 
-    untransformed_phenotype = bilirubin_all_white_brits.data,
-    transformed_phenotype = transformed_bilirubin.data,
-    all_samples_list = files.all_samples_list,
-    is_binary = false,
-    chrom = 3,
-    pos = 170727702,
-    phenotype_name = "total_bilirubin",
-  }
-
-  call gwas_tasks.locus_plot as supp_fig_15ba { input :
-    script_dir = script_dir,
-    chrom = 3,
-    pos = 170727702,
-    phenotype_name = "total_bilirubin",
-    unit = phenotype_names.unit[total_bilirubin_idx],
-    assoc_results = [SLC2A2_assoc.data],
-    dosage_fraction_threshold = 0.001
-  }
-
-#  call gwas_tasks.manhattan as supp_fig_15bb { input :
-#    script_dir = script_dir,
-#    phenotype_name = "total_bilirubin",
-#    unit = phenotype_names.unit[total_bilirubin_idx],
-#    chr_lens = files.chr_lens,
-#    str_gwas_results = files.str_gwas_results[total_bilirubin_idx],
-#    snp_gwas_results = files.snp_gwas_results[total_bilirubin_idx],
-#    bounds = {
-#      "chrom": 3,
-#      "start": 170424098,
-#      "end": 170886547
-#    },
-#    conditioned_STRs = [170727702],
-#    conditional_str_results = files.SLC2A2_conditioned_STR_17100913_str_results,
-#    conditional_snp_results = files.SLC2A2_conditioned_STR_17100913_snp_results,
-#    ext = "png"
-#  }
-
-  ### GWAS for tstat for TAOK1 for Fig 20b
+  #### Supp fig 23a from WGS
+  ### GWAS for tstat for TAOK1 for Fig 23b
 
   call expanse_tasks.extract_field as ethnicity_self_report { input :
     script_dir = script_dir,
@@ -798,7 +861,7 @@ workflow figures {
 		phenotype_name = "mean_platelet_volume"
   }
 
-  call gwas_tasks.manhattan as supp_fig_20b { input :
+  call gwas_tasks.manhattan as supp_fig_23b { input :
     script_dir = script_dir,
     phenotype_name = "mean_platelet_volume",
     unit = phenotype_names.unit[mean_platelet_volume_idx],
@@ -813,6 +876,59 @@ workflow figures {
     use_tstat = true
   }
 
+  ### Supp fig 24a,c from WGS
+
+  # from snakemake cache, don't need the WDL
+#  call gwas_tasks.manhattan as supp_fig_24b { input:
+#    script_dir = script_dir,
+#    phenotype_name = "haematocrit",
+#    unit = phenotype_names.unit[haematorcrit_idx], #
+#    chr_lens = files.chr_lens,
+#    str_gwas_results = files.str_gwas_results[haematorcrit_idx],
+#    snp_gwas_results = files.snp_gwas_results[haematorcrit_idx],
+#    bounds = {
+#      "chrom": 11, #
+#      "start": 118447267, #
+#      "end": 119339135 #
+#    },
+#    conditioned_STRs = [119077000], #
+#    conditioned_imputed_SNPs = ["119080037_A_G"], #
+#    conditional_str_results = files.CBL_conditioned_SNP_119080037_A_G_str_results, #
+#    conditional_snp_results = files.CBL_conditioned_SNP_119080037_A_G_snp_results, #
+#    ext = "png"
+#  }
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_RHOT1_geuvadis_european_expression { input :
+    script_dir = script_dir,
+    individual_tsv = files.RHOT1_geuvadis_expression,
+    length_sum_column_name = "strgt_sum",
+    trait_column_name = "Expr",
+    sep = ",",
+    subset_field = "superpop",
+    subset_value = "EUR"
+  }
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_RHOT1_geuvadis_african_expression { input :
+    script_dir = script_dir,
+    individual_tsv = files.RHOT1_geuvadis_expression,
+    length_sum_column_name = "strgt_sum",
+    trait_column_name = "Expr",
+    sep = ",",
+    subset_field = "superpop",
+    subset_value = "AFR"
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_25b { input: 
+    script_dir = script_dir,
+    chrom = 17,
+    pos = 30469471,
+    phenotype_name = "RHOT1_expression",
+    unit = "RPKM",
+    data_tsvs = [summarized_RHOT1_geuvadis_european_expression.out, summarized_RHOT1_geuvadis_african_expression.out],
+    group_names = ["European", "African"],
+    dosage_threshold = 5
+  }
+
   scatter (phenotype_idx in range(length(phenotype_names.n))) {
     call gwas_tasks.reformat_my_str_gwas_table_for_publication { input :
       script_dir = script_dir,
@@ -823,6 +939,21 @@ workflow figures {
       str_hg38_pos_bed = files.str_hg38_pos_bed,
       repeat_units_table = files.repeat_units_table
     }
+  }
+
+  scatter (phenotype_idx in range(length(phenotype_names.n))) {
+    scatter (ethnicity_idx in range(5)) {
+      call gwas_tasks.reformat_my_ethnic_str_gwas_table_for_publication { input :
+        script_dir = script_dir,
+        phenotype = phenotype_names.n[phenotype_idx],
+        my_str_gwas = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx][ethnicity_idx],
+        flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
+        str_hg19_pos_bed = files.str_hg19_pos_bed,
+        str_hg38_pos_bed = files.str_hg38_pos_bed,
+        repeat_units_table = files.repeat_units_table
+      }
+    }
+  }
 
   output {
     Float cbl_imperfection_ld_r2 = cbl_imperfection_ld.r2
@@ -852,6 +983,8 @@ workflow figures {
     File fig_4f_png = fig_4f.png
     File fig_4g_svg = fig_4g.svg
     File fig_4g_png = fig_4g.png
+    File fig_4h_svg = fig_4h.svg
+    File fig_4h_png = fig_4h.png
 
     File supp_fig_2_png = supp_fig_2.png
     File supp_fig_2_svg = supp_fig_2.svg
@@ -865,61 +998,66 @@ workflow figures {
 #    File supp_fig_5a_svg = post_finemapping.susie_alpha_histogram_svg
 #    File supp_fig_5b_png = post_finemapping.finemap_pip_histogram_png
 #    File supp_fig_5b_svg = post_finemapping.finemap_pip_histogram_svg
-#    File supp_fig_6_png = post_finemapping.susie_cs_finemap_total_pips_png
-#    File supp_fig_6_svg = post_finemapping.susie_cs_finemap_total_pips_svg
-#    File supp_fig_7a_png = post_finemapping.finemap_v_susie_consistency_STR_png
-#    File supp_fig_7a_svg = post_finemapping.finemap_v_susie_consistency_STR_svg
-#    File supp_fig_7b_png = post_finemapping.finemap_v_susie_consistency_SNP_png
-#    File supp_fig_7b_svg = post_finemapping.finemap_v_susie_consistency_SNP_svg
+
+    # Supp fig 6 TODO
+
+#    File supp_fig_7_png = post_finemapping.susie_cs_finemap_total_pips_png
+#    File supp_fig_7_svg = post_finemapping.susie_cs_finemap_total_pips_svg
+#    File supp_fig_8a_png = post_finemapping.finemap_v_susie_consistency_STR_png
+#    File supp_fig_8a_svg = post_finemapping.finemap_v_susie_consistency_STR_svg
+#    File supp_fig_8b_png = post_finemapping.finemap_v_susie_consistency_SNP_png
+#    File supp_fig_9b_svg = post_finemapping.finemap_v_susie_consistency_SNP_svg
 #
-#    File supp_fig_8a_svg = susie_finemap_venn_diagram.str_svg
-#    File supp_fig_8a_png = susie_finemap_venn_diagram.str_png
-#    File supp_fig_8b_svg = susie_finemap_venn_diagram.snp_svg
-#    File supp_fig_8b_png = susie_finemap_venn_diagram.snp_png
+#    File supp_fig_9a_svg = susie_finemap_venn_diagram.str_svg
+#    File supp_fig_9a_png = susie_finemap_venn_diagram.str_png
+#    File supp_fig_9b_svg = susie_finemap_venn_diagram.snp_svg
+#    File supp_fig_9b_png = susie_finemap_venn_diagram.snp_png
 #
 ##    File doubly_finemapped_STRs = post_finemapping.doubly_finemapped_STRs
 ##    File confidently_finemapped_STRs = post_finemapping.confidently_finemapped_STRs
 ##    File overconfidently_finemapped_STRs = post_finemapping.overconfidently_finemapped_STRs
 #
 #    # used for deciding confidently finemap
-#    File supp_fig_10ab_png = post_finemapping.susie_best_guess_png
-#    File supp_fig_10ab_svg = post_finemapping.susie_best_guess_svg
-#    File supp_fig_11a_png = post_finemapping.finemap_p_thresh_png
-#    File supp_fig_11a_svg = post_finemapping.finemap_p_thresh_svg
-#    File supp_fig_11b_png = post_finemapping.finemap_mac_png
-#    File supp_fig_11b_svg = post_finemapping.finemap_mac_svg
-#    File supp_fig_11c_png = post_finemapping.finemap_prior_std_derived_png
-#    File supp_fig_11c_svg = post_finemapping.finemap_prior_std_derived_svg
-#    File supp_fig_11d_png = post_finemapping.finemap_total_prob_png
-#    File supp_fig_11d_svg = post_finemapping.finemap_total_prob_svg
-#    File supp_fig_11e_png = post_finemapping.finemap_conv_tol_png
-#    File supp_fig_11e_svg = post_finemapping.finemap_conv_tol_svg
+#    File supp_fig_11ab_png = post_finemapping.susie_best_guess_png
+#    File supp_fig_11ab_svg = post_finemapping.susie_best_guess_svg
+#    File supp_fig_12a_png = post_finemapping.finemap_p_thresh_png
+#    File supp_fig_12a_svg = post_finemapping.finemap_p_thresh_svg
+#    File supp_fig_12b_png = post_finemapping.finemap_mac_png
+#    File supp_fig_12b_svg = post_finemapping.finemap_mac_svg
+#    File supp_fig_12c_png = post_finemapping.finemap_prior_std_derived_png
+#    File supp_fig_12c_svg = post_finemapping.finemap_prior_std_derived_svg
+#    File supp_fig_12d_png = post_finemapping.finemap_total_prob_png
+#    File supp_fig_12d_svg = post_finemapping.finemap_total_prob_svg
+#    File supp_fig_12e_png = post_finemapping.finemap_conv_tol_png
+#    File supp_fig_12e_svg = post_finemapping.finemap_conv_tol_svg
 #
 #    # too conservative
-#    File supp_fig_11f_png = post_finemapping.finemap_prior_std_low_png
-#    File supp_fig_11f_svg = post_finemapping.finemap_prior_std_low_svg
-#    File supp_fig_12a_png = post_finemapping.susie_ratio_png
-#    File supp_fig_12a_svg = post_finemapping.susie_ratio_svg
-#    File supp_fig_12b_png = post_finemapping.finemap_ratio_png
-#    File supp_fig_12b_svg = post_finemapping.finemap_ratio_svg
+#    File supp_fig_12f_png = post_finemapping.finemap_prior_std_low_png
+#    File supp_fig_12f_svg = post_finemapping.finemap_prior_std_low_svg
+#    File supp_fig_13a_png = post_finemapping.susie_ratio_png
+#    File supp_fig_13a_svg = post_finemapping.susie_ratio_svg
+#    File supp_fig_13b_png = post_finemapping.finemap_ratio_png
+#    File supp_fig_13b_svg = post_finemapping.finemap_ratio_svg
 #
-#    File supp_fig_13_png = concordance_in_other_ethnicities.white_replication_png
-#    File supp_fig_13_svg = concordance_in_other_ethnicities.white_replication_svg
+#    File supp_fig_14_png = concordance_in_other_ethnicities.white_replication_png
+#    File supp_fig_14_svg = concordance_in_other_ethnicities.white_replication_svg
 #
-#    File supp_fig_14ab_svg = graph_enrichments.regions_svg
-#    File supp_fig_14ab_png = graph_enrichments.regions_png
-#    File supp_fig_14cd_svg = graph_enrichments.repeats_svg
-#    File supp_fig_14cd_png = graph_enrichments.repeats_png
+#    File supp_fig_16ab_svg = graph_enrichments.regions_svg
+#    File supp_fig_16ab_png = graph_enrichments.regions_png
+#    File supp_fig_16cd_svg = graph_enrichments.repeats_svg
+#    File supp_fig_16cd_png = graph_enrichments.repeats_png
 #
-    File supp_fig_15a_svg = supp_fig_15a.svg
-    File supp_fig_15a_png = supp_fig_15a.png
-    File supp_fig_15b_svg = supp_fig_15b.svg
-    File supp_fig_15b_png = supp_fig_15b.png
-    File supp_fig_15ba_svg = supp_fig_15ba.svg
-    File supp_fig_15ba_png = supp_fig_15ba.png
-#    File supp_fig_15bb_out = supp_fig_15bb.plot
+    File supp_fig_18a_svg = supp_fig_18a.svg
+    File supp_fig_18a_png = supp_fig_18a.png
+    File supp_fig_18b_svg = supp_fig_18b.svg
+    File supp_fig_18b_png = supp_fig_18b.png
+    File supp_fig_18ba_svg = supp_fig_18ba.svg
+    File supp_fig_18ba_png = supp_fig_18ba.png
+#    File supp_fig_18bb_out = supp_fig_18bb.plot
 
-    File supp_fig_20b_out = supp_fig_20b.plot
+    File supp_fig_23b_out = supp_fig_23b.plot
+    File supp_fig_25b_svg = supp_fig_25b.svg
+    File supp_fig_25b_png = supp_fig_25b.png
 
 #    File supp_table_3 = str_tables_for_paper.singly_finemapped_strs_for_paper
 #    File singly_finemapped_strs_sorted = str_tables_for_paper.singly_finemapped_strs_sorted
@@ -929,5 +1067,7 @@ workflow figures {
 
     Array[File] str_gwas_results_for_publication = reformat_my_str_gwas_table_for_publication.unfiltered
     Array[File] filtered_str_gwas_results_for_publication = reformat_my_str_gwas_table_for_publication.filtered
+    Array[Array[File]] ethnic_str_gwas_results_for_publication = reformat_my_ethnic_str_gwas_table_for_publication.unfiltered 
+    Array[Array[File]] filtered_ethnic_str_gwas_results_for_publication = reformat_my_ethnic_str_gwas_table_for_publication.filtered 
   }
 }

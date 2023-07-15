@@ -114,7 +114,7 @@ df = df.join(
     how='left',
     on=['chrom', 'snpstr_pos']
 ).select([
-    'chrom',
+    pl.col('chrom').alias('chromosome'),
     pl.col('pos').alias('base_pair_location'), # start_pos (hg19)
     pl.col('alleles').apply(lambda s: s.replace(".0", "")),
     pl.col(f'coeff_{phenotype}').alias('beta'),
@@ -130,9 +130,6 @@ df = df.join(
     pl.col('pos_hg38').alias('start_pos (hg38)'),
     pl.col('end_pos_hg38').alias('end_pos (hg38)'),
     pl.col('subset_total_best_guess_alleles').alias('n').apply(lambda d: sum(ast.literal_eval(d).values())//2),
-    # total dosage per summed gt
-    # mean value per single dosgae
-    # mean per paired dosage?
     pl.col('subset_total_per_allele_dosages').alias('number_of_common_alleles').apply(to_number_of_common_alleles),
     pl.col(f'mean_{phenotype}_per_summed_gt').apply(cleaned_dict_str),
     pl.col('summed_0.05_significance_CI').apply(cleaned_dict_str),

@@ -3,19 +3,41 @@ version 1.0
 import "../gwas_wdl/gwas_tasks.wdl"
 import "rerun_finemap_and_followup_for_pheno.wdl"
 
-workflow rerun_many {
+workflow rerun_first_half {
   call gwas_tasks.phenotype_names
 
-  scatter (pheno_idx in range(length(phenotype_names.n)/2)) {
-    call rerun_finemap_and_followup_for_pheno.rerun_finemap_and_followup_for_pheno {
-      phenotype = phenotype_names.n[pheno_idx]
+  Array[String] first_half_phenos = [
+    "alanine_aminotransferase",
+    "albumin",
+    #"alkaline_phosphatase",
+    "apolipoprotein_a",
+    "apolipoprotein_b",
+    "aspartate_aminotransferase",
+    "c_reactive_protein",
+    "calcium",
+    "cholesterol",
+    "creatinine",
+    #"cystatin_c",
+    "eosinophil_count",
+    "eosinophil_percent",
+    #"gamma_glutamyltransferase",
+    "glucose",
+    "glycated_haemoglobin",
+    "haematocrit",
+    "haemoglobin_concentration",
+    "hdl_cholesterol",
+    "igf_1",
+    #"ldl_cholesterol_direct",
+    #"lymphocyte_count"
+  ]
+
+  scatter (phenotype in first_half_phenos) {
+    call rerun_finemap_and_followup_for_pheno.rerun_finemap_and_followup_for_pheno { input :
+      phenotype = phenotype
     }
   }
 
   output {
-    Array[File] first_pass_regions_tsv = rerun_finemap_and_followup_for_pheno.first_pass_regions_tsv
-    Array[File] first_pass_regions_readme = rerun_finemap_and_followup_for_pheno.first_pass_regions_readme
-
     Array[Array[serializable_FINEMAP_output]] original_finemap = rerun_finemap_and_followup_for_pheno.original_finemap
     Array[Array[Array[File]]] original_finemap_creds = rerun_finemap_and_followup_for_pheno.original_finemap_creds
 
@@ -44,6 +66,6 @@ workflow rerun_many {
     Array[Array[serializable_FINEMAP_output]] low_prior_std_finemap = rerun_finemap_and_followup_for_pheno.low_prior_std_finemap
     Array[Array[Array[File]]] low_prior_std_finemap_creds = rerun_finemap_and_followup_for_pheno.low_prior_std_finemap_creds
 
-    Array[File] followup_df = select_all([rerun_finemap_and_followup_for_pheno.followup_df])
+    Array[File] followup_df = select_all(rerun_finemap_and_followup_for_pheno.followup_df)
   }
 }

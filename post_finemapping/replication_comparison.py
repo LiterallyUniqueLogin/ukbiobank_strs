@@ -64,8 +64,8 @@ associations_df = pl.concat([
     'p_val',
     'coeff',
     'se',
-    ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0) & (pl.col('p_val') <= 5e-8)).alias('finemapped_susie'),
-    ((pl.col('finemap_pip') >= 0.8) & (pl.col('p_val') <= 5e-8)).alias('finemapped_finemap'),
+    ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0) & (pl.col('p_val') < 5e-8)).alias('finemapped_susie'),
+    ((pl.col('finemap_pip') >= 0.8) & (pl.col('p_val') < 5e-8)).alias('finemapped_finemap'),
     *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
     *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
     *[f'{ethnicity}_se' for ethnicity in other_ethnicities],
@@ -78,7 +78,7 @@ df = associations_df.join(
 ).with_column((~pl.col('causal_STR_candidate_indicator').is_null()).alias('is_causal_STR_candidate'))
 
 named_conditions = [
-    ('genome-wide significant STRs', pl.col('p_val') <= 5e-8),
+    ('genome-wide significant STRs', pl.col('p_val') < 5e-8),
     ('FINEMAP STRs with PIP >= 0.8', pl.col('finemapped_finemap')),
     ('SuSiE STRs with max alpha >= 0.8', pl.col('finemapped_susie')),
     ('confidently fine-mapped STRs', pl.col('is_causal_STR_candidate'))
@@ -88,7 +88,7 @@ print("performing logistic regressions", flush=True)
 for ethnicity in other_ethnicities:
     for group_comp in ((0, 1), (0, 2), (0, 3), (1, 3), (2, 3)):
         category_df = df.filter(
-            (pl.col('p_val') <= 1e-10) &
+            (pl.col('p_val') < 1e-10) &
             named_conditions[group_comp[0]][1] &
             ~pl.col(f'{ethnicity}_coeff').is_nan()
         ).with_column(

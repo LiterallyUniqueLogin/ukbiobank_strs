@@ -23,7 +23,7 @@ df = pl.concat([
                 **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
         }
     ) for table in args.results_tables
-]).filter(pl.col('p_val') <= 1e-10).with_columns([
+]).filter(pl.col('p_val') < 1e-10).with_columns([
     ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0)).alias('susie_result'),
     (pl.col('finemap_pip') >= 0.8).alias('finemap_result')
 ]).filter(

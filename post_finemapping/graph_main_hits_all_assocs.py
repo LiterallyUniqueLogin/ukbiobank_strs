@@ -24,7 +24,7 @@ def main():
         args.hits_table,
         sep='\t',
     ).filter(
-        pl.col('association_p_value') <= 1e-10
+        pl.col('association_p_value') < 1e-10
     ).rename({
         'start_pos (hg19)': 'start_pos',
         'end_pos (hg19)': 'end_pos'

@@ -1,53 +1,43 @@
 #!/usr/bin/env python3
 
 import argparse
-import subprocess as sp
-import sys
-import tempfile
 
-def imputed_snp_mac(outdir, plink_command, pfile_prefix, chrom, start, end, sample_fname):
-    out = sp.run(
-        f"cd {outdir} && "
-        f"{plink_command} "
-        f"--pfile {pfile_prefix} "
-        f"--chr {chrom} "
-        f"--from-bp {start} "
-        f"--to-bp {end} "
-        f"--keep {sample_fname} "
-        '--memory 7900 '
-        '--threads 4 '
-        "--freq counts cols=+pos",
-        shell=True,
-        capture_output=True
-    )
+import bgen_reader
+import numpy as np
 
-    print('stdout')
-    print(out.stdout.decode(), flush=True)
-    print('stderr', file=sys.stderr)
-    print(out.stderr.decode(), file=sys.stderr, flush=True)
-    out.check_returncode()
+import sample_utils
+
+def imputed_snp_mac(outfile, bgen_fname, start, end, samples):
+    bgen = bgen_reader.open_bgen(bgen_fname, verbose=False)
+    poses = (bgen.positions >= start) & (bgen.positions <= end)
+    n_poses = np.sum(poses)
+    print(f"N vars: {n_poses}")
+    with open(outfile, 'w') as out:
+        out.write('chrom\tpos\tref\talt\tmac\n')
+        for count, idx in enumerate(np.where(poses)[0]):
+            print(f'{count}/{n_poses}', end='\r')
+            probs = bgen.read(idx).squeeze()[samples, :]
+            mac = np.sum(probs[:, 1] + 2*probs[:, 2])
+            out.write('\t'.join([
+                bgen.chromosomes[idx],
+                str(bgen.positions[idx]),
+                *bgen.allele_ids[idx].split(','),
+                str(mac)
+            ]) + '\n')
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('outdir')
-    parser.add_argument('plink_command')
-    parser.add_argument('pfile_prefix')
-    parser.add_argument('chrom')
+    parser.add_argument('outfile')
+    parser.add_argument('bgen') # assume this is the correct chrom
     parser.add_argument('start', type=int)
     parser.add_argument('end', type=int)
     parser.add_argument('sample_file')
+    parser.add_argument('all_samples_file')
     args = parser.parse_args()
 
-    with tempfile.NamedTemporaryFile('w') as temp_samps:
-        with open(args.sample_file) as samps:
-            # manually handle header
-            temp_samps.write('FID ID')
-            next(samps)
-            for line in samps:
-                line = line.strip()
-                temp_samps.write(f'{line} {line}\n')
-        
-        imputed_snp_mac(args.outdir, args.plink_command, args.pfile_prefix, args.chrom, args.start, args.end, temp_samps.name)
+    samples = sample_utils.get_samples_idx(args.all_samples_file, args.sample_file)
+    imputed_snp_mac(args.outfile, args.bgen, args.start, args.end, samples)
 
 if __name__ == '__main__':
     main()

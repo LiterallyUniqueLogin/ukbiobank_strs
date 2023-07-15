@@ -613,26 +613,27 @@ task imputed_snp_frequencies {
   input {
     String script_dir
     File script = "~{script_dir}/association/calc_macs.py"
+    File sample_utils = "~{script_dir}/association/sample_utils.py"
+    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
 
-    String plink_command = "plink2"
-    PFiles pfiles
+    bgen imputed_snp_bgen
     File samples
+    File all_samples
     region bounds
   }
 
   output {
-    File counts = "plink2.acount"
+    File counts = "snp_macs.tab"
   }
 
   command <<<
     envsetup ~{script} \
-      . \
-      ~{plink_command} \
-      $(echo ~{pfiles.pgen} | sed -e 's/\.pgen$//') \
-      ~{bounds.chrom} \
+      snp_macs.tab \
+      ~{imputed_snp_bgen.bgen} \
       ~{bounds.start} \
       ~{bounds.end} \
-      ~{samples}
+      ~{samples} \
+      ~{all_samples}
   >>>
 
   runtime {
@@ -1127,6 +1128,9 @@ task summarize_individual_data_for_plotting {
     File individual_tsv
     String length_sum_column_name
     String trait_column_name
+    String? sep
+    String? subset_field
+    String? subset_value
   }
 
   output {
@@ -1134,7 +1138,9 @@ task summarize_individual_data_for_plotting {
   }
 
   command <<<
-    envsetup ~{script} out.tsv ~{individual_tsv} ~{length_sum_column_name} '~{trait_column_name}'
+    envsetup ~{script} out.tsv ~{individual_tsv} ~{length_sum_column_name} '~{trait_column_name}' \
+      ~{"--sep " + sep} \
+      ~{"--subset " + subset_field + " " + subset_value}
   >>>
 
   runtime {

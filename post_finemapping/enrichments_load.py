@@ -256,7 +256,7 @@ finemapping_results = pl.read_csv(
     ~pl.col('finemap_pip').is_null() &
     ~pl.col('susie_alpha').is_null() &
     pl.col('is_STR') &
-    (pl.col('p_val') <= 1e-10)
+    (pl.col('p_val') < 1e-10)
 ).with_columns([
     pl.when(pl.col('susie_cs') > 0).then(pl.col('susie_alpha')).otherwise(0).alias('susie_alpha'),
     pl.when(pl.col('susie_cs_ratio') > 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_alpha_ratio'),
@@ -295,7 +295,7 @@ resilient = finemapping_results.filter(
 ).select(['chrom', 'pos']).distinct().with_column(pl.lit(True).alias('indicator'))
 #print(either.shape[0], both.shape[0], resilient_but_ratio_low.shape[0], resilient.shape[0])
 
-# subset to STRs that were fine-mapped by both fine-mappers in a pheno with p-val <= 1e-10, then
+# subset to STRs that were fine-mapped by both fine-mappers in a pheno with p-val < 1e-10, then
 # mark which ones passed different fine-mapping thresholds
 compare_STRs = pl.DataFrame(all_STRs).join(
     finemapping_results.select(['chrom', 'pos']).distinct(),

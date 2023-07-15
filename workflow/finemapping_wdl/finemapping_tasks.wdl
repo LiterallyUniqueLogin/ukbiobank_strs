@@ -261,7 +261,9 @@ task finemap_run {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.4"
-    dx_timeout: "4h"
+    dx_timeout: if sub(sub(prefix,
+      "gamma_glutamyltransferase_FINEMAP_.*_22_23776282_25846832", "foo"),
+      "cystatin_c_FINEMAP_.*_20_19983208_26444535", "foo") == prefix then "4h" else "47h30m"
     memory: "8GB"
   }
 }
@@ -607,15 +609,15 @@ task first_pass_finemapping_df {
 
   command <<<
     REGIONS=~{write_lines(regions)}
-    { echo "region" ; cat $REGIONS ; } >> "$REGIONS".headered
+    { echo "region" ; cat $REGIONS ; } > REGIONS.headered
     CHROMS=~{write_lines(chroms)}
-    { echo "chrom" ; cat $CHROMS ; } >> "$CHROMS".headered
+    { echo "chrom" ; cat $CHROMS ; } > CHROMS.headered
     original_finemap_creds=~{write_tsv(original_finemap_creds)}
-    { echo "creds" ; cat $original_finemap_creds | sed -e 's/\t/,/g' ; } >> "$original_finemap_creds".headered
+    { echo "creds" ; cat $original_finemap_creds | sed -e 's/\t/,/g' ; } > original_finemap_creds.headered
     original_susie_CSs=~{write_tsv(original_susie_CSs)}
-    { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } >> "$original_susie_CSs".headered
-    paste ~{write_objects(original_finemap_outputs)} "$CHROMS".headered "$REGIONS".headered "$original_finemap_creds".headered > finemap_files.tsv
-    paste ~{write_objects(original_susie_outputs)} "$CHROMS".headered "$REGIONS".headered "$original_susie_CSs".headered > susie_files.tsv
+    { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } > original_susie_CSs.headered
+    paste ~{write_objects(original_finemap_outputs)} CHROMS.headered REGIONS.headered original_finemap_creds.headered > finemap_files.tsv
+    paste ~{write_objects(original_susie_outputs)} CHROMS.headered REGIONS.headered original_susie_CSs.headered > susie_files.tsv
     envsetup ~{script} \
       . \
       df \
@@ -785,54 +787,54 @@ task followup_finemapping_conditions_df {
 
   command <<<
     ORIGINAL_REGIONS=~{write_lines(original_regions)}
-    { echo "region" ; cat $ORIGINAL_REGIONS ; } >> "$ORIGINAL_REGIONS".headered
+    { echo "region" ; cat $ORIGINAL_REGIONS ; } > ORIGINAL_REGIONS.headered
     ORIGINAL_CHROMS=~{write_lines(original_chroms)}
-    { echo "chrom" ; cat $ORIGINAL_CHROMS ; } >> "$ORIGINAL_CHROMS".headered
+    { echo "chrom" ; cat $ORIGINAL_CHROMS ; } > ORIGINAL_CHROMS.headered
 
     FOLLOWUP_REGIONS=~{write_lines(followup_regions)}
-    { echo "region" ; cat $FOLLOWUP_REGIONS ; } >> "$FOLLOWUP_REGIONS".headered
+    { echo "region" ; cat $FOLLOWUP_REGIONS ; } > FOLLOWUP_REGIONS.headered
     FOLLOWUP_CHROMS=~{write_lines(followup_chroms)}
-    { echo "chrom" ; cat $FOLLOWUP_CHROMS ; } >> "$FOLLOWUP_CHROMS".headered
+    { echo "chrom" ; cat $FOLLOWUP_CHROMS ; } > FOLLOWUP_CHROMS.headered
 
     original_finemap_creds=~{write_tsv(original_finemap_creds)}
-    { echo "creds" ; cat $original_finemap_creds | sed -e 's/\t/,/g' ; } >> "$original_finemap_creds".headered
+    { echo "creds" ; cat $original_finemap_creds | sed -e 's/\t/,/g' ; } > original_finemap_creds.headered
     original_susie_CSs=~{write_tsv(original_susie_CSs)}
-    { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } >> "$original_susie_CSs".headered
+    { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } > original_susie_CSs.headered
 
     repeat_finemap_creds=~{write_tsv(repeat_finemap_creds)}
-    { echo "creds" ; cat $repeat_finemap_creds | sed -e 's/\t/,/g' ; } >> "$repeat_finemap_creds".headered
+    { echo "creds" ; cat $repeat_finemap_creds | sed -e 's/\t/,/g' ; } > repeat_finemap_creds.headered
     total_prob_finemap_creds=~{write_tsv(total_prob_finemap_creds)}
-    { echo "creds" ; cat $total_prob_finemap_creds | sed -e 's/\t/,/g' ; } >> "$total_prob_finemap_creds".headered
+    { echo "creds" ; cat $total_prob_finemap_creds | sed -e 's/\t/,/g' ; } > total_prob_finemap_creds.headered
     derived_prior_std_finemap_creds=~{write_tsv(derived_prior_std_finemap_creds)}
-    { echo "creds" ; cat $derived_prior_std_finemap_creds | sed -e 's/\t/,/g' ; } >> "$derived_prior_std_finemap_creds".headered
+    { echo "creds" ; cat $derived_prior_std_finemap_creds | sed -e 's/\t/,/g' ; } > derived_prior_std_finemap_creds.headered
     conv_tol_finemap_creds=~{write_tsv(conv_tol_finemap_creds)}
-    { echo "creds" ; cat $conv_tol_finemap_creds | sed -e 's/\t/,/g' ; } >> "$conv_tol_finemap_creds".headered
+    { echo "creds" ; cat $conv_tol_finemap_creds | sed -e 's/\t/,/g' ; } > conv_tol_finemap_creds.headered
     mac_finemap_creds=~{write_tsv(mac_finemap_creds)}
-    { echo "creds" ; cat $mac_finemap_creds | sed -e 's/\t/,/g' ; } >> "$mac_finemap_creds".headered
+    { echo "creds" ; cat $mac_finemap_creds | sed -e 's/\t/,/g' ; } > mac_finemap_creds.headered
     threshold_finemap_creds=~{write_tsv(threshold_finemap_creds)}
-    { echo "creds" ; cat $threshold_finemap_creds | sed -e 's/\t/,/g' ; } >> "$threshold_finemap_creds".headered
+    { echo "creds" ; cat $threshold_finemap_creds | sed -e 's/\t/,/g' ; } > threshold_finemap_creds.headered
     best_guess_susie_CSs=~{write_tsv(best_guess_susie_CSs)}
-    { echo "CSes" ; cat $best_guess_susie_CSs | sed -e 's/\t/,/g' ; } >> "$best_guess_susie_CSs".headered
+    { echo "CSes" ; cat $best_guess_susie_CSs | sed -e 's/\t/,/g' ; } > best_guess_susie_CSs.headered
 
     low_prior_std_finemap_creds=~{write_tsv(low_prior_std_finemap_creds)}
-    { echo "creds" ; cat $low_prior_std_finemap_creds | sed -e 's/\t/,/g' ; } >> "$low_prior_std_finemap_creds".headered
+    { echo "creds" ; cat $low_prior_std_finemap_creds | sed -e 's/\t/,/g' ; } > low_prior_std_finemap_creds.headered
     ratio_finemap_creds=~{write_tsv(ratio_finemap_creds)}
-    { echo "creds" ; cat $ratio_finemap_creds | sed -e 's/\t/,/g' ; } >> "$ratio_finemap_creds".headered
+    { echo "creds" ; cat $ratio_finemap_creds | sed -e 's/\t/,/g' ; } > ratio_finemap_creds.headered
     ratio_susie_CSs=~{write_tsv(ratio_susie_CSs)}
-    { echo "CSes" ; cat $ratio_susie_CSs | sed -e 's/\t/,/g' ; } >> "$ratio_susie_CSs".headered
+    { echo "CSes" ; cat $ratio_susie_CSs | sed -e 's/\t/,/g' ; } > ratio_susie_CSs.headered
 
-    paste ~{write_objects(original_finemap_outputs)} "$ORIGINAL_CHROMS".headered "$ORIGINAL_REGIONS".headered "$original_finemap_creds".headered > original_finemap_files.tsv
-    paste ~{write_objects(original_susie_outputs)} "$ORIGINAL_CHROMS".headered "$ORIGINAL_REGIONS".headered "$original_susie_CSs".headered > original_susie_files.tsv
-    paste ~{write_objects(repeat_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$repeat_finemap_creds".headered > repeat_finemap_files.tsv
-    paste ~{write_objects(total_prob_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$total_prob_finemap_creds".headered > total_prob_finemap_files.tsv
-    paste ~{write_objects(derived_prior_std_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$derived_prior_std_finemap_creds".headered > derived_prior_std_finemap_files.tsv
-    paste ~{write_objects(conv_tol_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$conv_tol_finemap_creds".headered > conv_tol_finemap_files.tsv
-    paste ~{write_objects(mac_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$mac_finemap_creds".headered > mac_finemap_files.tsv
-    paste ~{write_objects(threshold_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$threshold_finemap_creds".headered > threshold_finemap_files.tsv
-    paste ~{write_objects(best_guess_susie_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$best_guess_susie_CSs".headered > best_guess_susie_files.tsv
-    paste ~{write_objects(low_prior_std_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$low_prior_std_finemap_creds".headered > low_prior_std_finemap_files.tsv
-    paste ~{write_objects(ratio_finemap_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$ratio_finemap_creds".headered > ratio_finemap_files.tsv
-    paste ~{write_objects(ratio_susie_outputs)} "$FOLLOWUP_CHROMS".headered "$FOLLOWUP_REGIONS".headered "$ratio_susie_CSs".headered > ratio_susie_files.tsv
+    paste ~{write_objects(original_finemap_outputs)} ORIGINAL_CHROMS.headered ORIGINAL_REGIONS.headered original_finemap_creds.headered > original_finemap_files.tsv
+    paste ~{write_objects(original_susie_outputs)} ORIGINAL_CHROMS.headered ORIGINAL_REGIONS.headered original_susie_CSs.headered > original_susie_files.tsv
+    paste ~{write_objects(repeat_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered repeat_finemap_creds.headered > repeat_finemap_files.tsv
+    paste ~{write_objects(total_prob_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered total_prob_finemap_creds.headered > total_prob_finemap_files.tsv
+    paste ~{write_objects(derived_prior_std_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered derived_prior_std_finemap_creds.headered > derived_prior_std_finemap_files.tsv
+    paste ~{write_objects(conv_tol_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered conv_tol_finemap_creds.headered > conv_tol_finemap_files.tsv
+    paste ~{write_objects(mac_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered mac_finemap_creds.headered > mac_finemap_files.tsv
+    paste ~{write_objects(threshold_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered threshold_finemap_creds.headered > threshold_finemap_files.tsv
+    paste ~{write_objects(best_guess_susie_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered best_guess_susie_CSs.headered > best_guess_susie_files.tsv
+    paste ~{write_objects(low_prior_std_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered low_prior_std_finemap_creds.headered > low_prior_std_finemap_files.tsv
+    paste ~{write_objects(ratio_finemap_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered ratio_finemap_creds.headered > ratio_finemap_files.tsv
+    paste ~{write_objects(ratio_susie_outputs)} FOLLOWUP_CHROMS.headered FOLLOWUP_REGIONS.headered ratio_susie_CSs.headered > ratio_susie_files.tsv
     envsetup ~{script} \
       . \
       df \

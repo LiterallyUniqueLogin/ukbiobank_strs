@@ -15,7 +15,6 @@ workflow finemapping {
     # one per chrom
     Array[VCF]+ str_vcfs
     Array[bgen]+ imputed_snp_bgens
-    Array[PFiles] + imputed_snp_pfiles
     Array[File] snp_vars_to_filter_from_finemapping
 
     File shared_covars
@@ -134,7 +133,7 @@ workflow finemapping {
       phenotype_name = phenotype_name,
       bounds = followup_bounds,
       all_samples_list = all_samples_list,
-      prefix = "~{phenotype_name}_FINEMAP_first_pass_~{followup_regions}_",
+      prefix = "~{phenotype_name}_FINEMAP_repeat_~{followup_regions}_",
       cache_breaker = 1
     }
     serializable_FINEMAP_output repeat_finemap_output_ = repeat_finemap_.finemap_output.subset
@@ -233,8 +232,9 @@ workflow finemapping {
     Int followup_chroms_minus_one = followup_chroms - 1
     call gwas_tasks.imputed_snp_frequencies {
       script_dir = script_dir,
-      pfiles = imputed_snp_pfiles[followup_chroms_minus_one],
+      imputed_snp_bgen = imputed_snp_bgens[followup_chroms_minus_one],
       samples = phenotype_samples,
+      all_samples = all_samples_list,
       bounds = followup_bounds,
     }
 

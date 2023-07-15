@@ -108,7 +108,7 @@ for count, fname in enumerate(args.first_pass_finemapping_dfs):
 finemapping_results = pl.concat(finemapping_dfs).rename({'pos': 'snpstr_pos'})
 
 finemapping_results = finemapping_results.filter(
-    (pl.col('p_val') <= 5e-8) &
+    (pl.col('p_val') < 5e-8) &
     (
         ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0)) | (pl.col('finemap_pip') >= 0.8)
     ).any().over(['chrom', 'snpstr_pos'])
@@ -333,7 +333,7 @@ finemapping_results = finemapping_results.select([
         (pl.col('finemap_CP_prior_effect_size_0.05%') >= 0.8) &
         (pl.col('finemap_CP_prior_4_signals') >= 0.8) &
         (pl.col('finemap_CP_stopping_thresh_1e-4') >= 0.8) &
-        (pl.col('p_val') <= 1e-10)
+        (pl.col('p_val') < 1e-10)
     ).then(
         'confidently'
     ).when(
@@ -379,7 +379,7 @@ finemapping_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir
 
 confident_results = finemapping_results.filter(
     (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos (hg19)']) &
-    (pl.col('association_p_value') <= 1e-10)
+    (pl.col('association_p_value') < 1e-10)
 )
 confident_results.write_csv(f'{args.outdir}/confidently_finemapped_strs_for_paper.tab', sep='\t')
 confident_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir}/confidently_finemapped_strs_sorted.tab', sep='\t')
