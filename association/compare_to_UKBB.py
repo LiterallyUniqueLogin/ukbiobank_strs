@@ -91,7 +91,7 @@ def linear_int_interpolate(c1, c2, dist):
         c_new.append(coord1 + round((coord2 - coord1)*dist))
     return c_new
 
-def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_str_tsv):
+def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_pipeline_tsv):
     print('loading panukbb ... ', flush=True)
     panukbb_df = pl.scan_csv(
         #f'{ukb}/misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv',
@@ -107,7 +107,7 @@ def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_str_tsv):
 
     print('loading plink ... ', flush=True)
     my_pipeline_df = pl.scan_csv(
-        my_str_tsv,
+        my_pipeline_tsv,
         sep='\t',
         dtypes={'#CHROM': int, 'POS': int, 'REF': str, 'ALT': str, 'P': float},
         null_values='NA'
@@ -136,8 +136,8 @@ def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_str_tsv):
     fig = bokeh.plotting.figure(
         width=fig_height,
         height=fig_height,
-        y_axis_label='-log10(p our pipeline)',
-        x_axis_label='-log10(p panukbb)',
+        y_axis_label='-log10(p-value our pipeline)',
+        x_axis_label='-log10(p-value Pan UKBB)',
         x_range=[0,50],
         y_range=[0,50],
     )
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('outdir')
     parser.add_argument('pan_ukbb_tsv')
-    parser.add_argument('my_str_tsv')
+    parser.add_argument('my_pipeline_tsv')
     args = parser.parse_args()
     #validate_our_code()
-    scatter_with_panukbb(args.outdir, args.pan_ukbb_tsv, args.my_str_tsv)
+    scatter_with_panukbb(args.outdir, args.pan_ukbb_tsv, args.my_pipeline_tsv)

@@ -1337,7 +1337,7 @@ task compare_bili_to_UKBB {
     File script = "~{script_dir}/association/compare_to_UKBB.py"
     
     File pan_ukbb
-    File my_str
+    File plink_snp
   }
 
   output {
@@ -1349,13 +1349,13 @@ task compare_bili_to_UKBB {
     envsetup ~{script} \
       . \
       ~{pan_ukbb} \
-      ~{my_str} 
+      ~{plink_snp} 
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "30m"
-    memory: "2GB"
+    memory: "50GB"
     shortTask: true
   }
 }
@@ -1424,7 +1424,7 @@ task summarize_peaks {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "1h"
     shortTask: true
-    memory: "5GB"
+    memory: "50GB"
   }
 }
 

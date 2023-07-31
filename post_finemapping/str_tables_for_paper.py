@@ -3,6 +3,7 @@
 import argparse
 import ast
 import json
+import os
 
 import pandas as pd
 import polars as pl
@@ -43,77 +44,6 @@ assert len(args.assoc_phenotypes) == \
         len(args.irish_assocs) == \
         len(args.white_other_assocs)
 
-assocs = dict(zip(args.assoc_phenotypes, args.assocs))
-other_ethnicity_assocs = {
-    'black': dict(zip(args.assoc_phenotypes, args.black_assocs)),
-    'south_asian': dict(zip(args.assoc_phenotypes, args.south_asian_assocs)),
-    'chinese': dict(zip(args.assoc_phenotypes, args.chinese_assocs)),
-    'irish': dict(zip(args.assoc_phenotypes, args.irish_assocs)),
-    'white_other': dict(zip(args.assoc_phenotypes, args.white_other_assocs))
-}
-
-def dosages_to_frequencies(dosage_dict_str):
-    dosages = ast.literal_eval(dosage_dict_str)
-    # drop zero alleles
-    dosages = { k: v for k, v in dosages.items() if v != 0 }
-    total_dosage = sum(dosages.values())
-    return json.dumps({ k: f'{v/total_dosage*100:.2f}%' for k,v in dosages.items() }).replace('"', '')
-
-finemapping_dfs = []
-# f'{ukb}/post_finemapping/intermediate_results/finemapping_all_concordance_{phenotype}.tab',
-for count, fname in enumerate(args.first_pass_finemapping_dfs):
-    print(f'Loading finemapping df {count+1}/{len(args.first_pass_finemapping_dfs)}', flush=True)
-    df = pl.DataFrame(pd.read_csv(
-        fname,
-        sep='\t',
-        dtype={
-            **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
-            **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
-            **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
-        }
-    )).filter('is_STR')
-    phenotype = df['phenotype'][0] # all will be the same
-    # need to add phenotype col
-    # fname = f'{ukb}/association/results/{phenotype}/my_str/results.tab'
-    assoc_df = pl.scan_csv(
-        assocs[phenotype],
-        sep='\t',
-    ).select([
-        'chrom',
-        'pos',
-        pl.col('subset_total_per_allele_dosages').alias('white_brit_allele_dosages')
-    ])
-    lazy_df = df.lazy().join(
-        assoc_df,
-        how='left',
-        on=['chrom', 'pos']
-    )
-    for ethnicity in other_ethnicities:
-        # need to add phenotype col
-        # fname = f'{ukb}/association/results_finemapped_only/{ethnicity}/{phenotype}/my_str/results.tab'
-        assoc_df = pl.scan_csv(
-            other_ethnicity_assocs[ethnicity][phenotype],
-            sep='\t',
-        ).select([
-            'chrom',
-            'pos',
-            pl.col('subset_total_per_allele_dosages').alias(f'{ethnicity}_allele_dosages')
-        ])
-        lazy_df = lazy_df.join(
-            assoc_df,
-            how='left',
-            on=['chrom', 'pos']
-        )
-    finemapping_dfs.append(lazy_df.collect())
-finemapping_results = pl.concat(finemapping_dfs).rename({'pos': 'snpstr_pos'})
-
-finemapping_results = finemapping_results.filter(
-    (pl.col('p_val') < 5e-8) &
-    (
-        ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0)) | (pl.col('finemap_pip') >= 0.8)
-    ).any().over(['chrom', 'snpstr_pos'])
-)
-
 flank_start_to_start_and_pos_table = pl.read_csv(
     args.flank_start_to_start_and_end_pos, sep='\t'
 ).groupby(
@@ -150,14 +80,105 @@ flank_start_to_start_and_pos_table = hg19_pos_bed.join(
     on=['chrom', 'pos', 'end_pos']
 ).drop(['ID'])
 
-finemapping_results = finemapping_results.join(
-    flank_start_to_start_and_pos_table,
-    how='left',
-    on=['chrom', 'snpstr_pos']
+
+flank_start_to_start_and_pos_table = flank_start_to_start_and_pos_table.lazy()
+
+assocs = dict(zip(args.assoc_phenotypes, args.assocs))
+other_ethnicity_assocs = {
+    'black': dict(zip(args.assoc_phenotypes, args.black_assocs)),
+    'south_asian': dict(zip(args.assoc_phenotypes, args.south_asian_assocs)),
+    'chinese': dict(zip(args.assoc_phenotypes, args.chinese_assocs)),
+    'irish': dict(zip(args.assoc_phenotypes, args.irish_assocs)),
+    'white_other': dict(zip(args.assoc_phenotypes, args.white_other_assocs))
+}
+
+def dosages_to_frequencies(dosage_dict_str):
+    dosages = ast.literal_eval(dosage_dict_str)
+    # drop zero alleles
+    dosages = { k: v for k, v in dosages.items() if v != 0 }
+    total_dosage = sum(dosages.values())
+    return json.dumps({ k: f'{v/total_dosage*100:.2f}%' for k,v in dosages.items() }).replace('"', '')
+
+finemapping_dfs = []
+for count, fname in enumerate(args.first_pass_finemapping_dfs):
+    print(f'Loading finemapping df {count+1}/{len(args.first_pass_finemapping_dfs)}', flush=True)
+    df = pl.scan_csv(
+        fname,
+        sep='\t',
+        dtypes={
+            **{f'{ethnicity}_p_val': float for ethnicity in other_ethnicities},
+            **{f'{ethnicity}_coeff': float for ethnicity in other_ethnicities},
+            **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
+        }
+    ).filter('is_STR')
+    #phenotype = df['phenotype'][0] # all will be the same
+    phenotype = fname.split('concordance_')[1].split('.tab')[0]
+    df = df.filter(~(
+    (
+        (phenotype == 'total_bilirubin') &
+        (pl.col('region') == '12_19976272_22524428')
+    ) |
+    (
+        (phenotype == 'urate') &
+        (pl.col('region') == '4_8165642_11717761')
+    ) |
+    (
+        (phenotype == 'alkaline_phosphatase') &
+        (pl.col('region') == '1_19430673_24309348')
+    )))
+
+    assoc_df = pl.scan_csv(
+        assocs[phenotype],
+        sep='\t',
+    ).select([
+        'chrom',
+        'pos',
+        pl.col('subset_total_per_allele_dosages').alias('white_brit_allele_dosages')
+    ])
+    lazy_df = df.join(
+        assoc_df,
+        how='left',
+        on=['chrom', 'pos']
+    )
+    for ethnicity in other_ethnicities:
+        assoc_df = pl.scan_csv(
+            other_ethnicity_assocs[ethnicity][phenotype],
+            sep='\t',
+        ).select([
+            'chrom',
+            'pos',
+            pl.col('subset_total_per_allele_dosages').alias(f'{ethnicity}_allele_dosages')
+        ])
+        lazy_df = lazy_df.join(
+            assoc_df,
+            how='left',
+            on=['chrom', 'pos']
+        )
+    # hard code which phenotypes are using which coordinates
+    if phenotype in {'ldl_cholesterol_direct', 'total_bilirubin'}:
+        lazy_df = lazy_df.join(
+            flank_start_to_start_and_pos_table,
+            how='left',
+            on=['chrom', 'pos']
+        )
+    else:
+        lazy_df = lazy_df.rename({'pos': 'snpstr_pos'}).join(
+            flank_start_to_start_and_pos_table,
+            how='left',
+            on=['chrom', 'snpstr_pos']
+        )
+    lazy_df = lazy_df.select([*[column for column in lazy_df.columns if column not in {'pos', 'snpstr_pos'}], 'pos', 'snpstr_pos'])
+    finemapping_dfs.append(lazy_df)
+finemapping_results = pl.concat(finemapping_dfs).collect()
+
+finemapping_results = finemapping_results.filter(
+    (pl.col('p_val') < 5e-8) &
+    (
+        ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0)) | (pl.col('finemap_pip') >= 0.8)
+    ).any().over(['chrom', 'snpstr_pos'])
 )
 
 repeat_units = pl.read_csv(
-    #f'{ukb}/snpstr/repeat_units.tab',
     args.repeat_units_table,
     sep='\t'
 )
@@ -169,19 +190,38 @@ finemapping_results = finemapping_results.join(
 )
 
 concordance_cols = pl.read_csv(
-    #f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab',
     args.followup_finemapping_dfs[0],
     sep='\t',
     n_rows=1
 ).columns
-concordance_results = pl.concat([
-    pl.read_csv(
-        #f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_{phenotype}.tab',
+
+del lazy_df
+followup_lazy_dfs = []
+for followup_finemapping_df in args.followup_finemapping_dfs:
+    if os.stat(followup_finemapping_df).st_size <= 100:
+        continue
+    followup_lazy_df = pl.scan_csv(
         followup_finemapping_df,
         sep='\t',
         dtypes={col: (float if 'cs' not in col else int) for col in concordance_cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
-    ) for followup_finemapping_df in args.followup_finemapping_dfs
-]).filter('is_STR').with_column(pl.col('pos').alias('snpstr_pos'))
+    ).filter('is_STR')
+
+    # hard code which phenotypes are using which coordinates
+    if phenotype in {'ldl_cholesterol_direct', 'total_bilirubin'}:
+        followup_lazy_df = followup_lazy_df.join(
+            flank_start_to_start_and_pos_table,
+            how='left',
+            on=['chrom', 'pos']
+        )
+    else:
+        followup_lazy_df = followup_lazy_df.rename({'pos': 'snpstr_pos'}).join(
+            flank_start_to_start_and_pos_table,
+            how='left',
+            on=['chrom', 'snpstr_pos']
+        )
+    followup_lazy_df = followup_lazy_df.select([*[column for column in followup_lazy_df.columns if column not in {'pos', 'snpstr_pos'}], 'pos', 'snpstr_pos'])
+    followup_lazy_dfs.append(followup_lazy_df)
+concordance_results = pl.concat(followup_lazy_dfs).collect()
 
 finemapping_results = finemapping_results.join(
     concordance_results,
@@ -192,6 +232,7 @@ finemapping_results = finemapping_results.join(
     pl.when(pl.col('susie_alpha_best_guess').is_null()).then(None).when(pl.col('susie_cs_best_guess') >= 0).then(pl.col('susie_alpha_best_guess')).otherwise(0).alias('susie_CP_best_guess_genotypes'),
     pl.when(pl.col('susie_alpha_ratio').is_null()).then(None).when(pl.col('susie_cs_ratio') >= 0).then(pl.col('susie_alpha_ratio')).otherwise(0).alias('susie_CP_prior_snps_over_strs'),
     pl.col('finemap_pip').alias('finemap_CP'),
+    pl.col('finemap_pip_repeat').alias('finemap_CP_repeat'),
     pl.col('finemap_pip_p_thresh').alias('finemap_CP_pval_thresh_5e-4'),
     pl.col('finemap_pip_mac').alias('finemap_CP_mac_thresh_100'),
     pl.col('finemap_pip_prior_std_derived').alias('finemap_CP_prior_effect_size_0.05%'),
@@ -328,6 +369,7 @@ finemapping_results = finemapping_results.select([
         (pl.col('susie_CP') >= 0.8) &
         (pl.col('finemap_CP') >= 0.8) &
         (pl.col('susie_CP_best_guess_genotypes') >= 0.8) &
+        (pl.col('finemap_CP_repeat') >= 0.8) &
         (pl.col('finemap_CP_pval_thresh_5e-4') >= 0.8) &
         (pl.col('finemap_CP_mac_thresh_100') >= 0.8) &
         (pl.col('finemap_CP_prior_effect_size_0.05%') >= 0.8) &
@@ -352,6 +394,7 @@ finemapping_results = finemapping_results.select([
     'susie_CP',
     'finemap_CP',
     'susie_CP_best_guess_genotypes',
+    'finemap_CP_repeat',
     'finemap_CP_pval_thresh_5e-4',
     'finemap_CP_mac_thresh_100',
     'finemap_CP_prior_effect_size_0.05%',
@@ -372,8 +415,6 @@ finemapping_results = finemapping_results.select([
     *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_allele_frequencies') for ethnicity in other_ethnicities],
 ])
 
-#finemapping_results.write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_for_paper.tab', sep='\t')
-#finemapping_results.sort(['chrom', 'start_pos']).write_csv(f'{ukb}/post_finemapping/results/singly_finemapped_strs_sorted.tab', sep='\t')
 finemapping_results.write_csv(f'{args.outdir}/singly_finemapped_strs_for_paper.tab', sep='\t')
 finemapping_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir}/singly_finemapped_strs_sorted.tab', sep='\t')
 

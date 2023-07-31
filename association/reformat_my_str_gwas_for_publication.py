@@ -95,18 +95,18 @@ if f'mean_{phenotype}_per_single_dosage' in df.columns:
         '5e-8_significance_CI_duplicated_0': 'paired_5e-8_significance_CI',
     })
 
-if df.filter((pl.col('pos') == 929697) & (pl.col('chrom') == 1)).shape[0] > 0:
-    df = df.rename({'pos': 'snpstr_pos'}).join(
-        pos_table,
-        how='left',
-        on=['chrom', 'snpstr_pos']
-    )
-else:
-    assert df.filter((pl.col('pos') == 929702) & (pl.col('chrom') == 1)).shape[0] > 0
+if all(df.filter(pl.col('chrom') == chrom)['pos'].is_in(pos_table.filter(pl.col('chrom') == chrom)['pos']).all() for chrom in range(1, 23)):
     df = df.join(
         pos_table,
         how='left',
         on=['chrom', 'pos']
+    )
+else:
+    assert all(df.filter(pl.col('chrom') == chrom)['pos'].is_in(pos_table.filter(pl.col('chrom') == chrom)['snpstr_pos']).all() for chrom in range(1, 23))
+    df = df.rename({'pos': 'snpstr_pos'}).join(
+        pos_table,
+        how='left',
+        on=['chrom', 'snpstr_pos']
     )
 
 df = df.join(

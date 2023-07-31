@@ -10,7 +10,7 @@ parser.add_argument('out')
 parser.add_argument('tab_file')
 parser.add_argument('length_sum_column')
 parser.add_argument('trait_column')
-parser.add_arguemnt('--sep', defulat='\t')
+parser.add_argument('--sep', default='\t')
 parser.add_argument('--subset', nargs=2)
 args = parser.parse_args()
 
@@ -24,7 +24,9 @@ if args.subset:
 
 out = out.rename({
     args.length_sum_column: 'length_sum'
-}).groupby(
+}).with_column(
+    pl.col('length_sum').round(4)
+).groupby(
     'length_sum'
 ).agg([
     pl.col(args.trait_column).mean().alias('mean'),

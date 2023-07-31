@@ -493,7 +493,7 @@ def mpv_comparison():
             ), 'above')
 
             color_bar = bokeh.models.ColorBar(
-                title='Number of loci',
+                title='Number of variants',
                 color_mapper = color_mapper,
                 width=35,
                 height=fig_height//3,
@@ -614,7 +614,6 @@ def mpv_comparison():
         bokeh.io.export_png(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_FINEMAP_consistency_{suffix}.png')
         bokeh.io.export_svg(fig, filename=f'{ukb}/post_finemapping/results/consistency/mpv_FINEMAP_consistency_{suffix}.svg')
 
-# outdir used to be {ukb}/post_finemapping/intermediate_results
 def followup_finemapping_conditions_df(
     outdir,
     should_assert,
@@ -847,9 +846,6 @@ def linear_int_interpolate(c1, c2, dist):
         c_new.append(coord1 + round((coord2 - coord1)*dist))
     return c_new
 
-# intermediate_dir was {ukb}/post_finemapping/intermediate_results
-# outdir was {ukb}/post_finemapping/results/consistency
-# all_finemapping_conditions_tsvs was f'{ukb}/post_finemapping/intermediate_results/finemapping_putatively_causal_concordance_white_blood_cell_count.tab'
 def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followup_finemapping_conditions_tsvs):
     print('loading pre-generated dfs ...', end='', flush=True)
     cols = pl.read_csv(
@@ -861,10 +857,10 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
         pl.read_csv(
             followup_finemapping_conditions_tsv,
             sep='\t',
-            dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col}
+            dtypes={col: (float if 'cs' not in col else int) for col in cols if 'finemap' in col or 'susie' in col or 'p_val' in col or 'coeff' in col or '_se' in col}
         ) for followup_finemapping_conditions_tsv in followup_finemapping_conditions_tsvs if os.stat(followup_finemapping_conditions_tsv).st_size > 100
     ])
-    print(' done', flush=True)
+    print(' done', flush=True )
 
     total_df = total_df.filter(~pl.col('finemap_pip').is_null() & ~pl.col('susie_alpha').is_null())
 
@@ -905,6 +901,38 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
         (pl.col('p_val') < 1e-10) &
         (pl.sum([(pl.col(col) >= .8).cast(int) for col in check_all_cols]) == len(check_all_cols))
     ).select(['phenotype', 'region', 'chrom', 'pos', 'p_val']).write_csv(f'{intermediate_dir}/overconfidently_finemapped_STRs.tab', sep='\t')
+
+
+    # remove mean platelet volume regions that we followup up on that didn't need that based on STR presence
+    print(total_df['region'].unique().shape)
+    print(total_df.filter(pl.col('phenotype') != 'mean_platelet_volume')['region'].unique().shape)
+
+    total_df = total_df.filter(~(
+        (
+            (pl.col('phenotype') == 'total_bilirubin') &
+            (pl.col('region') == '12_19976272_22524428')
+        ) |
+        (
+            (pl.col('phenotype') == 'urate') &
+            (pl.col('region') == '4_8165642_11717761')
+        ) |
+        (
+            (pl.col('phenotype') == 'alkaline_phosphatase') &
+            (pl.col('region') == '1_19430673_24309348')
+        )
+    )).with_column((
+        pl.col('is_STR') &
+        (pl.col('p_val') < 1e-10) &
+        (pl.col('susie_alpha') >= .8) &
+        (pl.col('finemap_pip') >= .8)
+    ).alias('doubly_finemapped')
+    )
+    total_df = total_df.filter(
+        pl.col('doubly_finemapped').any().over('region')
+    )
+
+    print(total_df['region'].unique().shape)
+    print(total_df.filter(pl.col('phenotype') != 'mean_platelet_volume')['region'].unique().shape)
 
     # concordance graphs
     for mapper, meas, suffix, y_label in [
@@ -1095,7 +1123,6 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
         bokeh.io.export_png(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.png')
         bokeh.io.export_svg(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.svg')
 
-# used to out to {ukb}/post_finemapping/intermediate_results
 def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames, original_FINEMAP_outputs, original_SuSiE_outputs):
     str_assocs = pl.scan_csv(
         str_gwas_fname,
@@ -1244,8 +1271,8 @@ def generate_followup_regions_tsv(outdir, first_pass_df):
             (pl.col('region') == '12_19976272_22524428')
         ) |
         (
-            (pl.col('phenotype') == 'mean_platelet_volume') &
-            (pl.col('region') == '17_2341352_2710113')
+            (pl.col('phenotype') == 'urate') &
+            (pl.col('region') == '4_8165642_11717761')
         ) |
         (
             (pl.col('phenotype') == 'alkaline_phosphatase') &
@@ -1253,8 +1280,6 @@ def generate_followup_regions_tsv(outdir, first_pass_df):
         )
     )).groupby(['phenotype', 'chrom', 'region']).agg([]).write_csv(f'{outdir}/followup_regions.tsv', sep='\t')
 
-# outdir used to be {ukb}/post_finemapping/results
-# or {ukb}/post_finemapping/results/consistency
 def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     total_df = pl.concat([
         pl.read_csv(
@@ -1266,7 +1291,21 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
                 **{f'{ethnicity}_se': float for ethnicity in other_ethnicities}
             }
         ) for first_pass_df in first_pass_dfs
-    ])
+    ]).filter(~(
+        (
+            (pl.col('phenotype') == 'total_bilirubin') &
+            (pl.col('region') == '12_19976272_22524428')
+        ) |
+        (
+            (pl.col('phenotype') == 'urate') &
+            (pl.col('region') == '4_8165642_11717761')
+        ) |
+        (
+            (pl.col('phenotype') == 'alkaline_phosphatase') &
+            (pl.col('region') == '1_19430673_24309348')
+        )
+    ))
+
     min_abs_corrs = np.concatenate([
         np.load(susie_all_min_abs_corr)
         for susie_all_min_abs_corr in susie_all_min_abs_corrs
@@ -1379,7 +1418,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     )
 
     print(
-        'Total SuSiE contribution of variants with PIP <= 0.1',
+        'Total SuSiE contribution of variants with PIP < 0.1',
         total_df.filter(
             (pl.col('p_val') < 5e-8)
             & (pl.col('susie_cs') >= 0)
@@ -1393,7 +1432,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     )
 
     print(
-        'Total SuSiE contribution of variants with PIP <= 0.1',
+        'Total SuSiE contribution of variants with PIP < 0.1',
         total_df.filter(
             (pl.col('p_val') < 5e-8)
             & ~pl.col('finemap_pip').is_null()
@@ -1494,35 +1533,59 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     fig.axis.major_label_text_font_size = '30px'
     bin_size = .02
 
-    alpha_pip_df = total_df.filter(pl.col('susie_pip') >= 0.05)
+    # remove the APOB locus where we manually modified the alpha but not pip field
+    temp_df = total_df.filter(
+        pl.col('susie_cs') > 0
+    ).filter(
+        ((pl.col('phenotype') != 'apolipoprotein_b') & (pl.col('phenotype') != 'ldl_cholesterol_direct')) | ~pl.col('is_STR') | (pl.col('pos') != 21266752)
+    )
+    pips = temp_df['susie_pip'].to_numpy()
+    alphas = temp_df['susie_alpha'].to_numpy()
 
-    bins = bokeh.util.hex.hexbin(alpha_pip_df['susie_alpha'].to_numpy(), alpha_pip_df['susie_pip'].to_numpy(), size=bin_size)
+    grid = np.mgrid[:(1+bin_size):bin_size, :(1+bin_size):bin_size]
+    x = grid[0,:,:].flatten()
+    y = grid[1,:,:].flatten()
+    counts = []
+    for xbound, ybound in zip(x, y):
+        counts.append(np.sum((alphas >= xbound) & (alphas < xbound + bin_size) & (pips >= ybound) & (pips < ybound + bin_size)))
+    cds = bokeh.models.ColumnDataSource(dict(
+        left = x,
+        right = x + bin_size,
+        bottom = y,
+        top = y + bin_size,
+        counts = counts
+    ))
 
     palette = [linear_int_interpolate((134,204,195), (9,41,46), i/254) for i in range(-1, 255)]
     cmap = bokeh.transform.log_cmap(
         'counts',
         palette = palette,
         low=1,
-        high=max(bins.counts),
+        high=max(cds.data['counts']),
         low_color=(255, 255, 255)
     )
     color_mapper = bokeh.models.LogColorMapper(
         palette = palette,
         low=1,
-        high=max(bins.counts)
+        high=max(cds.data['counts'])
     )
 
-    fig.hex_tile(q='q', r='r', size=bin_size, line_color=None, source=bins, fill_color=cmap)
+    fig.quad(
+        left='left', right='right', bottom='bottom', top='top', source=cds, fill_color=cmap, line_width=0
+    )
+    fig.line(
+        x = [0, 1 + bin_size],
+        y = [0, 1 + bin_size],
+        line_width = 20,
+        color = 'dimgrey',
+    )
+
     color_bar = bokeh.models.ColorBar(
-        title='Number of loci',
+        title='Number of variants',
         color_mapper = color_mapper,
-        width=35,
-        height=fig_height//3,
+        width=70,
         major_label_text_font_size = '30px',
         title_text_font_size='30px',
-        ticker = bokeh.models.tickers.FixedTicker(ticks=[0, 10, 100, 1000, 10000, 100000]),
-        formatter = bokeh.models.formatters.NumeralTickFormatter(format = '0a'),
-        location='bottom_right'
     )
     fig.add_layout(color_bar, 'right')
 
@@ -1630,6 +1693,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
         pl.col('finemap_pip').sum()
     )['finemap_pip'].to_numpy()
     print(f'Omitting {np.sum(finemap_cs_coverages >= 1 + step)} cses from this graph for having too high summed CSes')
+    print(finemap_cs_coverages[finemap_cs_coverages >= 1 + step])
     finemap_cs_coverages = finemap_cs_coverages[finemap_cs_coverages < 1 + step]
     max_coverage = np.max(finemap_cs_coverages)
 
@@ -1789,7 +1853,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
         ), 'above')
 
         color_bar = bokeh.models.ColorBar(
-            title='Number of loci',
+            title='Number of variants',
             color_mapper = color_mapper,
             width=35,
             height=fig_height//3,

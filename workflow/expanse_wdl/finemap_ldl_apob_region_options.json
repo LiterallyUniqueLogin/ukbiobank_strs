@@ -1,0 +1,4 @@
+{
+    "final_workflow_outputs_dir": "wdl_cache/finemapping/ldl_apob_region",
+    "use_relative_output_paths": true
+}

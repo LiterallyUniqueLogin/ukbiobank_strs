@@ -24,7 +24,8 @@ workflow retryable_susie_run {
 
   call finemapping_tasks.susie_run as try_zero { input :
     script_dir = script_dir,
-    time = "1h",
+    #time = "1h", TODO temp
+    time = "47h30m",
     mem = "16GB",
     gts_h5 = gts_h5,
     pheno_residuals_h5 = pheno_residuals_h5,

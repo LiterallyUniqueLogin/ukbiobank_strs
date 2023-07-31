@@ -133,7 +133,8 @@ def get_p_val_heatmap(peaks):
         x_axis_label = '-log10 SNP/indel peak p-values',
         y_axis_label = '-log10 STR peak p-values',
         width=1200,
-        height=1200
+        height=1200,
+        output_backend='svg'
     )
 
     fig.background_fill_color = None

@@ -16,6 +16,7 @@ def main():
     parser.add_argument('outfile')
     parser.add_argument('hits_table')
     parser.add_argument('qtl_STRs_table')
+    parser.add_argument('meQTL_table')
     parser.add_argument('closest_gene_annotations', nargs=22)
 
     args = parser.parse_args()
@@ -164,7 +165,7 @@ def main():
             print(i, "failed in assoc pheno index loop")
             exit()
 
-    for pair in [(21, 23), (23, 24), (25, 28), (26, 30), (27, 31), (25, 27), (35, 39), (36, 39), (37, 38), (40, 42), (40, 41), (43, 45), (56, 57), (59, 60), (48, 53), (49, 55), (50, 54), (49, 51), (68, 71), (84, 85),(85, 87), (87, 88)]:
+    for pair in [(10, 11), (19, 21), (21, 22), (23, 26), (24, 28), (25, 29), (23, 25), (30, 32), (30, 31), (26, 31),  (33, 37), (34, 36), (35, 37), (38, 39), (45, 50), (46, 49), (47, 48), (51, 53), (57, 59), (60, 62), (82, 85), (82, 84)]:
         y_coords[y_coords == pair[0]] = 1000000
         y_coords[y_coords == pair[1]] = pair[0]
         y_coords[y_coords == 1000000] = pair[1]
@@ -298,13 +299,14 @@ def main():
         return topper
 
     qtl_topper = get_topper(
-        30, ['expression QTL'], True#, 'splice or isoform QTL'], True
+        30, ['expression QTL'], True
     )
 
     qtl_STRs = pl.read_csv(args.qtl_STRs_table, sep='\t')
     eqtl_STR_locs = qtl_STRs['chrom_pos']
     eqtl_STRs = df.select(
-        ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(eqtl_STR_locs)
+        ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(eqtl_STR_locs) |
+        pl.col('relation_to_gene').str.contains('RHOT1')
     ).to_numpy().flatten()
     qtl_topper.circle(
         ['expression QTL']*np.sum(eqtl_STRs),
@@ -312,6 +314,43 @@ def main():
         color='black',
         size=topper_circle_size
     )
+
+    meQTL_topper = get_topper(
+        30, ['methylation QTL'], True
+    )
+
+    meQTL_STRs = pl.read_csv(args.meQTL_table, sep='\t')
+    meQTL_STR_locs = meQTL_STRs['chrom_pos']
+    meQTL_STRs = df.select(
+        ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(meQTL_STR_locs)
+    ).to_numpy().flatten()
+    meQTL_topper.circle(
+        ['methylation QTL']*np.sum(meQTL_STRs),
+        (y_coords + 0.5)[meQTL_STRs],
+        color='black',
+        size=topper_circle_size
+    )
+
+#    meQTL_STR_locs = pl.read_csv(
+#        args.meQTL_table, sep='\t'
+#    ).filter(
+#        pl.col('FDR10_p') < 0.05
+#    ).select([
+#        'chrom',
+#        'start_pos'
+#    ]).unique().select(
+#        ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).alias('chrom_pos')
+#    )['chrom_pos']
+#
+#    is_meQTL_STR = df.select(
+#        ('chr' + pl.col('chrom').cast(str) + '_' + pl.col('start_pos').cast(str)).is_in(meQTL_STR_locs)
+#    ).to_numpy().flatten()
+#    meQTL_topper.circle(
+#        ['methylation QTL']*np.sum(is_meQTL_STR),
+#        (y_coords + 0.5)[is_meQTL_STR],
+#        color='black',
+#        size=topper_circle_size
+#    )
 
     replication_topper = get_topper(
         150, [f'{ethnicity} replication'.replace('Other', 'other') for ethnicity in other_ethnicities], True
@@ -457,11 +496,11 @@ def main():
         color=confidently_color
     )
 
-
     total_fig = bokeh.layouts.column(
         bokeh.layouts.row(
             results_plot,
             qtl_topper,
+            meQTL_topper,
             replication_topper,
             repeat_unit_topper,
             multiallelic_topper,

@@ -133,7 +133,7 @@ def main():
             ci5e_2s.append({float(allele): val for allele, val in ast.literal_eval(result[small_ci_col].to_numpy()[0]).items()})
     else:
         for data_per_length_sum in args.datas_per_length_sum:
-            df = pl.read_csv(data_per_length_sum, sep='\t')
+            df = pl.read_csv(data_per_length_sum, sep='\t').filter(pl.col('count') > 1)
             dosage_dicts.append(dict(zip(df['length_sum'], df['count'])))
             mean_per_dosages.append(dict(zip(df['length_sum'], df['mean'])))
             ci5e_2s.append({allele: ast.literal_eval(tup) for allele, tup in zip(df['length_sum'], df['conf_int'])})
@@ -199,8 +199,12 @@ def generate_figure(
     figure.axis.major_label_text_font_size = '30px'
     figure.axis.minor_tick_line_color = None
 
-    #markers = ['circle', 'triangle']
-    markers = ['circle']*len(dosage_dicts)
+    if len(dosage_dicts) == 1:
+        markers = ['circle']
+    elif len(dosage_dicts) == 2:
+        markers = ['circle', 'triangle']
+    else:
+        markers = ['circle']*len(dosage_dicts)
     y_mins = []
     y_maxs = []
 
@@ -271,7 +275,7 @@ def generate_figure(
         if len(dosage_dicts) > 1:
             scatter_label = f'{group_names[assoc_idx]}'
             figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=2, color=color)
-            figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=1, color='black')
+            #figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=1, color='black')
         else:
             figure.line(alleles, [mean_per_dosage[allele] for allele in alleles], line_width=2, color='black')
             color='black'

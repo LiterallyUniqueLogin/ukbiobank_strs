@@ -989,6 +989,31 @@ task str_tables_for_paper {
   }
 }
 
+task generate_QTL_table {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/gtex_STR2/table.py"
+
+    File confidently_finemapped_table
+    File all_QTL_results
+    Boolean methylation = false
+  }
+
+  output {
+    File QTL_table = if (methylation) then "meQTL_STRs.tab" else "qtl_STRs.tab"
+  }
+
+  command <<<
+    envsetup ~{script} ~{confidently_finemapped_table} ~{all_QTL_results} ~{if(methylation) then "--methylation" else ""}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "30m"
+    memory: "50GB"
+  }
+}
+
 task graph_main_hits {
   input {
     String script_dir
@@ -998,6 +1023,7 @@ task graph_main_hits {
 
     File hits_table # singly_finemapped_strs from str_tables_for_paper
     File eQTL_table # post_finemapping/gtex_STR2/blessed_qtl_STRs.tab
+    File meQTL_table
     Array[File] closest_gene_annotations
   }
 
@@ -1013,6 +1039,7 @@ task graph_main_hits {
       results_graph.png \
       ~{hits_table} \
       ~{eQTL_table} \
+      ~{meQTL_table} \
       ~{sep=" " closest_gene_annotations}
   >>>
 
@@ -1152,10 +1179,10 @@ task graph_enrichments {
   }
 
   output {
-    File regions_svg = "enrichments_barplots_regions.svg"
-    File regions_png = "enrichments_barplots_regions.png"
-    File repeats_svg = "enrichments_barplots_repeats.svg"
-    File repeats_png = "enrichments_barplots_repeats.png"
+    File regions_svg = "enrichment_barplots_regions.svg"
+    File regions_png = "enrichment_barplots_regions.png"
+    File repeats_svg = "enrichment_barplots_repeats.svg"
+    File repeats_png = "enrichment_barplots_repeats.png"
   }
 
   command <<<

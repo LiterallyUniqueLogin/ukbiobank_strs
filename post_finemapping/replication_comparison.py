@@ -125,7 +125,7 @@ for ethnicity_num, ethnicity in enumerate(other_ethnicities):
     lower_whiskers = []
     for lower_bound, upper_bound in zip(bin_bounds[:-1], bin_bounds[1:]):
         for finemapper, condition in named_conditions:
-            name = '['
+            name = '('
             if isinstance(lower_bound, float):
                 name += f'{lower_bound:.3}'
             else:
@@ -135,12 +135,15 @@ for ethnicity_num, ethnicity in enumerate(other_ethnicities):
                 name += f'{upper_bound:.3}'
             else:
                 name += str(upper_bound)
-            name += ')'
+            if 'inf' not in name:
+                name += ']'
+            else:
+                name += ')'
             category_names.append((name, finemapper))
 
             category_df = df.filter(
-                (pl.col('log_p_val') >= lower_bound) &
-                (pl.col('log_p_val') < upper_bound) &
+                (pl.col('log_p_val') > lower_bound) &
+                (pl.col('log_p_val') <= upper_bound) &
                 condition &
                 ~pl.col(f'{ethnicity}_coeff').is_nan()
             )
@@ -168,7 +171,7 @@ for ethnicity_num, ethnicity in enumerate(other_ethnicities):
     fig = bokeh.plotting.figure(
         title=ethnicity.replace("_", " ").title(),
         y_axis_label = 'Percent loci with shared effect direction',
-        x_axis_label = 'Discovery p-value',
+        x_axis_label = 'Discovery -log10(p-value)',
         x_range = bokeh.models.FactorRange(*category_names),
         width=1600,
         height=800,

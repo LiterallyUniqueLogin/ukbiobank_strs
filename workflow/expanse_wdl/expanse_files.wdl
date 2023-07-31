@@ -119,7 +119,7 @@ workflow files {
     File finemapping_regions_ = select_first([finemapping_regions_wdl, finemapping_regions_snakemake])
     Array[File] pheno_to_ethnic_to_str_gwas_results_ = select_first([pheno_to_ethnic_to_str_gwas_results_wdl, pheno_to_ethnic_to_str_gwas_results_snakemake])
     File finemapping_first_pass_dfs_ = "wdl_cache/finemapping/finemapping_all_regions_concordance_~{phenotype}.tab"
-    File susie_min_abs_corrs_ = "wdl_cache/finemapping/susie_all_regions_min_abs_corrs_~{phenotype}.tab"
+    File susie_min_abs_corrs_ = "wdl_cache/finemapping/susie_all_regions_min_abs_corrs_~{phenotype}.npy"
     File finemapping_followup_dfs_ = "wdl_cache/finemapping/finemapping_followup_concordance_~{phenotype}.tab" # bigger for mean platelet volume, so needs consistent filtering
   }
 
@@ -140,6 +140,9 @@ workflow files {
     File pan_ukbb = "misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv"
     File specific_alleles = "association/specific_alleles.tab"
     File eSTR_table = "misc_data/eSTR/eSTRs.csv"
+    File all_eQTL_results = "/expanse/projects/gymreklab/yal084_storage/share_with_Jonathan/eSTR_GB_650pc_combined_fdr10p.csv"
+    File all_meQTL_results = "/expanse/projects/gymreklab/yal084_storage/share_with_Jonathan/Combined_DNAm_regression.tsv"
+    #File confidently_finemapped_methylation_results = "misc_data/gtex_yang/methylation_confidently_finemapped_strs.tsv"
     File CBL_gtex_expression = "misc_data/gtex_yang/CBL_chr11_119206290_GTEX_TPM.tsv"
     File CBL_geuvadis_expression = "misc_data/geuvadis_melissa/CBL_Geuvadis_Exprdata.csv"
     File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
@@ -175,8 +178,6 @@ workflow files {
     Array[File] closest_upstream_protein_coding_exon_support_2_annotation = closest_upstream_protein_coding_exon_support_2_annotation_
     Array[File] closest_downstream_protein_coding_gene_annotation = closest_downstream_protein_coding_gene_annotation_
     Array[File] closest_upstream_protein_coding_gene_annotation = closest_upstream_protein_coding_gene_annotation_
-    # TODO files that are currently cached that MUST be regenerated with WDL
-    File eQTL_table = "post_finemapping/gtex_STR2/blessed_qtl_STRs.tab"
 
     # ------------ cached files that can be regenerated with WDL workflows, though
     # ------------ may change due to code updates, withdrawing samples,
@@ -204,6 +205,8 @@ workflow files {
     File CBL_conditioned_SNP_119080037_A_G_snp_results = "association/results/platelet_crit/plink_snp_conditional/chr11_118447267_119339135_STR__ISNP_119080037_A_G__ASNP/plink2.rin_platelet_crit.glm.linear.done"
     File CBL_conditioned_STR_19077000_SNP_119080037_A_G_str_results = "association/results/platelet_crit/my_str_conditional/chr11_118447267_119339135_STR_119077000__ISNP_119080037_A_G__ASNP.tab"
     File CBL_conditioned_STR_19077000_SNP_119080037_A_G_snp_results = "association/results/platelet_crit/plink_snp_conditional/chr11_118447267_119339135_STR_119077000__ISNP_119080037_A_G__ASNP/plink2.rin_platelet_crit.glm.linear.done"
+    File RHOT1_conditioned_str_results = "association/results/red_blood_cell_distribution_width/my_str_conditional/chr17_30287357_30595028_STR_30469467__ISNP__ASNP.tab"
+    File RHOT1_conditioned_snp_results = "association/results/red_blood_cell_distribution_width/plink_snp_conditional/chr17_30287357_30595028_STR_30469467__ISNP__ASNP/plink2.rin_red_blood_cell_distribution_width.glm.linear.done"
     # TODO must regenerate
     #File SLC2A2_conditioned_STR_17100913_str_results = "association/results/total_bilirubin/my_str_conditional/chr11_118447267_119339135_STR_17100913__ISNP__ASNP.tab"
     #File SLC2A2_conditioned_STR_17100913_snp_results = "association/results/total_bilirubin/plink_snp_conditional/chr11_118447267_119339135_STR_17100913__ISNP__ASNP/plink2.rin_platelet_crit.glm.linear.done"
@@ -217,6 +220,6 @@ workflow files {
 
     Array[File] finemapping_first_pass_dfs = finemapping_first_pass_dfs_ 
     Array[File] susie_min_abs_corrs = susie_min_abs_corrs_
-    Array[File] finemapping_followup_dfs = finemapping_first_pass_dfs_ # bigger for mean platelet volume, so needs consistent filtering
+    Array[File] finemapping_followup_dfs = finemapping_followup_dfs_ # bigger for mean platelet volume, so needs consistent filtering
   }
 }
