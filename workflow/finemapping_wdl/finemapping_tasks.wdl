@@ -223,6 +223,9 @@ task finemap_run {
     Float? prob_conv_sss_tol
     String prefix
     Int cache_breaker = 0
+
+    # TODO
+    Int another_break = 13
   }
 
   String snp_file_loc = "~{prefix}finemap_output.snp"
@@ -249,14 +252,17 @@ task finemap_run {
     ln -s ~{master} .
     ln ~{zfile} .
     ln -s ~{all_variants_ld} .
+    which -a finemap
     envsetup ~{script} \
       . \
       ~{finemap_command} \
       --n-causal-snps ~{causal_snps} \
       ~{if prior_snps then "--prior-snps" else if defined(prior_std) then "--prior-std ~{prior_std}" else if defined(prob_conv_sss_tol) then "--prob-conv-sss-tol ~{prob_conv_sss_tol}" else ""}
-    for file in finemap_input.z finemap_output.cred* finemap_output.config finemap_output.log_sss finemap_output.snp ; do
-      ln $file ~{prefix}$file
-    done
+    if [[ "~{prefix}" != "" ]] ; then 
+      for file in finemap_input.z finemap_output.cred* finemap_output.config finemap_output.log_sss finemap_output.snp ; do
+        ln $file ~{prefix}$file
+      done
+    fi
   >>>
 
   runtime {
@@ -308,6 +314,31 @@ task susie_choose_vars {
   }
 }
 
+task any_vars_for_susie {
+  input {
+    File colnames
+  }
+
+  output {
+    Boolean b = read_boolean(stdout())
+  }
+
+  command <<<
+    if [[ -n "$(cat ~{colnames} | xargs)" ]] ; then
+      echo true
+    else
+      echo false
+    fi
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "10m"
+    memory: "2GB"
+    shortTask: true
+  }
+}
+
 task susie_load_gts {
   # TODO won't work properly if there are no shared covars
   # but there are covars in the pheno file
@@ -331,6 +362,9 @@ task susie_load_gts {
     Boolean best_guess = false
 
     String time
+
+    # TODO a random cache breaker
+    Int ignored=3
   }
 
   output {
@@ -418,9 +452,11 @@ task susie_run {
       ~{"--snp-p-over-str-p " + snp_p_over_str_p + " --varnames-file " + varnames_file} \
       ~{"--residual-variance " + res_var} \
       ~{"--scaled-prior-variance " + prior_var}
-    for file in lbf.tab lbf_variable.tab sigma2.txt V.tab converged.txt lfsr.tab requested_coverage.txt alpha.tab cs*.txt ; do
-      ln $file ~{prefix}$file
-    done
+    if [[ "~{prefix}" != "" ]] ; then 
+      for file in lbf.tab lbf_variable.tab sigma2.txt V.tab converged.txt lfsr.tab requested_coverage.txt alpha.tab cs*.txt ; do
+        ln $file ~{prefix}$file
+      done
+    fi
     ln ~{colnames} ~{prefix}colnames.txt
     exit 0 # ignore the previous return code
   >>>
@@ -486,10 +522,13 @@ task select_causal_variants_from_finemap_output {
     File finemap_output_log
     File finemap_input_z
     Array[File]+ finemap_output_creds
+
+    String prefix
   }
 
   output {
-    Array[Array[String]] vars_and_betas = read_tsv(stdout())
+    Array[Array[String]] vars_and_betas = read_tsv(vars_and_betas_f)
+    File vars_and_betas_f = "~{prefix}vars_and_betas.tab"
   }
 
   command <<<
@@ -497,7 +536,8 @@ task select_causal_variants_from_finemap_output {
        out \
        ~{finemap_output_log} \
        ~{finemap_input_z} \
-       ~{sep=" " finemap_output_creds}
+       ~{sep=" " finemap_output_creds} \
+      > ~{prefix}vars_and_betas.tab
   >>>
 
   runtime {
@@ -514,20 +554,26 @@ task select_causal_variants_from_susie_output {
     File script = "~{script_dir}/finemapping/select_causal_variants_from_susie_output.py"
 
     File colnames
+    File alpha
     File finemap_input_z
     Array[File]+ CSes
+
+    String prefix
   }
 
   output {
-    Array[Array[String]] vars_and_betas = read_tsv(stdout())
+    Array[Array[String]] vars_and_betas = read_tsv(vars_and_betas_f)
+    File vars_and_betas_f = "~{prefix}vars_and_betas.tab"
   }
 
   command <<<
     envsetup ~{script} \
        out \
        ~{colnames} \
+       ~{alpha} \
        ~{finemap_input_z} \
-       ~{sep=" " CSes}
+       ~{sep=" " CSes} \
+      > ~{prefix}vars_and_betas.tab
   >>>
 
   runtime {
@@ -559,27 +605,153 @@ task any_causal_strs {
   }
 }
 
-task select_random_causal_variants {
+task bin_causal_variants_by_frequency {
   input {
     String script_dir
-    File script = "~{script_dir}/"
+    File script = "~{script_dir}/post_finemapping/bin_causal_variants_by_frequency.py"
+    File all_regions_finemapping_df
+    File samples_file
+    Array[File] mac_files
   }
 
-  output {
+  Int n_samples = length(read_lines(samples_file)) - 1
 
+  output {
+    Array[Array[String]] data = read_tsv(stdout())
+    File data_file = write_tsv(data)
+    Array[File] bin_effects = [
+      "bin_001gthan0001_effects.txt",
+      "bin_01gthan001_effects.txt",
+      "bin_1gthan01_effects.txt",
+      "bin_5gthan1_effects.txt"
+    ]
+#    File bin_lthan_0001_effects = "bin_lthan0001.txt"
+#    File bin_001_gthan_0001_effects = "bin_001gthan0001_effects.txt"
+#    File bin_01_gthan_001_effects = "bin_01gthan001_effects.txt"
+#    File bin_1_gthan_01_effects = "bin_1gthan01_effects.txt"
+#    File bin_5_gthan_1_effects = "bin_5gthan1_effects.txt"
   }
 
   command <<<
-    envsetup ~{script}
+    envsetup ~{script} \
+      ~{all_regions_finemapping_df} \
+      ~{n_samples} \
+      ~{sep=" " mac_files}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "1h"
+    memory: "20GB"
+  }
+}
+
+task select_random_causal_variants {
+  input {
+    String script_dir
+    File script = "~{script_dir}/finemapping/select_causal_variants_by_frequency.py"
+
+    Int n_vars_to_choose
+    Int seed
+    File samples_file
+    File snp_macs
+    Array[Float]+ bin_weights
+    Array[File]+ bin_effects
+
+    String prefix
+  }
+  
+  Int n_samples = length(read_lines(samples_file)) - 1
+
+  output {
+    Array[Array[String]] vars_and_betas = read_tsv(vars_and_betas_f)
+    File vars_and_betas_f = "~{prefix}vars_and_betas.tab"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{n_vars_to_choose} \
+      ~{seed} \
+      ~{n_samples} \
+      ~{snp_macs} \
+      ~{sep=" " bin_weights} \
+      ~{sep=" " bin_effects} \
+      > ~{prefix}vars_and_betas.tab
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "20m"
-    memory: "2GB"
+    memory: "20GB"
     shortTask: true
   }
 }
+
+task compile_simulations_df {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/simulations_df.py"
+    File script = "~{script_dir}/post_finemapping/simulations_df.py"
+
+    Array[String] methods
+    Array[Int] chroms
+    Array[String] regions
+    Array[Int] replicates
+    Array[File] causal_vars_and_betas
+    Array[File] snp_assocs
+    Array[File] str_assocs
+    Array[serializable_FINEMAP_output] finemap_outputs
+    Array[Array[File]] finemap_creds
+    Array[serializable_SuSiE_output] susie_outputs
+    Array[Array[File]] susie_CSs
+  }
+
+  output {
+    File df = "simulations_df.tab"
+  }
+
+  command <<<
+    METHODS=~{write_lines(methods)}
+    { echo "method" ; cat $METHODS ; } > METHODS.headered
+    CHROMS=~{write_lines(chroms)}
+    { echo "chrom" ; cat $CHROMS ; } > CHROMS.headered
+    REGIONS=~{write_lines(regions)}
+    { echo "region" ; cat $REGIONS ; } > REGIONS.headered
+    REPLICATES=~{write_lines(replicates)}
+    { echo "replicate" ; cat $REPLICATES ; } > REPLICATES.headered
+    CAUSAL_VARS_AND_BETAS=~{write_lines(causal_vars_and_betas)}
+    { echo "causal_vars_and_betas" ; cat $CAUSAL_VARS_AND_BETAS ; } > CAUSAL_VARS_AND_BETAS.headered
+    SNP_ASSOCS=~{write_lines(snp_assocs)}
+    { echo "snp_assoc" ; cat $SNP_ASSOCS ; } > SNP_ASSOCS.headered
+    STR_ASSOCS=~{write_lines(str_assocs)}
+    { echo "str_assoc" ; cat $STR_ASSOCS ; } > STR_ASSOCS.headered
+    finemap_creds=~{write_tsv(finemap_creds)}
+    { echo "creds" ; cat $finemap_creds | sed -e 's/\t/,/g' ; } > finemap_creds.headered
+    susie_CSs=~{write_tsv(susie_CSs)}
+    { echo "CSes" ; cat $susie_CSs | sed -e 's/\t/,/g' ; } > susie_CSs.headered
+    paste \
+      METHODS.headered \
+      CHROMS.headered \
+      REGIONS.headered \
+      REPLICATES.headered \
+      CAUSAL_VARS_AND_BETAS.headered \
+      SNP_ASSOCS.headered \
+      STR_ASSOCS.headered \
+      ~{write_objects(finemap_outputs)} \
+      finemap_creds.headered \
+      ~{write_objects(susie_outputs)} \
+      susie_CSs.headered \
+      > simulations.tsv
+    envsetup ~{script} simulations.tsv
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "3h"
+    memory: "50GB"
+  }
+}
+
 
 ####################### Summarize finemapping #########################
 

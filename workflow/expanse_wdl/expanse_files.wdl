@@ -123,6 +123,10 @@ workflow files {
     File finemapping_followup_dfs_ = "wdl_cache/finemapping/finemapping_followup_concordance_~{phenotype}.tab" # bigger for mean platelet volume, so needs consistent filtering
   }
 
+  scatter (i in range(548)) {
+    File platelet_count_snp_macs_ = "wdl_cache/platelet_count_snp_macs/region_~{i}_snp_macs.tab"
+  }
+
   output {
     # ------------ cached files directly from UKB
     File all_samples_list = "microarray/ukb46122_hap_chr1_v2_s487314.sample"
@@ -207,9 +211,6 @@ workflow files {
     File CBL_conditioned_STR_19077000_SNP_119080037_A_G_snp_results = "association/results/platelet_crit/plink_snp_conditional/chr11_118447267_119339135_STR_119077000__ISNP_119080037_A_G__ASNP/plink2.rin_platelet_crit.glm.linear.done"
     File RHOT1_conditioned_str_results = "association/results/red_blood_cell_distribution_width/my_str_conditional/chr17_30287357_30595028_STR_30469467__ISNP__ASNP.tab"
     File RHOT1_conditioned_snp_results = "association/results/red_blood_cell_distribution_width/plink_snp_conditional/chr17_30287357_30595028_STR_30469467__ISNP__ASNP/plink2.rin_red_blood_cell_distribution_width.glm.linear.done"
-    # TODO must regenerate
-    #File SLC2A2_conditioned_STR_17100913_str_results = "association/results/total_bilirubin/my_str_conditional/chr11_118447267_119339135_STR_17100913__ISNP__ASNP.tab"
-    #File SLC2A2_conditioned_STR_17100913_snp_results = "association/results/total_bilirubin/plink_snp_conditional/chr11_118447267_119339135_STR_17100913__ISNP__ASNP/plink2.rin_platelet_crit.glm.linear.done"
     File TAOK1_conditioned_STR_27842010_snp_results = "association/results/mean_platelet_volume/plink_snp_conditional/chr17_25885931_29975306_STR_27842010__ISNP__ASNP/plink2.rin_mean_platelet_volume.glm.linear.done"
     Array[File] peaks_for_1ef = peaks_for_1ef_
     Array[File] finemapping_regions = finemapping_regions_
@@ -221,5 +222,7 @@ workflow files {
     Array[File] finemapping_first_pass_dfs = finemapping_first_pass_dfs_ 
     Array[File] susie_min_abs_corrs = susie_min_abs_corrs_
     Array[File] finemapping_followup_dfs = finemapping_followup_dfs_ # bigger for mean platelet volume, so needs consistent filtering
+
+    Array[File] platelet_count_snp_macs = platelet_count_snp_macs_
   }
 }

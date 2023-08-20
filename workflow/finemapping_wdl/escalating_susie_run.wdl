@@ -30,14 +30,13 @@ task should_escalate_susie_run {
     if ~{length(CSs)} < ~{max_CSs}:
         print('false')
         exit()
-    assert ~{length(CSs)} == ~{max_CSs}, 'Not the maximum number of CSs'
+    assert ~{length(CSs)} == ~{max_CSs}, 'More CSs than expected'
     CSs = '~{sep=' ' CSs}'.split()
     found_count = 0
     done = False
     redo = False
-    for idx, num in enumerate(sorted(str(num) for num in range(1, 1+~{max_CSs}))):
-      assert CSs[idx].split('_')[-1] == f'cs{num}.txt', ('CSs in the wrong order', CS)
-      with open(CSs[idx]) as cs:
+    for CS_file in CSs:
+      with open(CS_file) as cs:
         n_vars = len(next(cs).split())
         next(cs)
         min_ld = float(next(cs).split()[0])

@@ -12,9 +12,9 @@ workflow finemap_one_region {
     String finemap_command
 
     # one per chrom
-    Array[VCF]+ str_vcfs
-    Array[bgen]+ imputed_snp_bgens
-    Array[File] snp_vars_to_filter_from_finemapping
+    VCF str_vcf
+    bgen imputed_snp_bgen
+    File snp_vars_to_filter_from_finemapping
 
     File phenotype_samples
 
@@ -38,14 +38,11 @@ workflow finemap_one_region {
     Int cache_breaker = 0
   }
 
-  # call FINEMAP
-  Int chrom_minus_one = bounds.chrom - 1
-
   call finemapping_tasks.finemap_write_input_variants { input :
     script_dir = script_dir,
     str_assoc_results = my_str_gwas,
     snp_assoc_results = plink_snp_gwas,
-    variants_to_filter = snp_vars_to_filter_from_finemapping[chrom_minus_one],
+    variants_to_filter = snp_vars_to_filter_from_finemapping,
     phenotype_samples_list = phenotype_samples,
     phenotype = phenotype_name,
     bounds = bounds,
@@ -58,8 +55,8 @@ workflow finemap_one_region {
 
   call finemapping_tasks.finemap_load_gts { input :
     script_dir = script_dir,
-    strs = str_vcfs[chrom_minus_one],
-    snps = imputed_snp_bgens[chrom_minus_one],
+    strs = str_vcf,
+    snps = imputed_snp_bgen,
     all_samples = all_samples_list,
     phenotype_samples = phenotype_samples, 
     zfile = finemap_write_input_variants.zfile,

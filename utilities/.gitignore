@@ -6,6 +6,6 @@ plink2
 dev_bcftools
 plink
 ldstore
-finemap
+finemap*
 groovy-3.0.9
 cromwell*.jar
