@@ -1,8 +1,11 @@
-Citation:
-
 Columns:
-base_pair_location: beginning of the repeat (hg19)
-alleles: lengths alleles in the population (measured in number of repeat units) 
+chromosome
+base_pair_location: beginning of the repeat (hg19, 1-indexed, inclusive)
+alleles:
+  lengths alleles in the population measured in number of repeat units. For example, the allele 5 for an
+  AC repeat implies the bases "ACACACACAC" (possibly with some impurity).
+  Occasionally the repeat unit will be listed as none, but the period of the repeat will still be given.
+  In that case, the length of an allele in base pairs can still be calculated by multiplying the allele by the period.
 beta:
   measured effect size of the linear association of the rank-inverse-normalized phenotype against the 
   length-dosages of unnormalized STR genotypes, measured in number of repeat units.
@@ -14,7 +17,7 @@ p_value: p-values less than 1e-300 exceeded our software's numeric precision and
 ref_allele: measured in number of repeat units
 repeat_unit: the standardized repeat unit of this STR, or none if there was no one clear repeat unit
 period: the length of the repeat unit
-end_pos (hg19): end of the repeat (inclusive)
+end_pos (hg19): end of the repeat (1-indexed, inclusive)
 start_pos (hg38)
 end_pos (hg38)
 n:
