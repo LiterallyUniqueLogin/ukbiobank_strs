@@ -4,13 +4,17 @@ base_pair_location: beginning of the repeat (hg19, 1-indexed, inclusive)
 alleles:
   lengths alleles in the population measured in number of repeat units. For example, the allele 5 for an
   AC repeat implies the bases "ACACACACAC" (possibly with some impurity).
-  Occasionally the repeat unit will be listed as none, but the period of the repeat will still be given.
-  In that case, the length of an allele in base pairs can still be calculated by multiplying the allele by the period.
+  Occasionally the repeat unit will be listed as none. This occurs when it was hard to determine the
+  repeat unit from the period as there were multiple repeat units present in the reference allele 
+  of length equal to period and with similar frequencies. 
+  In that case, the period of the repeat will still be given, and the length of an allele in base pairs
+  can still be calculated by multiplying the allele by the period.
 beta:
   measured effect size of the linear association of the rank-inverse-normalized phenotype against the 
   length-dosages of unnormalized STR genotypes, measured in number of repeat units.
-  As phenotypes are rank-inverse-normalized, this is only comparable to other betas from this study.
-  p-values are more appropriate for comparison across studies.
+  Phenotypes are measured in unspecified units as they are rank-inverse-normalized, so these betas
+  should only be compared to betas from other studies with sufficient reason to believe that such a 
+  comparison is meaningful. p-values may be more comparable between studies.
 standard_error: See caveats for beta
 allele_frequencies
 p_value: p-values less than 1e-300 exceeded our software's numeric precision and are listed as 0
@@ -33,7 +37,8 @@ mean_{phenotype}_per_summed_gt:
 summed_0.05_significance_CI:
   The 95% symmetric confidence interval for each of the means above
 summed_5e-8_significance_CI:
-  The (1 - 5e-8) symmetric confidence interval for each of the means above
+  The (1 - 5e-8) symmetric confidence interval for each of the means above. I.e. this interval
+  is expected to contain the true mean with a probability of 1 - 5e-8, which is very close to one.
 mean_{phenotype}_per_paired_gt:
   the mean phenotype value for each unordered pair of allele lengths, where each participant's contribution to the
   phenotype mean for each pair  is weighted by the imputed probability of their true genotype pair being
