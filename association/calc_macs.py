@@ -11,6 +11,7 @@ def imputed_snp_mac(outfile, bgen_fname, start, end, samples):
     bgen = bgen_reader.open_bgen(bgen_fname, verbose=False)
     poses = (bgen.positions >= start) & (bgen.positions <= end)
     n_poses = np.sum(poses)
+    n_samples = np.sum(samples)
     print(f"N vars: {n_poses}")
     with open(outfile, 'w') as out:
         out.write('chrom\tpos\tref\talt\tmac\n')
@@ -18,6 +19,8 @@ def imputed_snp_mac(outfile, bgen_fname, start, end, samples):
             print(f'{count}/{n_poses}', end='\r')
             probs = bgen.read(idx).squeeze()[samples, :]
             mac = np.sum(probs[:, 1] + 2*probs[:, 2])
+            if mac > n_samples:
+                mac = n_samples*2 - mac
             out.write('\t'.join([
                 bgen.chromosomes[idx],
                 str(bgen.positions[idx]),

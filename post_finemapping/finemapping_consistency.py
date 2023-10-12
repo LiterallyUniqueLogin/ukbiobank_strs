@@ -6,10 +6,10 @@ import os
 import time
 from typing import List
 
-import bokeh.models
-import bokeh.models.tickers
 import bokeh.io
 import bokeh.layouts
+import bokeh.models
+import bokeh.models.tickers
 import bokeh.plotting
 import bokeh.util.hex
 import numpy as np
@@ -1593,7 +1593,7 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     bokeh.io.export_png(fig, filename=f'{outdir}/susie_alpha_v_pip.png')
     bokeh.io.export_svg(fig, filename=f'{outdir}/susie_alpha_v_pip.svg')
 
-    fig = bokeh.plotting.figure(
+    susie_fig = bokeh.plotting.figure(
         width=1200,
         height=900,
         #title='SuSiE total CP contributions',
@@ -1602,13 +1602,13 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
         output_backend='svg'
     )
 
-    fig.background_fill_color = None
-    fig.border_fill_color = None
-    fig.grid.grid_line_color = None
-    fig.toolbar_location = None
-    fig.title.text_font_size = '36px'
-    fig.axis.axis_label_text_font_size = '36px'
-    fig.axis.major_label_text_font_size = '30px'
+    susie_fig.background_fill_color = None
+    susie_fig.border_fill_color = None
+    susie_fig.grid.grid_line_color = None
+    susie_fig.toolbar_location = None
+    susie_fig.title.text_font_size = '36px'
+    susie_fig.axis.axis_label_text_font_size = '36px'
+    susie_fig.axis.major_label_text_font_size = '30px'
 
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
@@ -1625,28 +1625,27 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     ys[-2] += ys[-1]
     ys = ys[:-1]
     left_edges = left_edges[:-1]
-    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
+    
+    susie_fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
-    graphing_utils.resize(fig, 5000/1200, legend=False)
-    bokeh.io.export_png(fig, filename=f'{outdir}/susie_alpha_histogram.png')
-    bokeh.io.export_svg(fig, filename=f'{outdir}/susie_alpha_histogram.svg')
+    susie_max_y = max(ys)
 
-    fig = bokeh.plotting.figure(
+    finemap_fig = bokeh.plotting.figure(
         width=1200,
         height=900,
         #title='FINEMAP total CP contributions',
         x_axis_label='CP',
         y_axis_label='Fraction of total CP contributions',
-        output_backend='svg'
+        output_backend='svg',
     )
 
-    fig.background_fill_color = None
-    fig.border_fill_color = None
-    fig.grid.grid_line_color = None
-    fig.toolbar_location = None
-    fig.title.text_font_size = '36px'
-    fig.axis.axis_label_text_font_size = '36px'
-    fig.axis.major_label_text_font_size = '30px'
+    finemap_fig.background_fill_color = None
+    finemap_fig.border_fill_color = None
+    finemap_fig.grid.grid_line_color = None
+    finemap_fig.toolbar_location = None
+    finemap_fig.title.text_font_size = '36px'
+    finemap_fig.axis.axis_label_text_font_size = '36px'
+    finemap_fig.axis.major_label_text_font_size = '30px'
 
     step = 0.01
     left_edges = np.arange(0, 1 + step, step)
@@ -1662,11 +1661,20 @@ def first_pass_comparison(outdir, first_pass_dfs, susie_all_min_abs_corrs):
     ys[-2] += ys[-1]
     ys = ys[:-1]
     left_edges = left_edges[:-1]
-    fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
 
-    graphing_utils.resize(fig, 5000/1200, legend=False)
-    bokeh.io.export_png(fig, filename=f'{outdir}/finemap_pip_histogram.png')
-    bokeh.io.export_svg(fig, filename=f'{outdir}/finemap_pip_histogram.svg')
+    finemap_fig.quad(top=ys, bottom=0, left=left_edges, right=left_edges+step)
+
+    y_max = max([susie_max_y, max(ys)]) + .01
+    finemap_fig.y_range = bokeh.models.Range1d(0, y_max)
+    susie_fig.y_range = bokeh.models.Range1d(0, y_max)
+
+    graphing_utils.resize(finemap_fig, 5000/1200, legend=False)
+    graphing_utils.resize(susie_fig, 5000/1200, legend=False)
+
+    bokeh.io.export_png(susie_fig, filename=f'{outdir}/susie_alpha_histogram.png')
+    bokeh.io.export_svg(susie_fig, filename=f'{outdir}/susie_alpha_histogram.svg')
+    bokeh.io.export_png(finemap_fig, filename=f'{outdir}/finemap_pip_histogram.png')
+    bokeh.io.export_svg(finemap_fig, filename=f'{outdir}/finemap_pip_histogram.svg')
 
     fig = bokeh.plotting.figure(
         width=1200,

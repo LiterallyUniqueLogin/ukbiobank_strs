@@ -63,8 +63,8 @@ workflow simulations {
     mac_files = snp_macs
   }
 
-#  scatter (first_pass_region_idx in range(length(finemapping_regions_tsv) - 1)) {
-  scatter (first_pass_region_idx in range(50)) {
+  scatter (first_pass_region_idx in range(length(finemapping_regions_tsv) - 1)) {
+#  scatter (first_pass_region_idx in range(10)) {
     Int first_pass_region_idx_plus_one = first_pass_region_idx + 1
     region bounds = {
       "chrom": finemapping_regions_tsv[first_pass_region_idx_plus_one][0],
@@ -281,7 +281,9 @@ workflow simulations {
     }
 
     call finemapping_tasks.fix_causal_var_str_coords as fixed_causal_from_susie_snps_strs { input :
-      vars_and_betas_f = causal_from_susise_snps_strs.vars_and_betas_f,
+      script_dir = script_dir,
+      chrom = bounds.chrom,
+      in_vars_and_betas_f = causal_from_susie_snps_strs.vars_and_betas_f,
       flank_start_to_start_and_end_pos = flank_start_to_start_and_end_pos
     }
     
@@ -474,6 +476,11 @@ workflow simulations {
     susie_CSs = flatten(flatten([select_all(susie_no_strs_susie_CSs), select_all(susie_snps_strs_susie_CSs), one_random_causal_susie_CSs, two_random_causal_susie_CSs, three_random_causal_susie_CSs])),
   }
 
+  call finemapping_tasks.analyze_simulations { input :
+    script_dir = script_dir,
+    simulations_df = compile_simulations_df.df
+  }
+
   output {
     File bins = bin_causal_variants_by_frequency.data_file
     Array[File] bin_effects = bin_causal_variants_by_frequency.bin_effects
@@ -514,7 +521,7 @@ workflow simulations {
     Array[Array[FINEMAP_output]] susie_no_strs_simulation_finemap_results = select_all(susie_no_strs_simulation.finemap_results)
     Array[Array[SuSiE_output]] susie_no_strs_simulation_susie_results = select_all(susie_no_strs_simulation.susie_results)
 
-    Array[File] causal_vars_and_betas_from_susie_snps_strs = causal_from_susie_snps_strs.vars_and_betas_f
+    Array[File] causal_vars_and_betas_from_susie_snps_strs = fixed_causal_from_susie_snps_strs .vars_and_betas_f
     Array[Array[FINEMAP_output]] susie_snps_strs_simulation_finemap_results = select_all(susie_snps_strs_simulation.finemap_results)
     Array[Array[SuSiE_output]] susie_snps_strs_simulation_susie_results = select_all(susie_snps_strs_simulation.susie_results)
 
@@ -531,5 +538,6 @@ workflow simulations {
     Array[Array[SuSiE_output]] three_random_causal_simulation_susie_results = three_random_causal_simulation.susie_results
 
     File simulations_df = compile_simulations_df.df
+    File analysis = analyze_simulations.analysis
   }
 }

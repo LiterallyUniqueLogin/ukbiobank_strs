@@ -3,20 +3,16 @@
 import argparse
 
 import polars as pl
+import scipy.stats
 
 parser = argparse.ArgumentParser()
 parser.add_argument('simulations_df')
-parser.add_argument('flank_start_to_start_and_end_pos')
 args = parser.parse_args()
 
 df = pl.read_csv(
     args.simulations_df,
     separator='\t',
     dtypes = {'causal_betas': str}
-)
-fix_hipstr  = pl.read_csv(
-    args.flank_start_to_start_and_end_pos,
-    separator='\t'
 )
 
 for colname in df.columns:
@@ -30,15 +26,6 @@ df = df.with_columns([
     pl.when(~pl.col('susie_cs').is_null()).then(pl.col('susie_cs')).otherwise(pl.lit(-1)),
 ])
 
-for cvars, chrom in df.unique(['method', 'chrom', 'region', 'replicate']).select(['causal_vars', 'chrom']).iter_rows():
-    for cvar in cvars.split('\t'):
-        if cvar[:3] == 'STR':
-            fix = fix_hipstr.filter((pl.col('snpstr_pos') == int(cvar.split('_')[1])) & (pl.col('chrom') == chrom))
-            assert fix.shape[0] in {0, 1}
-            if fix.shape[0] == 1:
-                #print(f'Swapping {cvar} {fix[0, "pos"]}', flush=True)
-                df = df.with_columns(pl.when(pl.col('chrom') == chrom).then(pl.col('causal_vars').str.replace_all(cvar, f'STR_{fix[0, "pos"]}_')).otherwise(pl.col('causal_vars')))
-
 assert df.unique(['method', 'chrom', 'region', 'replicate', 'varname']).shape[0] == df.shape[0]
 assert df.unique('method').shape[0] == 5
 assert df.unique('replicate').shape[0] == 3
@@ -47,7 +34,6 @@ print('3 reps per region')
 
 methods = ['random_one_var', 'random_two_var', 'random_three_var', 'susie_no_strs', 'susie_snps_strs']
 assert set(methods) == set(df.unique('method')['method'])
-#methods = ['susie_snps_strs']
 
 stat_names = []
 stats = []
@@ -55,6 +41,12 @@ stats = []
 def register_stat(stat_name, stat):
     stat_names.append(stat_name)
     stats.append(stat)
+
+def fraction_found_STRs_CI(sub):
+    total_found_vars = sub.filter(pl.col('found')).shape[0]
+    total_found_STRs = sub.filter(pl.col('found') & pl.col('is_STR')).shape[0]
+    ci = scipy.stats.binomtest(total_found_STRs, total_found_vars).proportion_ci()
+    return f'({ci.low:.4f}, {ci.high:.4f})'
 
 register_stat(
     'n regions',
@@ -99,44 +91,55 @@ register_stat(
     'non-cSTRs found',
     lambda sub: sub.filter(pl.col('found') & pl.col('is_STR') & ~pl.col('causal_vars').str.contains(pl.col('varname'))).shape[0]
 )
-register_stat(
+rsusie_alphaegister_stat(
     '% cSTRs found',
     lambda sub: '{:.2f}'.format(
         sub.filter(pl.col('found') & pl.col('is_STR') & pl.col('causal_vars').str.contains(pl.col('varname'))).shape[0] / \
         sub.unique(['region', 'chrom', 'replicate']).select(pl.col('causal_vars').str.split('\t').list.eval(pl.element().str.contains('STR').cast(int)).list.sum().sum()).item()
     ) if sub.select(pl.col('causal_vars').str.contains('STR').any()).item() else 'NA'
 )
+register_stat(
+    'fraction found STRs CI',
+    lambda sub: fraction_found_STRs_CI(sub) if sub.select(~pl.col('causal_vars').str.contains('STR').any()).item() else 'NA'
+)
+for method in methods:
+    sub = df.filter((pl.col('method') == method) & (pl.col('p_val') < 5e-8))
+    print(
+        'method', method,
+        'n finemap CP > 0', sub.filter(pl.col('finemap_pip') > 0).shape[0],
+        'n susie CP > 0', sub.filter((pl.col('susie_cs') >= 1) & (pl.col('susie_alpha') > 0)).shape[0],
+        'susie total CP to STRs', sub.filter(pl.col('is_STR') & (pl.col('susie_cs') >= 1)).select(pl.col('susie_alpha').sum()).item() / \
+            sub.filter(pl.col('susie_cs') >= 1).select(pl.col('susie_alpha').sum()).item(),
+        'finemap total CP to STRs', sub.filter(pl.col('is_STR')).select(pl.col('finemap_pip').sum()).item() / sub.select(pl.col('finemap_pip').sum()).item(),
+        sep='\t'
+    )
+exit()
 
-#print(
-#    'method', 'cSNPs found', 'non-cSNPs misfound', '% cSNPs found', 'cSTRs found', 'non-cSTRs found', '% cSTRs found', 'n sims no cvars found', 'avg cvars per region', 'n regions', 'avg replicates per region', sep='\t'
-#)
+with open('analysis.tab', 'w') as out:
+    out.write('\t'.join(['criteria', 'method', *stat_names]) + '\n')
+    for found_name, found_expr in [
+        ('both CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1) & (pl.col('finemap_pip') >= 0.8)),
+        ('FINEMAP CP >= 0.8', pl.col('finemap_pip') >= 0.8),
+        ('FINEMAP CP >= 0.5', pl.col('finemap_pip') >= 0.5),
+        ('SuSiE CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1)),
+        ('SuSiE CP >= 0.5', (pl.col('susie_alpha') >= 0.5) & (pl.col('susie_cs') >= 1)),
+        ('Best in SuSiE CS', (pl.col('susie_cs') >= 1) & (pl.col('susie_alpha') == pl.col('susie_alpha').max().over(['region', 'chrom', 'replicate', 'susie_cs']))),
+        ('In SuSiE CS', pl.col('susie_cs') >= 1)
+    ]:
+        for method in methods:
+            found_df = df.filter(pl.col('method') == method).with_columns(found_expr.alias('found'))
+            out.write('\t'.join([found_name, method, *[str(stat(found_df)) for stat in stats]]) + '\n')
 
-df = df.with_columns()
-
-print('criteria', 'method', *stat_names, sep='\t')
-for found_name, found_expr in [
-    ('both CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1) & (pl.col('finemap_pip') >= 0.8)),
-    ('FINEMAP CP >= 0.8', pl.col('finemap_pip') >= 0.8),
-    ('FINEMAP CP >= 0.5', pl.col('finemap_pip') >= 0.5),
-    ('SuSiE CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1)),
-    ('SuSiE CP >= 0.5', (pl.col('susie_alpha') >= 0.5) & (pl.col('susie_cs') >= 1)),
-    ('Best in SuSiE CS', (pl.col('susie_cs') >= 1) & (pl.col('susie_alpha') == pl.col('susie_alpha').max().over(['region', 'chrom', 'replicate', 'susie_cs']))),
-#    ('In SuSiE CS', pl.col('susie_cs') >= 1)
-]:
-    for method in methods:
-        found_df = df.filter(pl.col('method') == method).with_columns(found_expr.alias('found'))
-        print(found_name, method, *[stat(found_df) for stat in stats], sep='\t')
-
-for found_name, found_expr in [
-    ('both CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1) & (pl.col('finemap_pip') >= 0.8)),
-    ('FINEMAP CP >= 0.8', pl.col('finemap_pip') >= 0.8),
-    ('FINEMAP CP >= 0.5', pl.col('finemap_pip') >= 0.5),
-    ('SuSiE CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1)),
-    ('SuSiE CP >= 0.5', (pl.col('susie_alpha') >= 0.5) & (pl.col('susie_cs') >= 1)),
-    ('Best in SuSiE CS', (pl.col('susie_cs') >= 1) & (pl.col('susie_alpha') == pl.col('susie_alpha').max().over(['region', 'chrom', 'replicate', 'susie_cs']))),
-#    ('In SuSiE CS', pl.col('susie_cs') >= 1)
-]:
-    for method in methods:
-        found_df = df.filter(pl.col('method') == method).with_columns((found_expr & (pl.col('p_val') < 5e-8)).alias('found'))
-        print(f'GWsig & {found_name}', method, *[stat(found_df) for stat in stats], sep='\t')
+    for found_name, found_expr in [
+        ('both CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1) & (pl.col('finemap_pip') >= 0.8)),
+        ('FINEMAP CP >= 0.8', pl.col('finemap_pip') >= 0.8),
+        ('FINEMAP CP >= 0.5', pl.col('finemap_pip') >= 0.5),
+        ('SuSiE CP >= 0.8', (pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 1)),
+        ('SuSiE CP >= 0.5', (pl.col('susie_alpha') >= 0.5) & (pl.col('susie_cs') >= 1)),
+        ('Best in SuSiE CS', (pl.col('susie_cs') >= 1) & (pl.col('susie_alpha') == pl.col('susie_alpha').max().over(['region', 'chrom', 'replicate', 'susie_cs']))),
+        ('In SuSiE CS', pl.col('susie_cs') >= 1)
+    ]:
+        for method in methods:
+            found_df = df.filter(pl.col('method') == method).with_columns((found_expr & (pl.col('p_val') < 5e-8)).alias('found'))
+            out.write('\t'.join([f'GWsig & {found_name}', method, *[str(stat(found_df)) for stat in stats]]) + '\n')
 

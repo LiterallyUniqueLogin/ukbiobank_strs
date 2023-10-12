@@ -50,5 +50,5 @@ compareSTR --ignore-phasing --balanced-accuracy --fraction-concordant-len-sum --
 	$(if [ -n "$SAMPLES_FILE" ] ; then echo "--samples ${SAMPLES_FILE}" ; fi) \
 	--vcf1 merged.hg19.vcf.gz \
 	--vcf2 imputed_strs.reheadered.vcf.gz \
-	--out out \
+	--out $PREFIX \
 	--noplot

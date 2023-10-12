@@ -687,6 +687,35 @@ task select_random_causal_variants {
   }
 }
 
+task fix_causal_var_str_coords {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/fix_causal_var_str_coords.py"
+
+    Int chrom
+    File in_vars_and_betas_f
+    File flank_start_to_start_and_end_pos
+  }
+
+  output {
+    File vars_and_betas_f = basename(in_vars_and_betas_f)
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{chrom} \
+      ~{in_vars_and_betas_f} \
+      ~{flank_start_to_start_and_end_pos}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "20m"
+    memory: "2GB"
+    shortTask: true
+  }
+}
+
 task compile_simulations_df {
   input {
     String script_dir
@@ -748,10 +777,32 @@ task compile_simulations_df {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "3h"
-    memory: "50GB"
+    memory: "120GB"
   }
 }
 
+task analyze_simulations {
+  input {
+    String script_dir
+    File script = "~{script_dir}/post_finemapping/analyze_simulations.py"
+
+    File simulations_df
+  }
+
+  output {
+    File analysis = "analysis.tab"
+  }
+
+  command <<<
+    ACTIVATE=new_polars envsetup ~{script} ~{simulations_df}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    dx_timeout: "3h"
+    memory: "20GB"
+  }
+}
 
 ####################### Summarize finemapping #########################
 
@@ -1119,6 +1170,9 @@ task str_tables_for_paper {
 
     Array[File] first_pass_finemapping_dfs
     Array[File] followup_finemapping_dfs
+
+    Array[File] wgs_comparison_stats
+    Array[File] wgs_allele_freqs
   }
 
   output {
@@ -1152,6 +1206,8 @@ task str_tables_for_paper {
       --white-other-assocs ~{sep=" " white_other_assocs} \
       --first-pass-finemapping-dfs ~{sep=" " first_pass_finemapping_dfs} \
       --followup-finemapping-dfs ~{sep=" " followup_finemapping_dfs} \
+      --wgs-comparison-stats ~{sep=" " wgs_comparison_stats} \
+      --wgs-allele-freqs ~{sep=" " wgs_allele_freqs}
   >>>
 
   runtime {

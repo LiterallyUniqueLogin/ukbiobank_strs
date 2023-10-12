@@ -1075,19 +1075,20 @@ task locus_plot {
     String script_dir
     File script = "~{script_dir}/association/plot_locus.py"
 
-    String chrom
-    Int pos
     String phenotype_name
     # exactly one of the following two must be non empty
     # either results from my STR GWAS, or a tsv specifically formatted to work with this task
+    String? chrom # only used if assoc_results
+    Int? pos # only used if assoc_results
     Array[File] assoc_results = []
     Array[File] data_tsvs = []
     Array[String] group_names = []
 
     Int? dosage_threshold
     Float? dosage_fraction_threshold
-    String? unit # if not speciied, then binary
+    String? unit # should not be specified if binary
     Boolean residual = false
+    Boolean binary = false
     String total_column_name = "total_subset_dosage_per_summed_gt"
   }
 
@@ -1099,15 +1100,15 @@ task locus_plot {
   command <<<
     envsetup ~{script} \
       ~{phenotype_name}_~{chrom}_~{pos} \
-      ~{chrom} \
-      ~{pos} \
       '~{phenotype_name}' \
+      ~{"--chrom " + chrom} \
+      ~{"--pos " + pos} \
       --assoc-results ~{sep=" " assoc_results} \
       --datas-per-length-sum ~{sep=" " data_tsvs} \
       --group-names '~{sep="' '" group_names}' \
       ~{"--dosage-threshold " + dosage_threshold} \
       ~{"--dosage-fraction-threshold " + dosage_fraction_threshold} \
-      ~{if defined(unit) then "--unit '~{unit}'" else "--binary"} \
+      ~{if defined(unit) then "--unit '~{unit}'" else if binary then "--binary" else ""} \
       ~{if residual then "--residual-phenos" else ""} \
       --total-column-name ~{total_column_name}
   >>>
@@ -1131,6 +1132,8 @@ task summarize_individual_data_for_plotting {
     String? sep
     String? subset_field
     String? subset_value
+    Int? ratio
+    Float? offset
   }
 
   output {
@@ -1140,7 +1143,9 @@ task summarize_individual_data_for_plotting {
   command <<<
     envsetup ~{script} out.tsv ~{individual_tsv} ~{length_sum_column_name} '~{trait_column_name}' \
       ~{"--sep " + sep} \
-      ~{"--subset " + subset_field + " " + subset_value}
+      ~{"--subset " + subset_field + " " + subset_value} \
+      ~{"--ratio " + ratio} \
+      ~{"--offset " + offset} \
   >>>
 
   runtime {

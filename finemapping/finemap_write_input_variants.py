@@ -153,7 +153,7 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
             pl.lit(snp_str_ratio/(n_strs + snp_str_ratio*n_snps)).alias('prob')
         )
 
-    if str_results_fname != "None":
+    if str_results_fname != "None" and strs.shape[0] > 0:
         vars_df = pl.concat([strs, snps])
     else:
         vars_df = snps

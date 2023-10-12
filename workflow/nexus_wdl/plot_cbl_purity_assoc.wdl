@@ -109,6 +109,7 @@ workflow plot_cbl_purity_assoc {
       subpop_sample_list = sample_list,
     }
 
+    File samples_ = prep_samples_and_phenotype.pheno_data[0]
     call associaTR_my_str_gwas { input :
       str_vcf = wgs_vcf,
       untransformed_phenotype = prep_samples_and_phenotype.pheno_data[0],
@@ -118,19 +119,21 @@ workflow plot_cbl_purity_assoc {
     }
   }
 
-  call gwas_tasks.locus_plot { input :
-    script_dir = script_dir,
-    chrom = "chr~{chrom}",
-    pos = pos,
-    phenotype_name = phenotype_name
-    assoc_results = associaTR_my_str_gwas.data,
-    dosage_fraction_threshold = 0.001,
-    unit = unit,
-    total_column_name = "sample_count_per_summed_length",
-  }
+#  call gwas_tasks.locus_plot { input :
+#    script_dir = script_dir,
+#    chrom = "chr~{chrom}",
+#    pos = pos,
+#    phenotype_name = phenotype_name,
+#    assoc_results = associaTR_my_str_gwas.data,
+#    dosage_fraction_threshold = 0.001,
+#    unit = unit,
+#    total_column_name = "sample_count_per_summed_length",
+#  }
 
-  output {
-    File png = locus_plot.png
-    File svg = locus_plot.svg
-  }
+#  output {
+#    Array[File] gwas_results = associaTR_my_str_gwas.data
+#    Array[File] samples = samples_
+##    File png = locus_plot.png
+##    File svg = locus_plot.svg
+#  }
 }

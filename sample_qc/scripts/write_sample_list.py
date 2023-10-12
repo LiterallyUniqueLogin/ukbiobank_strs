@@ -12,15 +12,6 @@ parser.add_argument('--value', default = 1, type=int)
 args = parser.parse_args()
 
 df = pl.read_csv(args.sc_fname, sep='\t')
-print(df.columns[1])
-print(df.filter(
-    ~pl.col(df.columns[1]).is_null()
-))
-print(df.with_column(
-    pl.col(df.columns[1]).cast(int)
-).filter(
-    ~pl.col(df.columns[1]).is_null()
-))
 df.with_column(
     pl.col(df.columns[1]).cast(int)
 ).filter(

@@ -1,14 +1,6 @@
-This is the code repository for associaTR - performing associations between short tandem repeat lengths and phenotypes
-Documentation for associaTR is coming soon.
+This is the code repository for most of the analyses and figures described in the paper:
+Polymorphic short tandem repeats make widespread contributions to blood and serum traits
+Jonathan Margoliash, Shai Fuchs, Yang Li, Xuan Zhang, Arya Massarat, Alon Goren, Melissa Gymrek
+bioRxiv 2022.08.01.502370; doi: https://doi.org/10.1101/2022.08.01.502370
 
-This is also the code repository for the analyses and figures described in the paper:
-Margoliash et al., Polymorphic short tandem repeats make widespread contributions to blood and serum traits
-https://www.biorxiv.org/content/10.1101/2022.08.01.502370v1
-
-README_analysis.txt contains details on the workflow and folders used in the analyses and figures
-in that study.
-
-README_dataset.txt contains details on the locations of the UKB data that those analyses were run on.
-For those reading this online - most of this data is not present in the git repo and would need
-to be accessed from the UKB after applying for access.
-
+workflow/expanse_wdl/figures.wdl is the entry point for generating most of this.

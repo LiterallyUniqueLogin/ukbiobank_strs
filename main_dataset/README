@@ -1,4 +1,4 @@
-Extracting data from .enc files:
+Only needs to be done once:
 The instructions for downloading these are described here:
 https://biobank.ctsu.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.1.pdf
 (The accessing data guide here: https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=AccessingData)
@@ -6,9 +6,11 @@ in section 2
 Only someone with the email from the original application
 (i.e. Jonathan Margoliash in the Gymrek lab) can download the .enc file that is the
 encoded file containing all of the data
+
+
+Extracting data from .enc files:
 The ukbunpack and ukbconv utilities can be used to generate the .csv (or other
 data files) from the .enc file
-
 To do this:
 cd to the directory with the .enc file, and set $UKB_UTILITIES to the 
 appropriate directory.

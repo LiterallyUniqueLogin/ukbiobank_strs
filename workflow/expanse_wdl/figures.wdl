@@ -158,6 +158,8 @@ workflow figures {
     white_other_assocs = files.ethnic_to_pheno_to_str_gwas_results[4],
     first_pass_finemapping_dfs = files.finemapping_first_pass_dfs,
     followup_finemapping_dfs = files.finemapping_followup_dfs,
+    wgs_comparison_stats = files.wgs_comparison_stats,
+    wgs_allele_freqs = files.wgs_allele_freqs,
   }
 
   ######### generate figure 2
@@ -224,7 +226,38 @@ workflow figures {
     enrichment_stats = calc_enrichments.enrichment_stats
   }
 
-  ###### supp fig 17 for Yan
+  #### Supp fig 17 graphed my way
+  call gwas_tasks.summarize_individual_data_for_plotting as summarize_cg17724175_methylation { input :
+    script_dir = script_dir,
+    individual_tsv = files.cg17724175_methylation,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "DNA_m",
+    ratio = 6,
+    offset = 18.6666
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_17a { input:
+    script_dir = script_dir,
+    phenotype_name = "cg17724175_methylation",
+    data_tsvs = [summarize_cg17724175_methylation.out],
+    dosage_threshold = 5
+  }
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarize_cg22674798_methylation { input :
+    script_dir = script_dir,
+    individual_tsv = files.cg22674798_methylation,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "DNA_m",
+    offset=42
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_17b { input:
+    script_dir = script_dir,
+    phenotype_name = "cg22674798_methylation",
+    data_tsvs = [summarize_cg22674798_methylation.out],
+    dosage_threshold = 5,
+  }
+  ###### supp fig 17c from Yang
 
   ####### Supp fig 18 SLC2A2 
 
@@ -499,12 +532,12 @@ workflow figures {
   Int platelet_crit_idx = phenotype_names.idxs["platelet_crit"]
   call expanse_tasks.extract_field as platelet_crit_sc { input :
     script_dir = script_dir,
-    id = 30080,
+    id = 30090,
   }
   
   call expanse_tasks.extract_field as platelet_crit_covariate_sc { input :
     script_dir = script_dir,
-    id = 30083,
+    id = 30093,
   }
 
   # all, not qced or subset to unrelated, the sample list for this won't be used, only the data
@@ -542,7 +575,7 @@ workflow figures {
     chrom = 11,
     pos = 119077000,
     phenotype_name = "platelet_crit",
-    unit = "10^9 cells/L",
+    unit = "%",
     assoc_results = [imputed_CBL_platelet_crit_assoc.data],
     dosage_fraction_threshold = 0.001
   }
@@ -645,7 +678,8 @@ workflow figures {
     script_dir = script_dir,
     individual_tsv = files.CBL_gtex_expression,
     length_sum_column_name = "Sum_of_allele",
-    trait_column_name = "TPM(expression)"
+    trait_column_name = "TPM(expression)",
+    offset = -1.33333
   }
 
   call gwas_tasks.locus_plot as fig_4g { input:
@@ -665,7 +699,8 @@ workflow figures {
     trait_column_name = "Expr",
     sep = ",",
     subset_field = "superpop",
-    subset_value = "EUR"
+    subset_value = "EUR",
+    offset = -1.3333
   }
 
   call gwas_tasks.summarize_individual_data_for_plotting as summarized_CBL_geuvadis_african_expression { input :
@@ -675,7 +710,8 @@ workflow figures {
     trait_column_name = "Expr",
     sep = ",",
     subset_field = "superpop",
-    subset_value = "AFR"
+    subset_value = "AFR",
+    offset = -1.3333
   }
 
   call gwas_tasks.locus_plot as fig_4h { input: 
@@ -837,6 +873,40 @@ workflow figures {
     use_tstat = true
   }
 
+  # 23 c&d plot my way from Yang data
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_TAOK1_gtex_expression { input :
+    script_dir = script_dir,
+    individual_tsv = files.TAOK1_expression,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "TPM",
+    offset=50
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_23c { input:
+    script_dir = script_dir,
+    phenotype_name = "TAOK1_expression",
+    unit = "TPM",
+    data_tsvs = [summarized_TAOK1_gtex_expression.out],
+    dosage_threshold = 5
+  }
+
+  call gwas_tasks.summarize_individual_data_for_plotting as summarized_residual_TAOK1_gtex_expression { input :
+    script_dir = script_dir,
+    individual_tsv = files.TAOK1_residual_expression,
+    length_sum_column_name = "Sum_of_allele",
+    trait_column_name = "TPM_regressing_out_covariates",
+    offset=50
+  }
+
+  call gwas_tasks.locus_plot as supp_fig_23d { input:
+    script_dir = script_dir,
+    phenotype_name = "TAOK1_expression",
+    unit = "TPM",
+    data_tsvs = [summarized_residual_TAOK1_gtex_expression.out],
+    dosage_threshold = 5,
+    residual = true
+  }
+
   ### Supp fig 24a,c from WGS
 
   # from snakemake cache, don't need the WDL
@@ -921,19 +991,41 @@ workflow figures {
     }
   }
 
-#  scatter (phenotype_idx in range(length(phenotype_names.n))) {
-#    scatter (ethnicity_idx in range(5)) {
-#      call gwas_tasks.reformat_my_str_gwas_table_for_publication as reformat_my_ethnic_str_gwas_table_for_publication { input :
-#        script_dir = script_dir,
-#        phenotype = phenotype_names.n[phenotype_idx],
-#        my_str_gwas = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx][ethnicity_idx],
-#        flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
-#        str_hg19_pos_bed = files.str_hg19_pos_bed,
-#        str_hg38_pos_bed = files.str_hg38_pos_bed,
-#        repeat_units_table = files.repeat_units_table
-#      }
-#    }
-#  }
+  scatter (phenotype_idx in range(length(phenotype_names.n))) {
+    scatter (ethnicity_idx in range(5)) {
+      call gwas_tasks.reformat_my_str_gwas_table_for_publication as reformat_my_ethnic_str_gwas_table_for_publication { input :
+        script_dir = script_dir,
+        phenotype = phenotype_names.n[phenotype_idx],
+        my_str_gwas = files.pheno_to_ethnic_to_str_gwas_results[phenotype_idx][ethnicity_idx],
+        flank_start_to_start_and_end_pos = files.flank_start_to_start_and_end_pos,
+        str_hg19_pos_bed = files.str_hg19_pos_bed,
+        str_hg38_pos_bed = files.str_hg38_pos_bed,
+        repeat_units_table = files.repeat_units_table
+      }
+    }
+  }
+
+    
+  # numbers for supp table 1 
+  Int ldl_cholesterol_direct_idx = phenotype_names.idxs["ldl_cholesterol_direct"]
+  call expanse_tasks.extract_field as ldl_cholesterol_direct_sc { input :
+    script_dir = script_dir,
+    id = 30840,
+  }
+  
+  call expanse_tasks.extract_field as ldl_cholesterol_direct_covariate_sc { input :
+    script_dir = script_dir,
+    id = 30842,
+  }
+
+  call gwas_tasks.load_continuous_phenotype as ldl_cholesterol_direct_all_white_brits { input:
+    script_dir = script_dir,
+    sc = ldl_cholesterol_direct_sc.data,
+    qced_sample_list = white_brits_sample_list.data,
+    assessment_ages_npy = load_shared_covars.assessment_ages,
+    categorical_covariate_names = ["ldl_cholesterol_direct_aliquot"],
+    categorical_covariate_scs = [ldl_cholesterol_direct_covariate_sc.data],
+  }
 
   output {
     Float cbl_imperfection_ld_r2 = cbl_imperfection_ld.r2
@@ -1023,6 +1115,11 @@ workflow figures {
     File supp_fig_16cd_svg = graph_enrichments.repeats_svg
     File supp_fig_16cd_png = graph_enrichments.repeats_png
 
+    File supp_fig_17a_svg = supp_fig_17a.svg
+    File supp_fig_17a_png = supp_fig_17a.png
+    File supp_fig_17b_svg = supp_fig_17b.svg
+    File supp_fig_17b_png = supp_fig_17b.png
+
     File supp_fig_18a_svg = supp_fig_18a.svg
     File supp_fig_18a_png = supp_fig_18a.png
     File supp_fig_18b_svg = supp_fig_18b.svg
@@ -1037,6 +1134,10 @@ workflow figures {
     File supp_fig_19d_png = supp_fig_19d.png
 
     File supp_fig_23b_out = supp_fig_23b.plot
+    File supp_fig_23c_svg = supp_fig_23c.svg
+    File supp_fig_23c_png = supp_fig_23c.png
+    File supp_fig_23d_svg = supp_fig_23c.svg
+    File supp_fig_23d_png = supp_fig_23c.png
     File supp_fig_25b_svg = supp_fig_25b.svg
     File supp_fig_25b_png = supp_fig_25b.png
     File supp_fig_25d_out = supp_fig_25d.plot
@@ -1049,7 +1150,7 @@ workflow figures {
 
     Array[File] str_gwas_results_for_publication = reformat_my_str_gwas_table_for_publication.unfiltered
     Array[File] filtered_str_gwas_results_for_publication = reformat_my_str_gwas_table_for_publication.filtered
-    #Array[Array[File]] ethnic_str_gwas_results_for_publication = reformat_my_ethnic_str_gwas_table_for_publication.unfiltered 
-    #Array[Array[File]] filtered_ethnic_str_gwas_results_for_publication = reformat_my_ethnic_str_gwas_table_for_publication.filtered 
+    Array[Array[File]] ethnic_str_gwas_results_for_publication = reformat_my_ethnic_str_gwas_table_for_publication.unfiltered 
+    Array[Array[File]] filtered_ethnic_str_gwas_results_for_publication = reformat_my_ethnic_str_gwas_table_for_publication.filtered 
   }
 }

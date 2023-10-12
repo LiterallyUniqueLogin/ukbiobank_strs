@@ -230,7 +230,7 @@ with open(f'{outprefix}_README.txt', 'w') as readme, \
                     )
                 else:
                     readme.write(
-                        f"No qc'ed samples of this ethnicity for which this phenotype "
+                        f"{np.sum(unmeasured_covar_data == category)} qc'ed samples of this ethnicity for which this phenotype "
                         f'was measured had value {cat_name} '
                         f'for categorical covariate {covar_name}.\n'
                     )

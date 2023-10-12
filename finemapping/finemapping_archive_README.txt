@@ -14,7 +14,7 @@ finemapping_followup.tab
  - susie_cs values of -1 imply that the susie_alpha value should be ignored (treated as zero)
  - only variants included in fine-mapping are present in these files
  - some variants lack susie values if they were not included in the susie fine-mapping (probably because they had too high a p-value)
-* The followup files only contain variants from the regions subjectted to follow-up fine-mapping conditions.
+* The followup files only contain variants from the regions subjected to follow-up fine-mapping conditions.
  - traits with no regions that were followed-up on are empty.
  - In addition to the columns in the first pass file (except for coeff or se), there are additional FINEMAP or SuSiE columns for each extra condition.
  - the best_guess column corresponds to the use of best guess genotypes from imputation for fine-mapping

@@ -5,25 +5,35 @@ import "../gwas_wdl/gwas_tasks.wdl"
 task compare_calls {
   input {
     File script = "dx://UKB_Test:/imputed_strs_paper/wgs/compare_calls.sh"
-    File hipstr_strs = "dx://UKB_Test:/imputed_strs_paper/wgs/20230425_full_wgs_calls.vcf.gz"
-    File hipstr_strs_idx = "dx://UKB_Test:/imputed_strs_paper/wgs/20230425_full_wgs_calls.vcf.gz.tbi"
-    File imputed_strs = "dx://UKB_Test:/imputed_strs_paper/imputed_strs/finemapped_strs_20230313.vcf.gz"
-    File imputed_strs_idx = "dx://UKB_Test:/imputed_strs_paper/imputed_strs/finemapped_strs_20230313.vcf.gz.tbi"
+    File hipstr_strs = "dx://UKB_Test:/imputed_strs_paper/wgs/20230907_old_and_new_WGS_calls.vcf.gz"
+    File hipstr_strs_idx = "dx://UKB_Test:/imputed_strs_paper/wgs/20230907_old_and_new_WGS_calls.vcf.gz.tbi"
+    File imputed_strs = "dx://UKB_Test:/imputed_strs_paper/wgs/20230907_old_and_new_imputed_singly_finemapped_strs.vcf.gz"
+    File imputed_strs_idx = "dx://UKB_Test:/imputed_strs_paper/wgs/20230907_old_and_new_imputed_singly_finemapped_strs.vcf.gz.tbi"
+#    File hipstr_strs = "dx://UKB_Test:/TargetedSTR/results/20230831_new_STRs/20230831_new_STRs.merged.sorted.vcf.gz"
+#    File hipstr_strs_idx = "dx://UKB_Test:/TargetedSTR/results/20230831_new_STRs/20230831_new_STRs.merged.sorted.vcf.gz.tbi"
+#    File imputed_strs = "dx://UKB_Test:/imputed_strs_paper/imputed_strs/20230905_new_singly_finemapped_strs.vcf.gz"
+#    File imputed_strs_idx = "dx://UKB_Test:/imputed_strs_paper/imputed_strs/20230905_new_singly_finemapped_strs.vcf.gz.tbi"
+#    File hipstr_strs = "dx://UKB_Test:/imputed_strs_paper/wgs/20230425_full_wgs_calls.vcf.gz"
+#    File hipstr_strs_idx = "dx://UKB_Test:/imputed_strs_paper/wgs/20230425_full_wgs_calls.vcf.gz.tbi"
+#    File imputed_strs = "dx://UKB_Test:/imputed_strs_paper/imputed_strs/finemapped_strs_20230313.vcf.gz"
+#    File imputed_strs_idx = "dx://UKB_Test:/imputed_strs_paper/imputed_strs/finemapped_strs_20230313.vcf.gz.tbi"
     File? samples_file
+    String prefix
   }
 
   output {
-    File? omitted_samples_hipstr = "out-vcf1-omitted-samples.tab"
-    File omitted_samples_imputed = "out-vcf2-omitted-samples.tab"
-    File locuscompare = "out-locuscompare.tab"
-    File samplecompare = "out-samplecompare.tab"
-    File overallcompare = "out-overall.tab"
+    File? omitted_samples_hipstr = "~{prefix}-vcf1-omitted-samples.tab"
+    File omitted_samples_imputed = "~{prefix}-vcf2-omitted-samples.tab"
+    File locuscompare = "~{prefix}-locuscompare.tab"
+    File samplecompare = "~{prefix}-samplecompare.tab"
+    File overallcompare = "~{prefix}-overall.tab"
   }
 
   command <<<
     export WGS_STRS=~{hipstr_strs}
     export IMPUTED_STRS=~{imputed_strs}
     export SAMPLES_FILE=~{samples_file}
+    export PREFIX=~{prefix}
     envsetup ~{script}
   >>>
 
@@ -121,8 +131,11 @@ workflow compare_calls_w {
   }
 
 	# run the comparison per ethnicity
-  scatter (samples_file in double_samples.out_samples_file) {
-    call compare_calls { input : samples_file = samples_file  }
+  scatter (samples_file_idx in range(length(double_samples.out_samples_file))) {
+    call compare_calls { input :
+      samples_file = double_samples.out_samples_file[samples_file_idx],
+      prefix = "results_~{all_ethnicities_[samples_file_idx]}"
+    }
   }
 
   output {

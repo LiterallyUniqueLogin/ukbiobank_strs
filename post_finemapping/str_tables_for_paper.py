@@ -32,6 +32,8 @@ parser.add_argument('--intersects-CDS-annotation', nargs=22)
 parser.add_argument('--intersects-five-prime-UTR-annotation', nargs=22)
 parser.add_argument('--intersects-three-prime-UTR-annotation', nargs=22)
 parser.add_argument('--intersects-UTR-annotation', nargs=22)
+parser.add_argument('--wgs-comparison-stats', nargs=6)
+parser.add_argument('--wgs-allele-freqs', nargs=6)
 parser.add_argument('--outdir')
 
 args = parser.parse_args()
@@ -133,7 +135,7 @@ for count, fname in enumerate(args.first_pass_finemapping_dfs):
     ).select([
         'chrom',
         'pos',
-        pl.col('subset_total_per_allele_dosages').alias('white_brit_allele_dosages')
+        pl.col('subset_total_per_allele_dosages').alias('white_british_allele_dosages')
     ])
     lazy_df = df.join(
         assoc_df,
@@ -172,7 +174,8 @@ for count, fname in enumerate(args.first_pass_finemapping_dfs):
 finemapping_results = pl.concat(finemapping_dfs).collect()
 
 finemapping_results = finemapping_results.filter(
-    (pl.col('p_val') < 5e-8) &
+    (pl.col('p_val') < 5e-8)
+).filter(
     (
         ((pl.col('susie_alpha') >= 0.8) & (pl.col('susie_cs') >= 0)) | (pl.col('finemap_pip') >= 0.8)
     ).any().over(['chrom', 'snpstr_pos'])
@@ -197,7 +200,7 @@ concordance_cols = pl.read_csv(
 
 del lazy_df
 followup_lazy_dfs = []
-for followup_finemapping_df in args.followup_finemapping_dfs:
+for count, followup_finemapping_df in enumerate(args.followup_finemapping_dfs):
     if os.stat(followup_finemapping_df).st_size <= 100:
         continue
     followup_lazy_df = pl.scan_csv(
@@ -242,6 +245,47 @@ finemapping_results = finemapping_results.join(
     pl.col('finemap_pip_prior_std_low').alias('finemap_CP_prior_effect_size_0.0025%'),
     pl.col('pos').alias('start_pos')
 ])
+
+# WGS
+def clean_allele_freqs(freq_dict_str):
+    allele_freqs = ast.literal_eval('{' + freq_dict_str + '}')
+    return json.dumps({ (int(k) if k == int(k) else round(k, 2)) : f'{v*100:.1f}%' for k,v in allele_freqs.items() }).replace('"', '')
+
+def make_len_sum_column(cols):
+    len_sum_frequencies = ast.literal_eval(cols['len_sum_frequencies'])
+    len_sum_accuracies = ast.literal_eval(cols['len_sum_accuracies'])
+    assert set(len_sum_frequencies) == set(len_sum_accuracies)
+    return json.dumps({ int(k): f'({len_sum_frequencies[k]*100:.2f}%, {len_sum_accuracies[k]*100:.2f}%)' for k in len_sum_frequencies}).replace('"', '')
+
+for ethnicity, allele_freqs_fname, comparison_stats_fname in zip(
+    ['white_british'] + other_ethnicities,
+    args.wgs_allele_freqs,
+    args.wgs_comparison_stats
+):
+    freqs = pl.read_csv(
+        allele_freqs_fname,
+        sep='\t'
+    ).select([
+        pl.col('afreq-1').apply(clean_allele_freqs).alias(f'{ethnicity}_WGS_allele_frequencies'),
+        pl.col('chrom').str.replace('chr', '').cast(int),
+        pl.col('start').alias('pos_hg38'),
+    ])
+    finemapping_results = finemapping_results.join(freqs, on=['chrom', 'pos_hg38'])
+
+    comparison_stats = pl.read_csv(
+        comparison_stats_fname,
+        sep='\t'
+    ).select([
+        'chrom',
+        pl.col('start').alias('start_pos'),
+        pl.col('numcalls').alias(f'{ethnicity}_WGS_numcalls'),
+        pl.col('fraction_concordant_len_sum').round(4).alias(f'{ethnicity}_fraction_concordant_len_sum'),
+        pl.col('mean_absolute_difference').round(4).alias(f'{ethnicity}_mean_absolute_difference'),
+        pl.col('r').round(4).alias(f'{ethnicity}_r'),
+        pl.col('dosage_r').round(4).alias(f'{ethnicity}_dosage_r'),
+        pl.struct(['len_sum_frequencies', 'len_sum_accuracies']).apply(make_len_sum_column).alias(f'{ethnicity}_length_sum_accuracies')
+    ])
+    finemapping_results = finemapping_results.join(comparison_stats, on=['chrom', 'start_pos'])
 
 # move to pandas for some code that's easier to write imperatively
 finemapping_results = finemapping_results.to_pandas()
@@ -360,8 +404,8 @@ finemapping_results = finemapping_results.select([
     pl.col('pos_hg38').alias('start_pos (hg38)'),
     pl.col('end_pos_hg38').alias('end_pos (hg38)'),
     pl.col('region').alias('finemapping_region'),
-    pl.col('unit').alias('repeat_unit'),
-    pl.col('white_brit_allele_dosages').apply(dosages_to_frequencies).alias('white_brit_allele_frequencies'),
+    pl.when(pl.col('unit') != 'None').then(pl.col('unit')).otherwise('None:' + pl.col('period').cast(str)).alias('repeat_unit'),
+    pl.col('white_british_allele_dosages').apply(dosages_to_frequencies).alias('white_british_imputed_allele_frequencies'),
     pl.col('p_val').alias('association_p_value'),
     pl.when(pl.col('coeff') > 0).then('+').otherwise('-').alias('direction_of_association'),
     'relation_to_gene',
@@ -412,15 +456,38 @@ finemapping_results = finemapping_results.select([
         for ethnicity in other_ethnicities],
         pl.lit('')
     ).str.replace(', $', '').alias('other_ethnicity_effect_directions'),
-    *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_allele_frequencies') for ethnicity in other_ethnicities],
+    *[pl.col(f'{ethnicity}_allele_dosages').apply(dosages_to_frequencies).alias(f'{ethnicity}_imputed_allele_frequencies') for ethnicity in other_ethnicities],
+    sum(
+        [pl.col(f'{ethnicity}_WGS_numcalls') + pl.lit(', ') for ethnicity in ['white_british'] + other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('num_WGS_calls_per_population'),
+    *[f'{ethnicity}_WGS_allele_frequencies' for ethnicity in ['white_british'] + other_ethnicities],
+    sum(
+        [pl.col(f'{ethnicity}_fraction_concordant_len_sum') + pl.lit(', ') for ethnicity in ['white_british'] + other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('fraction_WGS_concordant_length_sums'),
+    sum(
+        [pl.col(f'{ethnicity}_mean_absolute_difference') + pl.lit(', ') for ethnicity in ['white_british'] + other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('mean_absolute_difference_with_WGS'),
+    sum(
+        [pl.col(f'{ethnicity}_r') + pl.lit(', ') for ethnicity in ['white_british'] + other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('WGS_weighted_r'),
+    sum(
+        [pl.col(f'{ethnicity}_dosage_r') + pl.lit(', ') for ethnicity in ['white_british'] + other_ethnicities],
+        pl.lit('')
+    ).str.replace(', $', '').alias('WGS_dosage_r'),
+    *[pl.col(f'{ethnicity}_length_sum_accuracies').alias(f'{ethnicity}_WGS_per_length_sum_concordances') for ethnicity in ['white_british'] + other_ethnicities]
 ])
 
 finemapping_results.write_csv(f'{args.outdir}/singly_finemapped_strs_for_paper.tab', sep='\t')
 finemapping_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir}/singly_finemapped_strs_sorted.tab', sep='\t')
 
 confident_results = finemapping_results.filter(
-    (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos (hg19)']) &
     (pl.col('association_p_value') < 1e-10)
+).filter(
+    (pl.col('finemapping') == 'confidently').any().over(['chrom', 'start_pos (hg19)'])
 )
 confident_results.write_csv(f'{args.outdir}/confidently_finemapped_strs_for_paper.tab', sep='\t')
 confident_results.sort(['chrom', 'start_pos (hg19)']).write_csv(f'{args.outdir}/confidently_finemapped_strs_sorted.tab', sep='\t')

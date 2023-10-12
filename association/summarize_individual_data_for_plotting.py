@@ -12,6 +12,8 @@ parser.add_argument('length_sum_column')
 parser.add_argument('trait_column')
 parser.add_argument('--sep', default='\t')
 parser.add_argument('--subset', nargs=2)
+parser.add_argument('--ratio', default=1, type=int)
+parser.add_argument('--offset', default=0, type=float)
 args = parser.parse_args()
 
 out = pl.read_csv(
@@ -25,7 +27,7 @@ if args.subset:
 out = out.rename({
     args.length_sum_column: 'length_sum'
 }).with_column(
-    pl.col('length_sum').round(4)
+    (pl.col('length_sum')/args.ratio + args.offset).round(4)
 ).groupby(
     'length_sum'
 ).agg([

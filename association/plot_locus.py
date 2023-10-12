@@ -47,9 +47,9 @@ def fix_header(header):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outloc')
-    parser.add_argument('chrom')
-    parser.add_argument('pos', type=int)
     parser.add_argument('phenotype')
+    parser.add_argument('--chrom')
+    parser.add_argument('--pos', type=int)
     parser.add_argument('--dosage-threshold', type=int)
     parser.add_argument('--dosage-fraction-threshold', type=float)
     parser.add_argument('--assoc-results', nargs='*')
@@ -68,6 +68,7 @@ def main():
     assert bool(args.datas_per_length_sum) != bool(args.assoc_results)
 
     if bool(args.assoc_results):
+        assert args.pos is not None and args.chrom is not None
         n_results = len(args.assoc_results)
     else:
         assert bool(args.datas_per_length_sum)
@@ -166,8 +167,6 @@ def generate_figure(
     binary,
     use_residual_phenos,
 ):
-    assert bool(unit) or binary
-
     if is_fraction_threshold:
         assert 0 <= threshold <= 1
     elif threshold is not None:
@@ -177,9 +176,9 @@ def generate_figure(
     y_axis_label = phenotype.replace('_', ' ')
     if use_residual_phenos:
         y_axis_label = 'residual ' + y_axis_label
-    if not binary:
+    if not binary and unit is not None:
         y_axis_label = y_axis_label + f' ({unit})'
-    else:
+    elif binary:
         y_axis_label = 'fraction '+ y_axis_label + ' cases'
 
     y_axis_label = y_axis_label[0].upper() + y_axis_label[1:]

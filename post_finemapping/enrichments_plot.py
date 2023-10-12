@@ -16,6 +16,19 @@ parser.add_argument('enrichment_stats')
 args = parser.parse_args()
 
 def barplot_fig(cats, data, ps, legend):
+    cats = [(
+        cat[0].replace('_', ' ').
+               replace(' trinucs', '\ntrinucleotides').
+               replace('non ', 'non-').
+               replace('transcribed ', 'transcribed\n').
+               replace('upstream ', 'upstream\n').
+               replace(' dinucs', '\ndinucleotides').
+               replace('tetranucs', 'tetra-\nnucleotides').
+               replace('pentanucs', 'penta-\nnucleotides').
+               replace('hexanucs', 'hexa-\nnucleotides').
+               replace('unclear ', 'unclear\n'),
+        cat[1]
+    ) for cat in cats]
     fig = bokeh.plotting.figure(
         y_axis_label = 'Prevalence (%)',
         x_range = bokeh.models.FactorRange(*cats),
@@ -135,17 +148,12 @@ with open(args.enrichment_stats) as stats:
         curr_data.append(float(split[2].split()[1][1:-2]))
         curr_data.append(float(split[3].split()[1][1:-2]))
 
-fig = bokeh.layouts.row([
+fig = bokeh.layouts.column([
     barplot_fig(datas['regions']['left']['cat'], datas['regions']['left']['data'], datas['regions']['left']['ps'], True),
     barplot_fig(datas['regions']['right']['cat'], datas['regions']['right']['data'], datas['regions']['right']['ps'], False),
-])
-#f'{ukb}/post_finemapping/results/enrichment_barplots_regions.svg')
-bokeh.io.export_svg(fig, filename=f'{args.outdir}/enrichment_barplots_regions.svg')
-bokeh.io.export_png(fig, filename=f'{args.outdir}/enrichment_barplots_regions.png')
-
-fig = bokeh.layouts.row([
     barplot_fig(datas['repeats']['left']['cat'], datas['repeats']['left']['data'], datas['repeats']['left']['ps'], True),
     barplot_fig(datas['repeats']['right']['cat'], datas['repeats']['right']['data'], datas['repeats']['right']['ps'], False),
 ])
-bokeh.io.export_svg(fig, filename=f'{args.outdir}/enrichment_barplots_repeats.svg')
-bokeh.io.export_png(fig, filename=f'{args.outdir}/enrichment_barplots_repeats.png')
+bokeh.io.export_svg(fig, filename=f'{args.outdir}/enrichment_barplots.svg')
+bokeh.io.export_png(fig, filename=f'{args.outdir}/enrichment_barplots.png')
+

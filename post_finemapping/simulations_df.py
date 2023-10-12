@@ -115,10 +115,15 @@ susie_dfs = []
 snp_assoc_dfs = []
 str_assoc_dfs = []
 
+# temporary workaround
+def fix_file(unfixed_file):
+    return (line for line in unfixed_file if line.strip())
+
 for row in range(df.shape[0]):
     print(f'Loading simulation {row+1}/{df.shape[0]}', flush=True)
 
-    with open(df['causal_vars_and_betas'][row]) as causal_file:
+    with open(df['causal_vars_and_betas'][row]) as causal_file_unfixed:
+        causal_file = fix_file(causal_file_unfixed)
         vars_ = next(causal_file).strip()
         betas = next(causal_file).strip()
         vars_betas = ' '.join([f'{var}:{beta}' for var, beta in zip(vars_.split(), betas.split())])
@@ -161,6 +166,8 @@ for row in range(df.shape[0]):
             pl.lit(vars_betas).alias('causal_vars_and_betas'),
         ])
         susie_dfs.append(one_susie_df)
+    else:
+        susie_dfs.append(susie_dfs[-1].collect()[:0, :].lazy())
 
     snp_assoc_dfs.append(pl.scan_csv(
         df['snp_assoc'][row],
@@ -182,6 +189,14 @@ for row in range(df.shape[0]):
         pl.lit(vars_betas).alias('causal_vars_and_betas'),
     ]))
 
+    with open(df['str_assoc'][row]) as str_assoc_file:
+        # confirm csv is not empty
+        try:
+            next(str_assoc_file) # header
+            next(str_assoc_file) # potential first line of content
+        except StopIteration:
+            continue
+
     str_assoc_dfs.append(pl.scan_csv(
         df['str_assoc'][row],
         sep='\t'
@@ -202,8 +217,8 @@ for row in range(df.shape[0]):
     ]))
 
 assoc_df = pl.concat([*str_assoc_dfs, *snp_assoc_dfs])
-finemap_df = pl.concat([*finemap_dfs])
-susie_df = pl.concat([*susie_dfs])
+finemap_df = pl.concat(finemap_dfs)
+susie_df = pl.concat(susie_dfs)
 
 final_df = susie_df.join(
     finemap_df,

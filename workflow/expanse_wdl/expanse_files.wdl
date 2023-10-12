@@ -79,6 +79,9 @@ workflow files {
       File ethnic_to_pheno_to_covar_names_ = select_first([ethnic_to_pheno_to_covar_names_snakemake, ethnic_to_pheno_to_covar_names_wdl])
       File ethnic_to_pheno_to_transformed_phenotype_data_ = select_first([ethnic_to_pheno_to_transformed_phenotype_data_snakemake, ethnic_to_pheno_to_transformed_phenotype_data_wdl])
     }
+
+    File wgs_comparison_stats_ = "wgs/20230907_new_old_~{ethnicity}-locuscompare.tab"
+    File wgs_allele_freqs_ = "wgs/20230908_~{ethnicity}_new_old_WGS_allele_freqs.tab"
   }
 
   scatter (ethnicity in ethnicities_) {
@@ -110,7 +113,7 @@ workflow files {
       File peaks_for_1ef_snakemake = "signals/peaks/~{phenotype}_250000_5e-8.tab"
       File finemapping_regions_snakemake = "signals/regions/~{phenotype}.tab"
       scatter (ethnicity in ethnicities_) {
-        File pheno_to_ethnic_to_str_gwas_results_snakemake = "association/results_finemapped_only/~{ethnicity}//~{phenotype}/my_str/results.tab"
+        File pheno_to_ethnic_to_str_gwas_results_snakemake = "association/results_finemapped_only/~{ethnicity}/~{phenotype}/my_str/results.tab"
       }
     }
     File str_gwas_results_ = select_first([str_gwas_results_wdl, str_gwas_results_snakemake])
@@ -152,8 +155,16 @@ workflow files {
     File Liver_SLC2A2_exon4_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon4_psi.tsv"
     File Liver_SLC2A2_exon6_psi= "misc_data/gtex_yang/Liver_SLC2A2_exon6_psi.tsv"
     File RHOT1_geuvadis_expression = "misc_data/geuvadis_melissa/RHOT1_Geuvadis_Exprdata.csv"
+    File TAOK1_expression = "misc_data/gtex_yang/chr17_29514992-ENSG00000160551.11_Thyroid.tsv"
+    File TAOK1_residual_expression  = "misc_data/gtex_yang/chr17_29514992-ENSG00000160551.11_Thyroid_regressing_out_covariates.tsv"
+    File cg17724175_methylation = "misc_data/gtex_yang/chr1_150579759-cg17724175.tsv"
+    File cg22674798_methylation = "misc_data/gtex_yang/chr1_3170058-cg22674798.tsv"
     Array[String] ethnicities = ethnicities_
     Array[String] all_ethnicities = all_ethnicities_
+
+    # from WGS
+    Array[File] wgs_comparison_stats = wgs_comparison_stats_
+    Array[File] wgs_allele_freqs = wgs_allele_freqs_
 
     # --------------------- cached files that I generated that aren't yet WDL enabled
     File flank_start_to_start_and_end_pos = "snpstr/flank_trimmed_vcf/vars.tab"
@@ -224,5 +235,6 @@ workflow files {
     Array[File] finemapping_followup_dfs = finemapping_followup_dfs_ # bigger for mean platelet volume, so needs consistent filtering
 
     Array[File] platelet_count_snp_macs = platelet_count_snp_macs_
+
   }
 }

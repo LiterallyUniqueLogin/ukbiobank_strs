@@ -95,14 +95,14 @@ if f'mean_{phenotype}_per_single_dosage' in df.columns:
         '5e-8_significance_CI_duplicated_0': 'paired_5e-8_significance_CI',
     })
 
-if all(df.filter(pl.col('chrom') == chrom)['pos'].is_in(pos_table.filter(pl.col('chrom') == chrom)['pos']).all() for chrom in range(1, 23)):
+if all(df.filter(pl.col('chrom') == chrom)['pos'].is_in(pos_table.filter(pl.col('chrom') == chrom)['pos']).all() for chrom in range(1, 23) if df.filter(pl.col('chrom') == chrom).shape[0] > 0):
     df = df.join(
         pos_table,
         how='left',
         on=['chrom', 'pos']
     )
 else:
-    assert all(df.filter(pl.col('chrom') == chrom)['pos'].is_in(pos_table.filter(pl.col('chrom') == chrom)['snpstr_pos']).all() for chrom in range(1, 23))
+    assert all(df.filter(pl.col('chrom') == chrom)['pos'].is_in(pos_table.filter(pl.col('chrom') == chrom)['snpstr_pos']).all() for chrom in range(1, 23) if df.filter(pl.col('chrom') == chrom).shape[0] > 0)
     df = df.rename({'pos': 'snpstr_pos'}).join(
         pos_table,
         how='left',
@@ -122,7 +122,6 @@ df = df.join(
     pl.col('subset_total_per_allele_dosages').alias('allele_frequencies').apply(to_frequencies),
     pl.col(f'p_{phenotype}').alias('p_value'),
     'locus_filtered',
-    #'imputation_quality_per_allele_r2', or maybe just correlation? alias info
     pl.col('ref_len').cast(str).alias('ref_allele').apply(lambda s: s.replace(".0", "")),
     pl.col('unit').alias('repeat_unit'), # use repeat unit as calculated in the paper instead of the trharmonizer way
     'period',
