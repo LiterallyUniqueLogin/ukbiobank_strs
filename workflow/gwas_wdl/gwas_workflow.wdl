@@ -138,7 +138,8 @@ workflow gwas {
   }
 
   call gwas_tasks.concatenate_tsvs as my_str_gwas_ { input :
-    tsvs = regional_my_str_gwas.data
+    tsvs = regional_my_str_gwas.data,
+    out = "white_brits_str_gwas"
   }
 
 #  call gwas_tasks.concatenate_tsvs as publishable_my_str_gwas_ { input :
@@ -169,7 +170,8 @@ workflow gwas {
   }
 
   call gwas_tasks.concatenate_tsvs as plink_snp_association { input :
-    tsvs = chromosomal_plink_snp_association.data
+    tsvs = chromosomal_plink_snp_association.data,
+    out = "white_brits_snp_gwas"
   }
 
   # TODO second round for binary
@@ -236,7 +238,8 @@ workflow gwas {
       }
     }
     call gwas_tasks.concatenate_tsvs as ethnic_my_str_gwas_ { input :
-      tsvs = ethnic_regional_my_str_gwas.data
+      tsvs = ethnic_regional_my_str_gwas.data,
+      out = "~{prep_samples_and_phenotype.all_ethnicities[ethnicity_idx + 1]}_str_gwas"
     }
 
     #TODO logistic if binary?

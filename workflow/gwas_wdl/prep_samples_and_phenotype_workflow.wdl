@@ -92,12 +92,13 @@ workflow prep_samples_and_phenotype {
     }
   }
 
-  scatter (sample_list in all_qced_sample_lists.data) {
+  scatter (pair in zip(all_qced_sample_lists.data, all_ethnicities_)) {
     call gwas_tasks.unrelated_samples as ethnicity_unrelated_samples { input:
       script_dir = script_dir,
       PRIMUS_command = PRIMUS_command,
       kinship = kinship,
-      sample_list = sample_list
+      sample_list = pair.left,
+      prefix = pair.right
     }
   }
 
@@ -119,7 +120,8 @@ workflow prep_samples_and_phenotype {
         qced_sample_list = all_qced_sample_lists.data[sample_list_idx],
         assessment_ages_npy = load_shared_covars.assessment_ages,
         categorical_covariate_names = categorical_covariate_names,
-        categorical_covariate_scs = categorical_covariate_scs
+        categorical_covariate_scs = categorical_covariate_scs,
+        prefix = "~{all_ethnicities_[sample_list_idx]}_original_"
       }
     }
     if (is_binary) {
@@ -131,7 +133,8 @@ workflow prep_samples_and_phenotype {
         sc_month_of_birth = sc_month_of_birth,
         sc_date_of_death = sc_date_of_death,
         date_of_most_recent_first_occurrence_update = date_of_most_recent_first_occurrence_update,
-        is_zero_one_neg_nan = is_zero_one_neg_nan
+        is_zero_one_neg_nan = is_zero_one_neg_nan,
+        prefix = "~{all_ethnicities_[sample_list_idx]}_original_"
       }
     }
     # regardless of continuous or binary, get the outputs and move on
@@ -150,6 +153,7 @@ workflow prep_samples_and_phenotype {
         PRIMUS_command = PRIMUS_command,
         kinship = kinship,
         sample_list = write_all_samples_for_phenotype.data,
+        prefix = all_ethnicities_[sample_list_idx]
       }
     }
     if (is_binary) {
@@ -158,7 +162,8 @@ workflow prep_samples_and_phenotype {
         PRIMUS_command = PRIMUS_command,
         kinship = kinship,
         sample_list = write_all_samples_for_phenotype.data,
-        binary_pheno_data = pheno_data_
+        binary_pheno_data = pheno_data_,
+        prefix = all_ethnicities_[sample_list_idx]
       }
     }
     # This is the final sample list file for a given phenotype
@@ -183,7 +188,8 @@ workflow prep_samples_and_phenotype {
       script_dir = script_dir,
       pheno_data = pheno_data_[ethnicity_idx],
       samples_for_phenotype = samples_for_phenotype_[ethnicity_idx],
-      is_binary = is_binary
+      is_binary = is_binary,
+      prefix = "~{all_ethnicities_[ethnicity_idx]}_pheno"
     }
   }
 

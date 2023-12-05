@@ -9,10 +9,10 @@ workflow gwas {
   input {
     String script_dir  = "."
 
+    String phenotype_name
     Int phenotype_id
     Array[String] categorical_covariate_names
     Array[Int] categorical_covariate_ids
-    String phenotype_name
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
 
@@ -149,18 +149,19 @@ workflow gwas {
   }
 
   output {
-    Array[File] sample_lists = gwas.sample_lists
+    #String phenotype_name
+    #Array[File] sample_lists = gwas.sample_lists
 
     File shared_covars = gwas.shared_covars
     File shared_covar_names = gwas.shared_covar_names
 
-    Array[File] all_samples_for_phenotype = gwas.all_samples_for_phenotype
+    #Array[File] all_samples_for_phenotype = gwas.all_samples_for_phenotype
     Array[File] samples_for_phenotype = gwas.samples_for_phenotype
 
     Array[File] pheno_data = gwas.pheno_data
     Array[File] transformed_trait_values = gwas.transformed_trait_values
     Array[File] pheno_covar_names = gwas.pheno_covar_names
-    Array[File] pheno_readme = gwas.pheno_readme
+    #Array[File] pheno_readme = gwas.pheno_readme
 
     File my_str_gwas = gwas.my_str_gwas
     File plink_snp_gwas = gwas.plink_snp_gwas

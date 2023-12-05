@@ -252,10 +252,11 @@ task concatenate_tsvs {
     # for a command on the command line. But its not too long for a string variable
     # or an array
     Array[File]+ tsvs
+    String out = "out"
   }
 
   output {
-    File tsv = "out.tab"
+    File tsv = "~{out}.tab"
   }
 
   command <<<
@@ -457,11 +458,13 @@ task load_continuous_phenotype {
     File assessment_ages_npy # from load shared covars
     Array[String] categorical_covariate_names
     Array[File] categorical_covariate_scs
+
+    String prefix = ""
   }
 
   output {
-    File data = "pheno.npy"
-    File covar_names = "pheno_covar_names.txt"
+    File data = "~{prefix}pheno.npy"
+    File covar_names = "~{prefix}pheno_covar_names.txt"
     File README = "pheno_README.txt"
   }
 
@@ -497,11 +500,13 @@ task load_binary_phenotype {
     File sc_date_of_death # 40000
     String date_of_most_recent_first_occurrence_update
     Boolean is_zero_one_neg_nan = false
+
+    String prefix = ""
   }
 
   output {
-    File data = "pheno.npy"
-    File covar_names = "pheno_covar_names.txt"
+    File data = "~{prefix}pheno.npy"
+    File covar_names = "~{prefix}pheno_covar_names.txt"
     File README = "pheno_README.txt"
   }
 
@@ -560,10 +565,12 @@ task unrelated_samples {
     File kinship
     File sample_list # from task qced_sample_list (for ethnicities) or write_sample_list_for_phenotype (for phenotypes)
     File? binary_pheno_data # task load_binary_phenotype.data
+
+    String prefix = "out"
   }
 
   output {
-    File data = "out.samples"
+    File data = "~{prefix}.samples"
   }
 
   command <<<
@@ -588,10 +595,12 @@ task transform_trait_values {
     File pheno_data # from task
     File samples_for_phenotype  # from task
     Boolean is_binary
+    
+    String prefix = "out"
   }
 
   output {
-    File data = "out.npy"
+    File data = "~{prefix}.npy"
   }
 
   command <<<
@@ -1450,7 +1459,7 @@ task generate_finemapping_regions {
   }
 
   output {
-    File data = "out.tab"
+    File data = "finemapping_regions.tab"
     File readme = "out_README.txt"
   }
 
