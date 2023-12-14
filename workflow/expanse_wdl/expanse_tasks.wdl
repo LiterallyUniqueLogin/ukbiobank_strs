@@ -6,8 +6,8 @@ task extract_field {
     File script = "~{script_dir}/main_dataset/decompress_trait.py"
     File ukbconv = "~{script_dir}/ukb_utilities/ukbconv"
     File encoding = "~{script_dir}/ukb_utilities/encoding.ukb"
-    Array[File]+ fields_files = ["main_dataset/raw_data/fields46781.ukb", "main_dataset/raw_data/fields46782.ukb"]
-    Array[File]+ enc_files = ["main_dataset/raw_data/ukb46781.enc_ukb", "main_dataset/raw_data/ukb46782.enc_ukb"]
+    Array[File]+ fields_files = ["~{script_dir}/main_dataset/raw_data/fields46781.ukb", "~{script_dir}/main_dataset/raw_data/fields46782.ukb"]
+    Array[File]+ enc_files = ["~{script_dir}/main_dataset/raw_data/ukb46781.enc_ukb", "~{script_dir}/main_dataset/raw_data/ukb46782.enc_ukb"]
 
     Int id # data field id
   }

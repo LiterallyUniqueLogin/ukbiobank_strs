@@ -58,6 +58,7 @@ def main():
     parser.add_argument('--unit')
     parser.add_argument('--binary', action='store_true', default=False)
     parser.add_argument('--residual-phenos', default=False, action='store_true')
+    parser.add_argument('--legend-loc')
 
     # UKB script convention : total_subset_dosage_per_summed_gt
     # associaTR dosages: total_dosage_per_summed_length
@@ -150,6 +151,7 @@ def main():
         args.unit,
         args.binary,
         args.residual_phenos,
+        args.legend_loc
     )
 
     bokeh.io.export_svg(figure, filename=f'{args.outloc}.svg')
@@ -166,6 +168,7 @@ def generate_figure(
     unit,
     binary,
     use_residual_phenos,
+    legend_loc
 ):
     if is_fraction_threshold:
         assert 0 <= threshold <= 1
@@ -289,6 +292,8 @@ def generate_figure(
         '''
 
     figure.legend.label_text_font_size = '30px'
+    if legend_loc:
+        figure.legend.location = legend_loc
     y_min = min(y_mins)
     y_max = max(y_maxs)
     figure.y_range = bokeh.models.Range1d(y_min - 0.05*(y_max-y_min), y_max + 0.05*(y_max-y_min))

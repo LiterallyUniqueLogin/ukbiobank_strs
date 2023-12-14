@@ -77,3 +77,5 @@ cached_frequencies_run
 my_file_sizes.txt
 wdl_cache
 kubernetes
+temp_pipeline_outputs
+file_sizes.txt
