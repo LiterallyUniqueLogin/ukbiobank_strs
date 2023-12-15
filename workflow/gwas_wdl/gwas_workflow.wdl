@@ -247,7 +247,6 @@ workflow gwas {
 
   output {
     # sample lists not subset to those with the specified phenotype
-    Array[File] all_sample_lists = prep_samples_and_phenotype.all_sample_lists # unqced, and this doesn't take into account the subpop
     Array[File] sample_lists = prep_samples_and_phenotype.sample_lists # unrelated, qced and takes into account the subpop if specified
 
     File? subpop_sample_list_input = subpop_sample_list
@@ -256,7 +255,6 @@ workflow gwas {
     File shared_covar_names = prep_samples_and_phenotype.shared_covar_names
 
     # sample lists subset to those with the specified phenotype
-    Array[File] all_samples_for_phenotype = prep_samples_and_phenotype.all_samples_for_phenotype # qced and takes into account subpop if specified, but not unrelated
     Array[File] samples_for_phenotype = prep_samples_and_phenotype.samples_for_phenotype # unrelated, qced and takes into account subpop if specified
 
     Array[File] pheno_data = prep_samples_and_phenotype.pheno_data # raw

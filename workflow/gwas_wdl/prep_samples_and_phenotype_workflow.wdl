@@ -59,7 +59,7 @@ workflow prep_samples_and_phenotype {
   Array[String] ethnicities = ethnic_sample_lists_task.ethnicities
   Array[String] all_ethnicities_ = flatten([["white_brits"], ethnicities])
   Array[File] ethnic_sample_lists = ethnic_sample_lists_task.sample_lists
-  Array[File] all_sample_lists_ = flatten([
+  Array[File] all_sample_lists = flatten([
     [white_brits_sample_list.data], ethnic_sample_lists
   ])
 
@@ -80,7 +80,7 @@ workflow prep_samples_and_phenotype {
     value = -1
   }
 
-  scatter (sample_list in all_sample_lists_) {
+  scatter (sample_list in all_sample_lists) {
     call gwas_tasks.qced_sample_list as all_qced_sample_lists { input:
       script_dir = script_dir,
       unqced_sample_list = sample_list,
@@ -194,12 +194,17 @@ workflow prep_samples_and_phenotype {
   }
 
   output {
+    # we can return intermediate sample lists if desired
+
     # arrays are one per the six ethnicities, starting with white brits
     Array[String] all_ethnicities = all_ethnicities_
 
-    # sample lists not subset to those with the specified phenotype
-    Array[File] all_sample_lists = all_sample_lists_ # unqced, and this doesn't take into account the subpop
-    Array[File] sample_lists = ethnicity_unrelated_samples.data # unrelated, qced and takes into account the subpop if specified
+    # sample lists 
+    # unrelated, qced and takes into account the subpop if specified
+    # but not subset to those with the specified phenotype
+    # also not guaranteed to be a superset of those with the specified phenotype (due to separate PRIMUS runs)
+    # can be rewritten to do that if necessary
+    Array[File] sample_lists = ethnicity_unrelated_samples.data 
 
     File? subpop_sample_list_input = subpop_sample_list
 
@@ -207,7 +212,6 @@ workflow prep_samples_and_phenotype {
     File shared_covar_names = load_shared_covars.covar_names
 
     # sample lists subset to those with the specified phenotype
-    Array[File] all_samples_for_phenotype = write_all_samples_for_phenotype.data # qced and takes into account subpop if specified, but not unrelated
     Array[File] samples_for_phenotype = samples_for_phenotype_ # unrelated, qced and takes into account subpop if specified
 
     Array[File] pheno_data = pheno_data_ # raw
