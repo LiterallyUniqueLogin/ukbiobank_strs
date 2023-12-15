@@ -26,8 +26,6 @@ def main():  # noqa: D103
     parser = argparse.ArgumentParser()
     parser.add_argument('outprefix')
     parser.add_argument('pheno_data')
-    parser.add_argument('samples')
-    parser.add_argument('--binary', default=False, action='store_true')
     args = parser.parse_args()
 
     # "Subsetting to samples with phenotype that passed sample_qc, "
@@ -40,25 +38,16 @@ def main():  # noqa: D103
     samples = samples.reshape(-1, 1)
     data = utils.merge_arrays(samples, data)
 
-
     # "Not standardizing covariates. Standardization should be done immediately before performing a regression. "
     # "This way I don't have to keep track of if covariates have standardized yet or not.\n"
     covariates = data[:, 2:]
 
-    if not args.binary:
-        ranks = rank_phenotypes(data)
-        rin_ranks = inverse_normalize_ranks(ranks)
-        transformed_data = np.concatenate(
-            (samples, rin_ranks.reshape(-1, 1), covariates),
-            axis=1
-        )
-    else:
-        # "Binary outcome is left untransformed (0=case, 1=control)\n"
-        phenotype = data[:, 1:2]
-        transformed_data = np.concatenate(
-            (samples, phenotype, covariates),
-            axis=1
-        )
+    ranks = rank_phenotypes(data)
+    rin_ranks = inverse_normalize_ranks(ranks)
+    transformed_data = np.concatenate(
+        (samples, rin_ranks.reshape(-1, 1), covariates),
+        axis=1
+    )
 
     np.save(
         f'{args.outprefix}.npy',

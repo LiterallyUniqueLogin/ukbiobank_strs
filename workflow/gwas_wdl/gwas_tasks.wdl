@@ -310,10 +310,38 @@ task write_sample_list {
   }
 }
 
+task subset_npy_to_sample_list {
+  input {
+    String script_dir
+    File script = "~{script_dir}/sample_qc/scripts/subset_npy_to_sample_list.py"
+    File script = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
+
+    File npy
+    File sample_list
+  }
+
+  output {
+    File subsetted_npy = "subsetted.npy"
+  }
+
+  command <<<
+    python ~{script} \
+      ~{npy} \
+      ~{sample_list}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    shortTask: true
+    dx_timeout: "5m"
+    memory: "2GB"
+  }
+}
+
 task ethnic_sample_lists {
   input {
     String script_dir
-    File script_ = "~{script_dir}/sample_qc/scripts/ethnicity.py"
+    File script = "~{script_dir}/sample_qc/scripts/ethnicity.py"
 
     File white_brits_sample_list # write_sample_list 22006
     File sc_ethnicity_self_report # 21000
@@ -339,7 +367,7 @@ task ethnic_sample_lists {
   }
 
   command <<<
-    envsetup ~{script_} . ~{white_brits_sample_list} ~{sc_ethnicity_self_report}
+    envsetup ~{script} . ~{white_brits_sample_list} ~{sc_ethnicity_self_report}
   >>>
 
   runtime {
@@ -381,7 +409,7 @@ task qced_sample_list {
     File script = "~{script_dir}/sample_qc/scripts/combine.py"
 
     File unqced_sample_list # white brits = write_sample_list 22006 or output from ethnic_sample_lists
-    File withdrawn_sample_list 
+    File withdrawn_sample_list
     File sex_mismatch_sample_list # task above
     File sex_aneuploidy_sample_list # write_sample_list 22019
     File low_genotyping_quality_sample_list # write_sample_list 22021 -1
@@ -593,8 +621,6 @@ task transform_trait_values {
     File python_array_utils = "~{script_dir}/traits/python_array_utils.py"
 
     File pheno_data # from task
-    File samples_for_phenotype  # from task
-    Boolean is_binary
     
     String prefix = "out"
   }
@@ -604,8 +630,7 @@ task transform_trait_values {
   }
 
   command <<<
-    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
-    envsetup ~{script} out ~{pheno_data} ~{samples_for_phenotype} ~{if is_binary then "--binary" else ""}
+    envsetup ~{script} out ~{pheno_data}
   >>>
 
   runtime {

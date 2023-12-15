@@ -31,7 +31,14 @@ workflow prep_samples_and_phenotype {
     File sc_year_of_birth
     File sc_month_of_birth
     File sc_date_of_death
-    File sc_phenotype
+
+    # should specify sc or the next three
+    File? sc_phenotype
+    File? premade_pheno_npy # first col ID, second pheno, remaining are covars
+    File? premade_pheno_covar_names
+    File? premade_pheno_readme
+
+    Boolean transform = true
 
     # If specified, must contain all samples of all ethnicities that you want included
     # (so any samples not included will be omitted)
@@ -113,10 +120,17 @@ workflow prep_samples_and_phenotype {
 
   # get qced unrelated phenotype sample list and transformed phenotype data for each ethnicity
   scatter (sample_list_idx in range(length(all_qced_sample_lists.data))) {
-    if (!is_binary) {
+    if (defined(premade_pheno_npy)) {
+      call gwas_tasks.subset_npy_to_sample_list as subsetted_pheno_related { input :
+        script_dir = script_dir,
+        npy = select_first([premade_pheno_npy]),
+        sample_list = all_qced_sample_lists.data[sample_list_idx]
+      }
+    }
+    if (!defined(premade_pheno_npy) && !is_binary) {
       call gwas_tasks.load_continuous_phenotype { input :
         script_dir = script_dir,
-        sc = sc_phenotype,
+        sc = select_first([sc_phenotype]),
         qced_sample_list = all_qced_sample_lists.data[sample_list_idx],
         assessment_ages_npy = load_shared_covars.assessment_ages,
         categorical_covariate_names = categorical_covariate_names,
@@ -124,10 +138,10 @@ workflow prep_samples_and_phenotype {
         prefix = "~{all_ethnicities_[sample_list_idx]}_original_"
       }
     }
-    if (is_binary) {
+    if (!defined(premade_pheno_npy) && is_binary) {
       call gwas_tasks.load_binary_phenotype { input:
         script_dir = script_dir,
-        sc = sc_phenotype,
+        sc = select_first([sc_phenotype]),
         qced_sample_list = all_qced_sample_lists.data[sample_list_idx],
         sc_year_of_birth = sc_year_of_birth,
         sc_month_of_birth = sc_month_of_birth,
@@ -138,9 +152,9 @@ workflow prep_samples_and_phenotype {
       }
     }
     # regardless of continuous or binary, get the outputs and move on
-    File pheno_data_ = select_first([load_continuous_phenotype.data, load_binary_phenotype.data])
-    File pheno_covar_names_ = select_first([load_continuous_phenotype.covar_names, load_binary_phenotype.covar_names])
-    File pheno_readme_ = select_first([load_continuous_phenotype.README, load_binary_phenotype.covar_names])
+    File pheno_data_ = select_first([subsetted_pheno_related.subsetted_npy, load_continuous_phenotype.data, load_binary_phenotype.data])
+    File pheno_covar_names_ = select_first([premade_pheno_covar_names, load_continuous_phenotype.covar_names, load_binary_phenotype.covar_names])
+    File pheno_readme_ = select_first([premade_pheno_readme, load_continuous_phenotype.README, load_binary_phenotype.covar_names])
 
     call gwas_tasks.write_sample_list_for_phenotype as write_all_samples_for_phenotype { input:
       script_dir = script_dir,
@@ -166,7 +180,6 @@ workflow prep_samples_and_phenotype {
         prefix = all_ethnicities_[sample_list_idx]
       }
     }
-    # This is the final sample list file for a given phenotype
 
     if (defined(cached_unrelated_samples_for_phenotype)) {
       File samples_for_phenotype_cached = select_first([cached_unrelated_samples_for_phenotype])[sample_list_idx]
@@ -177,19 +190,28 @@ workflow prep_samples_and_phenotype {
         binary_phenotype_unrelated_samples.data
       ])
     }
+    # This is the final sample list file for a given phenotype
     File samples_for_phenotype_ = select_first([
       samples_for_phenotype_cached,
       samples_for_phenotype_uncached
     ])
+
+    call gwas_tasks.subset_npy_to_sample_list as subsetted_pheno_unrelated { input :
+      script_dir = script_dir,
+      npy = pheno_data_
+      sample_list = samples_for_phenotype_
+    }
   }
 
-  scatter (ethnicity_idx in range(length(pheno_data_))) {
-    call gwas_tasks.transform_trait_values { input :
-      script_dir = script_dir,
-      pheno_data = pheno_data_[ethnicity_idx],
-      samples_for_phenotype = samples_for_phenotype_[ethnicity_idx],
-      is_binary = is_binary,
-      prefix = "~{all_ethnicities_[ethnicity_idx]}_pheno"
+  if (transform && !binary) {
+    scatter (ethnicity_idx in range(length(pheno_data_))) {
+      call gwas_tasks.transform_trait_values { input :
+        script_dir = script_dir,
+        pheno_data = pheno_data_[ethnicity_idx],
+        samples_for_phenotype = samples_for_phenotype_[ethnicity_idx],
+        is_binary = is_binary,
+        prefix = "~{all_ethnicities_[ethnicity_idx]}_pheno"
+      }
     }
   }
 
@@ -214,8 +236,8 @@ workflow prep_samples_and_phenotype {
     # sample lists subset to those with the specified phenotype
     Array[File] samples_for_phenotype = samples_for_phenotype_ # unrelated, qced and takes into account subpop if specified
 
-    Array[File] pheno_data = pheno_data_ # raw
-    Array[File] transformed_trait_values = transform_trait_values.data
+    Array[File] pheno_data = subsetted_pheno_unrelated.subsetted_npy
+    Array[File]? transformed_trait_values = transform_trait_values.data
     Array[File] pheno_covar_names = pheno_covar_names_
     Array[File] pheno_readme = pheno_readme_
   }

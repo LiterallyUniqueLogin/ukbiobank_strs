@@ -46,7 +46,14 @@ workflow gwas {
     File sc_year_of_birth
     File sc_month_of_birth
     File sc_date_of_death
-    File sc_phenotype
+
+    # should specify sc or the next three
+    File? sc_phenotype
+    File? premade_pheno_npy # first col ID, second pheno, remaining are covars
+    File? premade_pheno_covar_names
+    File? premade_pheno_readme
+
+    Boolean transform = true
 
     # If specified, must contain all samples of all ethnicities that you want included
     # (so any samples not included will be omitted)
@@ -87,12 +94,22 @@ workflow gwas {
     sc_month_of_birth = sc_month_of_birth,
     sc_date_of_death = sc_date_of_death,
     sc_phenotype = sc_phenotype,
+    premade_pheno_npy = premade_pheno_npy,
+    premade_pheno_covar_names = premade_pheno_covar_names,
+    premade_pheno_readme = premade_pheno_readme,
+    transform = transform,
 
     subpop_sample_list = subpop_sample_list,
 
     cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
     cached_shared_covars = cached_shared_covars
   }
+
+  phenos_to_associate = select_first([
+    prep_samples_and_phenotype.transformed_trait_values,
+    prep_samples_and_phenotype.pheno_data,
+  ])
+
 
   call gwas_tasks.association_regions as str_association_regions { input :
     chr_lens = chr_lens,
@@ -118,7 +135,7 @@ workflow gwas {
       str_vcf = str_vcfs[chrom_minus_one],
       shared_covars = prep_samples_and_phenotype.shared_covars,
       untransformed_phenotype = prep_samples_and_phenotype.pheno_data[0],
-      transformed_phenotype = prep_samples_and_phenotype.transformed_trait_values[0],
+      transformed_phenotype = phenos_to_associate[0],
       all_samples_list = all_samples_list,
       is_binary = is_binary,
       binary_type = "linear", # won't be used if not binary
@@ -150,7 +167,7 @@ workflow gwas {
     script_dir = script_dir,
     shared_covars = prep_samples_and_phenotype.shared_covars,
     shared_covar_names = prep_samples_and_phenotype.shared_covar_names,
-    transformed_phenotype = prep_samples_and_phenotype.transformed_trait_values[0],
+    transformed_phenotype = phenos_to_associate[0],
     pheno_covar_names = prep_samples_and_phenotype.pheno_covar_names[0],
     is_binary = is_binary,
     binary_type = "linear", # only used if is_binary
@@ -230,7 +247,7 @@ workflow gwas {
         vars_file = pair.right,
         shared_covars = prep_samples_and_phenotype.shared_covars,
         untransformed_phenotype = prep_samples_and_phenotype.pheno_data[ethnicity_idx],
-        transformed_phenotype = prep_samples_and_phenotype.transformed_trait_values[ethnicity_idx],
+        transformed_phenotype = phenos_to_associate[ethnicity_idx],
         all_samples_list = all_samples_list,
         is_binary = is_binary,
         binary_type = "linear", # won't be used if not binary
@@ -258,7 +275,7 @@ workflow gwas {
     Array[File] samples_for_phenotype = prep_samples_and_phenotype.samples_for_phenotype # unrelated, qced and takes into account subpop if specified
 
     Array[File] pheno_data = prep_samples_and_phenotype.pheno_data # raw
-    Array[File] transformed_trait_values = prep_samples_and_phenotype.transformed_trait_values
+    Array[File]? transformed_trait_values = prep_samples_and_phenotype.transformed_trait_values
     Array[File] pheno_covar_names = prep_samples_and_phenotype.pheno_covar_names
     Array[File] pheno_readme = prep_samples_and_phenotype.pheno_readme
 

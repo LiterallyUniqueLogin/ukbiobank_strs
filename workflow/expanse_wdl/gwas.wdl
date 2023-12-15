@@ -9,10 +9,19 @@ workflow gwas {
   input {
     String script_dir  = "."
 
-    String phenotype_name
-    Int phenotype_id
-    Array[String] categorical_covariate_names
-    Array[Int] categorical_covariate_ids
+    # either the next four, or the premade ones
+    # currently no way to specify integreating categorical covariates
+    # with premades
+    String? phenotype_name
+    Int? phenotype_id
+    Array[String]? categorical_covariate_names
+    Array[Int]? categorical_covariate_ids
+
+    File? premade_pheno_npy # first col ID, second pheno, remaining are covars
+    File? premade_pheno_covar_names
+    File? premade_pheno_readme
+
+    Boolean transform = true
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
 
@@ -90,15 +99,17 @@ workflow gwas {
     id = 40000
   }
 
-  call expanse_tasks.extract_field as phenotype { input :
-    script_dir = script_dir,
-    id = phenotype_id
-  }
-
-  scatter (categorical_covariate_id in categorical_covariate_ids) {
-    call expanse_tasks.extract_field as categorical_covariates { input :
+  if (!defined(premade_pheno_npy)) {
+    call expanse_tasks.extract_field as phenotype { input :
       script_dir = script_dir,
-      id = categorical_covariate_id
+      id = phenotype_id
+    }
+
+    scatter (categorical_covariate_id in categorical_covariate_ids) {
+      call expanse_tasks.extract_field as categorical_covariates { input :
+        script_dir = script_dir,
+        id = categorical_covariate_id
+      }
     }
   }
 
@@ -141,6 +152,10 @@ workflow gwas {
     sc_month_of_birth = month_of_birth.data,
     sc_date_of_death = date_of_death.data,
     sc_phenotype = phenotype.data,
+    premade_pheno_npy = premade_pheno_npy,
+    premade_pheno_covar_names = premade_pheno_covar_names,
+    premade_pheno_readme = premade_pheno_readme,
+    transform = transform,
 
     subpop_sample_list = subpop_sample_list,
 
@@ -159,7 +174,7 @@ workflow gwas {
     Array[File] samples_for_phenotype = gwas.samples_for_phenotype
 
     Array[File] pheno_data = gwas.pheno_data
-    Array[File] transformed_trait_values = gwas.transformed_trait_values
+    Array[File]? transformed_trait_values = gwas.transformed_trait_values
     Array[File] pheno_covar_names = gwas.pheno_covar_names
     #Array[File] pheno_readme = gwas.pheno_readme
 

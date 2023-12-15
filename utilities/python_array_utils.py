@@ -6,7 +6,7 @@ import polars as pl
 
 def merge_arrays(a, b):
     '''
-    Return a left outer join b.
+    Return a left join b.
     Join is performed on the first column.
 
     Assume first column of each array is id, but not necessarily same order
