@@ -9,8 +9,8 @@ workflow prep_samples_and_phenotype {
     String PRIMUS_command
 
     String phenotype_name
-    Array[String] categorical_covariate_names
-    Array[File] categorical_covariate_scs
+    Array[String]? categorical_covariate_names
+    Array[File]? categorical_covariate_scs
     Boolean is_binary
     Boolean is_zero_one_neg_nan
     String date_of_most_recent_first_occurrence_update
@@ -133,8 +133,8 @@ workflow prep_samples_and_phenotype {
         sc = select_first([sc_phenotype]),
         qced_sample_list = all_qced_sample_lists.data[sample_list_idx],
         assessment_ages_npy = load_shared_covars.assessment_ages,
-        categorical_covariate_names = categorical_covariate_names,
-        categorical_covariate_scs = categorical_covariate_scs,
+        categorical_covariate_names = select_first([categorical_covariate_names]),
+        categorical_covariate_scs = select_first([categorical_covariate_scs]),
         prefix = "~{all_ethnicities_[sample_list_idx]}_original_"
       }
     }
@@ -198,18 +198,16 @@ workflow prep_samples_and_phenotype {
 
     call gwas_tasks.subset_npy_to_sample_list as subsetted_pheno_unrelated { input :
       script_dir = script_dir,
-      npy = pheno_data_
+      npy = pheno_data_,
       sample_list = samples_for_phenotype_
     }
   }
 
-  if (transform && !binary) {
+  if (transform && !is_binary) {
     scatter (ethnicity_idx in range(length(pheno_data_))) {
       call gwas_tasks.transform_trait_values { input :
         script_dir = script_dir,
-        pheno_data = pheno_data_[ethnicity_idx],
-        samples_for_phenotype = samples_for_phenotype_[ethnicity_idx],
-        is_binary = is_binary,
+        pheno_data = subsetted_pheno_unrelated.subsetted_npy[ethnicity_idx],
         prefix = "~{all_ethnicities_[ethnicity_idx]}_pheno"
       }
     }

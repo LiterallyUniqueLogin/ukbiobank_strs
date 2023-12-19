@@ -23,8 +23,8 @@ workflow gwas {
     File repeat_units_table
 
     String phenotype_name
-    Array[String] categorical_covariate_names
-    Array[File] categorical_covariate_scs
+    Array[String]? categorical_covariate_names
+    Array[File]? categorical_covariate_scs
     Boolean is_binary
     Boolean is_zero_one_neg_nan
     String date_of_most_recent_first_occurrence_update
@@ -105,7 +105,7 @@ workflow gwas {
     cached_shared_covars = cached_shared_covars
   }
 
-  phenos_to_associate = select_first([
+  Array[File] phenos_to_associate = select_first([
     prep_samples_and_phenotype.transformed_trait_values,
     prep_samples_and_phenotype.pheno_data,
   ])
@@ -214,7 +214,7 @@ workflow gwas {
     thresh = "5e-8"
   }
 
-  call gwas_tasks.overview_manhattan as overivew_manhattan_ { input :
+  call gwas_tasks.overview_manhattan as overview_manhattan_ { input :
     script_dir = script_dir,
     phenotype_name = phenotype_name,
     chr_lens = chr_lens,
@@ -229,7 +229,8 @@ workflow gwas {
     chr_lens = chr_lens,
     phenotype = phenotype_name,
     snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_.tsv
+    str_assoc_results = my_str_gwas_.tsv,
+    prefix = "~{phenotype_name}_"
   }
   
   call gwas_tasks.get_strs_in_finemapping_regions { input :
@@ -256,7 +257,7 @@ workflow gwas {
     }
     call gwas_tasks.concatenate_tsvs as ethnic_my_str_gwas_ { input :
       tsvs = ethnic_regional_my_str_gwas.data,
-      out = "~{prep_samples_and_phenotype.all_ethnicities[ethnicity_idx + 1]}_str_gwas"
+      out = "~{prep_samples_and_phenotype.all_ethnicities[ethnicity_idx]}_str_gwas"
     }
 
     #TODO logistic if binary?

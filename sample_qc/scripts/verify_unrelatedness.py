@@ -5,15 +5,9 @@ import sys
 from typing import Dict, Set
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    'run_name',
-    help=('Verifies the unrelatedness of the sample file '
-          '$UKB/sample_qc/runs/{ethnicity}/{run_name}/combined_unrelated.sample')
-)
-parser.add_argument('ethnicity')
+parser.add_argument('unrelated_samples_file')
+parser.add_argument('related_samples_file')
 args = parser.parse_args()
-run_name = args.run_name
-ethnicity = args.ethnicity
 ukb = os.environ['UKB']
 
 def error(msg):
@@ -32,10 +26,8 @@ def load_samples(fname):
             samples.add(sample)
     return samples
 
-unfiltered_samples = \
-    load_samples(f'{ukb}/sample_qc/runs/{ethnicity}/{run_name}/combined.sample')
-filtered_samples = \
-    load_samples(f'{ukb}/sample_qc/runs/{ethnicity}/{run_name}/combined_unrelated.sample')
+unfiltered_samples = load_samples(args.related_samples_file)
+filtered_samples = load_samples(args.unrelated_samples_file)
 
 # from sample_id to sample_id
 neighbors: Dict[str, Set[str]] = {}

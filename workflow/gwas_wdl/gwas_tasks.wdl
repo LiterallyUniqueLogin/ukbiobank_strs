@@ -269,9 +269,9 @@ task concatenate_tsvs {
         exit 1
       fi
       
-      head -1 ~{tsvs[0]} > out.tab
+      head -1 ~{tsvs[0]} > ~{out}.tab
       for (( i=0; i<${#tsvs[@]}; i++ )); do
-        tail -n +2 "${tsvs[$i]}" >> out.tab
+        tail -n +2 "${tsvs[$i]}" >> ~{out}.tab
       done
     '
   >>>
@@ -314,7 +314,8 @@ task subset_npy_to_sample_list {
   input {
     String script_dir
     File script = "~{script_dir}/sample_qc/scripts/subset_npy_to_sample_list.py"
-    File script = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
+    File python_array_utils = "~{script_dir}/sample_qc/scripts/python_array_utils.py"
+    File sample_utils = "~{script_dir}/sample_qc/scripts/sample_utils.py"
 
     File npy
     File sample_list
@@ -325,7 +326,7 @@ task subset_npy_to_sample_list {
   }
 
   command <<<
-    python ~{script} \
+    envsetup python ~{script} \
       ~{npy} \
       ~{sample_list}
   >>>
@@ -604,7 +605,12 @@ task unrelated_samples {
   command <<<
     ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
     ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
-    envsetup ~{script} out.samples ~{kinship} ~{sample_list} ~{PRIMUS_command} ~{"--binary-pheno " + binary_pheno_data}
+    envsetup ~{script} \
+      ~{prefix}.samples \
+      ~{kinship} \
+      ~{sample_list} \
+      ~{PRIMUS_command} \
+      ~{"--binary-pheno " + binary_pheno_data}
   >>>
   
   runtime {
@@ -1481,11 +1487,13 @@ task generate_finemapping_regions {
     File str_assoc_results
     File snp_assoc_results
     Boolean remove_skips = false
+
+    String prefix = ""
   }
 
   output {
-    File data = "finemapping_regions.tab"
-    File readme = "out_README.txt"
+    File data = "~{prefix}finemapping_regions.tab"
+    File readme = "~{prefix}finemapping_regions_README.txt"
   }
 
   command <<<
@@ -1494,7 +1502,7 @@ task generate_finemapping_regions {
       ~{chr_lens} \
       ~{str_assoc_results} \
       ~{snp_assoc_results} \
-      out.tab \
+      ~{prefix}finemapping_regions.tab \
       ~{if remove_skips then "--remove-skips" else ""}
   >>>
 

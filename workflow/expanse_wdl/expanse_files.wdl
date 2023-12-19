@@ -4,7 +4,7 @@ import "../gwas_wdl/gwas_tasks.wdl"
 
 workflow files {
 
-  inputs {
+  input {
     String base_location = "/expanse/projects/gymreklab/jmargoli/ukbiobank"
   }
 

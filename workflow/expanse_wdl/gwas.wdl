@@ -9,10 +9,10 @@ workflow gwas {
   input {
     String script_dir  = "."
 
+    String phenotype_name
     # either the next four, or the premade ones
     # currently no way to specify integreating categorical covariates
     # with premades
-    String? phenotype_name
     Int? phenotype_id
     Array[String]? categorical_covariate_names
     Array[Int]? categorical_covariate_ids
@@ -102,10 +102,10 @@ workflow gwas {
   if (!defined(premade_pheno_npy)) {
     call expanse_tasks.extract_field as phenotype { input :
       script_dir = script_dir,
-      id = phenotype_id
+      id = select_first([phenotype_id])
     }
 
-    scatter (categorical_covariate_id in categorical_covariate_ids) {
+    scatter (categorical_covariate_id in select_first([categorical_covariate_ids])) {
       call expanse_tasks.extract_field as categorical_covariates { input :
         script_dir = script_dir,
         id = categorical_covariate_id

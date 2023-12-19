@@ -11,9 +11,12 @@ parser.add_argument('sample_list')
 args = parser.parse_args()
 
 arr = np.load(args.npy)
-samples = sample_utils.get_samples(args.sample_lsit)
+assert not np.any(np.isnan(arr[:, 1])), 'error, nulls before subsetting'
+samples = sample_utils.get_samples(args.sample_list)
 arr = python_array_utils.merge_arrays(
     samples, arr
 )
+arr = arr[~np.isnan(arr[:, 1]), :]
+assert not np.any(np.isnan(arr[:, 1])), 'error, nulls after subsetting'
 
 np.save('subsetted.npy', arr)
