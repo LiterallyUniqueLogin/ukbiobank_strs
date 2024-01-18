@@ -319,14 +319,17 @@ task subset_npy_to_sample_list {
 
     File npy
     File sample_list
+
+    String prefix = "subsetted"
   }
 
   output {
-    File subsetted_npy = "subsetted.npy"
+    File subsetted_npy = "~{prefix}.npy"
   }
 
   command <<<
     envsetup python ~{script} \
+      ~{prefix}.npy \
       ~{npy} \
       ~{sample_list}
   >>>

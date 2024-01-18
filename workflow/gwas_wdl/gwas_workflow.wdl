@@ -240,8 +240,8 @@ workflow gwas {
   }
   
   scatter (ethnicity_enumeration in range(5)) {
+    Int ethnicity_idx = ethnicity_enumeration + 1
     scatter (pair in zip(range(22), get_strs_in_finemapping_regions.strs_in_finemapping_regions)) {
-      Int ethnicity_idx = ethnicity_enumeration + 1
       call gwas_tasks.regional_my_str_gwas as ethnic_regional_my_str_gwas { input :
         script_dir = script_dir,
         str_vcf = str_vcfs[pair.left],

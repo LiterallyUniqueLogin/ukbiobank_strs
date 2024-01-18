@@ -199,7 +199,8 @@ workflow prep_samples_and_phenotype {
     call gwas_tasks.subset_npy_to_sample_list as subsetted_pheno_unrelated { input :
       script_dir = script_dir,
       npy = pheno_data_,
-      sample_list = samples_for_phenotype_
+      sample_list = samples_for_phenotype_,
+      prefix = "~{all_ethnicities_[sample_list_idx]}_pheno"
     }
   }
 
@@ -208,7 +209,7 @@ workflow prep_samples_and_phenotype {
       call gwas_tasks.transform_trait_values { input :
         script_dir = script_dir,
         pheno_data = subsetted_pheno_unrelated.subsetted_npy[ethnicity_idx],
-        prefix = "~{all_ethnicities_[ethnicity_idx]}_pheno"
+        prefix = "~{all_ethnicities_[ethnicity_idx]}_pheno_transformed"
       }
     }
   }

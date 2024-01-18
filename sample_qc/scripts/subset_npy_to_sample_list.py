@@ -6,6 +6,7 @@ import python_array_utils
 import sample_utils
 
 parser = argparse.ArgumentParser()
+parser.add_argument('out')
 parser.add_argument('npy')
 parser.add_argument('sample_list')
 args = parser.parse_args()
@@ -19,4 +20,4 @@ arr = python_array_utils.merge_arrays(
 arr = arr[~np.isnan(arr[:, 1]), :]
 assert not np.any(np.isnan(arr[:, 1])), 'error, nulls after subsetting'
 
-np.save('subsetted.npy', arr)
+np.save(args.out, arr)
