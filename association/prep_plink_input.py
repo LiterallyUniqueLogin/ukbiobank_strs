@@ -69,11 +69,6 @@ if args.shared_covar_names:
                 continue
             col_names.append(line)
 
-if not args.binary:
-    suffix = ''
-else:
-    suffix = '_' + args.binary
-
 if args.conditional_genotypes:
     genotypes = np.load(args.conditional_genotypes)
     data = utils.merge_arrays(data, genotypes)

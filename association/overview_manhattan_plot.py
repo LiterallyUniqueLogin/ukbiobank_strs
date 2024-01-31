@@ -8,6 +8,8 @@ import bokeh.io
 import bokeh.models
 import bokeh.plotting
 import numpy as np
+import pandas as pd
+import polars as pl
 
 import graphing_utils
 import region_plots
@@ -20,7 +22,10 @@ def make_overview_manhattan(
     my_str_results,
     plink_snp_results,
     legendless,
-    chr_lens
+    chr_lens,
+    has_peaks,
+    maf_threshold,
+    snp_maf_file,
 ):
     print(f"Plotting overview of phenotype {phenotype} ... ", end='', flush=True)
     start_time = time.time()
@@ -28,8 +33,9 @@ def make_overview_manhattan(
     my_str_results['p_val'] = np.minimum(overview_max_p_val, my_str_results['p_val'])
     plink_snp_results['p_val'] = np.minimum(overview_max_p_val, plink_snp_results['p_val'])
 
-    str_peak_dict = {}
-    snp_peak_dict = {}
+    if has_peaks:
+        str_peak_dict = {}
+        snp_peak_dict = {}
     str_locus_dict = {}
     snp_locus_dict = {}
     insignificant_locus_dict = {}
@@ -38,8 +44,9 @@ def make_overview_manhattan(
     gwas_sig = -np.log10(5e-8)
 
     for col in copy_cols:
-        str_peak_dict[col] = my_str_results[my_str_results['is_peak']][col]
-        snp_peak_dict[col] = plink_snp_results[plink_snp_results['is_peak']][col]
+        if has_peaks:
+            str_peak_dict[col] = my_str_results[my_str_results['is_peak']][col]
+            snp_peak_dict[col] = plink_snp_results[plink_snp_results['is_peak']][col]
 
         str_locus_dict[col] = my_str_results[my_str_results['p_val'] > gwas_sig][col]
         snp_locus_dict[col] = plink_snp_results[plink_snp_results['p_val'] > gwas_sig][col]
@@ -74,7 +81,10 @@ def make_overview_manhattan(
     region_plots.full_genome_x_axis(
         manhattan_plot, chr_lens
     )
-    for dict_ in [str_peak_dict, snp_peak_dict, str_locus_dict, snp_locus_dict, insignificant_locus_dict]:
+    dict_list = [str_locus_dict, snp_locus_dict, insignificant_locus_dict]
+    if has_peaks:
+        dict_list += [str_peak_dict, snp_peak_dict]
+    for dict_ in dict_list:
         region_plots.full_genome_pandas_df(dict_, chr_lens)
 
     # from https://projects.susielu.com/viz-palette
@@ -97,40 +107,41 @@ def make_overview_manhattan(
         size=math.floor(size_ratio*8),
         alpha=0.5
     )
-    if not legendless:
-        manhattan_plot.diamond(
-            'plot_pos',
-            'p_val',
-            source=bokeh.models.ColumnDataSource(snp_peak_dict),
-            fill_color=snp_color,
-            legend_label = 'SNPs',
-            size=math.floor(size_ratio*15)
-        )
-    else:
-        manhattan_plot.diamond(
-            'plot_pos',
-            'p_val',
-            source=bokeh.models.ColumnDataSource(snp_peak_dict),
-            fill_color=snp_color,
-            size=math.floor(size_ratio*15)
-        )
-    if not legendless:
-        manhattan_plot.diamond(
-            'plot_pos',
-            'p_val',
-            source=bokeh.models.ColumnDataSource(str_peak_dict),
-            fill_color=str_color,
-            legend_label = 'STRs',
-            size=math.floor(size_ratio*15)
-        )
-    else:
-        manhattan_plot.diamond(
-            'plot_pos',
-            'p_val',
-            source=bokeh.models.ColumnDataSource(str_peak_dict),
-            fill_color=str_color,
-            size=math.floor(size_ratio*15)
-        )
+    if has_peaks:
+        if not legendless:
+            manhattan_plot.diamond(
+                'plot_pos',
+                'p_val',
+                source=bokeh.models.ColumnDataSource(snp_peak_dict),
+                fill_color=snp_color,
+                legend_label = 'SNPs',
+                size=math.floor(size_ratio*15)
+            )
+        else:
+            manhattan_plot.diamond(
+                'plot_pos',
+                'p_val',
+                source=bokeh.models.ColumnDataSource(snp_peak_dict),
+                fill_color=snp_color,
+                size=math.floor(size_ratio*15)
+            )
+        if not legendless:
+            manhattan_plot.diamond(
+                'plot_pos',
+                'p_val',
+                source=bokeh.models.ColumnDataSource(str_peak_dict),
+                fill_color=str_color,
+                legend_label = 'STRs',
+                size=math.floor(size_ratio*15)
+            )
+        else:
+            manhattan_plot.diamond(
+                'plot_pos',
+                'p_val',
+                source=bokeh.models.ColumnDataSource(str_peak_dict),
+                fill_color=str_color,
+                size=math.floor(size_ratio*15)
+            )
     if not legendless:
         manhattan_plot.diamond(
             'plot_pos',
@@ -172,7 +183,17 @@ def main():
     parser.add_argument('chr_lens')
     parser.add_argument('--legendless', action='store_true', default=False)
     parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
+    parser.add_argument('--maf-threshold', type=float)
+    parser.add_argument('--snp-maf-file')
+    parser.add_argument('--info-threshold', type=float)
+    parser.add_argument('--snp-info-files', nargs=22)
     args = parser.parse_args()
+
+    peaks_fname = args.peaks_fname
+    if peaks_fname == '.':
+        peaks_fname = None
+
+    assert (args.snp_maf_file is None) == (args.maf_threshold is None)
 
     phenotype = args.phenotype
     binary = args.binary
@@ -184,11 +205,51 @@ def main():
         phenotype, binary, args.plink_snp_results
     )
 
-    my_str_results, plink_snp_results = region_plots.load_and_merge_peaks_into_dfs(
-        args.peaks_fname,
-        my_str_results,
-        plink_snp_results
-    )
+    if peaks_fname is not None:
+        my_str_results, plink_snp_results = region_plots.load_and_merge_peaks_into_dfs(
+            peaks_fname,
+            my_str_results,
+            plink_snp_results
+        )
+
+    plink_snp_results = pl.DataFrame(plink_snp_results)
+
+    if args.maf_threshold is not None:
+        mafs = pl.scan_csv(
+            args.snp_maf_file,
+            separator='\t',
+        )
+        plink_snp_results = plink_snp_results.lazy().join(
+            mafs,
+            how='left',
+            left_on=['chr', 'pos', 'ref', 'alt'],
+            right_on=['#CHROM', 'POS', 'REF', 'ALT']
+        ).filter(
+            pl.col('ALT_FREQS') > args.maf_threshold
+        ).collect()
+
+    if args.info_threshold is not None:
+        infos_per_chrom = [pl.read_csv(
+            info_file,
+            has_header = False,
+            new_columns = ['combined_ID', 'ID', 'pos', 'ref', 'alt', 'maf', '?', 'info'],
+            separator='\t',
+            null_values='NA'
+        ).with_columns(pl.lit(chrom).alias('chr').cast(int)) for (chrom, info_file) in zip(range(1, 23), args.snp_info_files)]
+
+        infos = infos_per_chrom[0]
+        for other_infos in infos_per_chrom[1:]:
+            infos = infos.vstack(other_infos)
+
+        plink_snp_results = plink_snp_results.join(
+			infos,
+            how='left',
+            on=['chr', 'pos', 'ref', 'alt'],
+        ).filter(
+            pl.col('info') > args.info_threshold
+        )
+
+    plink_snp_results = plink_snp_results.to_numpy(structured=True)
 
     chr_lens = np.genfromtxt(
         args.chr_lens,
@@ -203,7 +264,10 @@ def main():
         my_str_results,
         plink_snp_results,
         args.legendless,
-        chr_lens
+        chr_lens,
+        peaks_fname is not None,
+        args.maf_threshold,
+        args.snp_maf_file,
     )
 
 if __name__ == "__main__":

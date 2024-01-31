@@ -22,6 +22,7 @@ workflow gwas {
     File? premade_pheno_readme
 
     Boolean transform = true
+    Boolean other_ethnicities = true
     Boolean is_binary = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
 
@@ -155,7 +156,9 @@ workflow gwas {
     premade_pheno_npy = premade_pheno_npy,
     premade_pheno_covar_names = premade_pheno_covar_names,
     premade_pheno_readme = premade_pheno_readme,
+
     transform = transform,
+    other_ethnicities = other_ethnicities,
 
     subpop_sample_list = subpop_sample_list,
 
@@ -178,12 +181,15 @@ workflow gwas {
     Array[File] pheno_covar_names = gwas.pheno_covar_names
     #Array[File] pheno_readme = gwas.pheno_readme
 
+    File imputed_snp_freqs = gwas.imputed_snp_freqs
+
     File my_str_gwas = gwas.my_str_gwas
     File plink_snp_gwas = gwas.plink_snp_gwas
     File peaks = gwas.peaks
     File peaks_readme = gwas.peaks_readme
+    File overview_manhattan = gwas.overview_manhattan
     File finemapping_regions = gwas.finemapping_regions
     File finemapping_regions_readme = gwas.finemapping_regions_readme
-    Array[File] ethnic_my_str_gwas = gwas.ethnic_my_str_gwas
+    Array[File]? ethnic_my_str_gwas = gwas.ethnic_my_str_gwas
   }
 }

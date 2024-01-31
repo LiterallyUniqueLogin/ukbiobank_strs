@@ -310,6 +310,27 @@ task write_sample_list {
   }
 }
 
+task write_sample_list_plink_style {
+  input {
+    File sample_list
+  }
+
+  output {
+    File out = "out.samples"
+  }
+
+  command <<<
+    envsetup awk '{print $1 " " $1}' ~{sample_list} > out.samples
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    shortTask: true
+    dx_timeout: "5m"
+    memory: "2GB"
+  }
+}
+
 task subset_npy_to_sample_list {
   input {
     String script_dir
@@ -652,36 +673,36 @@ task transform_trait_values {
 
 ######## STR calling and QC, SNP QC ###########
 
+# there seems to be slightly (order of 1/100) discrepencies
+# between this estimation and the estimation given by my old calc_macs
+# code, possibly due to rounding plink performs at some intermediate step
+# seems good enough for use
 task imputed_snp_frequencies {
   input {
-    String script_dir
-    File script = "~{script_dir}/association/calc_macs.py"
-    File sample_utils = "~{script_dir}/association/sample_utils.py"
-    File python_array_utils = "~{script_dir}/association/python_array_utils.py"
+    PFiles imputed_snp_pfiles
+    File plink_style_sample_file
+    # region bounds
 
-    bgen imputed_snp_bgen
-    File samples
-    File all_samples
-    region bounds
+    String out
   }
 
   output {
-    File counts = "snp_macs.tab"
+    File afreq = "~{out}.afreq"
   }
 
   command <<<
-    envsetup ~{script} \
-      snp_macs.tab \
-      ~{imputed_snp_bgen.bgen} \
-      ~{bounds.start} \
-      ~{bounds.end} \
-      ~{samples} \
-      ~{all_samples}
+    envsetup plink2 \
+      --memory 7500 \
+      --threads 4 \
+      --pfile $(echo '~{imputed_snp_pfiles.pgen}' | sed -e 's/\.pgen$//') \
+      --keep ~{plink_style_sample_file} \
+      --freq cols=+pos \
+      --out ~{out} \
   >>>
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
-    dx_timeout: "12h"
+    dx_timeout: "3h"
     memory: "8GB" # this is tied to the memory and threads hardcoded in the plink command
   }
 }
@@ -1373,7 +1394,7 @@ task overview_manhattan {
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.6"
     dx_timeout: "30m"
     memory: "75GB"
   }
@@ -1487,7 +1508,7 @@ task generate_finemapping_regions {
 
     File chr_lens # misc_data/genome/chr_lens.txt
     String phenotype
-    File str_assoc_results
+    File? str_assoc_results
     File snp_assoc_results
     Boolean remove_skips = false
 
@@ -1497,16 +1518,17 @@ task generate_finemapping_regions {
   output {
     File data = "~{prefix}finemapping_regions.tab"
     File readme = "~{prefix}finemapping_regions_README.txt"
+    Array[Array[String]] data_as_array_with_header = read_tsv(stdout())
   }
 
   command <<<
     envsetup ~{script} \
       ~{phenotype} \
       ~{chr_lens} \
-      ~{str_assoc_results} \
       ~{snp_assoc_results} \
       ~{prefix}finemapping_regions.tab \
-      ~{if remove_skips then "--remove-skips" else ""}
+      ~{if remove_skips then "--remove-skips" else ""} \
+      ~{"--my-str-fname " + str_assoc_results} \
   >>>
 
   runtime {

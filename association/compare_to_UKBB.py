@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import gzip
 
 import bokeh.io
 import bokeh.models
@@ -9,81 +8,7 @@ import bokeh.models.formatters
 import bokeh.models.tickers
 import bokeh.plotting
 import bokeh.transform
-import matplotlib.cm
-import matplotlib.colors
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import polars as pl
-#from qqman import qqman
-
-#def validate_our_code():
-#    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 12))
-#
-#    print('loading csvs ... ', flush=True)
-#    my_df = pd.read_csv(
-#        f'{ukb}/association/plots/input/eosinophil_count/my_imputed_snp_chr21_results.tab',
-#        header=0,
-#        delimiter='\t',
-#        usecols=['chrom', 'pos', 'alleles', 'p_eosinophil_count', 'locus_filtered'],
-#        dtype={'chrom': int, 'pos': int, 'alleles': str, 'p_eosinophil_count': float, 'locus_filtered': str},
-#    )
-#    my_df.rename(columns={'chrom': 'CHR', 'pos': 'BP', 'p_eosinophil_count': 'P'}, inplace=True)
-#    alleles = my_df['alleles'].str.split(',', 1, expand=True)
-#    print(my_df.shape)
-#    
-#    my_df = my_df[my_df['locus_filtered'] == 'False']
-#    print(my_df.shape)
-#    my_df['REF'] = alleles.iloc[:, 0]
-#    my_df['ALT'] = alleles.iloc[:, 1]
-#
-#    plink_df = pd.read_csv(
-#        f'{ukb}/association/results/eosinophil_count/plink_snp/results.tab',
-#        header=0,
-#        delimiter='\t',
-#        usecols=['#CHROM', 'POS', 'P', 'REF', 'ALT'],
-#        dtype={'#CHROM': int, 'POS': int, 'P': float}
-#    )
-#    plink_df.rename(columns={'#CHROM': 'CHR', 'POS': 'BP'}, inplace=True)
-#    plink_df = plink_df[plink_df['CHR'] == 21]
-#    print(plink_df.shape)
-#
-#    plink_df = plink_df.merge(
-#        my_df,
-#        how='inner',
-#        on=['BP', 'REF', 'ALT'],
-#        suffixes=(None, '_mine')
-#    )
-#    plink_df = plink_df[['CHR', 'BP', 'P', 'REF', 'ALT']]
-#    print(plink_df.shape)
-#
-#    my_df = my_df.merge(
-#        plink_df,
-#        how='inner',
-#        on=['BP', 'REF', 'ALT'],
-#        suffixes=(None, '_theirs')
-#    )
-#    my_df = my_df[['CHR', 'BP', 'P']]
-#    print(my_df.shape)
-#
-#    print('plotting manhattans ... ', flush=True)
-#    qqman.manhattan(
-#        my_df,
-#        cmap=matplotlib.cm.get_cmap('viridis'),
-#        ax=ax1,
-#        title="P-values from this study's code",
-#        suggestiveline=False
-#    )
-#
-#    qqman.manhattan(
-#        plink_df,
-#        cmap=matplotlib.cm.get_cmap('viridis'),
-#        ax=ax2,
-#        title='Plink p-values',
-#        suggestiveline=False
-#    )
-#
-#    plt.savefig(f'{ukb}/export_scripts/results/validate_our_code.png')
 
 def linear_int_interpolate(c1, c2, dist):
     c_new = []
@@ -91,24 +16,23 @@ def linear_int_interpolate(c1, c2, dist):
         c_new.append(coord1 + round((coord2 - coord1)*dist))
     return c_new
 
-def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_pipeline_tsv):
+def scatter_with_panukbb(out, pan_ukbb_tsv, my_pipeline_tsv):
     print('loading panukbb ... ', flush=True)
     panukbb_df = pl.scan_csv(
-        #f'{ukb}/misc_data/snp_summary_stats/bilirubin/neale/biomarkers-30840-both_sexes-irnt.tsv',
         pan_ukbb_tsv,
-        sep='\t',
+        separator='\t',
         dtypes={'chr': str, 'pos': int, 'ref': str, 'alt': str, 'pval_EUR': float},
         null_values='NA'
-    ).rename({'pval_EUR': 'p'}).filter(
+    ).rename({'neglog10_pval_EUR': 'p'}).filter(
         pl.col('chr') != 'X'
-    ).with_column(
+    ).with_columns(
         pl.col('chr').cast(int)
     ).select(['chr', 'pos', 'ref', 'alt', 'p'])
 
     print('loading plink ... ', flush=True)
     my_pipeline_df = pl.scan_csv(
         my_pipeline_tsv,
-        sep='\t',
+        separator='\t',
         dtypes={'#CHROM': int, 'POS': int, 'REF': str, 'ALT': str, 'P': float},
         null_values='NA'
     ).rename(
@@ -123,12 +47,12 @@ def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_pipeline_tsv):
         on=['chr', 'pos', 'ref', 'alt'],
         suffix='_mine'
     ).with_columns([
-        (-pl.max([1e-50, pl.col('p')]).log10()).alias('p'),
-        (-pl.max([1e-50, pl.col('p_mine')]).log10()).alias('p_mine'),
+        (pl.min_horizontal(50, pl.col('p'))).alias('p'),
+        (-pl.max_horizontal(1e-50, pl.col('p_mine')).log10()).alias('p_mine'),
     ]).select([
         (pl.col('p')*n_rects).floor()/n_rects,
         (pl.col('p_mine')*n_rects).floor()/n_rects
-    ]).groupby(['p', 'p_mine']).agg(pl.count()).collect()
+    ]).group_by(['p', 'p_mine']).agg(pl.count()).collect()
 
     print('plotting ... ', flush=True)
 
@@ -150,11 +74,6 @@ def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_pipeline_tsv):
         low=1,
         high=max(df['count'].to_numpy()),
         low_color=(255, 255, 255)
-    )
-    color_mapper = bokeh.models.LogColorMapper(
-        palette = palette,
-        low=0,
-        high=max(df['count'].to_numpy())
     )
 
     cds = bokeh.models.ColumnDataSource(dict(
@@ -189,14 +108,13 @@ def scatter_with_panukbb(outdir, pan_ukbb_tsv, my_pipeline_tsv):
     fig.background_fill_color = None
     fig.border_fill_color = None
     fig.grid.grid_line_color=None
-    bokeh.io.export_svg(fig, filename=f'{outdir}/panukbb_scatter.svg')
-    bokeh.io.export_png(fig, filename=f'{outdir}/panukbb_scatter.png')
+    bokeh.io.export_svg(fig, filename=f'{out}.svg')
+    bokeh.io.export_png(fig, filename=f'{out}.png')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('outdir')
+    parser.add_argument('out')
     parser.add_argument('pan_ukbb_tsv')
     parser.add_argument('my_pipeline_tsv')
     args = parser.parse_args()
-    #validate_our_code()
-    scatter_with_panukbb(args.outdir, args.pan_ukbb_tsv, args.my_pipeline_tsv)
+    scatter_with_panukbb(args.out, args.pan_ukbb_tsv, args.my_pipeline_tsv)

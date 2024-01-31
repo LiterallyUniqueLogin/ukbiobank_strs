@@ -38,6 +38,7 @@ workflow prep_samples_and_phenotype {
     File? premade_pheno_covar_names
     File? premade_pheno_readme
 
+    Boolean other_ethnicities = true
     Boolean transform = true
 
     # If specified, must contain all samples of all ethnicities that you want included
@@ -57,18 +58,23 @@ workflow prep_samples_and_phenotype {
     sc = sc_white_brits
   }
 
-  call gwas_tasks.ethnic_sample_lists as ethnic_sample_lists_task { input: 
-    script_dir = script_dir,
-    white_brits_sample_list = white_brits_sample_list.data,
-    sc_ethnicity_self_report = sc_ethnicity_self_report
-  }
+  if (other_ethnicities) { 
+    call gwas_tasks.ethnic_sample_lists as ethnic_sample_lists_task { input: 
+      script_dir = script_dir,
+      white_brits_sample_list = white_brits_sample_list.data,
+      sc_ethnicity_self_report = sc_ethnicity_self_report
+    }
 
-  Array[String] ethnicities = ethnic_sample_lists_task.ethnicities
-  Array[String] all_ethnicities_ = flatten([["white_brits"], ethnicities])
-  Array[File] ethnic_sample_lists = ethnic_sample_lists_task.sample_lists
-  Array[File] all_sample_lists = flatten([
-    [white_brits_sample_list.data], ethnic_sample_lists
-  ])
+    Array[String] nontrivial_all_ethnicities = flatten([
+      ["white_brits"], ethnic_sample_lists_task.ethnicities
+    ])
+    Array[File] nontrivial_all_sample_lists = flatten([
+      [white_brits_sample_list.data], ethnic_sample_lists_task.sample_lists
+    ])
+  }
+  
+  Array[String] all_ethnicities_ = select_first([nontrivial_all_ethnicities, ["white_brits"]])
+  Array[File] all_sample_lists = select_first([nontrivial_all_sample_lists, [white_brits_sample_list.data]])
 
   call gwas_tasks.write_sample_list as sex_aneuploidy_sample_list { input:
     script_dir = script_dir,

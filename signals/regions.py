@@ -79,31 +79,36 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('phenotype')
     parser.add_argument('chr_lens_fname')
-    parser.add_argument('my_str_fname')
     parser.add_argument('plink_imputed_snp_fname')
     parser.add_argument('out_fname')
     parser.add_argument('--remove-skips', action='store_true')
+    parser.add_argument('--my-str-fname')
     args = parser.parse_args()
 
     phenotype = args.phenotype
 
-    results = pd.read_csv(
-        #f"{ukb}/association/results/{phenotype}/my_str/results.tab",
-        args.my_str_fname,
-        header=0,
-        usecols=['chrom', 'pos', f'p_{phenotype}', 'locus_filtered'],
-        delimiter='\t',
-        encoding='UTF-8',
-        dtype={'chrom': int, 'pos': int, f'p_{phenotype}': float, 'locus_filtered': str}
-    )
-    results = results.loc[results[f'p_{phenotype}'] <= 5e-4, :]
-    results = results.loc[results['locus_filtered'] == 'False', :]
-
     pthresh = 5e-8
-    itrs = [
-        plink_snp_output_itr(args.plink_imputed_snp_fname, pthresh),
-        my_str_output_itr(phenotype, args.my_str_fname, pthresh)
-    ]
+    snp_itr = plink_snp_output_itr(args.plink_imputed_snp_fname, pthresh)
+
+    if args.my_str_fname:
+        results = pd.read_csv(
+            args.my_str_fname,
+            header=0,
+            usecols=['chrom', 'pos', f'p_{phenotype}', 'locus_filtered'],
+            delimiter='\t',
+            encoding='UTF-8',
+            dtype={'chrom': int, 'pos': int, f'p_{phenotype}': float, 'locus_filtered': str}
+        )
+        results = results.loc[results[f'p_{phenotype}'] <= 5e-4, :]
+        results = results.loc[results['locus_filtered'] == 'False', :]
+
+        itrs = [
+            snp_itr,
+            my_str_output_itr(phenotype, args.my_str_fname, pthresh)
+        ]
+    else:
+        itrs = [snp_itr]
+
     itrs = [filter_MHC_itr(itr) for itr in itrs]
     with open(args.out_fname[:-4] + '_README.txt', 'w') as readme:
         readme.write(
@@ -121,11 +126,14 @@ def main():
             if prev_clump is not None and prev_clump[0] == clump[0] and prev_clump[2] >= clump[1]:
                 print(prev_clump, clump)
                 assert False
-            strs = np.any(
-                (results['chrom'] == clump[0]) &
-                (clump[1] <= results['pos']) &
-                (results['pos'] <= clump[2])
-            )
+            if args.my_str_fname:
+                strs = np.any(
+                    (results['chrom'] == clump[0]) &
+                    (clump[1] <= results['pos']) &
+                    (results['pos'] <= clump[2])
+                )
+            else:
+                strs = False
             if args.remove_skips and ((
                 phenotype == 'urate' and
                 clump[0] == 4 and

@@ -2,6 +2,7 @@ import ast
 import copy
 import time
 from typing import Dict, Tuple, Optional, Set
+import sys
 
 import bokeh.colors
 import bokeh.colors.named
@@ -14,7 +15,6 @@ import bokeh.models.callbacks
 import bokeh.models.tools
 import bokeh.plotting
 import bokeh.resources
-import colorcet
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -113,7 +113,7 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
         header = tsv.readline().strip()
     unconditional_results = pl.scan_csv(
         unconditional_results_fname,
-        sep='\t',
+        separator='\t',
         skip_rows=1,
         has_header=False,
         with_column_names = lambda _: fix_cols(header),
@@ -222,7 +222,12 @@ def load_my_snp_results(snp_results_fname, phenotype, binary):
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_snp_results
 
-def load_plink_results(phenotype, binary, unconditional_results_fname, conditional_results_fname=None):
+def load_plink_results(
+    phenotype,
+    binary,
+    unconditional_results_fname,
+    conditional_results_fname=None,
+):
     # TODO remove conditional snps
     # Load plink SNP results
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
@@ -239,7 +244,7 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
     start_time = time.time()
     unconditional_results = pl.scan_csv(
         unconditional_results_fname,
-        sep='\t',
+        separator='\t',
         null_values='NA'
     ).filter(
         pl.col('P') <  5e-5
@@ -252,18 +257,22 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
         'P': 'p_val',
         'T_STAT': 't_stat',
         'ERRCODE': 'error',
-        # these last three only occur in logistic regression
         **binary_colnames
     }).select([
         pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 't_stat', 'error', *binary_colnames.values()]
-    ]).collect().to_pandas()
+    ])
+
+    if binary == 'logistic':
+        unconditional_results = unconditional_results.rename(
+            {'firth?': 'firth'}
+        )
 
     if not conditional_results_fname:
         results = unconditional_results
     else:
         results = pl.scan_csv(
             conditional_results_fname,
-            sep='\t',
+            separator='\t',
             null_values='NA'
         ).rename({
             '#CHROM': 'chr',
@@ -274,61 +283,62 @@ def load_plink_results(phenotype, binary, unconditional_results_fname, condition
             'P': 'p_val',
             'T_STAT': 't_stat',
             'ERRCODE': 'error',
-            # these last three only occur in logistic regression
             **binary_colnames
-        }).select([
+        }).filter(
+            results[results['error'] != 'CONST_OMITTED_ALLELE']
+        ).select([
             pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 't_stat', 'error', *binary_colnames.values()]
-        ]).collect().to_pandas()
+        ])
 
-        unconditional_results['p_val'] = np.maximum(unconditional_results['p_val'], 1 / 10**max_p_val)
-        unconditional_results['p_val'] = -np.log10(unconditional_results['p_val'])
-        unconditional_results.rename(
+        unconditional_results = unconditional_results.with_columns([
+            (-pl.max_horizontal('p_val', pl.lit(1/10**max_p_val)).log10()).alias('p_val')
+        ]).rename(
             columns={'p_val': 'unconditional_p', 't_stat': 'unconditional_t_stat'},
-            inplace=True
+        ).select(
+            ['chr', 'pos', 'ref', 'alt', 'unconditional_p', 'unconditional_t_stat']
         )
-        unconditional_results = unconditional_results[['chr', 'pos', 'unconditional_p', 'unconditional_t_stat']]
 
-        results = results.merge(
+        results = results.join(
             unconditional_results,
-            on=['chr', 'pos'],
+            on=['chr', 'pos', 'ref', 'alt'],
             how = 'inner'
-        ) # subsets to only those which passed the p-val threshold in the unconditional run
+        )
 
-    if binary == 'logistic':
-        results.rename(columns={'firth?': 'firth'}, inplace=True)
-
-    results = utils.df_to_recarray(results)
-
-    results = results[results['error'] != 'CONST_OMITTED_ALLELE']
+    results = results.filter(
+        pl.col('error') != 'CONST_OMITTED_ALLELE'
+    )
     if binary == 'logistic':
         # in theory could keep unfinished error codes and just note them,
         # but easier to ignore
-        results = results[
-            (results['error'] != 'FIRTH_CONVERGE_FAIL') &
-            (results['error'] != 'UNFINISHED')
-        ]
-    results['p_val'] = np.maximum(results['p_val'], 1 / 10**max_p_val)
-    results['p_val'] = -np.log10(results['p_val'])
+        results = results.filter(
+            (pl.col('error') != 'FIRTH_CONVERGE_FAIL') &
+            (pl.col('error') != 'UNFINISHED')
+        )
+
+    results = results.with_columns([
+        (-pl.max_horizontal('p_val', pl.lit(1/10**max_p_val)).log10()).alias('p_val')
+    ])
 
     # we've already filtered all the spots that had errors in the unconditional run
     # having a VIF_TOO_HIGH or CORR_TOO_HIGH only in the conditional run just means that
     # SNP is extremely correlated with the conditioning variants, which means
     # its p-value should be very small, so this isn't an issue.
+    results = results.collect()
+
     if not conditional_results_fname:
-        if not np.all(results['error'] == '.'):
-            print(np.unique(results['error']))
-            assert False
+        assert results.select((pl.col('error') == '.').all()).item(), results.select('error').unique()
     else:
-        assert np.all(
-            (results['error'] == '.') |
-            (results['error'] == 'VIF_TOO_HIGH') |
-            (results['error'] == 'CORR_TOO_HIGH')
-        )
-    # rename for readability
-    results['error'][results['error'] == '.'] = 'none'
-    results['p_val'][results['error'] == 'VIF_TOO_HIGH'] = 0
+        assert results.select(
+            pl.col('error').is_in(['.', 'VIF_TOO_HIGH', 'CORR_TOO_HIGH']).all().item()
+        ), results.select('error').unique()
+
+    results = results.with_columns(
+        pl.when(pl.col('error') != '.').then(pl.col('error')).otherwise(pl.lit('none')).alias('error'), # rename for readability
+        pl.when(pl.col('error') != 'VIF_TOO_HIGH').then(pl.col('p_val')).otherwise(pl.lit(0)).alias('p_val')
+    )
 
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
+
     return results
 
 def load_gwas_catalog(gwas_catalog_fname, phenotype):
@@ -465,38 +475,37 @@ def display_plink_snp_run_date(manhattan_plot, plink_snp_run_date, fontsize=18):
         text_font_size=f'{fontsize}px'
     ), 'below')
 
-def load_and_merge_peaks_into_dfs(peaks_fname, my_str_results,  plink_snp_results):
+def load_and_merge_peaks_into_dfs(peaks_fname, my_str_results, plink_snp_results):
     print("Adding peak data ... ", end='', flush=True)
     start_time = time.time()
 
-    peaks = pd.read_csv(
+    peaks = pl.read_csv(
         peaks_fname,
-        delimiter='\t',
-        header=0,
-        dtype=utils.get_dtypes(peaks_fname, {'ref_(snp_only)': object, 'alt_(snp_only)': object})
+        separator='\t',
+    ).rename({
+        'chrom': 'chr',
+        'ref_(snp_only)': 'ref',
+        'alt_(snp_only)': 'alt'
+    }).with_columns(
+        pl.lit(1).alias('marker')
     )
-    peaks.rename(columns={'chrom': 'chr', 'ref_(snp_only)': 'ref', 'alt_(snp_only)': 'alt'}, inplace=True)
-    peaks['marker'] = 1
 
-    str_peaks = peaks[peaks['variant_type'] == 'STR']
-    my_str_results = pd.DataFrame.from_records(my_str_results)
-    my_str_results = my_str_results.merge(
-        str_peaks[['chr', 'pos', 'marker']],
+    my_str_results = pl.DataFrame(my_str_results).join(
+        peaks.filter(pl.col('variant_type') == 'STR').select('chr', 'pos', 'marker'),
         how='left',
         on=['chr', 'pos']
-    )
-    my_str_results['is_peak'] = ~np.isnan(my_str_results['marker'])
-    my_str_results = utils.df_to_recarray(my_str_results)
+    ).with_columns(
+        (~pl.col('marker').is_null()).alias('is_peak')
+    ).drop('marker').to_numpy(structured=True)
 
-    snp_peaks = peaks[peaks['variant_type'] == 'SNP']
-    plink_snp_results = pd.DataFrame.from_records(plink_snp_results)
-    plink_snp_results = plink_snp_results.merge(
-        snp_peaks[['chr', 'pos', 'ref', 'alt', 'marker']],
+    plink_snp_results = plink_snp_results.join(
+        peaks.filter(pl.col('variant_type') == 'SNP').select('chr', 'pos', 'ref', 'alt', 'marker'),
         how='left',
         on=['chr', 'pos', 'ref', 'alt']
-    )
-    plink_snp_results['is_peak'] = ~np.isnan(plink_snp_results['marker'])
-    plink_snp_results = utils.df_to_recarray(plink_snp_results)
+    ).with_columns(
+        (~pl.col('marker').is_null()).alias('is_peak')
+    ).drop('marker').to_numpy(structured=True)
+
     print(f"done ({time.time() - start_time:.2e}s)", flush=True)
     return my_str_results, plink_snp_results
 
