@@ -1310,6 +1310,41 @@ task plink_snp_association {
 ## TODO append mfi to plink logistic run
 ## TODO compare my to plink GWAS
 
+task qq_plot {
+  input {
+    String script_dir
+    File script = "~{association}/qq_plot.py"
+
+    File results_tab
+    String p_val_col
+    String phenotype_name
+    String variant_type
+    String out_name
+    String? null_values
+  }
+
+  output {
+    File plot = "~{out_name}.png"
+  }
+
+  command <<<
+    envsetup ~{script} \
+      ~{results_tab} \
+      ~{p_val_col} \
+      ~{variant_type} \
+      ~{phenotype_name} \
+      ~{out_name} \
+      ~{"--null_values " + null_values}
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.6"
+    dx_timeout: "30m"
+    memory: "10GB"
+  }
+
+}
+
 task manhattan {
   input {
     String script_dir

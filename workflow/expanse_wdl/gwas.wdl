@@ -185,6 +185,9 @@ workflow gwas {
 
     File my_str_gwas = gwas.my_str_gwas
     File plink_snp_gwas = gwas.plink_snp_gwas
+
+    File snp_qq_plot = gwas.snp_qq_plot
+    File str_qq_plot = gwas.str_qq_plot
     File peaks = gwas.peaks
     File peaks_readme = gwas.peaks_readme
     File overview_manhattan = gwas.overview_manhattan

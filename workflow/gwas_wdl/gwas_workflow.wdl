@@ -244,6 +244,25 @@ workflow gwas {
 
   File my_str_gwas_ = select_first([continuous_my_str_gwas.tsv, binary_my_str_gwas.tsv])
 
+  call gwas_tasks.qq_plot as snp_qq_plot_ { input :
+    script_dir = script_dir,
+    results_tab = plink_snp_association.tsv,
+    p_val_col = 'P',
+    phenotype_name = phenotype_name,
+    variant_type = 'SNP',
+    out_name = 'snp_qq_plot',
+    null_values = 'NA'
+  }
+
+  call gwas_tasks.qq_plot as str_qq_plot_ { input :
+    script_dir = script_dir,
+    results_tab = my_str_gwas,
+    p_val_col = 'p_~{phenotype_name}',
+    phenotype_name = phenotype_name,
+    variant_type = 'STR',
+    out_name = 'str_qq_plot'
+  }
+
   # TODO interactive manhattan
 
   call gwas_tasks.generate_peaks { input :
@@ -337,6 +356,9 @@ workflow gwas {
 
     File my_str_gwas = my_str_gwas_
     File plink_snp_gwas = plink_snp_association.tsv
+
+    File snp_qq_plot = snp_qq_plot_.plot
+    File str_qq_plot = str_qq_plot_.plot
     File peaks = generate_peaks.peaks
     File peaks_readme = generate_peaks.readme
     File overview_manhattan = overview_manhattan_.plot
