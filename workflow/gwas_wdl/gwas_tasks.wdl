@@ -1,5 +1,8 @@
 version 1.0
 
+# TODO
+# between 0.02 and 0.03s/SNP for logistic
+
 # any input file with a default relative to the script_dir
 # needs to be supplied by the user, it won't be the product of another task
 # if input files to tasks can be supplied by another tasks output, 
@@ -342,6 +345,10 @@ task subset_npy_to_sample_list {
     File sample_list
 
     String prefix = "subsetted"
+
+    # this task seems to be improperly cached on 02/06/2024, so this should 
+    # cause cache failures and perhaps give a better result
+    Int cache_breaker = 0 
   }
 
   output {
@@ -890,7 +897,7 @@ task fig_4a {
 
 ########### Running and plotting associations #############
 
-task association_regions {
+task bp_association_regions {
   input {
     File chr_lens
     Int region_len
@@ -932,6 +939,43 @@ task association_regions {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     shortTask: true
     dx_timeout: "5m"
+    memory: "2GB"
+  }
+}
+
+task snp_association_regions {
+  input {
+    Array[File] mfis # in chromosome order
+  }
+
+  output {
+    Array[Array[String]] out_tsv = read_tsv(stdout())
+  }
+
+  command <<<
+    for mfi in ~{mfis} ; do
+      chrom=$((chrom+1))
+      # start at pos 0
+      # grab every millionth line, ignoring lines with rs numbers instead of positions
+      # grab the last line (I've manually confirmed that none of those don't have positions)
+      # remove the chrom and allele information, just leaving positions
+      # pair lines so intead of reading a\nb\nc\n... it reads a\tb\nb+1\tc\n...
+      # prepend the chromosome
+      { 
+        echo 0 ; 
+        awk 'BEGIN {FS="\t"} ; { if (NR % 100000 == 0) { while (!match($1, ".*:.*")) { getline } print $1 }}' $mfi ;
+        tail -1 $mfi | cut -f 1 -d$'\t' ;
+      } | \
+      sed -e 's/.*://' -e 's/_.*//' |  \
+      awk '{ printf($0 "\t") ; while (getline > 0) { printf($0 "\n" $0 + 1 "\t") } }' | \
+      head -n -1 | \
+      awk '{print '$chrom' "\t" $0}'
+    done
+  >>>
+
+  runtime {
+    docker: "ubuntu:22.04"
+    dx_timeout: "30m"
     memory: "2GB"
   }
 }
@@ -1228,15 +1272,15 @@ task prep_plink_input {
     File script = "~{script_dir}/association/prep_plink_input.py"
     File python_array_utils = "~{script_dir}/association/python_array_utils.py"
 
-    File? shared_covars # from task
-    File? shared_covar_names # from task
-    File transformed_phenotype # from task
-    File pheno_covar_names # from task
-    File? conditional_genotypes # npy from task prep conditional input
-    File? conditional_covar_names # varnames from task above
-    Boolean is_binary
-    String binary_type # linear or logistic, only needs to be set if is_binary == true
     String phenotype_name
+    File pheno_data
+    File pheno_covar_names
+    File? shared_covars
+    File? shared_covar_names
+    File? conditional_genotypes
+    File? conditional_covar_names
+    Boolean is_binary
+    String binary_type # linear or logistic, only read if is_binary == true
   }
 
   output {
@@ -1248,7 +1292,7 @@ task prep_plink_input {
     envsetup ~{script} \
       out.tab \
       ~{phenotype_name} \
-      ~{transformed_phenotype} \
+      ~{pheno_data} \
       ~{pheno_covar_names} \
       ~{shared_covars} \
       ~{shared_covar_names} \
@@ -1270,23 +1314,26 @@ task plink_snp_association {
     File script = "~{script_dir}/association/plink_association.sh"
     String plink_command
 
-    PFiles imputed_snp_p_file # TODO could generate this with task
-    File pheno_data # from task
+    PFiles imputed_snp_p_file
+    File pheno_data
 
     Int chrom
     Int? start
     Int? end
     String phenotype_name
-    String binary_type # linear or linear_binary or logistic
+    String binary_type # linear or logistic or firth
+    Boolean transformed
+
+    String pheno_env_var = if binary_type == "linear" && transformed then "rin_~{phenotype_name}" else phenotype_name
   }
 
   output {
-    File data = "plink2." + (if binary_type == "linear" then "rin_" else "") + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else "linear")
+    File data = "plink2." + (if binary_type == "linear" && transformed then "rin_" else "") + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else if binary_type == "linear" then "linear" else "firth")
     File log = "plink2.log"
   }
 
   command <<<
-    PHENOTYPE=~{phenotype_name} \
+    PHENOTYPE=~{pheno_env_var} \
     BINARY_TYPE=~{binary_type} \
     CHROM=~{chrom} \
     OUT_DIR=. \
@@ -1296,11 +1343,11 @@ task plink_snp_association {
     PROJECT_TEMP=. \
     ~{"START=" + start} \
     ~{"END=" + end} \
-    envsetup ~{script}
+    ~{script}
   >>>
 
   runtime {
-    docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
+    docker: "quay.io/thedevilinthedetails/work/plink:v2.00a6LM_AVX2_Intel_5_Feb_2024"
     memory: "56GB"
     cpus: 28
     dx_timeout: "24h"
@@ -1313,7 +1360,7 @@ task plink_snp_association {
 task qq_plot {
   input {
     String script_dir
-    File script = "~{association}/qq_plot.py"
+    File script = "~{script_dir}/association/qq_plot.py"
 
     File results_tab
     String p_val_col
@@ -1342,7 +1389,6 @@ task qq_plot {
     dx_timeout: "30m"
     memory: "10GB"
   }
-
 }
 
 task manhattan {
