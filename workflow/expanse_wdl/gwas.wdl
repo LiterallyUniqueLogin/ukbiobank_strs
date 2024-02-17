@@ -24,6 +24,7 @@ workflow gwas {
     Boolean transform = true
     Boolean other_ethnicities = true
     Boolean is_binary = false
+    Boolean firth = false
     Boolean is_zero_one_neg_nan = false # different binary encoding
 
     # If specified, must contain all samples of all ethnicities that you want included
@@ -133,6 +134,7 @@ workflow gwas {
     categorical_covariate_names = categorical_covariate_names,
     categorical_covariate_scs = categorical_covariates.data,
     is_binary = is_binary,
+    firth = firth,
     is_zero_one_neg_nan = is_zero_one_neg_nan,
     date_of_most_recent_first_occurrence_update = files.date_of_most_recent_first_occurrence_update,
 

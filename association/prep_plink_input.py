@@ -8,8 +8,8 @@ import python_array_utils as utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument('outloc')
-parser.add_argument('phenotype')
-parser.add_argument('transformed_phenotype_file')
+parser.add_argument('phenotype_name')
+parser.add_argument('phenotype_fname')
 parser.add_argument('pheno_covar_names')
 parser.add_argument('shared_covar_file', nargs='?')
 parser.add_argument('shared_covar_names', nargs='?')
@@ -20,28 +20,22 @@ args = parser.parse_args()
 
 assert bool(args.conditional_genotypes) == bool(args.conditional_covar_names)
 
-phenotype = args.phenotype
+pheno_name = args.phenotype_name
 
-subset_transformed_phenotype = np.load(args.transformed_phenotype_file)
+data = np.load(args.phenotype_fname)
 
 if args.shared_covar_file:
     shared_covars = np.load(args.shared_covar_file)
     data = utils.merge_arrays(
-        subset_transformed_phenotype,
+        data,
         shared_covars
     )
-else:
-    data = subset_transformed_phenotype
 
 data = data[np.all(~np.isnan(data), axis=1), :]
 data = np.concatenate((data[:, 0:1], data), axis=1)
 
-col_names = ['FID', 'IID']
-if not args.binary:
-    # phenotype has already been transformed, so no need to further modify
-    col_names.append(f'rin_{phenotype}')
-else:
-    col_names.append(phenotype)
+col_names = ['FID', 'IID', pheno_name]
+if args.binary:
     if args.binary == 'logistic':
         # plink expects and ouptuts a 1=control, 2=case encoding
         # instead of the 0=control, 1=case encoding we use elsewhere
@@ -84,7 +78,7 @@ if args.conditional_genotypes:
 
 # standardize covariates for numerical stability
 stds = data[:, 3:].std(axis=0)
-stds[stds == 0] = 1 # simmply ignore covariates which are constant
+stds[stds == 0] = 1 # simply ignore covariates which are constant
 data[:, 3:] = (data[:, 3:] - data[:, 3:].mean(axis=0))/stds
 
 np.savetxt(

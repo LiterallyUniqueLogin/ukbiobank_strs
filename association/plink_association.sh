@@ -18,7 +18,7 @@ if [[ ( -n "$START" && -z "$END" ) || ( -z "$START" && -n "$END" ) ]] ; then
 	exit 1
 fi
 
-if [[ ( $BINARY_TYPE != linear ) && ( $BINARY_TYPE != linear_binary ) && ( $BINARY_TYPE != logistic ) ]] ; then
+if [[ ( $BINARY_TYPE != linear ) && ( $BINARY_TYPE != logistic ) && ( $BINARY_TYPE != firth ) ]] ; then
 	echo "BINARY_TYPE not set correctly. Exiting."
 	exit 1
 fi
@@ -42,23 +42,28 @@ else
 fi
 
 if [[ "$BINARY_TYPE" == linear ]] ;  then
-	PHENO_NAME=rin_"$PHENOTYPE"
-	COLS=""
+	COLS="cols=-test,-nobs"
+	BINARY_GLM_FLAG=""
 else
-	PHENO_NAME="$PHENOTYPE"
-	COLS="cols=+a1countcc,-tz,-nobs,-test"
+	COLS="cols=+gcountcc,-nobs,-test"
+	#BINARY_GLM_FLAG="single-prec-cc cc-residualize"
+	BINARY_GLM_FLAG=""
+	if [[ "$BINARY_TYPE" == firth ]] ;  then
+		BINARY_GLM_FLAG="$BINARY_GLM_FLAG firth"
+	fi
 fi
+
 
 covar_names=$(head -n 1 "$PHENO_FILE" | cut -f 4-)
 "$PLINK_EXECUTABLE" \
     --pheno "$PHENO_FILE" \
     --no-psam-pheno \
-    --pheno-name "$PHENO_NAME" \
+    --pheno-name "$PHENOTYPE" \
     --pfile "$P_FILE" \
     --chr "$CHROM" \
     $BED_FILE_COMMAND \
     --mac 20 \
-    --glm omit-ref pheno-ids hide-covar $COLS \
+    --glm omit-ref pheno-ids hide-covar $COLS $BINARY_GLM_FLAG \
     $(if [[ -n "$covar_names" ]] ; then echo "--covar-name $covar_names" ; else echo "allow-no-covars" ; fi) \
     --ci 0.99999995 \
     --memory 56000 \

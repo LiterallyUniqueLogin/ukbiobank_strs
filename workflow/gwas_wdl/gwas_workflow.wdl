@@ -26,6 +26,7 @@ workflow gwas {
     Array[String]? categorical_covariate_names
     Array[File]? categorical_covariate_scs
     Boolean is_binary
+    Boolean firth = false
     Boolean is_zero_one_neg_nan
     String date_of_most_recent_first_occurrence_update
 
@@ -137,10 +138,10 @@ workflow gwas {
   } 
 
   if (!is_binary) {
-    scatter (association_region in str_association_regions.out_tsv) {
-      Int continuous_chrom = association_region[0]
-      Int continuous_start = association_region[1]
-      Int continuous_end = association_region[2]
+    scatter (str_association_region in str_association_regions.out_tsv) {
+      Int continuous_chrom = str_association_region[0]
+      Int continuous_start = str_association_region[1]
+      Int continuous_end = str_association_region[2]
 
       Int continuous_chrom_minus_one = continuous_chrom - 1
 
@@ -172,24 +173,38 @@ workflow gwas {
 
   call gwas_tasks.prep_plink_input { input :
     script_dir = script_dir,
+    phenotype_name = if transform && !is_binary then "rin_~{phenotype_name}" else phenotype_name,
+    pheno_data = phenos_to_associate[0],
+    pheno_covar_names = prep_samples_and_phenotype.pheno_covar_names[0],
     shared_covars = prep_samples_and_phenotype.shared_covars,
     shared_covar_names = prep_samples_and_phenotype.shared_covar_names,
-    transformed_phenotype = phenos_to_associate[0],
-    pheno_covar_names = prep_samples_and_phenotype.pheno_covar_names[0],
     is_binary = is_binary,
     binary_type = "logistic", # only used if is_binary
-    phenotype_name = phenotype_name
   }
 
-  scatter (chrom in range(22)) {
+  call gwas_tasks.association_regions as snp_association_regions { input :
+    chr_lens = chr_lens,
+    region_len = if !is_binary then 1000000000 else 10000000 # meaning, do this per chromosome if linear, per 10MB otherwise
+  }
+
+  scatter (snp_association_region in snp_association_regions.out_tsv) {
+    Int snp_chrom = snp_association_region[0]
+    Int snp_start = snp_association_region[1]
+    Int snp_end = snp_association_region[2]
+
+    Int snp_chrom_minus_one = snp_chrom - 1
+
     call gwas_tasks.plink_snp_association as chromosomal_plink_snp_association { input :
       script_dir = script_dir,
       plink_command = plink_command,
-      imputed_snp_p_file = imputed_snp_p_files[chrom],
+      imputed_snp_p_file = imputed_snp_p_files[snp_chrom_minus_one],
       pheno_data = prep_plink_input.data,
-      chrom = chrom+1,
-      phenotype_name = phenotype_name,
-      binary_type = "logistic",
+      chrom = snp_chrom,
+      start = snp_start,
+      end = snp_end,
+      phenotype_name = if binary_type == "linear" && transformed then "rin_~{phenotype_name}" else phenotype_name,
+      binary_type = if !is_binary then "linear" else if firth then "firth" else "logistic",
+      # TODO time
     }
   }
 

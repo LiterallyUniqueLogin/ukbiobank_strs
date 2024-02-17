@@ -182,7 +182,7 @@ def main():
     parser.add_argument('peaks_fname')
     parser.add_argument('chr_lens')
     parser.add_argument('--legendless', action='store_true', default=False)
-    parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
+    parser.add_argument('--binary', default=False, choices={'logistic', 'firth'})
     parser.add_argument('--maf-threshold', type=float)
     parser.add_argument('--snp-maf-file')
     parser.add_argument('--info-threshold', type=float)
@@ -212,7 +212,8 @@ def main():
             plink_snp_results
         )
 
-    plink_snp_results = pl.DataFrame(plink_snp_results)
+    if not isinstance(plink_snp_results, pl.DataFrame):
+        plink_snp_results = pl.DataFrame(plink_snp_results)
 
     if args.maf_threshold is not None:
         mafs = pl.scan_csv(

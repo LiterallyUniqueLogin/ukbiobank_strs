@@ -233,10 +233,10 @@ def load_plink_results(
     print(f"Loading plink SNP results for {phenotype} ... ", end='', flush=True)
     start_time = time.time()
 
-    if binary:
+    if binary == 'logistic':
         binary_colnames = {
-            'A1_CASE_CT': 'alt_case_count',
-            'A1_CTRL_CT': 'alt_control_count',
+#            'A1_CASE_CT': 'alt_case_count',
+#            'A1_CTRL_CT': 'alt_control_count',
             'FIRTH?': 'firth?'
         }
     else:
@@ -255,11 +255,10 @@ def load_plink_results(
         'REF': 'ref',
         'ALT': 'alt',
         'P': 'p_val',
-        'T_STAT': 't_stat',
         'ERRCODE': 'error',
         **binary_colnames
     }).select([
-        pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 't_stat', 'error', *binary_colnames.values()]
+        pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error', *binary_colnames.values()]
     ])
 
     if binary == 'logistic':
@@ -281,21 +280,20 @@ def load_plink_results(
             'REF': 'ref',
             'ALT': 'alt',
             'P': 'p_val',
-            'T_STAT': 't_stat',
             'ERRCODE': 'error',
             **binary_colnames
         }).filter(
             results[results['error'] != 'CONST_OMITTED_ALLELE']
         ).select([
-            pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 't_stat', 'error', *binary_colnames.values()]
+            pl.col(col) for col in ['chr', 'pos', 'id', 'ref', 'alt', 'p_val', 'error', *binary_colnames.values()]
         ])
 
         unconditional_results = unconditional_results.with_columns([
             (-pl.max_horizontal('p_val', pl.lit(1/10**max_p_val)).log10()).alias('p_val')
         ]).rename(
-            columns={'p_val': 'unconditional_p', 't_stat': 'unconditional_t_stat'},
+            columns={'p_val': 'unconditional_p'},
         ).select(
-            ['chr', 'pos', 'ref', 'alt', 'unconditional_p', 'unconditional_t_stat']
+            ['chr', 'pos', 'ref', 'alt', 'unconditional_p']
         )
 
         results = results.join(
@@ -307,7 +305,8 @@ def load_plink_results(
     results = results.filter(
         pl.col('error') != 'CONST_OMITTED_ALLELE'
     )
-    if binary == 'logistic':
+    if binary:
+        print('Omitting n SNPs UNFINISHED: ', results.filter(pl.col('error') == 'UNFINISHED').select('error').collect().shape[0])
         # in theory could keep unfinished error codes and just note them,
         # but easier to ignore
         results = results.filter(

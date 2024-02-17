@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 
 import bokeh.io
@@ -12,6 +14,7 @@ parser.add_argument('type')
 parser.add_argument('pheno')
 parser.add_argument('out')
 parser.add_argument('--null-values')
+parser.add_argument('--y-max', type=float)
 args = parser.parse_args()
 
 p_vals = pl.scan_csv(
@@ -32,13 +35,16 @@ p_vals = pl.scan_csv(
     ).log10()).alias('p_val')
 ).sort('p_val').collect().to_numpy().flatten()
 
+if args.y_max:
+    p_vals = np.minimum(p_vals, args.y_max)
+
 null_dist_vals = -np.log10(
     np.arange(0, 1, 1/len(p_vals)) + 1/(len(p_vals)*2)
 )[::-1]
 
 fig = bokeh.plotting.figure(
     x_range=bokeh.models.Range1d(0, max(null_dist_vals)),
-    y_range=bokeh.models.Range1d(0, max(p_vals)),
+    y_range=bokeh.models.Range1d(0, max(p_vals) if args.y_max is None else args.y_max),
     title=f'{args.type} {args.pheno} QQ plot',
     tools='',
     x_axis_label = 'uniform distribution p-values',

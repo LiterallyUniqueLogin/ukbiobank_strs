@@ -1,8 +1,5 @@
 version 1.0
 
-# TODO
-# between 0.02 and 0.03s/SNP for logistic
-
 # any input file with a default relative to the script_dir
 # needs to be supplied by the user, it won't be the product of another task
 # if input files to tasks can be supplied by another tasks output, 
@@ -946,6 +943,7 @@ task bp_association_regions {
 task snp_association_regions {
   input {
     Array[File] mfis # in chromosome order
+    Int region_len
   }
 
   output {
@@ -953,7 +951,7 @@ task snp_association_regions {
   }
 
   command <<<
-    for mfi in ~{mfis} ; do
+    for mfi in ~{sep=" " mfis} ; do
       chrom=$((chrom+1))
       # start at pos 0
       # grab every millionth line, ignoring lines with rs numbers instead of positions
@@ -963,7 +961,7 @@ task snp_association_regions {
       # prepend the chromosome
       { 
         echo 0 ; 
-        awk 'BEGIN {FS="\t"} ; { if (NR % 100000 == 0) { while (!match($1, ".*:.*")) { getline } print $1 }}' $mfi ;
+        awk 'BEGIN {FS="\t"} ; { if (NR % ~{region_len} == 0) { while (!match($1, ".*:.*")) { getline } print $1 }}' $mfi ;
         tail -1 $mfi | cut -f 1 -d$'\t' ;
       } | \
       sed -e 's/.*://' -e 's/_.*//' |  \
@@ -974,7 +972,7 @@ task snp_association_regions {
   >>>
 
   runtime {
-    docker: "ubuntu:22.04"
+    docker: "ubuntu:jammy-20240212"
     dx_timeout: "30m"
     memory: "2GB"
   }
@@ -1322,18 +1320,17 @@ task plink_snp_association {
     Int? end
     String phenotype_name
     String binary_type # linear or logistic or firth
-    Boolean transformed
 
-    String pheno_env_var = if binary_type == "linear" && transformed then "rin_~{phenotype_name}" else phenotype_name
+    String time
   }
 
   output {
-    File data = "plink2." + (if binary_type == "linear" && transformed then "rin_" else "") + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else if binary_type == "linear" then "linear" else "firth")
+    File data = "plink2." + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else if binary_type == "linear" then "linear" else "firth")
     File log = "plink2.log"
   }
 
   command <<<
-    PHENOTYPE=~{pheno_env_var} \
+    PHENOTYPE=~{phenotype_name} \
     BINARY_TYPE=~{binary_type} \
     CHROM=~{chrom} \
     OUT_DIR=. \
@@ -1350,7 +1347,12 @@ task plink_snp_association {
     docker: "quay.io/thedevilinthedetails/work/plink:v2.00a6LM_AVX2_Intel_5_Feb_2024"
     memory: "56GB"
     cpus: 28
-    dx_timeout: "24h"
+    dx_timeout: time #"24h"
+    # roughly 0.0008s/SNP for linear
+    # between 0.02 and 0.03s/SNP for logistic 
+    # ~ 0.25s/SNP for firth
+    # denominators includes ~30% filtered SNPs
+    # all measured at 28cpus and 56GB
   }
 }
 
@@ -1381,7 +1383,7 @@ task qq_plot {
       ~{variant_type} \
       ~{phenotype_name} \
       ~{out_name} \
-      ~{"--null_values " + null_values}
+      ~{"--null-values " + null_values}
   >>>
 
   runtime {
@@ -1456,22 +1458,26 @@ task overview_manhattan {
     File chr_lens
     File str_gwas_results
     File snp_gwas_results
-    File peaks
+    File? peaks
     String ext
+    String binary_type = "linear"
+
+    String prefix = ""
   }
 
   output {
-    File plot = "manhattan.~{ext}"
+    File plot = "~{prefix}manhattan.~{ext}"
   }
 
   command <<<
     envsetup ~{script} \
       ~{phenotype_name} \
-      "manhattan.~{ext}" \
+      "~{prefix}manhattan.~{ext}" \
       ~{str_gwas_results} \
       ~{snp_gwas_results} \
-      ~{peaks} \
+      ~{if defined(peaks) then select_first([peaks]) else "." } \
       ~{chr_lens} \
+      ~{if binary_type != "linear" then "--binary " + binary_type else "" } \
   >>>
 
   runtime {
