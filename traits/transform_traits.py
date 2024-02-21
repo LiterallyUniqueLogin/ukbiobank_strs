@@ -28,20 +28,9 @@ def main():  # noqa: D103
     parser.add_argument('pheno_data')
     args = parser.parse_args()
 
-    # "Subsetting to samples with phenotype that passed sample_qc, "
-    # f"as denoted by the file: {args.samples}\n")
-
     data = np.load(args.pheno_data)
-    with open(args.samples) as sample_file:
-        next(sample_file)
-        samples = np.array([int(sample.strip()) for sample in sample_file])
-    samples = samples.reshape(-1, 1)
-    data = utils.merge_arrays(samples, data)
 
-    # "Not standardizing covariates. Standardization should be done immediately before performing a regression. "
-    # "This way I don't have to keep track of if covariates have standardized yet or not.\n"
     covariates = data[:, 2:]
-
     ranks = rank_phenotypes(data)
     rin_ranks = inverse_normalize_ranks(ranks)
     transformed_data = np.concatenate(

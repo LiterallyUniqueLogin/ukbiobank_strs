@@ -51,6 +51,8 @@ workflow prep_samples_and_phenotype {
     # Shortcuts for rerunning the STR paper analyses without redoing the randomness of subsetting
     Array[File]? cached_unrelated_samples_for_phenotype
     File? cached_shared_covars # not sure why this cached version has different samples
+
+    Int n_pcs = 40
   }
 
   call gwas_tasks.write_sample_list as white_brits_sample_list { input:
@@ -119,7 +121,8 @@ workflow prep_samples_and_phenotype {
     script_dir = script_dir,
     fam_file = fam_file,
     sc_pcs = sc_pcs,
-    sc_assessment_ages = sc_assessment_ages
+    sc_assessment_ages = sc_assessment_ages,
+    n_pcs = n_pcs
   }
 
   File shared_covars_ = select_first([cached_shared_covars, load_shared_covars.shared_covars])

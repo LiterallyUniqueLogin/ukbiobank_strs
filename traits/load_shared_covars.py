@@ -12,7 +12,10 @@ def load_covars():
     parser.add_argument('fam_file')
     parser.add_argument('pcs_fname')
     parser.add_argument('assessment_ages_file')
+    parser.add_argument('n_pcs', type=int)
     args = parser.parse_args()
+
+    assert 0 <= args.n_pcs and args.n_pcs <= 40
 
     """
     Load the sex and population PC covariates. Loads ages at various
@@ -38,7 +41,9 @@ def load_covars():
             delimiter="\t",
             skip_header = 1,
         )
-        [covar_names.write(f"pc{col}\n") for col in range(1, 41)]
+        assert pcs.shape[1] == 41
+        pcs = pcs[:, :(args.n_pcs+1)] # possibly drop pcs
+        [covar_names.write(f"pc{col}\n") for col in range(1, args.n_pcs+1)]
 
         data = python_array_utils.merge_arrays(
             ids_and_sex, pcs
@@ -51,12 +56,6 @@ def load_covars():
 
         # assert sex is either 1 (male) or 2 (female)
         assert np.all((data[:, 1] == 1) | (data[:, 1] == 2))
-
-        # TODO stop this
-        # Standardizing covariates (subtracting mean, then dividing by standard deviation)
-        covars = data[:, 1:]
-        covars = (covars - covars.mean(axis=0))/covars.std(axis=0)
-        data[:, 1:] = covars
 
         np.save(f'{args.outdir}/shared_covars.npy', data)
 

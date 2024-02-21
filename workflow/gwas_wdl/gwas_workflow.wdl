@@ -67,6 +67,8 @@ workflow gwas {
     # Shortcuts for rerunning the STR paper analyses without redoing the randomness of subsetting
     Array[File]? cached_unrelated_samples_for_phenotype
     File? cached_shared_covars # not sure why this cached version has different samples
+
+    Int n_pcs = 40
   }
 
   call prep_samples_and_phenotype_workflow.prep_samples_and_phenotype { input :
@@ -106,7 +108,8 @@ workflow gwas {
     subpop_sample_list = subpop_sample_list,
 
     cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
-    cached_shared_covars = cached_shared_covars
+    cached_shared_covars = cached_shared_covars,
+    n_pcs = n_pcs
   }
 
   call gwas_tasks.write_sample_list_plink_style { input :
@@ -159,7 +162,6 @@ workflow gwas {
         transformed_phenotype = phenos_to_associate[0],
         all_samples_list = all_samples_list,
         is_binary = is_binary,
-        binary_type = "logistic",
         bounds = bounds,
         phenotype_name = phenotype_name,
       }

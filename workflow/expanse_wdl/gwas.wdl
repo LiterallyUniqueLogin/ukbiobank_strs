@@ -37,6 +37,8 @@ workflow gwas {
     Array[File]? cached_unrelated_samples_for_phenotype
     File? cached_shared_covars
 
+    Int n_pcs = 40
+
     # example inputs:
 #    String phenotype_name = "platelet_count"
 #    Int phenotype_id = 30080
@@ -166,6 +168,8 @@ workflow gwas {
 
     cached_unrelated_samples_for_phenotype = cached_unrelated_samples_for_phenotype,
     cached_shared_covars = cached_shared_covars,
+
+    n_pcs = n_pcs
   }
 
   output {

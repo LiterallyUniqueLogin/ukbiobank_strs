@@ -481,6 +481,8 @@ task load_shared_covars {
     File fam_file
     File sc_pcs # 22009
     File sc_assessment_ages
+
+    Int n_pcs = 40
   }
 
   output {
@@ -491,8 +493,7 @@ task load_shared_covars {
   }
 
   command <<<
-    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
-    envsetup ~{script} . ~{fam_file} ~{sc_pcs} ~{sc_assessment_ages}
+    envsetup ~{script} . ~{fam_file} ~{sc_pcs} ~{sc_assessment_ages} ~{n_pcs}
   >>>
 
   runtime {
@@ -1044,22 +1045,10 @@ task str_spot_test {
   }
 
   output {
-    File README = "README.txt"
     File data = "out.tab"
   }
 
   command <<<
-    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
-    ls ~{weighted_binom_conf} # necessary for dxCompiler to bother to localize this file
-    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
-    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
-    envsetup ~{script} \
-      README.txt \
-      strs \
-      ~{phenotype_name} \
-      --readme \
-      --str-vcf ~{str_vcf.vcf} \
-      ~{if is_binary then "--binary logistic" else ""} && \
     envsetup ~{script} \
       out.tab \
       strs \
@@ -1071,7 +1060,7 @@ task str_spot_test {
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
       --temp-dir . \
-      ~{if is_binary then "--binary logistic" else ""}
+      ~{if is_binary then "--binary" else ""}
   >>>
 
   runtime {
@@ -1081,8 +1070,6 @@ task str_spot_test {
     memory: "10GB"
   }
 }
-
-# TODO my str gwas README?
 
 task regional_my_str_gwas {
   input {
@@ -1100,7 +1087,6 @@ task regional_my_str_gwas {
     File? conditional_covars # from task
     File all_samples_list
     Boolean is_binary
-    String binary_type # linear or logistic, ignored if not binary
     region? bounds
     File? vars_file
     String phenotype_name
@@ -1112,10 +1098,6 @@ task regional_my_str_gwas {
   }
   
   command <<<
-    ls ~{python_array_utils} # necessary for dxCompiler to bother to localize this file
-    ls ~{weighted_binom_conf} # necessary for dxCompiler to bother to localize this file
-    ls ~{load_and_filter_genotypes} # necessary for dxCompiler to bother to localize this file
-    ls ~{sample_utils} # necessary for dxCompiler to bother to localize this file
     envsetup ~{script} \
       out.tab \
       strs \
@@ -1129,7 +1111,7 @@ task regional_my_str_gwas {
       --all-samples-fname ~{all_samples_list} \
       --str-vcf ~{str_vcf.vcf} \
       --temp-dir . \
-      ~{if is_binary then "--binary " + binary_type else ""} \
+      ~{if is_binary then "--binary " else ""} \
       ~{if no_details then "--no-details" else ""}
   >>>
 
