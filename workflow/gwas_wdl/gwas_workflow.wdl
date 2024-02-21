@@ -184,7 +184,7 @@ workflow gwas {
     binary_type = "logistic", # only used if is_binary
   }
 
-  call gwas_tasks.association_regions as snp_association_regions { input :
+  call gwas_tasks.bp_association_regions as snp_association_regions { input :
     chr_lens = chr_lens,
     region_len = if !is_binary then 1000000000 else 10000000 # meaning, do this per chromosome if linear, per 10MB otherwise
   }
