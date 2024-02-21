@@ -135,12 +135,12 @@ workflow gwas {
     prep_samples_and_phenotype.pheno_data,
   ])
 
-  call gwas_tasks.association_regions as str_association_regions { input :
-    chr_lens = chr_lens,
-    region_len = 10000000
-  } 
-
   if (!is_binary) {
+    call gwas_tasks.bp_association_regions as str_association_regions { input :
+      chr_lens = chr_lens,
+      region_len = 10000000
+    } 
+
     scatter (str_association_region in str_association_regions.out_tsv) {
       Int continuous_chrom = str_association_region[0]
       Int continuous_start = str_association_region[1]

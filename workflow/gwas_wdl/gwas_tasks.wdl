@@ -1118,7 +1118,7 @@ task regional_my_str_gwas {
   runtime {
     docker: "quay.io/thedevilinthedetails/work/ukb_strs:v1.3"
     dx_timeout: "36h"
-    memory: if binary_type == "logistic" then "40GB" else "8GB" # 4g works for all but a few jobs
+    memory: if is_binary then "40GB" else "8GB" # 4g works for all but a few jobs
   }
 }
 
