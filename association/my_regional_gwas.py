@@ -31,13 +31,16 @@ def perform_regional_gwas_helper(
     conditional_covars_fname = None,
     no_details = False
 ):
-
-    outfile.write("chrom\tpos\talleles\tlocus_filtered\t"
-                  f"p_{phenotype}\tt_stat\tcoeff_{phenotype}\t")
-    if binary != 'logistic':
-        outfile.write(f'se_{phenotype}\tR^2\t')
+    if not binary:
+        print("Running linear regression")
     else:
-        outfile.write("unused_col\tunused_col\t")
+        print("Running logistic regression")
+
+    outfile.write(
+        "chrom\tpos\talleles\tlocus_filtered\t"
+        f"p_{phenotype}\tt_stat\tcoeff_{phenotype}\t"
+        f'se_{phenotype}\t'
+    )
     outfile.flush()
 
     n_loci = 0
@@ -145,20 +148,13 @@ def perform_regional_gwas_helper(
         gts = (gts - np.mean(gts))/np.std(gts)
         covars[:, 0] = gts
 
-        if not binary or binary == 'linear':
-            #do da regression
+        #do da regression
+        if not binary:
             model = OLS(
                 outcome,
                 covars,
                 missing='drop',
             )
-            reg_result = model.fit()
-            pval = reg_result.pvalues[0]
-            tval = reg_result.tvalues[0]
-            coef = reg_result.params[0]
-            se = reg_result.bse[0]
-            rsquared = reg_result.rsquared
-            outfile.write(f"{pval:.2e}\t{tval}\t{coef/std}\t{se/std}\t{rsquared}\t")
         else:
             model = sm.GLM(
                 outcome,
@@ -166,10 +162,12 @@ def perform_regional_gwas_helper(
                 missing='drop',
                 family=sm.families.Binomial()
             )
-            reg_result = model.fit()
-            pval = reg_result.pvalues[0]
-            coef = reg_result.params[0]
-            outfile.write(f'{pval:.2e}\t{coef/std}\tnan\tnan\tnan\t')
+        reg_result = model.fit()
+        pval = reg_result.pvalues[0]
+        tval = reg_result.tvalues[0]
+        coef = reg_result.params[0]
+        se = reg_result.bse[0]
+        outfile.write(f"{pval:.2e}\t{tval}\t{coef/std}\t{se/std}\t")
 
         if not no_details:
             outfile.write('\t'.join(locus_details))
@@ -199,7 +197,7 @@ def perform_regional_gwas_helper(
                     dosages_per_paired_gt[(minlen, maxlen)] = dosages
 
             outfile.write('\t' + load_and_filter_genotypes.dict_str({key: np.sum(arr) for key, arr in dosages_per_summed_gt.items()}))
-            if not binary or binary == 'linear':
+            if not binary:
                 #do da regression
                 untrans_model = OLS(
                     ori_phenotypes,
@@ -304,9 +302,9 @@ def perform_regional_gwas_helper(
     else:
         print(f"No variants found in the region {region}\n", flush=True)
 
-def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
+def get_genotype_iter_vars_file(str_vcf, vars_fname, samples, region):
     with open(vars_fname) as vars_file:
-        next(vars_file)
+        next(vars_file) # ignore header
         try:
             next(vars_file)
         except StopIteration:
@@ -318,6 +316,10 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
             yield next(itr)
             return
     f = pl.read_csv(vars_file, sep='\t')
+    if region:
+        region_chrom, region_range = region.split(':')
+        region_start, region_end = region_range.split('-')
+        f = f.filter((pl.col('chrom') == region_chrom) & (pl.col('pos') >= region_start) & (pl.col('pos') <= region_end))
     chroms = f['chrom']
     poses = f['pos']
     first = True
@@ -337,13 +339,14 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples):
 
 def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir, no_details):
     if runtype == 'strs':
-        if region is not None:
+        if vars_file:
+            assert not no_details
+            get_genotype_iter = lambda samples: get_genotype_iter_vars_file(str_vcf, vars_file, samples, region)
+        else:
+            assert region is not None
             get_genotype_iter = lambda samples: load_and_filter_genotypes.load_strs(
                 str_vcf, region, samples, details = not no_details
             )
-        else:
-            assert vars_file is not None
-            get_genotype_iter = lambda samples: get_genotype_iter_vars_file(str_vcf, vars_file, samples)
     elif runtype == 'imputed-snps':
         assert vars_file is None
         get_genotype_iter = lambda samples: load_and_filter_genotypes.load_imputed_snps(
@@ -365,43 +368,6 @@ def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, 
         )
         print("Done.")
 
-def write_str_readme(outfile, str_vcf, binary):
-    with open(outfile, 'w') as readme:
-        today = datetime.datetime.now().strftime("%Y_%m_%d")
-        readme.write(f"Run date: {today}\n")
-
-        readme.write(f"Working with strs from imputation run {str_vcf}\n")
-        readme.write("Working with length dosages, no call level filters.\n")
-        readme.write("Filtering loci with total non-major allele doesage less than 20.\n")
-
-        if not binary:
-            readme.write('Doing linear regressions against the continuous phenotype\n')
-        elif binary == 'linear':
-            readme.write('Doing linear regressions against the binary phenotype\n')
-        else:
-            readme.write('Doing logistic regressions against the binary phenotype. No longer '
-                         'using firth penalized logistic regression when MAC <= 400, should but '
-                         "this doesn't apply to any strs in this dataset. Instead, always using "
-                         'standard logistic regression.\n')
-
-def write_imputed_snp_readme(outfile, binary):
-    with open(outfile, 'w') as readme:
-        today = datetime.datetime.now().strftime("%Y_%m_%d")
-        readme.write(f"Run date: {today}\n")
-
-        readme.write("Working with dosages of alternate allele, no call level filters ")
-        readme.write("(so allele 0 corresponds to reference, 1 to alternate).\n")
-        readme.write("Filtering loci with total minor allele dosage less than 20.\n")
-
-        if not binary:
-            readme.write('Doing linear regressions against the continuous phenotype\n')
-        elif binary == 'linear':
-            readme.write('Doing linear regressions against the binary phenotype\n')
-        else:
-            readme.write('Doing logistic regressions against the binary phenotype. Using '
-                         'Frith penalized logistic regression when MAC <= 400, '
-                         'standard logistic regression otherwise.\n')
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('outfile')
@@ -410,7 +376,6 @@ def main():
         choices=['imputed-snps', 'strs']
     )
     parser.add_argument('phenotype')
-    parser.add_argument('--readme', action='store_true', default=False)
     parser.add_argument('--temp-dir')
     parser.add_argument('--region')
     parser.add_argument('--vars-file')
@@ -423,63 +388,46 @@ def main():
     parser.add_argument('--snp-bgen')
     parser.add_argument('--snp-mfi')
     parser.add_argument('--no-details', action='store_true', default=False)
-    parser.add_argument('--binary', default=False, choices={'linear', 'logistic'})
+    parser.add_argument('--binary', default=False, action='store_true') # presumed logistic, not firth
     args = parser.parse_args()
 
     assert not (args.no_details and bool(args.vars_file))
 
-    assert args.readme == (args.region is None and args.vars_file is None)
     assert (args.str_vcf is not None) == (args.runtype == 'strs')
-    assert (not args.readme) or ((args.snp_bgen is not None) == (args.snp_mfi is not None) == (args.runtype == 'imputed-snps'))
+    assert (args.snp_bgen is not None) == (args.snp_mfi is not None) == (args.runtype == 'imputed-snps')
 
     assert (args.region is not None) + (args.vars_file is not None) <= 1
 
     # this would require firth regression which I've removed
-    assert not ((args.runtype == 'imputed-snps') and (args.binary == 'logistic'))
+    assert not ((args.runtype == 'imputed-snps') and args.binary)
 
     if args.shared_covars is None:
         print("Warning: running without shared covars")
 
-    assert (
-        args.readme ==
-        (args.pheno_and_covars is None) ==
-        (args.all_samples_fname is None) ==
-        (args.temp_dir is None)
-    )
-
-    if not args.no_details and not args.readme:
+    if not args.no_details:
         assert args.untransformed_phenotypes is not None
 
     if args.conditional_covars is not None:
         assert args.region is not None
 
-    if args.readme:
-        if args.runtype == 'strs':
-            write_str_readme(args.outfile, args.str_vcf, args.binary)
-        elif args.runtype == 'imputed-snps':
-            write_imputed_snp_readme(args.outfile, args.binary)
-        else:
-            raise ValueError("Readme not implemented for this runtype")
-        return
-    else:
-        perform_regional_gwas(
-            args.outfile,
-            args.pheno_and_covars,
-            args.shared_covars,
-            args.untransformed_phenotypes,
-            args.all_samples_fname,
-            args.phenotype,
-            args.binary,
-            args.region,
-            args.vars_file,
-            args.runtype,
-            args.str_vcf,
-            args.snp_bgen,
-            args.snp_mfi,
-            args.conditional_covars,
-            args.temp_dir,
-            args.no_details,
-        )
+    perform_regional_gwas(
+        args.outfile,
+        args.pheno_and_covars,
+        args.shared_covars,
+        args.untransformed_phenotypes,
+        args.all_samples_fname,
+        args.phenotype,
+        args.binary,
+        args.region,
+        args.vars_file,
+        args.runtype,
+        args.str_vcf,
+        args.snp_bgen,
+        args.snp_mfi,
+        args.conditional_covars,
+        args.temp_dir,
+        args.no_details,
+    )
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ parser.add_argument('results_tab')
 parser.add_argument('p_val_col')
 parser.add_argument('type')
 parser.add_argument('pheno')
+parser.add_argument('max_p_val', type=float) # assume that the results tab only includes results with p_val < max_pval, so only plot that end of the qq plot. Set this to 1.5 to ignore
 parser.add_argument('out')
 parser.add_argument('--null-values')
 parser.add_argument('--y-max', type=float)
@@ -38,8 +39,9 @@ p_vals = pl.scan_csv(
 if args.y_max:
     p_vals = np.minimum(p_vals, args.y_max)
 
+max_p_val = min(args.max_p_val, 1)
 null_dist_vals = -np.log10(
-    np.arange(0, 1, 1/len(p_vals)) + 1/(len(p_vals)*2)
+    np.arange(0, max_p_val, 1/(len(p_vals)/max_p_val)) + 1/(len(p_vals)/max_p_val*2)
 )[::-1]
 
 fig = bokeh.plotting.figure(

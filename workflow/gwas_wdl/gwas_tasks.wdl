@@ -944,7 +944,7 @@ task bp_association_regions {
 task snp_association_regions {
   input {
     Array[File] mfis # in chromosome order
-    Int region_len
+    Int region_len # in number of vars
   }
 
   output {
@@ -978,6 +978,79 @@ task snp_association_regions {
     memory: "2GB"
   }
 }
+
+task chr_pos_association_regions {
+  input {
+    File chr_pos_file 
+    Int region_len # in number of vars
+  }
+
+  output {
+    Array[Array[String]] out_tsv = read_tsv(stdout())
+  }
+
+  command <<<
+    for chrom in $(seq 1 22) ; do
+      # start at pos 0
+      # grab every millionth line and each line before those lines
+      # grab the last line
+      # keep only the positions
+      # pair every other line
+      # prepend the chromosome
+      { 
+        echo 0 ; 
+        grep -P '^'$chrom'\t' ~{chr_pos_file} | awk 'BEGIN {FS="\t"} ; { if ((NR % ~{region_len} == 0) || (NR % ~{region_len} == ~{region_len} - 1)) { print $2 }}' ;
+        grep -P '^'$chrom'\t' ~{chr_pos_file} | tail -1 | cut -f 2 -d$'\t' ;
+      } | \
+      paste - - | \
+      awk '{print '$chrom' "\t" $1 "\t" ($2 + 1)}'
+    done
+  >>>
+
+  runtime {
+    docker: "ubuntu:jammy-20240212"
+    dx_timeout: "30m"
+    memory: "2GB"
+  }
+}
+
+task subset_assoc_results_to_chr_pos {
+  input {
+    File assoc_results
+    String p_val_col
+    Float p_val_thresh
+    String chrom_col
+    String pos_col
+  }
+
+  output {
+    File tab = "filtered_results.tab"
+  }
+
+  command <<<
+    python -c '
+    import polars as pl
+    pl.read_csv(
+      "~{assoc_results}", separator="\t"
+    ).filter(
+      pl.col("~{p_val_col}") < ~{p_val_thresh}
+    ).select([
+      pl.col("~{chrom_col}").alias("chrom"),
+      pl.col("~{pos_col}").alias("pos"),
+    ]).write_csv(
+      "filtered_results.tab",
+      separator="\t",
+    )
+    '
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/python_data:v1.0"
+    memory: "2GB"
+    dx_timeout: "30m"
+  }   
+}
+
 
 task prep_conditional_input {
   input {
@@ -1260,7 +1333,6 @@ task prep_plink_input {
     File? conditional_genotypes
     File? conditional_covar_names
     Boolean is_binary
-    String binary_type # linear or logistic, only read if is_binary == true
   }
 
   output {
@@ -1278,7 +1350,7 @@ task prep_plink_input {
       ~{shared_covar_names} \
       ~{"--conditional-genotypes " + conditional_genotypes} \
       ~{"--conditional-covar-names " + conditional_covar_names} \
-      ~{if is_binary then "--binary " + binary_type else ""}
+      ~{if is_binary then "--binary " else ""}
   >>>
 
   runtime {
@@ -1301,19 +1373,22 @@ task plink_snp_association {
     Int? start
     Int? end
     String phenotype_name
-    String binary_type # linear or logistic or firth
+    Boolean is_binary
+    Boolean firth
+    File? vars
 
     String time
   }
 
   output {
-    File data = "plink2." + phenotype_name + ".glm." + (if binary_type == "logistic" then "logistic.hybrid" else if binary_type == "linear" then "linear" else "firth")
+    File data = "plink2." + phenotype_name + ".glm." + (if !is_binary then "linear" else if !firth then "logistic.hybrid" else "firth")
     File log = "plink2.log"
   }
 
   command <<<
     PHENOTYPE=~{phenotype_name} \
-    BINARY_TYPE=~{binary_type} \
+    IS_BINARY=~{is_binary} \
+    FIRTH=~{firth} \
     CHROM=~{chrom} \
     OUT_DIR=. \
     PHENO_FILE=~{pheno_data} \
@@ -1322,6 +1397,7 @@ task plink_snp_association {
     PROJECT_TEMP=. \
     ~{"START=" + start} \
     ~{"END=" + end} \
+    ~{"VARS_FILE=" + vars} \
     ~{script}
   >>>
 
@@ -1334,9 +1410,12 @@ task plink_snp_association {
     # between 0.02 and 0.03s/SNP for logistic 
     # ~ 0.25s/SNP for firth
     # denominators includes ~30% filtered SNPs
+    # all timings using 8 PCs
     # all measured at 28cpus and 56GB
+    # all measured on ~160k samples
   }
 }
+
 
 ## TODO append mfi to plink logistic run
 ## TODO compare my to plink GWAS
@@ -1352,6 +1431,8 @@ task qq_plot {
     String variant_type
     String out_name
     String? null_values
+
+    Float max_p_val = 1.5
   }
 
   output {
@@ -1364,6 +1445,7 @@ task qq_plot {
       ~{p_val_col} \
       ~{variant_type} \
       ~{phenotype_name} \
+      ~{max_p_val} \
       ~{out_name} \
       ~{"--null-values " + null_values}
   >>>
@@ -1442,6 +1524,7 @@ task overview_manhattan {
     File snp_gwas_results
     File? peaks
     String ext
+    # TODO change to is_binary and firth?
     String binary_type = "linear"
 
     String prefix = ""

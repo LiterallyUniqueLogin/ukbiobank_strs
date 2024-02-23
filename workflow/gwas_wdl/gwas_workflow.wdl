@@ -6,6 +6,9 @@ import "prep_samples_and_phenotype_workflow.wdl"
 workflow gwas {
 
   input {
+    # TODO timing might not be right if n_pcs != 8
+    # or if firth
+
     String script_dir
     String PRIMUS_command
     String plink_command = "plink2"
@@ -135,157 +138,190 @@ workflow gwas {
     prep_samples_and_phenotype.pheno_data,
   ])
 
-  if (!is_binary) {
-    call gwas_tasks.bp_association_regions as str_association_regions { input :
-      chr_lens = chr_lens,
-      region_len = 10000000
-    } 
+  call gwas_tasks.chr_pos_association_regions as continuous_str_association_regions { input :
+    chr_pos_file = str_loci,
+    region_len = 5000 # one job per max 5k variants
+  } 
 
-    scatter (str_association_region in str_association_regions.out_tsv) {
-      Int continuous_chrom = str_association_region[0]
-      Int continuous_start = str_association_region[1]
-      Int continuous_end = str_association_region[2]
+  scatter (continuous_str_association_region in continuous_str_association_regions.out_tsv) {
+    Int continuous_str_chrom = continuous_str_association_region[0]
+    Int continuous_str_start = continuous_str_association_region[1]
+    Int continuous_str_end = continuous_str_association_region[2]
 
-      Int continuous_chrom_minus_one = continuous_chrom - 1
+    Int continuous_str_chrom_minus_one = continuous_str_chrom - 1
 
-      region bounds = {
-          "chrom": continuous_chrom,
-          "start": continuous_start,
-          "end": continuous_end
-      }
-
-      call gwas_tasks.regional_my_str_gwas { input :
-        script_dir = script_dir,
-        str_vcf = str_vcfs[continuous_chrom_minus_one],
-        shared_covars = prep_samples_and_phenotype.shared_covars,
-        untransformed_phenotype = prep_samples_and_phenotype.pheno_data[0],
-        transformed_phenotype = phenos_to_associate[0],
-        all_samples_list = all_samples_list,
-        is_binary = is_binary,
-        bounds = bounds,
-        phenotype_name = phenotype_name,
-      }
+    region continuous_str_bounds = {
+        "chrom": continuous_str_chrom,
+        "start": continuous_str_start,
+        "end": continuous_str_end
     }
 
-    call gwas_tasks.concatenate_tsvs as continuous_my_str_gwas { input :
-      tsvs = regional_my_str_gwas.data,
-      out = "white_brits_str_gwas"
+    call gwas_tasks.regional_my_str_gwas as continuous_regional_str_gwas { input :
+      script_dir = script_dir,
+      str_vcf = str_vcfs[continuous_str_chrom_minus_one],
+      shared_covars = prep_samples_and_phenotype.shared_covars,
+      untransformed_phenotype = prep_samples_and_phenotype.pheno_data[0],
+      transformed_phenotype = phenos_to_associate[0],
+      all_samples_list = all_samples_list,
+      is_binary = false,
+      bounds = continuous_str_bounds,
+      phenotype_name = phenotype_name,
     }
   }
 
-  call gwas_tasks.prep_plink_input { input :
+  call gwas_tasks.concatenate_tsvs as continuous_str_gwas { input :
+    tsvs = continuous_regional_str_gwas.data,
+    out = "white_brits_str_gwas"
+  }
+
+  call gwas_tasks.prep_plink_input as continuous_plink_input { input :
     script_dir = script_dir,
     phenotype_name = if transform && !is_binary then "rin_~{phenotype_name}" else phenotype_name,
     pheno_data = phenos_to_associate[0],
     pheno_covar_names = prep_samples_and_phenotype.pheno_covar_names[0],
     shared_covars = prep_samples_and_phenotype.shared_covars,
     shared_covar_names = prep_samples_and_phenotype.shared_covar_names,
-    is_binary = is_binary,
-    binary_type = "logistic", # only used if is_binary
+    is_binary = false,
   }
 
-  call gwas_tasks.bp_association_regions as snp_association_regions { input :
-    chr_lens = chr_lens,
-    region_len = if !is_binary then 1000000000 else 10000000 # meaning, do this per chromosome if linear, per 10MB otherwise
-  }
+  scatter (continuous_snp_chrom_minus_one in range(22)) {
+    Int continuous_snp_chrom = continuous_snp_chrom_minus_one + 1
 
-  scatter (snp_association_region in snp_association_regions.out_tsv) {
-    Int snp_chrom = snp_association_region[0]
-    Int snp_start = snp_association_region[1]
-    Int snp_end = snp_association_region[2]
-
-    Int snp_chrom_minus_one = snp_chrom - 1
-
-    call gwas_tasks.plink_snp_association as chromosomal_plink_snp_association { input :
+    call gwas_tasks.plink_snp_association as continuous_plink_snp_association { input :
       script_dir = script_dir,
       plink_command = plink_command,
-      imputed_snp_p_file = imputed_snp_p_files[snp_chrom_minus_one],
-      pheno_data = prep_plink_input.data,
-      chrom = snp_chrom,
-      start = snp_start,
-      end = snp_end,
-      phenotype_name = if binary_type == "linear" && transformed then "rin_~{phenotype_name}" else phenotype_name,
-      binary_type = if !is_binary then "linear" else if firth then "firth" else "logistic",
-      # TODO time
+      imputed_snp_p_file = imputed_snp_p_files[continuous_snp_chrom_minus_one],
+      pheno_data = continuous_plink_input.data,
+      chrom = continuous_snp_chrom,
+      phenotype_name = if !is_binary && transform then "rin_~{phenotype_name}" else phenotype_name,
+      is_binary = false,
+      firth = false,
+      time = "48h"
     }
   }
 
-  call gwas_tasks.concatenate_tsvs as plink_snp_association { input :
-    tsvs = chromosomal_plink_snp_association.data,
+  call gwas_tasks.concatenate_tsvs as continuous_snp_gwas { input :
+    tsvs = continuous_plink_snp_association.data,
     out = "white_brits_snp_gwas"
   }
 
   if (is_binary) {
-
-    call gwas_tasks.generate_finemapping_regions as regions_for_binary_str { input :
-      script_dir = script_dir,
-      chr_lens = chr_lens,
-      phenotype = phenotype_name,
-      snp_assoc_results = plink_snp_association.tsv,
-      prefix = "~{phenotype_name}_"
+    call gwas_tasks.subset_assoc_results_to_chr_pos as subsetted_continuous_str_chr_pos { input :
+      assoc_results = continuous_str_gwas.tsv,
+      p_val_col = 'p_~{phenotype_name}',
+      p_val_thresh = 0.1,
+      chrom_col = 'chrom',
+      pos_col = 'pos'
     }
 
-    scatter (followup_regions_idx_minus_one in range(length(regions_for_binary_str.data_as_array_with_header)-1)) {
-      Int followup_regions_idx = followup_regions_idx_minus_one + 1
-      Int binary_chrom = regions_for_binary_str.data_as_array_with_header[followup_regions_idx][0]
-      Int binary_start = regions_for_binary_str.data_as_array_with_header[followup_regions_idx][1]
-      Int binary_end = regions_for_binary_str.data_as_array_with_header[followup_regions_idx][2]
+    call gwas_tasks.chr_pos_association_regions as binary_str_association_regions { input :
+      chr_pos_file = subsetted_continuous_str_chr_pos.tab,
+      region_len = 2500 # one job per max 2.5k variants
+    }
 
-      Int binary_chrom_minus_one = binary_chrom - 1
+    scatter (binary_str_association_region in binary_str_association_regions.out_tsv) {
+      Int binary_str_chrom = binary_str_association_region[0]
+      Int binary_str_start = binary_str_association_region[1]
+      Int binary_str_end = binary_str_association_region[2]
 
-      region followup_bounds = {
-          "chrom": binary_chrom,
-          "start": binary_start,
-          "end": binary_end
+      Int binary_str_chrom_minus_one = binary_str_chrom - 1
+
+      region binary_str_bounds = {
+          "chrom": binary_str_chrom,
+          "start": binary_str_start,
+          "end": binary_str_end
       }
 
-      call gwas_tasks.regional_my_str_gwas as binary_regional_my_str_gwas { input :
+      call gwas_tasks.regional_my_str_gwas as binary_regional_str_gwas { input :
         script_dir = script_dir,
-        str_vcf = str_vcfs[binary_chrom_minus_one],
+        str_vcf = str_vcfs[binary_str_chrom_minus_one],
         shared_covars = prep_samples_and_phenotype.shared_covars,
         untransformed_phenotype = prep_samples_and_phenotype.pheno_data[0],
         transformed_phenotype = phenos_to_associate[0],
         all_samples_list = all_samples_list,
         is_binary = true,
-        binary_type = "logistic",
-        bounds = followup_bounds,
+        bounds = binary_str_bounds,
+        vars_file = subsetted_continuous_str_chr_pos.tab,
         phenotype_name = phenotype_name,
       }
     }
 
-    call gwas_tasks.concatenate_tsvs as binary_my_str_gwas { input :
-      tsvs = binary_regional_my_str_gwas.data,
+    call gwas_tasks.concatenate_tsvs as binary_str_gwas { input :
+      tsvs = binary_regional_str_gwas.data,
       out = "white_brits_str_gwas"
+    }
+
+    call gwas_tasks.prep_plink_input as binary_plink_input { input :
+      script_dir = script_dir,
+      phenotype_name = phenotype_name,
+      pheno_data = phenos_to_associate[0],
+      pheno_covar_names = prep_samples_and_phenotype.pheno_covar_names[0],
+      shared_covars = prep_samples_and_phenotype.shared_covars,
+      shared_covar_names = prep_samples_and_phenotype.shared_covar_names,
+      is_binary = true,
+    }
+
+    call gwas_tasks.subset_assoc_results_to_chr_pos as subsetted_continuous_snp_chr_pos { input :
+      assoc_results = continuous_snp_gwas.tsv,
+      p_val_col = 'P',
+      p_val_thresh = 0.1,
+      chrom_col = '#CHROM',
+      pos_col = 'POS'
+    }
+
+    scatter (binary_snp_chrom_minus_one in range(22)) {
+      Int binary_snp_chrom = binary_snp_chrom_minus_one + 1
+
+      call gwas_tasks.plink_snp_association as binary_plink_snp_association { input :
+        script_dir = script_dir,
+        plink_command = plink_command,
+        imputed_snp_p_file = imputed_snp_p_files[binary_snp_chrom_minus_one],
+        pheno_data = binary_plink_input.data,
+        chrom = binary_snp_chrom,
+        phenotype_name = phenotype_name,
+        is_binary = true,
+        firth = firth,
+        time = if !firth then "10h" else "48h",
+        vars = subsetted_continuous_snp_chr_pos.tab
+      }
+    }
+
+    call gwas_tasks.concatenate_tsvs as binary_snp_gwas { input :
+      tsvs = binary_plink_snp_association.data,
+      out = "white_brits_snp_gwas"
     }
   }
 
-  File my_str_gwas_ = select_first([continuous_my_str_gwas.tsv, binary_my_str_gwas.tsv])
+  File str_gwas_ = select_first([binary_str_gwas.tsv, continuous_str_gwas.tsv])
+  File plink_snp_gwas_ = select_first([binary_snp_gwas.tsv, continuous_snp_gwas.tsv])
 
   call gwas_tasks.qq_plot as snp_qq_plot_ { input :
     script_dir = script_dir,
-    results_tab = plink_snp_association.tsv,
+    results_tab = plink_snp_gwas_,
     p_val_col = 'P',
     phenotype_name = phenotype_name,
     variant_type = 'SNP',
     out_name = 'snp_qq_plot',
-    null_values = 'NA'
+    null_values = 'NA',
+    max_p_val = if !is_binary then 1.5 else 0.1
   }
 
   call gwas_tasks.qq_plot as str_qq_plot_ { input :
     script_dir = script_dir,
-    results_tab = my_str_gwas,
+    results_tab = str_gwas_,
     p_val_col = 'p_~{phenotype_name}',
     phenotype_name = phenotype_name,
     variant_type = 'STR',
-    out_name = 'str_qq_plot'
+    out_name = 'str_qq_plot',
+    max_p_val = if !is_binary then 1.5 else 0.1
   }
 
   # TODO interactive manhattan
 
   call gwas_tasks.generate_peaks { input :
     script_dir = script_dir,
-    snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_,
+    snp_assoc_results = plink_snp_gwas_,
+    str_assoc_results = str_gwas_,
     phenotype = phenotype_name,
     spacing = "250000",
     thresh = "5e-8"
@@ -293,8 +329,8 @@ workflow gwas {
 
   call gwas_tasks.generate_peaks as overview_manhattan_peaks { input :
     script_dir = script_dir,
-    snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_,
+    snp_assoc_results = plink_snp_gwas_,
+    str_assoc_results = str_gwas_,
     phenotype = phenotype_name,
     spacing = "20000000",
     thresh = "5e-8"
@@ -304,8 +340,8 @@ workflow gwas {
     script_dir = script_dir,
     phenotype_name = phenotype_name,
     chr_lens = chr_lens,
-    str_gwas_results = my_str_gwas_,
-    snp_gwas_results = plink_snp_association.tsv,
+    str_gwas_results = str_gwas_,
+    snp_gwas_results = plink_snp_gwas_,
     peaks = overview_manhattan_peaks.peaks,
     ext = "png"
   }
@@ -314,8 +350,8 @@ workflow gwas {
     script_dir = script_dir,
     chr_lens = chr_lens,
     phenotype = phenotype_name,
-    snp_assoc_results = plink_snp_association.tsv,
-    str_assoc_results = my_str_gwas_,
+    snp_assoc_results = plink_snp_gwas_,
+    str_assoc_results = str_gwas_,
     prefix = "~{phenotype_name}_"
   }
 
@@ -341,7 +377,6 @@ workflow gwas {
           transformed_phenotype = phenos_to_associate[ethnicity_idx],
           all_samples_list = all_samples_list,
           is_binary = is_binary,
-          binary_type = "logistic", # won't be used if not binary
           phenotype_name = phenotype_name,
         }
       }
@@ -371,8 +406,8 @@ workflow gwas {
 
     File imputed_snp_freqs = imputed_snp_frequencies.tsv
 
-    File my_str_gwas = my_str_gwas_
-    File plink_snp_gwas = plink_snp_association.tsv
+    File my_str_gwas = str_gwas_
+    File plink_snp_gwas = plink_snp_gwas_
 
     File snp_qq_plot = snp_qq_plot_.plot
     File str_qq_plot = str_qq_plot_.plot

@@ -15,7 +15,7 @@ parser.add_argument('shared_covar_file', nargs='?')
 parser.add_argument('shared_covar_names', nargs='?')
 parser.add_argument('--conditional-genotypes')
 parser.add_argument('--conditional-covar-names')
-parser.add_argument('--binary', default=False, choices={'logistic', 'linear'})
+parser.add_argument('--binary', default=False, action='store_true')
 args = parser.parse_args()
 
 assert bool(args.conditional_genotypes) == bool(args.conditional_covar_names)
@@ -36,17 +36,16 @@ data = np.concatenate((data[:, 0:1], data), axis=1)
 
 col_names = ['FID', 'IID', pheno_name]
 if args.binary:
-    if args.binary == 'logistic':
-        # plink expects and ouptuts a 1=control, 2=case encoding
-        # instead of the 0=control, 1=case encoding we use elsewhere
-        # (from: https://www.cog-genomics.org/plink/2.0/input
-        # under the `--1` section)
-        data[:, 2] += 1
-    else:
-        # standardize the binary trait so that
-        # (a) plink treats it as a continuous trait and does a linear regression and
-        # (b) plink doesn't have numeric instabilities
-        data[:, 2] = (data[:, 2] - data[:,2].mean())/data[:, 2].std()
+    # plink expects and ouptuts a 1=control, 2=case encoding
+    # instead of the 0=control, 1=case encoding we use elsewhere
+    # (from: https://www.cog-genomics.org/plink/2.0/input
+    # under the `--1` section)
+    data[:, 2] += 1
+else:
+    # standardize the trait so that
+    # plink doesn't have numeric instabilities
+    # (also, if it looked binary but linear regression was requested, it will no longer look binary)
+    data[:, 2] = (data[:, 2] - data[:,2].mean())/data[:, 2].std()
 
 with open(args.pheno_covar_names) as pheno_names_file:
     for line in pheno_names_file:
