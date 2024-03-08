@@ -55,10 +55,10 @@ else
 fi
 
 if [[ "$IS_BINARY" != true ]] ;  then
-	COLS="cols=-test,-nobs"
+	COLS="cols=-nobs,+machr2"
 	BINARY_GLM_FLAG=""
 else
-	COLS="cols=+gcountcc,-nobs,-test"
+	COLS="cols=+gcountcc,-test,+a1freqcc,+machr2"
 	#BINARY_GLM_FLAG="single-prec-cc cc-residualize"
 	BINARY_GLM_FLAG=""
 	if [[ "$FIRTH" == true ]] ;  then

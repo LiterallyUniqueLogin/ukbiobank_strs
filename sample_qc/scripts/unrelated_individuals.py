@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as output_dir:
         data = np.load(args.binary_pheno)
         # assert that cases are a low enough percentage of total samples
         # so that this type of prioritization makes sense
-        assert np.sum(data[:, 1]) <= .2*data.shape[0]
+        assert np.sum(data[:, 1]) <= .4*data.shape[0]
         cases = set(int(ID) for ID in data[data[:, 1] == 1, 0])
         print(f'N_cases: {len(cases)}')
 

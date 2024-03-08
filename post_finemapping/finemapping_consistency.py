@@ -1123,7 +1123,7 @@ def followup_finemapping_conditions_comparison(outdir, intermediate_dir, followu
         bokeh.io.export_png(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.png')
         bokeh.io.export_svg(total_fig, filename=f'{outdir}/{mapper.lower()}_consistency_{meas}_{suffix}.svg')
 
-def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames, original_FINEMAP_outputs, original_SuSiE_outputs):
+def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fname, ethnic_str_gwas_fnames, original_FINEMAP_outputs, original_SuSiE_outputs, binary):
     str_assocs = pl.scan_csv(
         str_gwas_fname,
         sep='\t',
@@ -1134,7 +1134,8 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         pl.lit(True).alias('is_STR'),
         pl.col(f'p_{phenotype}').alias('p_val'),
         pl.col(f'coeff_{phenotype}').alias('coeff'),
-        pl.col(f'se_{phenotype}').alias('se')
+        pl.col(f'se_{phenotype}').alias('se'),
+        *([] if not binary else [pl.lit('false').alias('firth')]) # TODO if I implement firth for STRs it should be included here
     ]).filter(
         ((pl.col('chrom') != 17) | (pl.col('pos') != 80520458)) &
         ((pl.col('chrom') != 1) | (pl.col('pos') != 247747217)) &
@@ -1153,32 +1154,34 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         ('SNP_' + pl.col('POS').cast(str) + '_' + pl.col('REF') + '_' +  pl.col('ALT')).alias('varname'),
         pl.lit(False).alias('is_STR'),
         pl.col('P').alias('p_val'),
-        pl.col('BETA').alias('coeff'),
-        pl.col('SE').alias('se'),
+        (pl.col('BETA') if not binary else pl.col('OR').log()).alias('coeff'),
+        (pl.col('SE') if not binary else pl.col('LOG(OR)_SE')).alias('se'),
+        *([] if not binary else [pl.col('FIRTH?').alias('firth')])
     ])
     assocs = pl.concat([snp_assocs, str_assocs])
 
-    other_ethnicity_assocs = None
-    for ethnicity, ethnic_str_gwas_fname in zip(other_ethnicities, ethnic_str_gwas_fnames):
-        one_other_ethnicity = pl.scan_csv(
-            ethnic_str_gwas_fname,
-            sep='\t',
-        ).select([
-            'chrom',
-            'pos',
-            pl.lit(True).alias('is_STR'),
-            pl.col(f'p_{phenotype}').alias(f'{ethnicity}_p_val'),
-            pl.col(f'coeff_{phenotype}').alias(f'{ethnicity}_coeff'),
-            pl.col(f'se_{phenotype}').alias(f'{ethnicity}_se'),
-        ])
-        if other_ethnicity_assocs is None:
-            other_ethnicity_assocs = one_other_ethnicity
-        else:
-            other_ethnicity_assocs = other_ethnicity_assocs.join(
-                one_other_ethnicity,
-                how='inner',
-                on=['chrom', 'pos', 'is_STR']
-            )
+    if ethnic_str_gwas_fnames:
+        other_ethnicity_assocs = None
+        for ethnicity, ethnic_str_gwas_fname in zip(other_ethnicities, ethnic_str_gwas_fnames):
+            one_other_ethnicity = pl.scan_csv(
+                ethnic_str_gwas_fname,
+                sep='\t',
+            ).select([
+                'chrom',
+                'pos',
+                pl.lit(True).alias('is_STR'),
+                pl.col(f'p_{phenotype}').alias(f'{ethnicity}_p_val'),
+                pl.col(f'coeff_{phenotype}').alias(f'{ethnicity}_coeff'),
+                pl.col(f'se_{phenotype}').alias(f'{ethnicity}_se'),
+            ])
+            if other_ethnicity_assocs is None:
+                other_ethnicity_assocs = one_other_ethnicity
+            else:
+                other_ethnicity_assocs = other_ethnicity_assocs.join(
+                    one_other_ethnicity,
+                    how='inner',
+                    on=['chrom', 'pos', 'is_STR']
+                )
 
     print('original SuSiE')
     original_susies, min_abs_corrs = load_susie(original_SuSiE_outputs, return_corrs=True)
@@ -1205,16 +1208,19 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         assocs,
         how='left',
         on=['chrom', 'varname']
-    ).join(
-        other_ethnicity_assocs,
-        how='left',
-        on=['chrom', 'pos', 'is_STR']
     ).with_column(
         pl.lit(phenotype).alias('phenotype')
     )
 
+    if ethnic_str_gwas_fnames:
+        pheno_df = pheno_df.join(
+            other_ethnicity_assocs,
+            how='left',
+            on=['chrom', 'pos', 'is_STR']
+        )
+
     # choose col order
-    pheno_df = pheno_df.select([
+    cols = [
         'phenotype',
         'chrom',
         'region',
@@ -1228,10 +1234,18 @@ def first_pass_df(outdir, should_assert, phenotype, snp_gwas_fname, str_gwas_fna
         'susie_cs',
         'susie_alpha',
         'finemap_pip',
-        *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
-        *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
-        *[f'{ethnicity}_se' for ethnicity in other_ethnicities],
-    ]).collect()
+    ]
+    if ethnic_str_gwas_fnames:
+        cols.extend(
+            *[f'{ethnicity}_p_val' for ethnicity in other_ethnicities],
+            *[f'{ethnicity}_coeff' for ethnicity in other_ethnicities],
+            *[f'{ethnicity}_se' for ethnicity in other_ethnicities]
+        )
+    if binary:
+        cols.extend([
+            'firth'
+        ])
+    pheno_df = pheno_df.select(cols).collect()
 
     # manually fix the APOB locus results
     if phenotype == 'apolipoprotein_b' or phenotype == 'ldl_cholesterol_direct':
@@ -1919,7 +1933,8 @@ if __name__ == '__main__':
     df_parser.add_argument('phenotype_name')
     df_parser.add_argument('snp_gwas_results')
     df_parser.add_argument('str_gwas_results')
-    df_parser.add_argument('ethnic_str_gwas_results', nargs=5)
+    df_parser.add_argument('--ethnic-str-gwas-results', nargs=5, default=None)
+    df_parser.add_argument('--is-binary', default=False, action='store_true')
     df_subparsers = df_parser.add_subparsers()
     first_pass_df_parser = df_subparsers.add_parser('first_pass')
     followup_df_parser = df_subparsers.add_parser('followup_conditions')
@@ -1935,7 +1950,8 @@ if __name__ == '__main__':
             args.str_gwas_results,
             args.ethnic_str_gwas_results,
             tsv_to_finemap_outputs(args.original_FINEMAP_outputs_tsv),
-            tsv_to_susie_outputs(args.original_SuSiE_outputs_tsv)
+            tsv_to_susie_outputs(args.original_SuSiE_outputs_tsv),
+            args.is_binary
         )
     first_pass_df_parser.set_defaults(func=exec_first_pass_df)
 

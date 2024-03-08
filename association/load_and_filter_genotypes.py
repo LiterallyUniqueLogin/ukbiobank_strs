@@ -59,13 +59,16 @@ def clean_len_allele_pairs(d):
 def round_vals(d, precision):
     return {key: round(val, precision) for key, val in d.items()}
 
-def load_strs(vcf_fname: str,
-              region: str,
-              samples: np.ndarray,
-              details: bool = True,
-              var_subset: Optional[Set[int]] = None,
-              best_guesses = False,
-              both_poses = False):
+def load_strs(
+    vcf_fname: str,
+    region: str,
+    samples: np.ndarray,
+    details: bool = True,
+    var_subset: Optional[Set[int]] = None,
+    best_guesses = False,
+    both_poses = False,
+    ignore_overlap_start = True
+):
     """
     Iterate over a region returning genotypes at STR loci.
 
@@ -141,7 +144,7 @@ def load_strs(vcf_fname: str,
             'subset_allele_dosage_r2'
         )
     for record in vcf(region):
-        if record.POS < region_start:
+        if ignore_overlap_start and record.POS < region_start:
             # records that overlap this region but started before this region
             # should be considered part of the pervious region and not returned here
             continue

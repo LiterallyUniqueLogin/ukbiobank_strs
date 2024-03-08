@@ -665,7 +665,7 @@ task transform_trait_values {
   }
 
   command <<<
-    envsetup ~{script} out ~{pheno_data}
+    envsetup ~{script} ~{prefix} ~{pheno_data}
   >>>
 
   runtime {
@@ -1021,6 +1021,7 @@ task subset_assoc_results_to_chr_pos {
     Float p_val_thresh
     String chrom_col
     String pos_col
+    String? null_value
   }
 
   output {
@@ -1031,7 +1032,7 @@ task subset_assoc_results_to_chr_pos {
     python -c '
     import polars as pl
     pl.read_csv(
-      "~{assoc_results}", separator="\t"
+      "~{assoc_results}", separator="\t", ~{'null_values= "' + null_value + '"'}
     ).filter(
       pl.col("~{p_val_col}") < ~{p_val_thresh}
     ).select([
@@ -1046,11 +1047,67 @@ task subset_assoc_results_to_chr_pos {
 
   runtime {
     docker: "quay.io/thedevilinthedetails/work/python_data:v1.0"
-    memory: "2GB"
+    memory: "20GB"
     dx_timeout: "30m"
   }   
 }
 
+task finish_subsetting_binary_plink_results {
+  input {
+    File continuous_first_pass_results
+    File binary_results
+    String out
+    Float p_val_thresh
+  }
+
+  output {
+    File tab = out
+  }
+
+  command <<<
+    python -c '
+    import polars as pl
+    binary_df = pl.scan_csv(
+      "~{binary_results}", separator="\t", null_values= "NA"
+    )
+    continuous_df = pl.scan_csv(
+      "~{continuous_first_pass_results}", separator="\t", null_values= "NA"
+    ).filter(
+      pl.col("P") < ~{p_val_thresh}
+    ).select([
+      "#CHROM",
+      "POS",
+      "REF",
+      "ALT"
+    ])
+
+    binary_df.join(
+      continuous_df,
+      how="inner",
+      on=[
+        "#CHROM",
+        "POS",
+        "REF",
+        "ALT"
+      ]
+    ).sort([
+        "#CHROM",
+        "POS",
+        "REF",
+        "ALT"
+    ]).collect().write_csv(
+      "~{out}",
+      separator="\t",
+    )
+    '
+  >>>
+
+  runtime {
+    docker: "quay.io/thedevilinthedetails/work/python_data:v1.0"
+    memory: "50GB"
+    dx_timeout: "30m"
+  }
+}
 
 task prep_conditional_input {
   input {
@@ -1417,9 +1474,6 @@ task plink_snp_association {
 }
 
 
-## TODO append mfi to plink logistic run
-## TODO compare my to plink GWAS
-
 task qq_plot {
   input {
     String script_dir
@@ -1524,8 +1578,8 @@ task overview_manhattan {
     File snp_gwas_results
     File? peaks
     String ext
-    # TODO change to is_binary and firth?
-    String binary_type = "linear"
+    # currently doesn't care about firth/not firth
+    Boolean is_binary = false
 
     String prefix = ""
   }
@@ -1542,7 +1596,7 @@ task overview_manhattan {
       ~{snp_gwas_results} \
       ~{if defined(peaks) then select_first([peaks]) else "." } \
       ~{chr_lens} \
-      ~{if binary_type != "linear" then "--binary " + binary_type else "" } \
+      ~{if is_binary then "--binary logistic" else "" } \
   >>>
 
   runtime {

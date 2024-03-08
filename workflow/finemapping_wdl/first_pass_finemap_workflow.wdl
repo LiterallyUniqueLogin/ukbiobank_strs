@@ -26,6 +26,8 @@ workflow first_pass_finemapping {
     String phenotype_name
 
     File all_samples_list
+
+    Boolean is_binary = false
   }
 
   call gwas_tasks.generate_finemapping_regions { input : 
@@ -60,7 +62,8 @@ workflow first_pass_finemapping {
       plink_snp_gwas = plink_snp_gwas,
       phenotype_name = phenotype_name,
       bounds = first_pass_bounds,
-      all_samples_list = all_samples_list
+      all_samples_list = all_samples_list,
+      is_binary = is_binary
     }
     serializable_FINEMAP_output original_finemap_output_ = original_finemap_.finemap_output.subset
     Array[File] original_finemap_creds_ = original_finemap_.finemap_output.creds

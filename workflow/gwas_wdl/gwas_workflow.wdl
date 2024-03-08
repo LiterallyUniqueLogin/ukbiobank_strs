@@ -171,7 +171,7 @@ workflow gwas {
 
   call gwas_tasks.concatenate_tsvs as continuous_str_gwas { input :
     tsvs = continuous_regional_str_gwas.data,
-    out = "white_brits_str_gwas"
+    out = "white_brits~{if is_binary then '_continuous' else ''}_str_gwas"
   }
 
   call gwas_tasks.prep_plink_input as continuous_plink_input { input :
@@ -202,10 +202,13 @@ workflow gwas {
 
   call gwas_tasks.concatenate_tsvs as continuous_snp_gwas { input :
     tsvs = continuous_plink_snp_association.data,
-    out = "white_brits_snp_gwas"
+    out = "white_brits~{if is_binary then '_continuous' else ''}_snp_gwas"
   }
 
   if (is_binary) {
+    File continuous_first_pass_str_gwas_ = continuous_str_gwas.tsv
+    File continuous_first_pass_snp_gwas_ = continuous_snp_gwas.tsv
+
     call gwas_tasks.subset_assoc_results_to_chr_pos as subsetted_continuous_str_chr_pos { input :
       assoc_results = continuous_str_gwas.tsv,
       p_val_col = 'p_~{phenotype_name}',
@@ -248,7 +251,7 @@ workflow gwas {
 
     call gwas_tasks.concatenate_tsvs as binary_str_gwas { input :
       tsvs = binary_regional_str_gwas.data,
-      out = "white_brits_str_gwas"
+      out = "white_brits_logistic_str_gwas_continuous_p_less_0.1"
     }
 
     call gwas_tasks.prep_plink_input as binary_plink_input { input :
@@ -266,7 +269,8 @@ workflow gwas {
       p_val_col = 'P',
       p_val_thresh = 0.1,
       chrom_col = '#CHROM',
-      pos_col = 'POS'
+      pos_col = 'POS',
+      null_value = 'NA'
     }
 
     scatter (binary_snp_chrom_minus_one in range(22)) {
@@ -288,12 +292,19 @@ workflow gwas {
 
     call gwas_tasks.concatenate_tsvs as binary_snp_gwas { input :
       tsvs = binary_plink_snp_association.data,
-      out = "white_brits_snp_gwas"
+      out = "intermediate_white_brits_logistic_snp_gwas_continuous_p_less_0.1"
+    }
+
+    call gwas_tasks.finish_subsetting_binary_plink_results { input : 
+      continuous_first_pass_results = continuous_snp_gwas.tsv,
+      binary_results = binary_snp_gwas.tsv,
+      out = "white_brits_logistic_snp_gwas_continuous_p_less_0.1.tab",
+      p_val_thresh = 0.1
     }
   }
 
   File str_gwas_ = select_first([binary_str_gwas.tsv, continuous_str_gwas.tsv])
-  File plink_snp_gwas_ = select_first([binary_snp_gwas.tsv, continuous_snp_gwas.tsv])
+  File plink_snp_gwas_ = select_first([finish_subsetting_binary_plink_results.tab, continuous_snp_gwas.tsv])
 
   call gwas_tasks.qq_plot as snp_qq_plot_ { input :
     script_dir = script_dir,
@@ -301,7 +312,7 @@ workflow gwas {
     p_val_col = 'P',
     phenotype_name = phenotype_name,
     variant_type = 'SNP',
-    out_name = 'snp_qq_plot',
+    out_name = '~{phenotype_name}_snp_qq_plot~{if !is_binary then "" else "_p_less_0.1"}',
     null_values = 'NA',
     max_p_val = if !is_binary then 1.5 else 0.1
   }
@@ -312,7 +323,7 @@ workflow gwas {
     p_val_col = 'p_~{phenotype_name}',
     phenotype_name = phenotype_name,
     variant_type = 'STR',
-    out_name = 'str_qq_plot',
+    out_name = '~{phenotype_name}_str_qq_plot~{if !is_binary then "" else "_p_less_0.1"}',
     max_p_val = if !is_binary then 1.5 else 0.1
   }
 
@@ -343,7 +354,8 @@ workflow gwas {
     str_gwas_results = str_gwas_,
     snp_gwas_results = plink_snp_gwas_,
     peaks = overview_manhattan_peaks.peaks,
-    ext = "png"
+    ext = "png",
+    is_binary = is_binary
   }
 
   call gwas_tasks.generate_finemapping_regions { input :
@@ -408,6 +420,10 @@ workflow gwas {
 
     File my_str_gwas = str_gwas_
     File plink_snp_gwas = plink_snp_gwas_
+
+    # only set for binary
+    File? continuous_first_pass_str_gwas = continuous_first_pass_str_gwas_
+    File? continuous_first_pass_snp_gwas = continuous_first_pass_snp_gwas_
 
     File snp_qq_plot = snp_qq_plot_.plot
     File str_qq_plot = str_qq_plot_.plot

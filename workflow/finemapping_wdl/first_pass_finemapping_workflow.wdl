@@ -28,7 +28,9 @@ workflow first_pass_finemapping {
 
     File my_str_gwas
     File plink_snp_gwas
-    Array[File] ethnic_my_str_gwass
+    Array[File]? ethnic_my_str_gwass
+
+    Boolean is_binary = false
   }
 
   call gwas_tasks.generate_finemapping_regions { input : 
@@ -51,28 +53,31 @@ workflow first_pass_finemapping {
     }
     String first_pass_regions = "~{first_pass_bounds.chrom}_~{first_pass_bounds.start}_~{first_pass_bounds.end}"
     Int first_pass_chroms = first_pass_bounds.chrom
+    Int first_pass_chrom_minus_one = first_pass_bounds.chrom - 1
 
     call finemap_one_region_workflow.finemap_one_region as original_finemap_ { input :
       script_dir = script_dir,
       finemap_command = finemap_command,
-      str_vcfs = str_vcfs,
-      imputed_snp_bgens = imputed_snp_bgens,
-      snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping,
+      str_vcf = str_vcfs[first_pass_chrom_minus_one],
+      imputed_snp_bgen = imputed_snp_bgens[first_pass_chrom_minus_one],
+      snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping[first_pass_chrom_minus_one],
       phenotype_samples = phenotype_samples,
       my_str_gwas = my_str_gwas,
       plink_snp_gwas = plink_snp_gwas,
       phenotype_name = phenotype_name,
       bounds = first_pass_bounds,
-      all_samples_list = all_samples_list
+      all_samples_list = all_samples_list,
+      prefix = "~{phenotype_name}_FINEMAP_~{first_pass_regions}_",
+      is_binary = is_binary
     }
     serializable_FINEMAP_output original_finemap_output_ = original_finemap_.finemap_output.subset
     Array[File] original_finemap_creds_ = original_finemap_.finemap_output.creds
 
 		call susie_one_region_workflow.susie_one_region as original_susie_ { input :
 			script_dir = script_dir,
-			str_vcfs = str_vcfs,
-			imputed_snp_bgens = imputed_snp_bgens,
-			snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping,
+      str_vcf = str_vcfs[first_pass_chrom_minus_one],
+      imputed_snp_bgen = imputed_snp_bgens[first_pass_chrom_minus_one],
+			snp_vars_to_filter_from_finemapping = snp_vars_to_filter_from_finemapping[first_pass_chrom_minus_one],
 			shared_covars = shared_covars,
 			phenotype_samples = phenotype_samples,
 			transformed_phenotype_data = transformed_phenotype_data,
@@ -80,7 +85,8 @@ workflow first_pass_finemapping {
 			plink_snp_gwas = plink_snp_gwas,
 			phenotype_name = phenotype_name,
 			bounds = first_pass_bounds,
-			all_samples_list = all_samples_list
+			all_samples_list = all_samples_list,
+      prefix = "~{phenotype_name}_SuSiE_~{first_pass_regions}_"
 		}
 		serializable_SuSiE_output original_susie_output_ = original_susie_.susie_output.subset
 		Array[File] original_susie_CSs_ = original_susie_.susie_output.CSs
@@ -97,7 +103,8 @@ workflow first_pass_finemapping {
 		original_susie_outputs = original_susie_output_,
 		original_susie_CSs = original_susie_CSs_,
 		regions = first_pass_regions,
-		chroms = first_pass_chroms
+		chroms = first_pass_chroms,
+    is_binary = is_binary
 	}
 
   output {

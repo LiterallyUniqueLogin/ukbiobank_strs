@@ -36,6 +36,8 @@ workflow finemap_one_region {
     Float? prob_conv_sss_tol
     String prefix = ""
     Int cache_breaker = 0
+
+    Boolean is_binary = false
   }
 
   call finemapping_tasks.finemap_write_input_variants { input :
@@ -51,6 +53,7 @@ workflow finemap_one_region {
     mac = mac,
     snp_macs = snp_macs,
     inclusion_threshold = inclusion_threshold,
+    is_binary = is_binary
   }
 
   call finemapping_tasks.finemap_load_gts { input :

@@ -15,7 +15,7 @@ def generate_clumps(chr_lens_fname, iters, spacing=250000):
         skip_header=1,
         dtype=int
     )
-    curr_items = [next(itr) for itr in iters]
+    curr_items = [next(itr, (np.inf, np.inf)) for itr in iters]
     # currently only designed for integer chromosome numbers
 
     curr_chrom, curr_pos = min(curr_items)

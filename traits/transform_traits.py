@@ -30,6 +30,7 @@ def main():  # noqa: D103
 
     data = np.load(args.pheno_data)
 
+    samples = data[:, 0:1]
     covariates = data[:, 2:]
     ranks = rank_phenotypes(data)
     rin_ranks = inverse_normalize_ranks(ranks)

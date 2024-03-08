@@ -70,6 +70,7 @@ task finemap_write_input_variants {
     Int? mac
     File? snp_macs
     Float? inclusion_threshold
+    Boolean is_binary = false
   }
 
   output {
@@ -95,7 +96,8 @@ task finemap_write_input_variants {
       ~{if defined(snp_str_ratio) then "--snp-str-ratio ~{snp_str_ratio}" else ""} \
       ~{if defined(total_prob) then "--total-prob ~{total_prob}" else ""} \
       ~{if defined(mac) then "--mac ~{select_first([mac])} ~{select_first([snp_macs])} " else ""} \
-      ~{if defined(inclusion_threshold) then "--inclusion-threshold ~{inclusion_threshold}" else ""}
+      ~{if defined(inclusion_threshold) then "--inclusion-threshold ~{inclusion_threshold}" else ""} \
+      ~{if !is_binary then "" else "--is-binary"}
   >>>
 
   runtime {
@@ -815,7 +817,7 @@ task first_pass_finemapping_df {
     String phenotype_name
     File snp_assoc_results
     File str_assoc_results
-    Array[File] ethnic_str_assoc_results
+    Array[File]? ethnic_str_assoc_results
 
     Array[serializable_FINEMAP_output] original_finemap_outputs
     Array[Array[File]] original_finemap_creds
@@ -823,6 +825,8 @@ task first_pass_finemapping_df {
     Array[Array[File]] original_susie_CSs
     Array[String] regions
     Array[Int] chroms
+
+    Boolean is_binary = false
   }
 
   output {
@@ -841,6 +845,8 @@ task first_pass_finemapping_df {
     { echo "CSes" ; cat $original_susie_CSs | sed -e 's/\t/,/g' ; } > original_susie_CSs.headered
     paste ~{write_objects(original_finemap_outputs)} CHROMS.headered REGIONS.headered original_finemap_creds.headered > finemap_files.tsv
     paste ~{write_objects(original_susie_outputs)} CHROMS.headered REGIONS.headered original_susie_CSs.headered > susie_files.tsv
+
+    ethnic_str_assoc_results=~{sep=" " ethnic_str_assoc_results} 
     envsetup ~{script} \
       . \
       df \
@@ -848,10 +854,11 @@ task first_pass_finemapping_df {
       ~{phenotype_name} \
       ~{snp_assoc_results} \
       ~{str_assoc_results} \
-      ~{sep=" " ethnic_str_assoc_results} \
+      ~{if defined(ethnic_str_assoc_results) then "--ethnic_str_assoc_results $ethnic_str_assoc_results" else ""} \
       first_pass \
       finemap_files.tsv \
-      susie_files.tsv
+      susie_files.tsv \
+      ~{if !is_binary then "" else "--is-binary "}
   >>>
 
   runtime {

@@ -192,6 +192,9 @@ workflow gwas {
     File my_str_gwas = gwas.my_str_gwas
     File plink_snp_gwas = gwas.plink_snp_gwas
 
+    File? continuous_first_pass_str_gwas = gwas.continuous_first_pass_str_gwas
+    File? continuous_first_pass_snp_gwas = gwas.continuous_first_pass_snp_gwas
+
     File snp_qq_plot = gwas.snp_qq_plot
     File str_qq_plot = gwas.str_qq_plot
     File peaks = gwas.peaks

@@ -144,9 +144,6 @@ def load_my_str_results(phenotype, binary, unconditional_results_fname, conditio
             how= 'inner'
         ) # subsets to only those which passed the p-val threshold in the unconditional run
 
-    if binary == 'logistic':
-        results.rename(columns={'firth?': 'firth'}, inplace=True)
-
     rename_dict = my_results_rename(phenotype)
     rename_dict.update(my_str_results_rename)
     for colname in ('total_per_allele_dosages', 'total_hardcall_alleles',

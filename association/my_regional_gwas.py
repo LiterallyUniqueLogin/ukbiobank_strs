@@ -311,21 +311,23 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples, region):
             # this is a empty vars file
             # yield only the list of details fields and then exit without yielding variants
             itr = load_and_filter_genotypes.load_strs(
-                str_vcf, f'1:1-1', samples
+                str_vcf, '1:1-1', samples
             )
             yield next(itr)
             return
     f = pl.read_csv(vars_file, sep='\t')
     if region:
         region_chrom, region_range = region.split(':')
-        region_start, region_end = region_range.split('-')
-        f = f.filter((pl.col('chrom') == region_chrom) & (pl.col('pos') >= region_start) & (pl.col('pos') <= region_end))
+        region_start, region_end = [int(x) for x in region_range.split('-')]
+        f = f.filter((pl.col('chrom') == int(region_chrom)) & (pl.col('pos') >= region_start) & (pl.col('pos') <= region_end))
     chroms = f['chrom']
     poses = f['pos']
+    print(f.shape)
     first = True
     for (chrom, pos) in zip(chroms, poses):
+        print(chrom, pos)
         itr = load_and_filter_genotypes.load_strs(
-            str_vcf, f'{chrom}:{pos}-{pos}', samples
+            str_vcf, f'{chrom}:{pos}-{pos}', samples, ignore_overlap_start = False
         )
         # yield or skip the extra details line
         if first:
@@ -335,7 +337,10 @@ def get_genotype_iter_vars_file(str_vcf, vars_fname, samples, region):
             next(itr)
         # yield the genotype
         yield next(itr)
-
+        try:
+            assert "Found multiple variants overlapping the vars file position", next(itr)
+        except StopIteration:
+            pass 
 
 def perform_regional_gwas(outfile, pheno_and_covars_fname, shared_covars_fname, untransformed_phenotypes_fname, all_samples_fname, phenotype, binary, region, vars_file, runtype, str_vcf, snp_bgen, snp_mfi, conditional_covars_fname, temp_dir, no_details):
     if runtype == 'strs':
@@ -395,8 +400,6 @@ def main():
 
     assert (args.str_vcf is not None) == (args.runtype == 'strs')
     assert (args.snp_bgen is not None) == (args.snp_mfi is not None) == (args.runtype == 'imputed-snps')
-
-    assert (args.region is not None) + (args.vars_file is not None) <= 1
 
     # this would require firth regression which I've removed
     assert not ((args.runtype == 'imputed-snps') and args.binary)

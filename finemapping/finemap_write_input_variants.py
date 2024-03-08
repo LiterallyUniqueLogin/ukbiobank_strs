@@ -13,7 +13,7 @@ def get_mac(dosage_dict_str):
     dosages = list(ast.literal_eval(dosage_dict_str).values())
     return np.sum(dosages) - np.max(dosages)
 
-def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_results_fname, filter_set_fname, samples_fname, readme, phenotype, chrom, start, end, inclusion_threshold, mac, snp_str_ratio, total_prob):
+def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_results_fname, filter_set_fname, samples_fname, readme, phenotype, chrom, start, end, is_binary, inclusion_threshold, mac, snp_str_ratio, total_prob):
     '''
     write README.txt
     write finemap_input.z
@@ -136,8 +136,8 @@ def write_input_variants(workdir, outdir, gts_dir, plink_results_fname, str_resu
         pl.col('REF').alias('allele1'),
         pl.col('ALT').alias('allele2'),
         pl.lit('nan').alias('maf'),
-        pl.col('BETA').alias('beta'),
-        pl.col('SE').alias('se'),
+        (pl.col('BETA') if not is_binary else pl.col('OR').log()).alias('beta'),
+        (pl.col('SE') if not is_binary else pl.col('LOG(OR)_SE')).alias('se'),
     ]).collect()
 
     if mac:
@@ -177,6 +177,7 @@ def main():
     parser.add_argument('chrom', type=int)
     parser.add_argument('start_pos', type=int)
     parser.add_argument('end_pos', type=int)
+    parser.add_argument('--is-binary', default=False, action='store_true')
     parser.add_argument('--snp-str-ratio', type=float, default=None)
     parser.add_argument('--total-prob', type=float, default=None)
     parser.add_argument('--inclusion-threshold', type=float, default=0.05)
@@ -194,7 +195,7 @@ def main():
     outdir = args.outdir
     gts_dir= args.gts_dir
     with open(f'{outdir}/README.txt', 'w') as readme:
-        write_input_variants(outdir, outdir, gts_dir, args.plink_results, args.str_results, args.variants_to_filter, args.samples_fname, readme, phenotype, chrom, start_pos, end_pos, args.inclusion_threshold, args.mac, args.snp_str_ratio, args.total_prob)
+        write_input_variants(outdir, outdir, gts_dir, args.plink_results, args.str_results, args.variants_to_filter, args.samples_fname, readme, phenotype, chrom, start_pos, end_pos, args.is_binary, args.inclusion_threshold, args.mac, args.snp_str_ratio, args.total_prob)
 
 if __name__ == '__main__':
     main()
